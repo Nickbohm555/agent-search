@@ -11,8 +11,9 @@
 3. Before making changes, search the codebase so existing functionality is reused when possible.
 4. After implementing functionality, run the required tests from the task definition. Prefer all required tests passing unless blocked by rule 998.
 5. Update @IMPLEMENTATION_PLAN.md with findings and completion state.
-6. For blocked external dependency (rule 998): update @IMPLEMENTATION_PLAN.md with a `BLOCKED` item including missing variable/access, failed command/test, and next action; commit partial progress with message prefix `blocked:`; then end this run.
-7. When checks pass (or blocked state is documented under rule 998): `git add -A`, `git commit` with a clear message, then `git push`; then end this run. there needs to be a clear message of what was added, not just "ralph: iteration 5 (build)" for example. it should be ralph loop 5 (build): <insert message>
+6. For blocked external dependency (rule 998): update @IMPLEMENTATION_PLAN.md with a `BLOCKED` item including missing variable/access, failed command/test, and next action; then write `.loop-commit-msg`, write the mermaid file, then end this run.
+7. When checks pass (or blocked state is documented under rule 998): write `.loop-commit-msg`, write the mermaid file (step 8), then end this run.
+8. At the end of every run: (a) Write one line to `.loop-commit-msg` in the repo root so the loop can use it for the commit (e.g. `Worked on: <brief>. Blocked: <if any>.`). (b) Add one Mermaid diagram file under `docs/loop/`. Create the directory if needed. One file per run; use a filename that identifies the work (e.g. `per-subquery-tools.mermaid` or `auth-flow.mermaid`). The diagram should summarize what was implemented, what was blocked (if any), and key decisions or flow for this run (e.g. flowchart or sequence diagram in Mermaid syntax).
 
 NOTE: Keep @AGENTS.md operational only (how to build/test/run). Keep status/progress in @IMPLEMENTATION_PLAN.md.
 NOTE: Prefer complete functionality over placeholders/stubs unless explicitly needed.

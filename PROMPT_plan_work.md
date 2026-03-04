@@ -10,6 +10,7 @@
 
 NOTE: This is scoped planning for "${WORK_SCOPE}" only. Keep the plan focused on tasks directly related to this scope.
 NOTE: If a task seems unrelated or uncertain, prefer leaving it out for now.
+NOTE: At the end of the run, write one line to `.loop-commit-msg` in the repo root (e.g. `Planned (${WORK_SCOPE}): <brief summary>.`). The loop uses it for the commit message.
 NOTE: Keep this run in planning mode; avoid implementation and commits.
 NOTE: Try to confirm missing functionality with code search before marking gaps.
 NOTE: Treat `src/lib/*` as the project's standard library for shared utilities/components and prefer consolidated implementations.

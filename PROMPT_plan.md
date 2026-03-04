@@ -7,6 +7,7 @@
 2. Create or update @IMPLEMENTATION_PLAN.md as a prioritized bullet list of items yet to be implemented.
 3. For each task, derive verification requirements from acceptance criteria in specs (what outcomes must be validated, not implementation details).
 4. Keep @IMPLEMENTATION_PLAN.md up to date with complete/incomplete status.
+5. At the end of the run, write one line to `.loop-commit-msg` in the repo root so the loop can use it for the commit (e.g. `Planned: <brief summary of what was added/updated>.`).
 
 NOTE: Keep this run focused on planning. Avoid implementation and commits in this mode.
 NOTE: Try to confirm missing functionality with code search before marking gaps.
