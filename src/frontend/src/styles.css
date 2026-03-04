@@ -399,6 +399,13 @@ li {
   text-shadow: 0 0 12px rgba(47, 243, 255, 0.25);
 }
 
+.timeline-details {
+  margin-top: 3px;
+  font-size: 0.8rem;
+  color: #aec4e7;
+  word-break: break-word;
+}
+
 code {
   background: var(--accent-neon-soft);
   border-radius: 6px;

@@ -6,6 +6,23 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Show timeline step details in frontend progress readout for explicit "what the system did" visibility (`specs/content-and-readouts.md`, `specs/streaming-agent-heartbeat.md`, `specs/demo-ui-typescript.md`).
+  - Tasks:
+  - Added deterministic timeline detail formatter/rendering in `ProgressHistory` so each timeline step can display event detail payloads (sorted key-value readout) instead of only step/status labels.
+  - Added frontend interaction coverage proving timeline detail payload text is visible in the progress history when graph timeline entries include details.
+  - Added lightweight styling for detail lines to keep detail text legible within the existing readout aesthetic.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `43 passed`
+    - `docker compose exec frontend npm run test` -> `36 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Expose retrieval-validation loop attempt details in frontend readout with schema parity (`specs/retrieval-validation.md`, `specs/content-and-readouts.md`, `specs/demo-ui-typescript.md`).
   - Tasks:
   - Updated frontend runtime response contract parsing to include `validation_results[*].attempt_trace` and `subquery_execution_results[*]` for parity with backend payload/schema.

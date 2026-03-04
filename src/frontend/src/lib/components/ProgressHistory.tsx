@@ -4,6 +4,26 @@ interface ProgressHistoryProps {
   runDetails: RuntimeAgentRunResponse | null;
 }
 
+function formatTimelineDetails(details: Record<string, unknown>): string {
+  const entries = Object.entries(details);
+  if (entries.length === 0) {
+    return "";
+  }
+
+  return entries
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => {
+      if (Array.isArray(value)) {
+        return `${key}=${value.map((item) => String(item)).join(", ")}`;
+      }
+      if (value && typeof value === "object") {
+        return `${key}=${JSON.stringify(value)}`;
+      }
+      return `${key}=${String(value)}`;
+    })
+    .join(" | ");
+}
+
 export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
   const timeline = runDetails?.graph_state?.timeline ?? [];
   const currentTimelineIndex = timeline.length > 0 ? timeline.length - 1 : -1;
@@ -23,7 +43,12 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
                     className={`timeline-item ${index === currentTimelineIndex ? "timeline-item-current" : ""}`}
                     data-current-step={index === currentTimelineIndex ? "true" : "false"}
                   >
-                    <strong>{entry.step}</strong>: {entry.status}
+                    <p>
+                      <strong>{entry.step}</strong>: {entry.status}
+                    </p>
+                    {Object.keys(entry.details).length > 0 ? (
+                      <p className="timeline-details">{formatTimelineDetails(entry.details)}</p>
+                    ) : null}
                   </li>
                 ))}
               </ol>

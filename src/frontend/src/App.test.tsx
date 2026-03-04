@@ -253,6 +253,37 @@ describe("App", () => {
     expect(screen.getByTestId("query-readout")).toHaveTextContent("What is the project status?");
   });
 
+  it("renders timeline detail payloads in progress history readout", async () => {
+    mockedRunAgentStream.mockResolvedValue({
+      ok: true,
+      data: successRunResponse({
+        graph_state: {
+          current_step: "synthesis",
+          timeline: [
+            {
+              step: "decomposition",
+              status: "completed",
+              details: {
+                query: "timeline details query",
+                sub_query_count: 2,
+                labels: ["internal", "web"],
+              },
+            },
+          ],
+          graph: {},
+        },
+      }),
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Show timeline details" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("labels=internal, web | query=timeline details query | sub_query_count=2")).toBeInTheDocument();
+    });
+  });
+
   it("shows retrieval summaries for internal and web sub-queries", async () => {
     mockedRunAgentStream.mockResolvedValue({
       ok: true,
