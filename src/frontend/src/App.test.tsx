@@ -24,6 +24,8 @@ function successRunResponse(overrides?: Partial<RuntimeAgentRunResponse>): Runti
   return {
     agent_name: "langgraph-scaffold",
     output: "This is the synthesized answer.",
+    thread_id: "thread-app-test",
+    checkpoint_id: null,
     sub_queries: ["subquery-a", "subquery-b"],
     tool_assignments: [
       { sub_query: "subquery-a", tool: "internal" },
@@ -250,6 +252,8 @@ describe("App", () => {
       data: {
         agent_name: "langgraph-scaffold",
         output: "Fallback answer.",
+        thread_id: "thread-fallback",
+        checkpoint_id: null,
         sub_queries: ["subquery-fallback"],
         tool_assignments: [{ sub_query: "subquery-fallback", tool: "web" }],
         retrieval_results: [],

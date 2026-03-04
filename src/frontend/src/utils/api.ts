@@ -35,6 +35,9 @@ export interface InternalDataLoadResponse {
 
 export interface RuntimeAgentRunRequest {
   query: string;
+  thread_id?: string;
+  user_id?: string;
+  checkpoint_id?: string;
 }
 
 export interface SubQueryToolAssignment {
@@ -105,6 +108,8 @@ export interface RuntimeAgentGraphState {
 export interface RuntimeAgentRunResponse {
   agent_name: string;
   output: string;
+  thread_id: string;
+  checkpoint_id?: string | null;
   sub_queries: string[];
   tool_assignments: SubQueryToolAssignment[];
   retrieval_results: SubQueryRetrievalResult[];
@@ -134,6 +139,9 @@ export async function runAgent(
   payload: RuntimeAgentRunRequest,
   options: RequestOptions = {},
 ): Promise<ApiResult<RuntimeAgentRunResponse>> {
+  // Called by `App.handleRun` to execute one agent run with optional persistence context.
+  // Sends a POST request to `/api/agents/run` and returns either validated response data
+  // or a deterministic API error result without throwing.
   return requestJson<RuntimeAgentRunResponse>({
     path: "/api/agents/run",
     payload,
@@ -248,6 +256,8 @@ function isToolKind(value: unknown): value is "internal" | "web" {
 }
 
 function isRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResponse {
+  // Used by `requestJson` in `runAgent` so UI state only receives shape-safe payloads.
+  // Side effect free: validates runtime payload structure, including persistence IDs.
   if (!isObject(value)) {
     return false;
   }
@@ -255,6 +265,11 @@ function isRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResp
   if (
     typeof value.agent_name !== "string" ||
     typeof value.output !== "string" ||
+    typeof value.thread_id !== "string" ||
+    value.thread_id.trim().length === 0 ||
+    (value.checkpoint_id !== undefined &&
+      value.checkpoint_id !== null &&
+      typeof value.checkpoint_id !== "string") ||
     !isStringArray(value.sub_queries) ||
     !Array.isArray(value.tool_assignments) ||
     !Array.isArray(value.retrieval_results) ||

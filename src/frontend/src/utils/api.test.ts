@@ -50,6 +50,8 @@ describe("frontend api client", () => {
       jsonResponse(200, {
         agent_name: "langgraph-scaffold",
         output: "Final answer",
+        thread_id: "thread-123",
+        checkpoint_id: null,
         sub_queries: ["q1", "q2"],
         tool_assignments: [
           { sub_query: "q1", tool: "internal" },
@@ -87,10 +89,51 @@ describe("frontend api client", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.output).toBe("Final answer");
+      expect(result.data.thread_id).toBe("thread-123");
+      expect(result.data.checkpoint_id).toBeNull();
       expect(result.data.sub_queries).toEqual(["q1", "q2"]);
       expect(result.data.tool_assignments).toHaveLength(2);
       expect(result.data.validation_results[0].status).toBe("validated");
       expect(result.data.graph_state?.current_step).toBe("synthesis");
+    }
+  });
+
+  it("accepts optional persistence fields in runAgent request payload", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        agent_name: "langgraph-scaffold",
+        output: "Final answer",
+        thread_id: "thread-xyz",
+        checkpoint_id: "checkpoint-9",
+        sub_queries: [],
+        tool_assignments: [],
+        retrieval_results: [],
+        validation_results: [],
+        web_tool_runs: [],
+        graph_state: null,
+      }),
+    );
+
+    const payload = {
+      query: "Continue this thread",
+      thread_id: "thread-xyz",
+      user_id: "user-42",
+      checkpoint_id: "checkpoint-9",
+    };
+    const result = await runAgent(payload, { fetchImpl: fetchMock as unknown as typeof fetch });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/agents/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    );
+    if (result.ok) {
+      expect(result.data.thread_id).toBe("thread-xyz");
+      expect(result.data.checkpoint_id).toBe("checkpoint-9");
     }
   });
 
@@ -163,6 +206,36 @@ describe("frontend api client", () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, {
         output: "Missing required fields",
+      }),
+    );
+
+    const result = await runAgent(
+      { query: "Hello" },
+      { fetchImpl: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "malformed_response",
+        message: "Backend response did not match expected shape.",
+        retryable: false,
+      },
+    });
+  });
+
+  it("rejects payloads missing required thread_id in run response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        agent_name: "langgraph-scaffold",
+        output: "Final answer",
+        checkpoint_id: null,
+        sub_queries: [],
+        tool_assignments: [],
+        retrieval_results: [],
+        validation_results: [],
+        web_tool_runs: [],
+        graph_state: null,
       }),
     );
 
