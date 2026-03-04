@@ -1,4 +1,6 @@
 from .agent import (
+    RuntimeAgentGraphState,
+    RuntimeAgentGraphStep,
     RuntimeAgentInfo,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
@@ -31,6 +33,8 @@ __all__ = [
     "RuntimeAgentInfo",
     "RuntimeAgentRunRequest",
     "RuntimeAgentRunResponse",
+    "RuntimeAgentGraphStep",
+    "RuntimeAgentGraphState",
     "SubQueryRetrievalResult",
     "SubQueryValidationResult",
     "SubQueryToolAssignment",

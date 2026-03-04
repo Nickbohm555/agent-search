@@ -1,20 +1,14 @@
 from contextlib import nullcontext
 from typing import Any, Optional
 
-from agents.factory import build_default_agent
+from agents.factory import AgentFactory, build_default_agent
 from schemas import (
     RuntimeAgentInfo,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
-    SubQueryToolAssignment,
     WebToolRun,
 )
-from services.answer_synthesis_service import synthesize_answer
-from services.retrieval_service import execute_subquery_retrievals
-from services.validation_service import validate_retrieval_results
 from sqlalchemy.orm import Session
-from utils.query_decomposition import decompose_query
-from utils.tool_selection import assign_tools_to_sub_queries
 
 
 def get_runtime_agent_info() -> RuntimeAgentInfo:
@@ -45,19 +39,16 @@ def run_runtime_agent(
     db: Session,
     tracing_handle: Optional[Any] = None,
 ) -> RuntimeAgentRunResponse:
+    factory = AgentFactory()
     agent = build_default_agent()
-    sub_queries = decompose_query(payload.query)
-    tool_assignments = [
-        SubQueryToolAssignment(sub_query=sub_query, tool=tool)
-        for sub_query, tool in assign_tools_to_sub_queries(sub_queries)
-    ]
-    retrieval_results = execute_subquery_retrievals(tool_assignments, db)
-    retrieval_results, validation_results = validate_retrieval_results(retrieval_results, db)
-    output = synthesize_answer(
-        query=payload.query,
-        retrieval_results=retrieval_results,
-        validation_results=validation_results,
-    )
+    graph_agent = factory.create_langgraph_agent()
+    graph_result = graph_agent.run(payload.query, db)
+    sub_queries = graph_result["sub_queries"]
+    tool_assignments = graph_result["tool_assignments"]
+    retrieval_results = graph_result["retrieval_results"]
+    validation_results = graph_result["validation_results"]
+    output = graph_result["output"]
+    graph_state = graph_result["graph_state"]
     web_tool_runs: list[WebToolRun] = [
         WebToolRun(
             sub_query=result.sub_query,
@@ -92,4 +83,5 @@ def run_runtime_agent(
         retrieval_results=retrieval_results,
         validation_results=validation_results,
         web_tool_runs=web_tool_runs,
+        graph_state=graph_state,
     )

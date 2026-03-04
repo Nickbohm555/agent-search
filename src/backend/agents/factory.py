@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Optional
 
 from agents.base import RuntimeAgent
 from agents.langgraph_agent import LangGraphAgentScaffold
@@ -19,17 +19,15 @@ class AgentFactory:
     def __init__(self, config: Optional[AgentFactoryConfig] = None) -> None:
         self.config = config or AgentFactoryConfig()
 
-    def create_langgraph_agent(self) -> Any:
-        """Return a runtime LangGraph agent instance (scaffold placeholder)."""
-        graph_agent = LangGraphAgentScaffold(
+    def create_langgraph_agent(self) -> LangGraphAgentScaffold:
+        """Return a runtime LangGraph agent instance."""
+        return LangGraphAgentScaffold(
             name=self.config.agent_name,
             model=self.config.model_name,
         )
-        return graph_agent.build()
 
     def create_runtime_agent(self) -> RuntimeAgent:
-        """Return app-level runtime agent wrapper (scaffold)."""
-        _graph = self.create_langgraph_agent()
+        """Return app-level runtime agent wrapper."""
         return RuntimeAgent(name=self.config.agent_name)
 
 

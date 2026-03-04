@@ -5,23 +5,24 @@
 5. Copy env file once: `cp .env.example .env`.
 6. Build all services: `docker compose build`.
 7. Start all services: `docker compose up -d`.
-8. Service names: `db`, `backend`, `frontend`, `chrome`.
-9. Frontend URL: `http://localhost:5173`.
-10. Backend URL: `http://localhost:8000`.
-11. Health endpoint: `http://localhost:8000/api/health`.
-12. Chrome DevTools endpoint (CDP): `http://localhost:9222`.
-13. Tail all logs: `docker compose logs -f`.
-14. Tail backend logs: `docker compose logs -f backend`.
-15. Tail frontend logs: `docker compose logs -f frontend`.
-16. Tail DB logs: `docker compose logs -f db`.
-17. Show running state: `docker compose ps`.
-18. Backend shell: `docker compose exec backend sh`.
-19. Frontend shell: `docker compose exec frontend sh`.
-20. DB shell: `docker compose exec db psql -U ${POSTGRES_USER:-agent_user} -d ${POSTGRES_DB:-agent_search}`.
-21. Alembic upgrade: `docker compose exec backend uv run alembic upgrade head`.
-22. Create migration: `docker compose exec backend uv run alembic revision -m "describe_change"`.
-23. Alembic history: `docker compose exec backend uv run alembic history`.
-24. Alembic current: `docker compose exec backend uv run alembic current`.
+8. Remove all services and start over: `docker compose down -v` (stops containers and removes volumes), then `docker compose build` and `docker compose up -d`.
+9. Service names: `db`, `backend`, `frontend`, `chrome`.
+10. Frontend URL: `http://localhost:5173`.
+11. Backend URL: `http://localhost:8000`.
+12. Health endpoint: `http://localhost:8000/api/health`.
+13. Chrome DevTools endpoint (CDP): `http://localhost:9222`.
+14. Tail all logs: `docker compose logs -f`.
+15. Tail backend logs: `docker compose logs -f backend`.
+16. Tail frontend logs: `docker compose logs -f frontend`.
+17. Tail DB logs: `docker compose logs -f db`.
+18. Show running state: `docker compose ps`.
+19. Backend shell: `docker compose exec backend sh`.
+20. Frontend shell: `docker compose exec frontend sh`.
+21. DB shell: `docker compose exec db psql -U ${POSTGRES_USER:-agent_user} -d ${POSTGRES_DB:-agent_search}`.
+22. Alembic upgrade: `docker compose exec backend uv run alembic upgrade head`.
+23. Create migration: `docker compose exec backend uv run alembic revision -m "describe_change"`.
+24. Alembic history: `docker compose exec backend uv run alembic history`.
+25. Alembic current: `docker compose exec backend uv run alembic current`.
 25. Verify pgvector extension: `docker compose exec db psql -U agent_user -d agent_search -c "\\dx"`.
 26. Verify tables: `docker compose exec db psql -U agent_user -d agent_search -c "\\dt"`.
 27. Backend tests: `docker compose exec backend uv run pytest`.

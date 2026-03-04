@@ -21,13 +21,13 @@
   - Backend: smoke tests now also cover web tool search/open contracts and web-assigned agent sub-query execution.
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Implemented answer synthesis (`specs/answer-synthesis.md`):
-    - Added `services/answer_synthesis_service.py` to produce one final answer from original query plus ordered validated per-subquery outputs.
-    - Synthesis uses validated outputs only (`validated` + `sufficient=True`) and reports insufficient evidence for stopped subqueries.
-  - Updated runtime agent run flow so `/api/agents/run` `output` is synthesized after validation.
+  - Implemented LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`):
+    - Replaced placeholder graph scaffold with compiled graph projection and explicit node/edge topology for decomposition -> tool selection -> retrieval -> validation -> synthesis.
+    - Added deep-agent execution component (`SubQueryExecutionAgent`) to encapsulate per-subquery retrieval + validation behavior.
+    - Updated runtime agent run flow so `/api/agents/run` executes through the orchestration graph and returns graph-state projection (`graph_state.timeline`, `graph_state.graph`) for streaming consumption.
   - Added backend smoke coverage for:
-    - single final synthesized answer generation from validated internal evidence,
-    - validated-only synthesis behavior for mixed sufficient/insufficient subqueries.
+    - compiled LangGraph projection exposure on runtime agent runs,
+    - deterministic pipeline ordering with per-subquery retrieval/validation execution and validation loop observability.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -82,16 +82,13 @@
   - Runtime-agent `output` now comes from the synthesis stage rather than scaffold placeholder output.
   - Synthesis consumes validated outputs only and performs no direct retrieval.
   - Added smoke tests for validated-answer generation and insufficient-evidence handling.
+- [x] P1 - Implement LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`)
+  - Added runtime graph orchestration structure with explicit decomposition, selection, retrieval, validation, and synthesis nodes.
+  - Added deep subquery agent composition for retrieval/validation execution per assigned tool.
+  - Updated runtime response to expose graph-state projection consumable by streaming layers.
+  - Added smoke tests validating graph projection, node ordering, and per-subquery validation loop outcomes.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P1 - Implement LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`)
-  - Scope gap confirmed: LangGraph scaffold returns `compiled=False` placeholder graph dict.
-  - Verification requirements (outcome-focused):
-    - End-to-end flow decomposition -> selection -> retrieval -> validation -> synthesis executes as a LangGraph graph.
-    - Logical order is enforced, including per-subquery validation loop behavior.
-    - Deep-agent composition is present for subquery/tool execution path.
-    - Graph state or projection is consumable by streaming layer.
 
 - [ ] P2 - Implement streaming heartbeat backend (`specs/streaming-agent-heartbeat.md`)
   - Scope gap confirmed: no streaming endpoint/protocol/event bridge.
@@ -131,21 +128,24 @@
     - `docker compose exec backend uv run pytest` -> same daemon socket permission error.
     - `docker compose exec frontend npm run test` -> same daemon socket permission error.
     - `docker compose exec frontend npm run typecheck` -> same daemon socket permission error.
-    - `curl -sS http://localhost:8000/api/health` -> `curl: (7) Couldn't connect to server`.
-- Secondary local-environment blockers when attempting non-Docker fallback:
+    - `curl -sS http://localhost:8000/api/health` -> `curl: (7) Couldn't connect to server` (services are not running without Docker access).
+- Secondary local-environment blockers when attempting non-Docker frontend fallback:
   - Failed commands:
-    - `(src/backend) python3 -m pytest tests/api/test_answer_synthesis.py tests/api/test_scaffold_endpoints.py tests/api/test_agent_run_tracing.py tests/api/test_retrieval_validation.py tests/api/test_per_subquery_retrieval.py` -> `No module named pytest`
+    - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found` (frontend dependencies are not installed in this sandbox).
+    - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found` (frontend dependencies are not installed in this sandbox).
 - Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: ralph loop 7 (build): implement answer synthesis service with validated-only output and smoke tests"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
-    - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`
+    - `git add -A && git commit -m "blocked: ralph loop 8 (build): implement LangGraph orchestration with deep agents and smoke tests"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`.
+    - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`.
 - Next action:
-  - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
+  - Run checks on a host with Docker daemon access and installed frontend dependencies, then re-run required gates:
     - `docker compose exec backend uv run pytest`
     - `docker compose exec frontend npm run test`
     - `docker compose exec frontend npm run typecheck`
     - Health check: `curl http://localhost:8000/api/health`
-  - Complete commit/push on a host with git write/network access:
+  - If frontend dependencies are not present, install them first:
+    - `(src/frontend) npm install`
+  - Complete commit/push on a host with git write/network access if sandbox blocks push:
     - `git add -A`
-    - `git commit -m "blocked: ralph loop 7 (build): implement answer synthesis service with validated-only output and smoke tests"`
+    - `git commit -m "blocked: ralph loop 8 (build): implement LangGraph orchestration with deep agents and smoke tests"`
     - `git push`

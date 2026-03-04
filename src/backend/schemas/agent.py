@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -39,6 +39,18 @@ class SubQueryValidationResult(BaseModel):
     stop_reason: str
 
 
+class RuntimeAgentGraphStep(BaseModel):
+    step: str
+    status: Literal["started", "completed"]
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuntimeAgentGraphState(BaseModel):
+    current_step: str
+    timeline: list[RuntimeAgentGraphStep] = Field(default_factory=list)
+    graph: dict[str, Any] = Field(default_factory=dict)
+
+
 class RuntimeAgentRunResponse(BaseModel):
     agent_name: str
     output: str
@@ -47,3 +59,4 @@ class RuntimeAgentRunResponse(BaseModel):
     retrieval_results: list[SubQueryRetrievalResult] = Field(default_factory=list)
     validation_results: list[SubQueryValidationResult] = Field(default_factory=list)
     web_tool_runs: list[WebToolRun] = Field(default_factory=list)
+    graph_state: Optional[RuntimeAgentGraphState] = None
