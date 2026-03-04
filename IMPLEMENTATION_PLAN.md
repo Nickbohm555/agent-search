@@ -134,6 +134,22 @@
     - `docker compose exec frontend npm run test` -> `25 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
+- [x] P1 - Wire demo UI run flow to streaming heartbeat endpoint (`specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`).
+  - Tasks:
+  - Added frontend streaming API client `runAgentStream` for `POST /api/agents/run/stream` with SSE parsing and deterministic error mapping parity (`http`, `network`, `timeout`, `malformed_response`).
+  - Updated `App` run flow to consume stream events and progressively update progress/readout state before completion.
+  - Added deterministic frontend tests for stream parsing and incremental UI behavior (sub-query visible during stream before final completion payload).
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -v --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `36 passed`
+    - `docker compose exec frontend npm run test` -> `28 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 ## Completed Baseline (Scoped)
 
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.

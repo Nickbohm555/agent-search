@@ -1,16 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { loadInternalData, runAgent } from "./utils/api";
+import { loadInternalData, runAgentStream } from "./utils/api";
 import { RuntimeAgentRunResponse } from "./utils/api";
 
 vi.mock("./utils/api", () => ({
   loadInternalData: vi.fn(),
-  runAgent: vi.fn(),
+  runAgentStream: vi.fn(),
 }));
 
 const mockedLoadInternalData = vi.mocked(loadInternalData);
-const mockedRunAgent = vi.mocked(runAgent);
+const mockedRunAgentStream = vi.mocked(runAgentStream);
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -173,7 +173,7 @@ describe("App", () => {
   });
 
   it("shows timeline progress and final answer for successful run", async () => {
-    mockedRunAgent.mockResolvedValue({
+    mockedRunAgentStream.mockResolvedValue({
       ok: true,
       data: successRunResponse(),
     });
@@ -203,7 +203,7 @@ describe("App", () => {
         chunks_created: 8,
       },
     });
-    mockedRunAgent.mockResolvedValue({
+    mockedRunAgentStream.mockResolvedValue({
       ok: true,
       data: successRunResponse(),
     });
@@ -225,7 +225,7 @@ describe("App", () => {
   });
 
   it("keeps asked query, system progress, and final answer as distinct readout sections", async () => {
-    mockedRunAgent.mockResolvedValue({
+    mockedRunAgentStream.mockResolvedValue({
       ok: true,
       data: successRunResponse({ output: "Distinct readout answer." }),
     });
@@ -245,7 +245,7 @@ describe("App", () => {
   });
 
   it("falls back to sub-query and validation views when graph_state is missing", async () => {
-    mockedRunAgent.mockResolvedValue({
+    mockedRunAgentStream.mockResolvedValue({
       ok: true,
       data: {
         agent_name: "langgraph-scaffold",
@@ -282,7 +282,7 @@ describe("App", () => {
   });
 
   it("shows stable empty states for optional progress arrays", async () => {
-    mockedRunAgent.mockResolvedValue({
+    mockedRunAgentStream.mockResolvedValue({
       ok: true,
       data: successRunResponse({
         output: "Empty state answer.",
@@ -310,7 +310,7 @@ describe("App", () => {
   });
 
   it("shows run failure and preserves query text for retry", async () => {
-    mockedRunAgent.mockResolvedValue({
+    mockedRunAgentStream.mockResolvedValue({
       ok: false,
       error: {
         type: "http",
@@ -358,8 +358,8 @@ describe("App", () => {
   });
 
   it("disables only run control during in-flight run and re-enables after completion", async () => {
-    const deferred = createDeferred<Awaited<ReturnType<typeof runAgent>>>();
-    mockedRunAgent.mockImplementation(() => deferred.promise);
+    const deferred = createDeferred<Awaited<ReturnType<typeof runAgentStream>>>();
+    mockedRunAgentStream.mockImplementation(() => deferred.promise);
 
     render(<App />);
     fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Run lifecycle" } });
@@ -407,8 +407,8 @@ describe("App", () => {
   });
 
   it("prevents duplicate in-flight run requests from rapid repeated submits", async () => {
-    const deferred = createDeferred<Awaited<ReturnType<typeof runAgent>>>();
-    mockedRunAgent.mockImplementation(() => deferred.promise);
+    const deferred = createDeferred<Awaited<ReturnType<typeof runAgentStream>>>();
+    mockedRunAgentStream.mockImplementation(() => deferred.promise);
 
     render(<App />);
     fireEvent.change(screen.getByLabelText("Query"), { target: { value: "No duplicates" } });
@@ -417,7 +417,7 @@ describe("App", () => {
     fireEvent.click(runButton);
     fireEvent.click(runButton);
 
-    expect(mockedRunAgent).toHaveBeenCalledTimes(1);
+    expect(mockedRunAgentStream).toHaveBeenCalledTimes(1);
 
     deferred.resolve({
       ok: true,
@@ -430,7 +430,7 @@ describe("App", () => {
   });
 
   it("allows retry in same session after run failure", async () => {
-    mockedRunAgent
+    mockedRunAgentStream
       .mockResolvedValueOnce({
         ok: false,
         error: {
@@ -460,6 +460,55 @@ describe("App", () => {
       expect(screen.getByText("Retry succeeded.")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Query")).toHaveValue("Retry query");
-    expect(mockedRunAgent).toHaveBeenCalledTimes(2);
+    expect(mockedRunAgentStream).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows streamed sub-queries before completion", async () => {
+    mockedRunAgentStream.mockImplementation(async (_payload, handlers) => {
+      const partial = successRunResponse({
+        output: "",
+        sub_queries: ["streamed-subquery"],
+        validation_results: [],
+      });
+      handlers?.onEvent?.(
+        {
+          sequence: 2,
+          event: "sub_queries",
+          data: { sub_queries: ["streamed-subquery"] },
+        },
+        partial,
+      );
+      const final = successRunResponse({
+        sub_queries: ["streamed-subquery"],
+        tool_assignments: [{ sub_query: "streamed-subquery", tool: "internal" }],
+        validation_results: [
+          {
+            sub_query: "streamed-subquery",
+            tool: "internal",
+            sufficient: true,
+            status: "validated",
+            attempts: 1,
+            follow_up_actions: [],
+            stop_reason: "sufficient",
+          },
+        ],
+      });
+      return { ok: true, data: final };
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Show me streaming" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Streaming progress. 1 sub-queries received.")).toBeInTheDocument();
+      expect(screen.getByText("streamed-subquery (unassigned)")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run complete. 1 sub-queries processed.")).toBeInTheDocument();
+      expect(screen.getByText("streamed-subquery (internal)")).toBeInTheDocument();
+      expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
+    });
   });
 });

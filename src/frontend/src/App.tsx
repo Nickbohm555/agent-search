@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
-import { RuntimeAgentRunResponse, loadInternalData, runAgent } from "./utils/api";
+import { RuntimeAgentRunResponse, loadInternalData, runAgentStream } from "./utils/api";
 import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
 import { ProgressHistory } from "./lib/components/ProgressHistory";
 import { QueryForm } from "./lib/components/QueryForm";
@@ -63,7 +63,20 @@ export default function App() {
     setSubmittedQuery(trimmedQuery);
 
     try {
-      const result = await runAgent({ query: trimmedQuery });
+      const result = await runAgentStream(
+        { query: trimmedQuery },
+        {
+          onEvent: (event, snapshot) => {
+            setRunDetails(snapshot);
+            if (snapshot.output) {
+              setAnswer(snapshot.output);
+            }
+            if (event.event === "sub_queries" && snapshot.sub_queries.length > 0) {
+              setRunMessage(`Streaming progress. ${snapshot.sub_queries.length} sub-queries received.`);
+            }
+          },
+        },
+      );
       if (result.ok) {
         setRunState("success");
         setRunMessage(formatRunSuccessMessage(result.data.sub_queries.length));
