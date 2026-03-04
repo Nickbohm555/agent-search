@@ -34,6 +34,8 @@ def _start_agent_span(tracing_handle: Any, query: str) -> Any:
     )
 
 
+# THIS should return a deepagentlanggraph agent object from the frontend payload.
+# for now, all agents will be configurd the same way.
 def run_runtime_agent(
     payload: RuntimeAgentRunRequest,
     db: Session,
@@ -60,6 +62,7 @@ def run_runtime_agent(
         if result.tool == "web"
     ]
 
+    # this will be using langfuse tracing....
     with _start_agent_span(tracing_handle, payload.query) as span:
         span.update(
             input={"query": payload.query},

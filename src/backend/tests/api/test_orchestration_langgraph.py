@@ -10,7 +10,7 @@ def _step_indexes(timeline: list[dict], step: str, status: str) -> list[int]:
 
 
 @pytest.mark.smoke
-def test_agent_run_exposes_compiled_langgraph_projection(client):
+def test_agent_run_exposes_compiled_langgraph_runtime_execution_metadata(client):
     response = client.post("/api/agents/run", json={"query": "hello orchestration"})
 
     assert response.status_code == 200
@@ -19,13 +19,14 @@ def test_agent_run_exposes_compiled_langgraph_projection(client):
     assert graph_state["current_step"] == "completed"
     assert graph_state["graph"]["kind"] == "langgraph-runtime"
     assert graph_state["graph"]["compiled"] is True
-    assert graph_state["graph"]["nodes"] == [
-        "decomposition",
-        "tool_selection",
-        "subquery_execution.retrieval",
-        "subquery_execution.validation",
-        "synthesis",
-    ]
+    assert graph_state["graph"]["runtime"]["library"] == "langgraph"
+    assert graph_state["graph"]["runtime"]["compiled_graph_available"] is True
+    assert graph_state["graph"]["runtime"]["compiled_graph_type"] != ""
+    assert graph_state["graph"]["execution"]["invoke_method"] == "compiled_graph.invoke"
+    assert graph_state["graph"]["execution"]["execution_id"] != ""
+    assert graph_state["graph"]["execution"]["subquery_execution_count"] == len(
+        payload["sub_queries"]
+    )
     assert graph_state["graph"]["deep_agents"] == [
         {"name": "subquery_execution_agent", "nodes": ["retrieval", "validation"]}
     ]

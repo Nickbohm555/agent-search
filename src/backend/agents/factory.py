@@ -19,6 +19,9 @@ class AgentFactory:
     def __init__(self, config: Optional[AgentFactoryConfig] = None) -> None:
         self.config = config or AgentFactoryConfig()
 
+    # this needs to be a DeepAgentLangGraph agent. with subagents, harness, prompts.
+    # this will be our single source of truth for builiding the agents
+    # add tools, prompts, subagents, harness, etc for our problem.
     def create_langgraph_agent(self) -> LangGraphAgentScaffold:
         """Return a runtime LangGraph agent instance."""
         return LangGraphAgentScaffold(
