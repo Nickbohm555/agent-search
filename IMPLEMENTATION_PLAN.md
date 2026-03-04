@@ -1,130 +1,151 @@
 # IMPLEMENTATION_PLAN
 
 ## Status Snapshot (2026-03-04)
-- Complete: scaffold runtime only (`/api/health`, `/api/search-skeleton`, `/api/agents/runtime`, `/api/agents/run`), basic FastAPI + React wiring, baseline migration file.
-- Incomplete: all product specs in `specs/*` beyond scaffold behavior.
-- Code-confirmed gaps:
-- `src/lib/*` does not exist yet.
-- `LangGraphAgentScaffold` is placeholder-only (`compiled: False`).
-- No decomposition/selection/retrieval/validation/synthesis pipeline exists.
-- No streaming endpoint, no MCP server/wrapper, no web-search tool pair.
-- Langfuse is config scaffold only; no SDK dependency/client initialization.
-- Current test coverage is only backend health smoke + frontend scaffold render test.
+- Project state is still scaffold-only (confirmed by code inspection in `src/backend/*`, `src/frontend/*`).
+- Existing implemented behavior:
+  - `GET /api/health` returns `{ "status": "ok" }`.
+  - `GET /api/search-skeleton` returns scaffold status/message.
+  - `GET /api/agents/runtime` returns scaffold agent metadata.
+  - `POST /api/agents/run` returns scaffold text output from runtime agent wrapper.
+  - FastAPI startup initializes a Langfuse handle placeholder (`app.state.langfuse`) with no real SDK client.
+  - Baseline Alembic migration exists (`0001_scaffold`) with no schema objects.
+  - Frontend renders scaffold-only React/TS screen.
+- Current tests are minimal:
+  - Backend: only `/api/health` smoke test exists.
+  - Frontend: only scaffold heading render test exists.
+- `src/lib/*` does not exist yet (no shared project library present).
 
-## Completed Items
-- [x] Scaffold health endpoint and smoke test.
-- [x] Scaffold backend routers/services for search and runtime agent placeholders.
-- [x] Scaffold frontend TypeScript app and basic render test.
+## Completed Tasks
+- [x] Scaffold backend app wiring (routers/services/schemas for health, search skeleton, runtime agent scaffold).
+- [x] Scaffold frontend TypeScript app wiring (Vite + React + basic render path).
+- [x] Add baseline migration scaffold and DB wiring foundation.
 
 ## Prioritized Remaining Tasks (Yet To Be Implemented)
-- [ ] P0. Langfuse SDK setup (`specs/langfuse-sdk-setup.md`) - Incomplete
-  - Gap confirmation: `src/backend/pyproject.toml` has no Langfuse dependency; `initialize_langfuse_tracing()` returns placeholder handle only.
-  - Verification requirements (outcome-based):
-  - Backend startup test: with `LANGFUSE_ENABLED=true` and valid keys, app starts and exposes usable Langfuse handle on `app.state`.
-  - Backend startup test: with `LANGFUSE_ENABLED=false` or missing keys, app still starts and exposes graceful no-op handle.
-  - Request-path test: tracing-capable path can create trace/span without runtime error when enabled.
 
-- [ ] P0. Agent run tracing at execution boundary (`specs/agent-run-tracing.md`) - Incomplete
-  - Gap confirmation: `run_runtime_agent()` has no trace/span instrumentation.
+- [ ] P0 - Expand scaffold smoke coverage for currently exposed API behavior (incomplete)
+  - Specs alignment: validates currently-shipped scaffold contract before adding new features.
+  - Gap confirmation:
+    - No tests for `/api/search-skeleton`, `/api/agents/runtime`, or `/api/agents/run`.
   - Verification requirements (outcome-based):
-  - Integration test: posting to `/api/agents/run` with tracing enabled creates an observation containing query, agent name, and output.
-  - Regression test: with tracing disabled, endpoint response contract is unchanged and no tracing side effects occur.
-  - Integration test: consecutive runs produce distinct observations.
+    - Smoke test: `GET /api/search-skeleton` returns HTTP 200 with `status="scaffold"` and non-empty `message`.
+    - Smoke test: `GET /api/agents/runtime` returns HTTP 200 with non-empty `name` and `version`.
+    - Smoke test: `POST /api/agents/run` with valid `query` returns HTTP 200 with non-empty `agent_name` and `output`.
+    - Edge smoke test: empty `query` is rejected with schema-validation 4xx.
 
-- [ ] P0. Query decomposition (`specs/query-decomposition.md`) - Incomplete
-  - Gap confirmation: no decomposition service/schema/state contract for sub-queries.
+- [ ] P0 - Langfuse SDK setup (`specs/langfuse-sdk-setup.md`) (incomplete)
+  - Gap confirmation:
+    - `src/backend/pyproject.toml` has no Langfuse SDK dependency.
+    - `initialize_langfuse_tracing()` returns placeholder handle with `client=None` and `tracer=None`.
   - Verification requirements (outcome-based):
-  - Behavior test: complex query yields at least one focused sub-query.
-  - Behavior test: each sub-query is independently answerable by one tool domain (internal or web).
-  - Integration test: produced sub-queries are exposed for downstream orchestration and stream projection.
+    - Startup test: with `LANGFUSE_ENABLED=true` + valid keys, app starts and exposes usable Langfuse handle on `app.state`.
+    - Startup test: with tracing disabled or missing credentials, app still starts and provides graceful no-op handle.
+    - Request-path test: a tracing-capable request can create an observation via the initialized handle without runtime errors.
 
-- [ ] P0. Tool selection per sub-query (exclusive choice) (`specs/tool-selection-per-subquery.md`) - Incomplete
-  - Gap confirmation: no component assigning `internal RAG` vs `web search` per sub-query.
+- [ ] P0 - Agent run tracing at execution boundary (`specs/agent-run-tracing.md`) (incomplete)
+  - Gap confirmation:
+    - `run_runtime_agent()` executes the agent without any trace/span instrumentation.
   - Verification requirements (outcome-based):
-  - Behavior test: each sub-query receives exactly one assignment.
-  - Behavior test: no sub-query receives both assignments.
-  - Integration test: assignments are available to retrieval/orchestration (and stream projection if emitted).
+    - Integration test: posting to `/api/agents/run` with tracing enabled creates one observation containing input query, agent identity, and output.
+    - Regression test: with tracing disabled, endpoint response contract remains unchanged and no tracing errors occur.
+    - Integration test: consecutive runs create distinct observations.
 
-- [ ] P0. Data loading + vectorization for internal RAG (`specs/data-loading-vectorization.md`) - Incomplete
-  - Gap confirmation: no ingest/load API, no chunk/embed/persist flow, no vectorized corpus schema/models.
+- [ ] P0 - Query decomposition (`specs/query-decomposition.md`) (incomplete)
+  - Gap confirmation:
+    - No decomposition component, schema, or pipeline state for ordered sub-queries exists.
   - Verification requirements (outcome-based):
-  - Smoke test: load/vectorize can be triggered for at least one supported source.
-  - Integration test: after successful load, internal retrieval returns content from loaded corpus for relevant queries.
-  - Behavior test: load result is observable (success/failure + counts/status payload for UI).
+    - Behavior test: complex query produces at least one focused sub-query.
+    - Behavior test: each sub-query is independently answerable by a single tool domain.
+    - Contract test: generated sub-queries are exposed to downstream orchestration and stream projection.
 
-- [ ] P0. Web search tool pair (`specs/web-search-onyx-style.md`) - Incomplete
-  - Gap confirmation: no `web.search` and `web.open_url` interfaces.
+- [ ] P0 - Tool selection per sub-query (`specs/tool-selection-per-subquery.md`) (incomplete)
+  - Gap confirmation:
+    - No tool router assigns `internal` vs `web` per sub-query.
   - Verification requirements (outcome-based):
-  - Smoke test: `web.search` returns links/snippets metadata only (no full-page body).
-  - Smoke test: `web.open_url` returns full/main page content for a URL.
-  - Integration test: agent can do search -> choose URLs -> open selected pages; opened URLs are observable.
-  - Integration test: tool-selection “web” assignment executes via this tool pair.
+    - Behavior test: every sub-query receives exactly one tool assignment.
+    - Guardrail test: no sub-query receives both assignments.
+    - Contract test: assignments are exposed for retrieval/orchestration and stream projection.
 
-- [ ] P1. Per-subquery retrieval executor (`specs/per-subquery-retrieval.md`) - Incomplete
-  - Gap confirmation: no retrieval executor consuming `(sub-query, tool assignment)`.
+- [ ] P0 - Data loading and vectorization for internal RAG (`specs/data-loading-vectorization.md`) (incomplete)
+  - Gap confirmation:
+    - No ingestion API/service, no chunk/embed/persist pipeline, no corpus tables/models, and only placeholder `utils/embeddings.py`.
   - Verification requirements (outcome-based):
-  - Integration test: assigned internal/web path executes and returns retrievable content.
-  - Behavior test: internal retrieval returns only from loaded internal store.
-  - Behavior test: web retrieval follows search + open_url pattern.
-  - Contract test: retrieval output is consumable by validation stage.
+    - Smoke/integration test: a supported source load can be triggered successfully.
+    - Integration test: after successful load, internal retrieval returns relevant content from loaded documents.
+    - Behavior test: load result exposes observable status (success/failure and document/chunk counts).
 
-- [ ] P1. Retrieval validation loop (`specs/retrieval-validation.md`) - Incomplete
-  - Gap confirmation: no sufficiency check or retry/deepen loop.
+- [ ] P0 - Web search tool pair (`specs/web-search-onyx-style.md`) (incomplete)
+  - Gap confirmation:
+    - No `web.search` + `web.open_url` tool interfaces exist.
   - Verification requirements (outcome-based):
-  - Behavior test: each retrieval result is evaluated for sufficiency.
-  - Behavior test: insufficient result triggers follow-up retrieval/deepen action.
-  - Integration test: loop ends with either sufficient result or deterministic stop condition.
-  - Contract test: validation outcome is emitted for synthesis (and stream-visible state if enabled).
+    - Tool contract test: search tool returns links/snippets metadata only (no full page body).
+    - Tool contract test: open_url tool returns main/full content for requested URL.
+    - Integration test: retrieval path can perform search -> select URLs -> open selected pages, with opened URLs observable.
+    - Integration test: sub-queries assigned to `web` execute through this tool pair.
 
-- [ ] P1. Answer synthesis (`specs/answer-synthesis.md`) - Incomplete
-  - Gap confirmation: no synthesis component consuming validated sub-query outputs.
+- [ ] P1 - Per-subquery retrieval executor (`specs/per-subquery-retrieval.md`) (incomplete)
+  - Gap confirmation:
+    - No retrieval executor that consumes `(sub-query, tool assignment)`.
   - Verification requirements (outcome-based):
-  - Behavior test: original query + validated sub-query outputs produce one final answer.
-  - Guardrail test: synthesis uses validated outputs only (no direct retrieval side path).
-  - Quality test: final answer coherently addresses original query (rubric/assertion fixture).
+    - Integration test: internal assignment executes internal retrieval and returns retrievable content.
+    - Integration test: web assignment executes search/open flow and returns retrievable content.
+    - Guardrail test: internal retrieval returns only content from loaded internal data store.
+    - Contract test: retrieval output shape is consumable by validation stage.
 
-- [ ] P1. LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`) - Incomplete
-  - Gap confirmation: runtime graph is scaffold placeholder only.
+- [ ] P1 - Retrieval validation loop (`specs/retrieval-validation.md`) (incomplete)
+  - Gap confirmation:
+    - No sufficiency evaluator, no retry/deepen actions, no deterministic stop policy.
   - Verification requirements (outcome-based):
-  - Integration test: end-to-end flow runs as LangGraph from decomposition through synthesis.
-  - Integration test: required stages execute in intended order, including per-subquery validation loop.
-  - Structural test: deep-agent composition is present for subquery/tool execution path.
-  - Integration test: graph state/projection is available for streaming consumer.
+    - Behavior test: each retrieval result gets sufficiency evaluation.
+    - Behavior test: insufficient retrieval triggers at least one follow-up action.
+    - Reliability test: loop terminates via either sufficient result or explicit stopping condition.
+    - Contract test: validation result/state is exposed for synthesis and stream heartbeat.
 
-- [ ] P2. Streaming agent heartbeat (`specs/streaming-agent-heartbeat.md`) - Incomplete
-  - Gap confirmation: no SSE/WebSocket endpoint or event contract.
+- [ ] P1 - Answer synthesis (`specs/answer-synthesis.md`) (incomplete)
+  - Gap confirmation:
+    - No synthesis component that combines validated sub-query outputs into one final response.
   - Verification requirements (outcome-based):
-  - Integration test: query run emits streamed updates including sub-queries as they are generated.
-  - Integration test: stream includes enough progress state for live UI heartbeat and terminal completion.
-  - Reliability test: typical run shows ordered, observable progress and completion.
+    - Behavior test: original query + validated sub-query outputs produce one final answer.
+    - Quality test: final answer is coherent and addresses original query (fixture/rubric based).
+    - Guardrail test: synthesis consumes validated outputs only (no direct retrieval in this step).
 
-- [ ] P2. Demo UI (TypeScript) (`specs/demo-ui-typescript.md`) - Incomplete
-  - Gap confirmation: current UI is static scaffold; no load trigger, run flow, streaming view, or final answer rendering.
+- [ ] P1 - LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`) (incomplete)
+  - Gap confirmation:
+    - `LangGraphAgentScaffold.build()` returns placeholder dict with `compiled: False`; no graph nodes/edges/loop/state.
   - Verification requirements (outcome-based):
-  - Frontend interaction test: user triggers load/vectorize and sees clear success/error state.
-  - Frontend interaction test: running query renders streamed sub-queries in near real time.
-  - Frontend interaction test: progress heartbeat and final answer are rendered.
-  - Build-quality checks: tests + typecheck + build remain green.
+    - Integration test: full decomposition -> selection -> retrieval -> validation -> synthesis flow executes as LangGraph.
+    - Integration test: required stages run in intended order including validation loop behavior.
+    - Structural/behavior test: deep-agent composition is present for subquery/tool execution path.
+    - Contract test: graph state/projection is available for streaming consumers.
 
-- [ ] P2. MCP exposure (`specs/mcp-exposure.md`) - Incomplete
-  - Gap confirmation: no MCP server/tool wrapper in codebase.
+- [ ] P2 - Streaming agent heartbeat (`specs/streaming-agent-heartbeat.md`) (incomplete)
+  - Gap confirmation:
+    - No SSE/WebSocket streaming endpoint, event schema, or orchestration-to-stream event bridge.
   - Verification requirements (outcome-based):
-  - Integration test: MCP client sends query and receives final synthesized answer.
-  - Integration test: MCP invocation delegates to same orchestration pipeline.
-  - Contract stability test: repeated invocations preserve response schema and success behavior.
+    - Integration test: running a query emits streamed updates including sub-queries as generated.
+    - Integration test: stream contains enough progress events for live UI heartbeat and completion.
+    - Reliability test: typical run produces ordered observable progress ending in completion/final payload.
 
-- [ ] P2. Scaffold endpoint smoke coverage expansion (project hardening) - Incomplete
-  - Gap confirmation: only `/api/health` has smoke coverage.
+- [ ] P2 - Demo UI TypeScript experience (`specs/demo-ui-typescript.md`) (incomplete)
+  - Gap confirmation:
+    - Current frontend is static scaffold only; no load trigger, no run action, no stream consumption, no final answer view.
   - Verification requirements (outcome-based):
-  - Smoke test: `GET /api/search-skeleton` returns expected scaffold contract.
-  - Smoke test: `GET /api/agents/runtime` returns non-empty `name` and `version`.
-  - Smoke test: `POST /api/agents/run` valid query returns non-empty `agent_name` and `output`.
-  - Edge smoke test: invalid/empty query returns schema-validation 4xx.
+    - Frontend interaction test: user can trigger load/vectorize and sees loading + success/error outcome.
+    - Frontend interaction test: user can submit query and see streamed sub-queries in near real-time.
+    - Frontend interaction test: heartbeat progress and final answer are rendered.
+    - Build checks: frontend tests + `typecheck` + build remain green.
 
-## Cross-Cutting Delivery Rules
-- [ ] Each first backend behavior ships with at least one deterministic smoke/integration test.
-- [ ] Each first frontend behavior ships with at least one deterministic render/interaction test.
-- [ ] Tests validate externally observable outcomes, not implementation internals.
-- [ ] No hidden network dependency in CI tests; external integrations must be mocked/faked deterministically.
-- [ ] Any DB schema change includes Alembic migration in `src/backend/alembic/versions/`.
-- [ ] Tracing integration remains isolated to startup/services (`src/backend/observability/*`), not router-level vendor coupling.
+- [ ] P2 - MCP exposure (`specs/mcp-exposure.md`) (incomplete)
+  - Gap confirmation:
+    - No MCP server/wrapper/tool definition exists in repository.
+  - Verification requirements (outcome-based):
+    - End-to-end integration test: MCP client invocation with query returns final synthesized answer.
+    - Integration test: MCP path delegates to same orchestration pipeline as HTTP run path.
+    - Contract test: repeated invocations preserve response schema and success behavior.
+
+## Cross-Cutting Delivery Rules (Track as Incomplete Until Enforced by Tests)
+- [ ] First backend behavior in each new area includes deterministic smoke/integration coverage.
+- [ ] First frontend behavior in each new area includes deterministic render/interaction coverage.
+- [ ] Tests validate externally observable outcomes (not implementation internals).
+- [ ] CI-facing tests avoid hidden external-network dependencies (mock/fake providers).
+- [ ] Every schema mutation ships with Alembic migration in `src/backend/alembic/versions/`.
+- [ ] Observability vendor wiring remains isolated to startup/services (`src/backend/observability/*`), not router-level SDK coupling.
