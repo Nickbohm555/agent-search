@@ -172,9 +172,16 @@ def test_internal_retrieval_returns_loaded_content(internal_data_client: TestCli
         "source_ref",
         "content",
         "score",
+        "chunk_metadata",
     }
     assert all(result["source_type"] == "inline" for result in data["results"])
     assert any("deployment" in result["content"].lower() for result in data["results"])
+    assert all(result["chunk_metadata"]["topic"] == result["document_title"] for result in data["results"])
+    assert any(
+        result["chunk_metadata"]["source"] == "internal://deployment-checklist"
+        for result in data["results"]
+        if result["source_ref"] == "internal://deployment-checklist"
+    )
 
 
 @pytest.mark.smoke
@@ -343,6 +350,11 @@ def test_wiki_retrieval_includes_wiki_attribution_and_content(
     assert all(len(item["document_title"].strip()) > 0 for item in wiki_results)
     assert all(len(item["content"].strip()) > 0 for item in wiki_results)
     assert any(item["source_ref"] == "strait_of_hormuz" for item in wiki_results)
+    assert all(
+        item["chunk_metadata"]["source"] == "https://en.wikipedia.org/wiki/Strait_of_Hormuz"
+        for item in wiki_results
+    )
+    assert all(item["chunk_metadata"]["topic"] == "Strait of Hormuz" for item in wiki_results)
 
 
 @pytest.mark.smoke

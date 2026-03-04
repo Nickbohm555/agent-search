@@ -71,7 +71,16 @@ def handle_mcp_rpc(
         tools = list_mcp_tools()
         return McpRpcResponse(
             id=payload.id,
-            result={"tools": [tool.model_dump(by_alias=True) for tool in tools.tools]},
+            result={
+                "tools": [
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "inputSchema": tool.input_schema,
+                    }
+                    for tool in tools.tools
+                ]
+            },
         )
 
     if payload.method == "tools/call":

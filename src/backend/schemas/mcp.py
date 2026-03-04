@@ -8,9 +8,7 @@ from .agent import RuntimeAgentRunRequest, RuntimeAgentRunResponse
 class McpToolDefinition(BaseModel):
     name: Literal["agent.run"]
     description: str
-    input_schema: dict[str, object] = Field(default_factory=dict, alias="inputSchema")
-
-    model_config = {"populate_by_name": True}
+    input_schema: dict[str, object] = Field(default_factory=dict)
 
 
 class McpToolsListResponse(BaseModel):

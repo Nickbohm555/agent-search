@@ -1,4 +1,5 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import relationship
 
@@ -37,6 +38,10 @@ class InternalDocumentChunk(Base):
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     embedding = Column(Vector(EMBEDDING_DIM), nullable=False)
+    chunk_metadata = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )  # e.g. {"source": "<wiki URL>", "topic": "<topic name>"}
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     document = relationship("InternalDocument", back_populates="chunks")

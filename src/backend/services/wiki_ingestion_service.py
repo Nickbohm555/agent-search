@@ -96,6 +96,7 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[InternalDocumentInput]:
                 title=title,
                 content=content,
                 source_ref=source_ref,
+                source_url=str(metadata.get("source") or "").strip() or None,
             )
         )
 

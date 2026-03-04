@@ -48,6 +48,10 @@ def _persist_documents(
         if not chunks:
             chunks = [document_input.content.strip()]
 
+        chunk_metadata = {
+            "source": document_input.source_url or document_input.source_ref,
+            "topic": document_input.title,
+        }
         for index, chunk_content in enumerate(chunks):
             embedding = embed_text(chunk_content)
             chunk = InternalDocumentChunk(
@@ -55,6 +59,7 @@ def _persist_documents(
                 chunk_index=index,
                 content=chunk_content,
                 embedding=embedding,
+                chunk_metadata=chunk_metadata,
             )
             db.add(chunk)
             chunks_created += 1
@@ -173,6 +178,7 @@ def retrieve_internal_data(
                 source_ref=chunk.document.source_ref,
                 content=chunk.content,
                 score=1.0 - float(distance),
+                chunk_metadata=chunk.chunk_metadata,
             )
             for chunk, distance in rows
         ]
@@ -204,6 +210,7 @@ def retrieve_internal_data(
                 source_ref=chunk.document.source_ref,
                 content=chunk.content,
                 score=score,
+                chunk_metadata=chunk.chunk_metadata,
             )
         )
 

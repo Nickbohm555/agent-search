@@ -7,6 +7,7 @@ class InternalDocumentInput(BaseModel):
     title: str = Field(min_length=1)
     content: str = Field(min_length=1)
     source_ref: Optional[str] = None
+    source_url: Optional[str] = None  # e.g. wiki page URL for chunk metadata
 
 
 class WikiLoadInput(BaseModel):
@@ -55,6 +56,7 @@ class InternalRetrievedChunk(BaseModel):
     source_ref: Optional[str]
     content: str
     score: float
+    chunk_metadata: Optional[dict[str, str]] = None
 
 
 class InternalDataRetrieveResponse(BaseModel):

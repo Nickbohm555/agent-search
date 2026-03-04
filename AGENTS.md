@@ -27,27 +27,28 @@ you have access to openAI API key and langfuse for testing now.
 26. Alembic current: `docker compose exec backend uv run alembic current`.
 27. Verify pgvector extension: `docker compose exec db psql -U agent_user -d agent_search -c "\\dx"`.
 28. Verify tables: `docker compose exec db psql -U agent_user -d agent_search -c "\\dt"`.
-29. Backend tests: `docker compose exec backend uv run pytest`.
-30. Backend smoke tests: `docker compose exec backend uv run pytest tests/api -m smoke`.
-31. Frontend tests: `docker compose exec frontend npm run test`.
-32. Frontend typecheck: `docker compose exec frontend npm run typecheck`.
-33. Frontend build check: `docker compose exec frontend npm run build`.
-34. Before commit, pass health + backend tests + frontend tests + typecheck.
-35. If backend tests for a new behavior do not exist, add one smoke test first.
-36. If frontend tests for a UI change do not exist, add one render/interaction test first.
-37. Tests should verify outcomes, not internal implementation details.
-38. Keep tests deterministic; avoid hidden network dependencies in CI.
-39. Keep API schemas in `src/backend/schemas/` with one file per schema topic.
-40. Keep routers in `src/backend/routers/`.
-41. Keep DB wiring in `src/backend/db.py`.
-42. Keep backend helpers in `src/backend/utils/`.
-43. Keep frontend shared helpers in `src/frontend/src/utils/`.
-44. Keep Alembic migration files in `src/backend/alembic/versions/`.
-45. Every schema change requires a migration file in the same change.
-46. Do not manually mutate production schema outside migrations.
-47. Langfuse tracing scaffolding lives in `src/backend/observability/` with env placeholders in `.env.example`.
-48. Keep tracing wiring isolated to startup/services; avoid coupling routers directly to vendor SDK clients.
-49. Use browser DevTools at `http://localhost:5173` for UI/network inspection.
-50. Use CDP endpoint `http://localhost:9222` for automated browser checks.
-51. Keep AGENTS operational only; progress belongs in `IMPLEMENTATION_PLAN.md`.
-52. Because this is scaffold-only, prioritize creating tests alongside each first implementation.
+29. Wipe internal data (documents + chunks only): `docker compose exec db psql -U agent_user -d agent_search -c "TRUNCATE internal_documents CASCADE;"`.
+30. Backend tests: `docker compose exec backend uv run pytest`.
+31. Backend smoke tests: `docker compose exec backend uv run pytest tests/api -m smoke`.
+32. Frontend tests: `docker compose exec frontend npm run test`.
+33. Frontend typecheck: `docker compose exec frontend npm run typecheck`.
+34. Frontend build check: `docker compose exec frontend npm run build`.
+35. Before commit, pass health + backend tests + frontend tests + typecheck.
+36. If backend tests for a new behavior do not exist, add one smoke test first.
+37. If frontend tests for a UI change do not exist, add one render/interaction test first.
+38. Tests should verify outcomes, not internal implementation details.
+39. Keep tests deterministic; avoid hidden network dependencies in CI.
+40. Keep API schemas in `src/backend/schemas/` with one file per schema topic.
+41. Keep routers in `src/backend/routers/`.
+42. Keep DB wiring in `src/backend/db.py`.
+43. Keep backend helpers in `src/backend/utils/`.
+44. Keep frontend shared helpers in `src/frontend/src/utils/`.
+45. Keep Alembic migration files in `src/backend/alembic/versions/`.
+46. Every schema change requires a migration file in the same change.
+47. Do not manually mutate production schema outside migrations.
+48. Langfuse tracing scaffolding lives in `src/backend/observability/` with env placeholders in `.env.example`.
+49. Keep tracing wiring isolated to startup/services; avoid coupling routers directly to vendor SDK clients.
+50. Use browser DevTools at `http://localhost:5173` for UI/network inspection.
+51. Use CDP endpoint `http://localhost:9222` for automated browser checks.
+52. Keep AGENTS operational only; progress belongs in `IMPLEMENTATION_PLAN.md`.
+53. Because this is scaffold-only, prioritize creating tests alongside each first implementation.
