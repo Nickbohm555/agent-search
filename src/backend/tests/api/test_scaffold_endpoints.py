@@ -1,6 +1,13 @@
 import pytest
 
 
+def _assignment_for_sub_query(assignments: list[dict], contains_text: str) -> dict:
+    for assignment in assignments:
+        if contains_text.lower() in assignment["sub_query"].lower():
+            return assignment
+    raise AssertionError(f"Expected assignment for text: {contains_text}")
+
+
 def _is_mixed_domain_prompt(text: str) -> bool:
     lowered = text.lower()
     has_internal = any(
@@ -68,6 +75,10 @@ def test_runtime_agent_run_endpoint(client):
     assert isinstance(data["sub_queries"], list)
     assert len(data["sub_queries"]) >= 1
     assert all(isinstance(sub_query, str) and sub_query.strip() for sub_query in data["sub_queries"])
+    assert isinstance(data["tool_assignments"], list)
+    assert len(data["tool_assignments"]) == len(data["sub_queries"])
+    assert [item["sub_query"] for item in data["tool_assignments"]] == data["sub_queries"]
+    assert all(item["tool"] in {"internal", "web"} for item in data["tool_assignments"])
 
 
 @pytest.mark.smoke
@@ -86,6 +97,31 @@ def test_runtime_agent_run_decomposes_complex_query_without_mixed_domain_subquer
     data = response.json()
     assert len(data["sub_queries"]) >= 2
     assert all(not _is_mixed_domain_prompt(sub_query) for sub_query in data["sub_queries"])
+    assert len(data["tool_assignments"]) == len(data["sub_queries"])
+    assert [item["sub_query"] for item in data["tool_assignments"]] == data["sub_queries"]
+
+
+@pytest.mark.smoke
+def test_runtime_agent_run_assigns_tools_per_subquery(client):
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": (
+                "Summarize our internal runbook for deployment readiness; "
+                "find the latest public competitor launch update."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["tool_assignments"]) == len(data["sub_queries"])
+
+    internal_assignment = _assignment_for_sub_query(data["tool_assignments"], "runbook")
+    web_assignment = _assignment_for_sub_query(data["tool_assignments"], "competitor")
+
+    assert internal_assignment["tool"] == "internal"
+    assert web_assignment["tool"] == "web"
 
 
 @pytest.mark.smoke

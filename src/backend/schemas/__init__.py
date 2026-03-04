@@ -1,4 +1,9 @@
-from .agent import RuntimeAgentInfo, RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from .agent import (
+    RuntimeAgentInfo,
+    RuntimeAgentRunRequest,
+    RuntimeAgentRunResponse,
+    SubQueryToolAssignment,
+)
 from .health import HealthResponse
 from .search import SearchSkeletonResponse
 
@@ -8,4 +13,5 @@ __all__ = [
     "RuntimeAgentInfo",
     "RuntimeAgentRunRequest",
     "RuntimeAgentRunResponse",
+    "SubQueryToolAssignment",
 ]

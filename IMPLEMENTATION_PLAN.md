@@ -15,9 +15,9 @@
   - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Implemented deterministic query decomposition in backend utilities to convert a user query into ordered, focused sub-queries.
-  - Exposed decomposed sub-queries from `POST /api/agents/run` so downstream orchestration/streaming layers can consume them.
-  - Extended backend smoke coverage for sub-query output shape and complex-query decomposition that avoids mixed-domain sub-queries.
+  - Implemented deterministic per-subquery tool selection in backend utilities with exclusive `internal|web` assignment and deterministic fallback behavior.
+  - Extended `POST /api/agents/run` response payload to expose ordered `tool_assignments` aligned with decomposed `sub_queries` for downstream retrieval/orchestration/streaming consumption.
+  - Extended backend smoke coverage to verify one-tool-per-subquery exclusivity and cue-driven internal vs web assignment behavior.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -40,15 +40,12 @@
   - Added `utils.query_decomposition.decompose_query()` with deterministic clause/domain-aware splitting and non-empty fallback behavior.
   - Updated runtime agent run response schema and service output to include ordered `sub_queries`.
   - Added smoke coverage verifying basic sub-query exposure and complex-query decomposition into non-mixed-domain sub-queries.
+- [x] P0 - Implement per-subquery tool selection (`specs/tool-selection-per-subquery.md`)
+  - Added `utils.tool_selection` with deterministic, exclusive subquery assignment to exactly one tool (`internal` or `web`) plus a stable fallback.
+  - Updated runtime agent run response schema/service to expose ordered `tool_assignments` alongside `sub_queries`.
+  - Added smoke coverage verifying one assignment per sub-query, exclusive tool membership, and expected internal/web routing for mixed-domain prompts.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P0 - Implement per-subquery tool selection (`specs/tool-selection-per-subquery.md`)
-  - Scope gap confirmed: no assignment layer mapping sub-query -> `internal|web`.
-  - Verification requirements (outcome-focused):
-    - Every sub-query receives exactly one assignment (`internal` or `web`).
-    - No sub-query is assigned both tools.
-    - Assignments are passed to retrieval/orchestration and available for stream visibility.
 
 - [ ] P0 - Implement internal data loading/vectorization (`specs/data-loading-vectorization.md`)
   - Scope gap confirmed: no ingestion endpoint/service, no corpus tables, embeddings util still scaffold comment.
@@ -140,11 +137,11 @@
     - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
   - Supplemental successful fallback checks (non-authoritative for compose gate):
-    - `(repo root) python3 -m pytest src/backend/tests/api/test_scaffold_endpoints.py src/backend/tests/api/test_agent_run_tracing.py` -> `8 passed`.
-    - `(repo root) python3 -m pytest src/backend/tests` -> `12 passed`.
+    - `(repo root) python3 -m pytest src/backend/tests/api/test_scaffold_endpoints.py src/backend/tests/api/test_agent_run_tracing.py` -> `9 passed`.
+    - `(repo root) python3 -m pytest src/backend/tests` -> `13 passed`.
 - Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: implement query decomposition with smoke coverage"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
+    - `git add -A && git commit -m "blocked: implement per-subquery tool selection with smoke coverage"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
     - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`
 - Next action:
   - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
@@ -156,5 +153,5 @@
     - `(src/frontend) npm ci`
   - Complete commit/push on a host with git write/network access:
     - `git add -A`
-    - `git commit -m "blocked: implement query decomposition with smoke coverage"`
+    - `git commit -m "blocked: implement per-subquery tool selection with smoke coverage"`
     - `git push`
