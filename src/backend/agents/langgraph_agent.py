@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import os
 from typing import Any
 
 from schemas import (
@@ -39,6 +40,29 @@ class LangGraphAgentScaffold:
     model: str
     subquery_agent: SubQueryExecutionAgent = field(default_factory=SubQueryExecutionAgent)
 
+    def _initialize_langgraph_runtime(self) -> dict[str, Any]:
+        """Scaffold-only runtime metadata with optional Deep Agents import."""
+        runtime: dict[str, Any] = {
+            "library": "langgraph",
+            "initialized": False,
+            "deep_agents_imported": False,
+            "compiled_graph_available": False,
+            "model_provider": os.getenv("AGENT_MODEL_PROVIDER", "openai"),
+            "model_name": os.getenv("AGENT_MODEL_NAME", self.model),
+        }
+
+        try:
+            from deepagents import create_deep_agent  # type: ignore
+
+            runtime["deep_agents_imported"] = True
+            runtime["deep_agents_factory"] = getattr(create_deep_agent, "__name__", "create_deep_agent")
+            runtime["initialized"] = True
+        except Exception:
+            runtime["deep_agents_imported"] = False
+            runtime["compiled_graph_available"] = False
+
+        return runtime
+
     def build(self) -> dict[str, Any]:
         # Shape mirrors a compiled LangGraph topology projection for observability/streaming.
         return {
@@ -46,6 +70,7 @@ class LangGraphAgentScaffold:
             "name": self.name,
             "model": self.model,
             "compiled": True,
+            "runtime": self._initialize_langgraph_runtime(),
             "nodes": [
                 "decomposition",
                 "tool_selection",

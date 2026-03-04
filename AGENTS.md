@@ -1,3 +1,4 @@
+you have access to openAI API key and langfuse for testing now.
 1. Project status: scaffold-only; do not assume business features exist yet.
 2. Stack: Docker Compose + FastAPI + React/TypeScript/Vite + Postgres + Alembic + pgvector.
 3. Source roots: `src/backend/`, `src/frontend/`, and `docker-compose.yml`.
