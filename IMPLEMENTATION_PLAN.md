@@ -94,16 +94,22 @@
   - Loop run commit message should reference pgvector migration and retrieval path update.
   - Key symbols: `InternalDocumentChunk.embedding_vector`, `retrieve_internal_data`, Alembic revision `0003_pgvector_embed`.
 
-- [ ] P1 - Improve subquestion decomposition robustness for agentic routing (`specs/query-decomposition.md`, `specs/tool-selection-per-subquery.md`).
+- [x] P1 - Improve subquestion decomposition robustness for agentic routing (`specs/query-decomposition.md`, `specs/tool-selection-per-subquery.md`).
   - Tasks:
-  - Improve decomposition quality for complex/mixed-intent prompts while preserving deterministic behavior in tests.
-  - Ensure each produced subquery remains single-path answerable (internal OR web, not both).
-  - Keep subqueries consistently exposed in run response, graph state, stream events, and MCP metadata (if enabled).
+  - Expanded decomposition splitting logic to handle mixed-domain comparison phrasing using connector-aware segmenting (`and`, `with`, `vs`, `versus`, `against`, `while`) when both internal and web cues appear in the same segment.
+  - Added deterministic dedupe normalization to collapse duplicate-heavy prompts and prevent empty/connector-only subqueries.
+  - Preserved downstream contracts by keeping decomposition output as ordered strings consumed unchanged by run response, graph state, stream events, and MCP `structuredContent`.
   - Verification (outcomes):
-  - Complex queries produce focused subqueries with no mixed-domain single subquery.
-  - Every subquery maps to exactly one tool assignment.
-  - Duplicate-heavy phrasing does not produce duplicate/empty subqueries.
-  - Subqueries are visible to downstream consumers (run payload and enabled stream/MCP surfaces).
+  - Added smoke tests for mixed-domain compare-style prompts and duplicate-heavy prompts in `src/backend/tests/api/test_scaffold_endpoints.py`.
+  - `docker compose exec backend uv run pytest` -> `36 passed` (new decomposition tests included).
+  - Required verification after fresh reset/build/start succeeded:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `36 passed`
+    - `docker compose exec frontend npm run test` -> `25 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
 
 - [ ] P1 - Expand retrieval-validation observability and control-loop outputs (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`, `specs/answer-synthesis.md`).
   - Tasks:
@@ -129,4 +135,4 @@
 - [x] Confirmed MCP wrapper now exists at `POST /mcp` with JSON-RPC methods (`initialize`, `tools/list`, `tools/call`) and shared orchestration delegation.
 - [x] Confirmed runtime dependencies include `langchain`/`langgraph`/`langchain-openai` in `src/backend/pyproject.toml`.
 - [x] Confirmed orchestration now executes via compiled LangGraph runtime graphs (top-level orchestration + subquery deep-agent subgraph) in `src/backend/agents/langgraph_agent.py`.
-- [x] Confirmed internal retrieval uses `embedding_json` + Python scoring instead of pgvector DB similarity (`src/backend/models.py`, `src/backend/services/internal_data_service.py`).
+- [x] Confirmed internal retrieval uses pgvector-native storage/querying on PostgreSQL with deterministic SQLite fallback scoring for tests (`src/backend/models.py`, `src/backend/services/internal_data_service.py`).

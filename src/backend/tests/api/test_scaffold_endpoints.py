@@ -133,6 +133,51 @@ def test_runtime_agent_run_assigns_tools_per_subquery(client):
 
 
 @pytest.mark.smoke
+def test_runtime_agent_run_splits_compare_style_mixed_domain_query(client):
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": (
+                "Compare our internal release runbook with the latest public competitor launch "
+                "update."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["sub_queries"]) >= 2
+    assert all(not _is_mixed_domain_prompt(sub_query) for sub_query in data["sub_queries"])
+    assert len(data["tool_assignments"]) == len(data["sub_queries"])
+    assert [item["sub_query"] for item in data["tool_assignments"]] == data["sub_queries"]
+    assert any(item["tool"] == "internal" for item in data["tool_assignments"])
+    assert any(item["tool"] == "web" for item in data["tool_assignments"])
+
+
+@pytest.mark.smoke
+def test_runtime_agent_run_deduplicates_duplicate_heavy_subqueries(client):
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": (
+                "Please summarize our internal runbook deployment checklist and also summarize "
+                "our internal runbook deployment checklist; then find the latest public competitor "
+                "launch update and find the latest public competitor launch update."
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    normalized = [sub_query.strip().lower() for sub_query in data["sub_queries"]]
+    assert len(normalized) == len(set(normalized))
+    assert all(sub_query for sub_query in normalized)
+    assert all(not _is_mixed_domain_prompt(sub_query) for sub_query in data["sub_queries"])
+    assert len(data["tool_assignments"]) == len(data["sub_queries"])
+    assert [item["sub_query"] for item in data["tool_assignments"]] == data["sub_queries"]
+
+
+@pytest.mark.smoke
 def test_runtime_agent_run_rejects_empty_query(client):
     response = client.post("/api/agents/run", json={"query": ""})
 
