@@ -1,40 +1,41 @@
-# Orchestration (LangGraph) — Spec
+# Orchestration (DeepAgent) — Spec
 
 **JTBD:** When I have a complex question, I want the system to decompose it into sub-queries (one tool per subquery), choose internal RAG or web search per subquery, run retrieval with validation, and synthesize a final answer — with a simple TypeScript demo UI, streaming heartbeat, and MCP exposure; web search uses search + open_url (Onyx-style).
 
-**Scope (one sentence, no "and"):** The pipeline runs as a LangGraph flow with deep agents.
+**Scope (one sentence, no "and"):** The pipeline runs using the DeepAgent library only (no LangGraph/StateGraph).
 
 **Status:** Draft
 
 <scope>
 ## Topic Boundary
 
-This spec covers: implementing the end-to-end flow (decomposition → tool selection → per-subquery retrieval → validation → synthesis) as a LangGraph graph using deep agents (subgraphs or agent nodes). It does not define the behavior of each step (those are other specs) but how they are wired and executed.
+This spec covers: implementing the end-to-end flow (decomposition → tool selection → per-subquery retrieval → validation → synthesis) using the DeepAgent library. It does not define the behavior of each step (those are other specs) but how they are wired and executed.
 </scope>
 
 <requirements>
 ## Requirements
 
 ### Framework
-- Use LangGraph to define nodes and edges for: decomposition, tool selection, retrieval, validation, synthesis.
-- Use “deep agents” (nested or reusable agent subgraphs) where appropriate for subquery handling or tool use.
+- Use the **DeepAgent library only** for orchestration (no LangGraph or StateGraph).
+- Use “deep agents” (subgraphs or agent units from DeepAgent) for subquery handling and tool use.
 
 ### Flow
 - Query enters → decomposition → for each subquery: tool selection → retrieval → validation (loop until sufficient or stop) → synthesis → final answer.
-- State is passed between nodes so streaming and MCP can consume progress (see streaming-agent-heartbeat.md, mcp-exposure.md).
+- State is passed between steps so streaming and MCP can consume progress (see streaming-agent-heartbeat.md, mcp-exposure.md).
 
 ### Codex's Discretion
-- Exact graph shape (linear vs parallel subquery branches), checkpointing, and error/retry behavior.
+- Exact flow shape (linear vs parallel subquery branches), checkpointing, and error/retry behavior.
 - How deep agents are modeled (one agent per subquery vs shared agent with tool routing).
 </requirements>
 
 <acceptance_criteria>
 ## Acceptance Criteria
 
-- The full pipeline (decomposition through synthesis) runs as a LangGraph graph.
-- Each logical step (decomposition, tool selection, retrieval, validation, synthesis) is represented in the graph and executes in the intended order (with validation loop per subquery).
+- The full pipeline (decomposition through synthesis) runs via the DeepAgent library.
+- It should have its own filesystem with store and subagents as provided by DeepAgent.
+- Each logical step (decomposition, tool selection, retrieval, validation, synthesis) executes in the intended order (with validation loop per subquery).
 - Deep agents are used where specified (e.g. for subquery handling or tool execution).
-- Graph state (or a projection of it) can be used by the streaming service for UI heartbeat.
+- Execution state (or a projection of it) can be used by the streaming service for UI heartbeat.
 </acceptance_criteria>
 
 <boundaries>

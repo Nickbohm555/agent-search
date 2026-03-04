@@ -10,19 +10,16 @@ def _step_indexes(timeline: list[dict], step: str, status: str) -> list[int]:
 
 
 @pytest.mark.smoke
-def test_agent_run_exposes_compiled_langgraph_runtime_execution_metadata(client):
+def test_agent_run_exposes_deepagent_runtime_execution_metadata(client):
+    """Orchestration uses DeepAgent library only; no LangGraph/StateGraph."""
     response = client.post("/api/agents/run", json={"query": "hello orchestration"})
 
     assert response.status_code == 200
     payload = response.json()
     graph_state = payload["graph_state"]
     assert graph_state["current_step"] == "completed"
-    assert graph_state["graph"]["kind"] == "langgraph-runtime"
-    assert graph_state["graph"]["compiled"] is True
-    assert graph_state["graph"]["runtime"]["library"] == "langgraph"
-    assert graph_state["graph"]["runtime"]["compiled_graph_available"] is True
-    assert graph_state["graph"]["runtime"]["compiled_graph_type"] != ""
-    assert graph_state["graph"]["execution"]["invoke_method"] == "compiled_graph.invoke"
+    assert graph_state["graph"]["kind"] == "deepagent-runtime"
+    assert graph_state["graph"]["runtime"]["library"] == "deepagent"
     assert graph_state["graph"]["execution"]["execution_id"] != ""
     assert graph_state["graph"]["execution"]["subquery_execution_count"] == len(
         payload["sub_queries"]
@@ -33,7 +30,7 @@ def test_agent_run_exposes_compiled_langgraph_runtime_execution_metadata(client)
 
 
 @pytest.mark.smoke
-def test_agent_run_langgraph_enforces_pipeline_order_and_per_subquery_validation_loop(client):
+def test_agent_run_deepagent_enforces_pipeline_order_and_per_subquery_validation_loop(client):
     response = client.post(
         "/api/agents/run",
         json={
