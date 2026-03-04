@@ -1,5 +1,7 @@
+import asyncio
 from contextlib import nullcontext
-from typing import Any, Iterator, Optional
+from threading import Lock
+from typing import Any, Awaitable, Iterator, Optional, Protocol
 
 from agents.factory import AgentFactory, build_default_agent
 from schemas import (
@@ -20,6 +22,121 @@ def get_runtime_agent_info() -> RuntimeAgentInfo:
 class _NoOpSpan:
     def update(self, **_: Any) -> None:
         return None
+
+
+class _CompiledStreamRuntime(Protocol):
+    """Compiled runtime contract used by stream execution.
+
+    Implementations are cached once per process by `_get_or_compile_stream_runtime`.
+    The stream path calls:
+    - `astream` first to try runtime-native progress events.
+    - `ainvoke` to obtain deterministic final response payload for completion.
+    """
+
+    async def astream(
+        self,
+        *,
+        payload: RuntimeAgentRunRequest,
+        db: Session,
+        tracing_handle: Optional[Any],
+    ) -> list[RuntimeAgentStreamEvent]:
+        ...
+
+    async def ainvoke(
+        self,
+        *,
+        payload: RuntimeAgentRunRequest,
+        db: Session,
+        tracing_handle: Optional[Any],
+    ) -> RuntimeAgentRunResponse:
+        ...
+
+
+class _ScaffoldCompiledStreamRuntime:
+    """Scaffold compiled runtime used until runtime-native stream events are wired."""
+
+    async def astream(
+        self,
+        *,
+        payload: RuntimeAgentRunRequest,
+        db: Session,
+        tracing_handle: Optional[Any],
+    ) -> list[RuntimeAgentStreamEvent]:
+        """Return runtime-native stream events if available.
+
+        Called by `stream_runtime_agent` before fallback emission. Scaffold mode
+        returns no runtime stream events so deterministic fallback events are used.
+        """
+        del payload, db, tracing_handle
+        return []
+
+    async def ainvoke(
+        self,
+        *,
+        payload: RuntimeAgentRunRequest,
+        db: Session,
+        tracing_handle: Optional[Any],
+    ) -> RuntimeAgentRunResponse:
+        """Return deterministic final payload for stream completion.
+
+        Called by `stream_runtime_agent` after `astream` so completion payload stays
+        contract-compatible with `/api/agents/run`.
+        """
+        return run_runtime_agent(payload, db=db, tracing_handle=tracing_handle)
+
+
+_STREAM_RUNTIME_CACHE: Optional[_CompiledStreamRuntime] = None
+_STREAM_RUNTIME_COMPILE_COUNT = 0
+_STREAM_RUNTIME_CACHE_LOCK = Lock()
+
+
+def _compile_stream_runtime() -> _CompiledStreamRuntime:
+    """Compile/initialize runtime stream executor for process-level cache.
+
+    Called by `_get_or_compile_stream_runtime` when no runtime has been cached in
+    the current process. Scaffold returns a deterministic runtime adapter.
+    """
+    return _ScaffoldCompiledStreamRuntime()
+
+
+def _get_or_compile_stream_runtime() -> _CompiledStreamRuntime:
+    """Return process-cached compiled runtime for stream requests.
+
+    Called by `stream_runtime_agent` on every request. Compiles only once per
+    process lifecycle to avoid per-request runtime initialization overhead.
+    """
+    global _STREAM_RUNTIME_CACHE
+    global _STREAM_RUNTIME_COMPILE_COUNT
+
+    with _STREAM_RUNTIME_CACHE_LOCK:
+        if _STREAM_RUNTIME_CACHE is None:
+            _STREAM_RUNTIME_CACHE = _compile_stream_runtime()
+            _STREAM_RUNTIME_COMPILE_COUNT += 1
+        return _STREAM_RUNTIME_CACHE
+
+
+def _reset_stream_runtime_cache_for_tests() -> None:
+    """Reset stream-runtime cache for deterministic tests.
+
+    Called by backend tests that verify compile-once behavior across consecutive
+    stream requests in isolation.
+    """
+    global _STREAM_RUNTIME_CACHE
+    global _STREAM_RUNTIME_COMPILE_COUNT
+
+    with _STREAM_RUNTIME_CACHE_LOCK:
+        _STREAM_RUNTIME_CACHE = None
+        _STREAM_RUNTIME_COMPILE_COUNT = 0
+
+
+def _get_stream_runtime_compile_count_for_tests() -> int:
+    """Return runtime compile count observed in this process.
+
+    Called by backend tests to assert compile/init happens once across multiple
+    stream requests after cache reset.
+    """
+    with _STREAM_RUNTIME_CACHE_LOCK:
+        return _STREAM_RUNTIME_COMPILE_COUNT
 
 
 def _extract_persistence_context(
@@ -130,6 +247,11 @@ def _to_sse_payload(event: RuntimeAgentStreamEvent) -> str:
     return f"data: {event.model_dump_json()}\n\n"
 
 
+def _await_runtime_call(awaitable: Awaitable[Any]) -> Any:
+    """Synchronously resolve one runtime awaitable from stream request path."""
+    return asyncio.run(awaitable)
+
+
 def stream_runtime_agent(
     payload: RuntimeAgentRunRequest,
     db: Session,
@@ -139,8 +261,9 @@ def stream_runtime_agent(
 
     Called by `routers/agent.py::runtime_agent_run_stream`.
     Emits a heartbeat immediately, then deterministic progress/completion data
-    derived from `run_runtime_agent`.
+    derived from runtime `astream`/`ainvoke` entrypoints.
     """
+    runtime = _get_or_compile_stream_runtime()
     sequence = 1
     yield _to_sse_payload(
         RuntimeAgentStreamEvent(
@@ -150,7 +273,34 @@ def stream_runtime_agent(
         )
     )
 
-    run_response = run_runtime_agent(payload, db=db, tracing_handle=tracing_handle)
+    runtime_events = _await_runtime_call(
+        runtime.astream(payload=payload, db=db, tracing_handle=tracing_handle)
+    )
+    if runtime_events:
+        for runtime_event in runtime_events:
+            sequence += 1
+            yield _to_sse_payload(
+                RuntimeAgentStreamEvent(
+                    sequence=sequence,
+                    event=runtime_event.event,
+                    data=runtime_event.data,
+                )
+            )
+
+    run_response = _await_runtime_call(
+        runtime.ainvoke(payload=payload, db=db, tracing_handle=tracing_handle)
+    )
+
+    if not runtime_events:
+        sequence += 1
+        yield _to_sse_payload(
+            RuntimeAgentStreamEvent(
+                sequence=sequence,
+                event="progress",
+                data={"step": "invoke_fallback", "status": "running"},
+            )
+        )
+
     sequence += 1
     yield _to_sse_payload(
         RuntimeAgentStreamEvent(

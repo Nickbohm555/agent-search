@@ -58,6 +58,7 @@ class RuntimeAgentStreamEvent(BaseModel):
     sequence: int = Field(ge=1)
     event: Literal[
         "heartbeat",
+        "progress",
         "sub_queries",
         "tool_assignments",
         "retrieval_result",
