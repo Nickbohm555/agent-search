@@ -15,8 +15,13 @@
   - Added `src/backend/tests/api/test_sync_stream_contract_parity.py::test_runtime_agent_stream_completed_payload_matches_sync_final_values` to verify stream `completed.data` parity with sync run values (`output`, `sub_queries`, `tool_assignments`, `thread_id`) for one deterministic payload with explicit `thread_id`.
   - Verified required checks pass: health endpoint, backend tests, frontend tests, and frontend typecheck.
 
-- [ ] P1 - Add frontend streaming client in `src/frontend/src/utils/` plus TypeScript stream event types in `src/frontend/src/lib/` for deterministic parsing.
+- [x] P1 - Add frontend streaming client in `src/frontend/src/utils/` plus TypeScript stream event types in `src/frontend/src/lib/` for deterministic parsing.
   Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/demo-ui-typescript.md`): add frontend unit tests for supported stream events (`heartbeat`, `sub_queries`, optional progress payloads, `completed`); malformed event payload or invalid event ordering returns deterministic non-crashing error result; interrupted stream maps to retryable user-facing error.
+  Completed in this run:
+  - Added stream event types and validators in `src/frontend/src/lib/stream-events.ts` for deterministic parsing of `heartbeat`, `progress`, `sub_queries`, and `completed` payloads plus supported passthrough event names.
+  - Added streaming client `streamAgentRun` in `src/frontend/src/utils/stream.ts` that POSTs to `/api/agents/run/stream`, parses SSE `data:` frames, validates strict sequence ordering, enforces heartbeat-first and `sub_queries`-before-`completed`, and maps malformed/interrupted states to deterministic error results.
+  - Added `src/frontend/src/utils/stream.test.ts` unit coverage for supported ordered events, malformed payload handling, invalid ordering handling, and interrupted stream retryable error mapping.
+  - Verified required checks pass: health endpoint, backend tests, frontend tests, and frontend typecheck.
 
 - [ ] P1 - Switch UI run flow to consume stream updates so progress is visible before completion.
   Verification requirements (from `specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`): add frontend interaction test that submitted query remains visible while running; progress status updates during stream; sub-queries render before final completion; final answer renders only after `completed`; stream error leaves query context and shows deterministic error state.
