@@ -66,8 +66,19 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
 
                   return (
                     <li key={`${retrieval.sub_query}-${retrieval.tool}`}>
-                      {retrieval.sub_query}: opened {retrieval.opened_urls.length} web page
-                      {retrieval.opened_urls.length === 1 ? "" : "s"}
+                      <p>
+                        {retrieval.sub_query}: opened {retrieval.opened_urls.length} web page
+                        {retrieval.opened_urls.length === 1 ? "" : "s"}
+                      </p>
+                      {retrieval.opened_urls.length ? (
+                        <ul className="retrieval-url-list" data-testid="retrieval-opened-urls">
+                          {retrieval.opened_urls.map((url) => (
+                            <li key={url} className="retrieval-url-item">
+                              {url}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </li>
                   );
                 })}

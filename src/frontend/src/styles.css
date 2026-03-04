@@ -356,6 +356,21 @@ li {
   font-family: "JetBrains Mono", "Consolas", monospace;
 }
 
+.readout-group li p {
+  margin: 0;
+}
+
+.retrieval-url-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+}
+
+.retrieval-url-item {
+  font-size: 0.85rem;
+  color: #c3d7fb;
+  word-break: break-all;
+}
+
 .timeline-item {
   border-left: 2px solid rgba(120, 152, 200, 0.35);
   padding-left: 8px;

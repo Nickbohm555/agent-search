@@ -303,6 +303,8 @@ describe("App", () => {
       expect(screen.getByTestId("retrieval-list")).toBeInTheDocument();
       expect(screen.getByText("subquery-a: internal results 1")).toBeInTheDocument();
       expect(screen.getByText("subquery-b: opened 2 web pages")).toBeInTheDocument();
+      expect(screen.getByText("https://example.com/release")).toBeInTheDocument();
+      expect(screen.getByText("https://example.com/analysis")).toBeInTheDocument();
     });
   });
 

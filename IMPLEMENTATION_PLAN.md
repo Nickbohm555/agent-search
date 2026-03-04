@@ -6,6 +6,23 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Surface opened web URLs in frontend retrieval readout for explicit "what the agent read" visibility (`specs/web-search-onyx-style.md`, `specs/content-and-readouts.md`).
+  - Tasks:
+  - Updated `ProgressHistory` retrieval rendering for web-assigned subqueries to include the list of `opened_urls` under each web retrieval summary.
+  - Kept internal retrieval summaries unchanged while preserving stable empty-state behavior when no retrieval results are returned.
+  - Added deterministic frontend interaction coverage asserting rendered opened URL lines in the retrieval readout.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `43 passed`
+    - `docker compose exec frontend npm run test` -> `35 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Add retrieval activity readout to frontend progress panel for clearer "what the system did" visibility (`specs/content-and-readouts.md`, `specs/per-subquery-retrieval.md`).
   - Tasks:
   - Added a dedicated `Retrieval` section in `ProgressHistory` that summarizes per-subquery retrieval outcomes with tool-aware messaging:
