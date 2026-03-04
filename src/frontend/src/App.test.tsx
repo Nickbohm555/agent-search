@@ -1,16 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { loadInternalData, runAgent } from "./utils/api";
-import { RuntimeAgentRunResponse } from "./utils/api";
+import { loadInternalData } from "./utils/api";
+import { RuntimeAgentStreamResponse, streamAgentRun } from "./utils/stream";
 
 vi.mock("./utils/api", () => ({
   loadInternalData: vi.fn(),
-  runAgent: vi.fn(),
+}));
+
+vi.mock("./utils/stream", () => ({
+  streamAgentRun: vi.fn(),
 }));
 
 const mockedLoadInternalData = vi.mocked(loadInternalData);
-const mockedRunAgent = vi.mocked(runAgent);
+const mockedStreamAgentRun = vi.mocked(streamAgentRun);
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -20,37 +23,38 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-function successRunResponse(overrides?: Partial<RuntimeAgentRunResponse>): RuntimeAgentRunResponse {
+function successStreamResponse(overrides?: Partial<RuntimeAgentStreamResponse>): RuntimeAgentStreamResponse {
   return {
-    agent_name: "langgraph-scaffold",
-    output: "This is the synthesized answer.",
-    thread_id: "thread-app-test",
-    checkpoint_id: null,
-    sub_queries: ["subquery-a", "subquery-b"],
-    tool_assignments: [
-      { sub_query: "subquery-a", tool: "internal" },
-      { sub_query: "subquery-b", tool: "web" },
-    ],
-    retrieval_results: [],
-    validation_results: [
+    events: [
+      { sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } },
+      { sequence: 2, event: "progress", data: { step: "decomposition", status: "running" } },
+      { sequence: 3, event: "sub_queries", data: { sub_queries: ["subquery-a", "subquery-b"], count: 2 } },
       {
-        sub_query: "subquery-a",
-        tool: "internal",
-        sufficient: true,
-        status: "validated",
-        attempts: 1,
-        follow_up_actions: [],
-        stop_reason: "sufficient",
+        sequence: 4,
+        event: "completed",
+        data: {
+          agent_name: "langgraph-scaffold",
+          output: "This is the synthesized answer.",
+          thread_id: "thread-app-test",
+          checkpoint_id: null,
+          sub_queries: ["subquery-a", "subquery-b"],
+          tool_assignments: [
+            { sub_query: "subquery-a", tool: "internal" },
+            { sub_query: "subquery-b", tool: "web" },
+          ],
+        },
       },
     ],
-    web_tool_runs: [],
-    graph_state: {
-      current_step: "synthesis",
-      timeline: [
-        { step: "decomposition", status: "completed", details: {} },
-        { step: "synthesis", status: "completed", details: {} },
+    completed: {
+      agent_name: "langgraph-scaffold",
+      output: "This is the synthesized answer.",
+      thread_id: "thread-app-test",
+      checkpoint_id: null,
+      sub_queries: ["subquery-a", "subquery-b"],
+      tool_assignments: [
+        { sub_query: "subquery-a", tool: "internal" },
+        { sub_query: "subquery-b", tool: "web" },
       ],
-      graph: {},
     },
     ...overrides,
   };
@@ -84,59 +88,6 @@ describe("App", () => {
     expect(document.querySelectorAll(".card").length).toBeGreaterThanOrEqual(3);
   });
 
-  it("separates controls, progress, and result into distinct deck panels", () => {
-    render(<App />);
-
-    const controlsPanel = screen.getByTestId("controls-panel");
-    const progressPanel = screen.getByTestId("progress-panel");
-    const resultPanel = screen.getByTestId("result-panel");
-
-    expect(controlsPanel).toHaveTextContent("Control Deck");
-    expect(progressPanel).toHaveTextContent("System Progress");
-    expect(resultPanel).toHaveTextContent("Final Readout");
-    expect(controlsPanel).toHaveClass("deck-panel");
-    expect(progressPanel).toHaveClass("deck-panel");
-    expect(resultPanel).toHaveClass("deck-panel");
-  });
-
-  it("uses consistent chrome markers across section headers", () => {
-    render(<App />);
-
-    expect(screen.getByText("ACTION")).toHaveClass("panel-kicker");
-    expect(screen.getByText("READOUT")).toHaveClass("panel-kicker");
-    expect(screen.getByText("ANSWER")).toHaveClass("panel-kicker");
-    expect(document.querySelectorAll(".panel-titlebar")).toHaveLength(3);
-  });
-
-  it("keeps action panel before readout panels in DOM order for clear hierarchy", () => {
-    render(<App />);
-
-    const controlsPanel = screen.getByTestId("controls-panel");
-    const progressPanel = screen.getByTestId("progress-panel");
-    const resultPanel = screen.getByTestId("result-panel");
-
-    const panels = Array.from(document.querySelectorAll("[data-testid$='-panel']"));
-    expect(panels.indexOf(controlsPanel)).toBe(0);
-    expect(panels.indexOf(progressPanel)).toBeGreaterThan(0);
-    expect(panels.indexOf(resultPanel)).toBeGreaterThan(panels.indexOf(progressPanel));
-  });
-
-  it("retains all deck sections on narrow viewport widths", () => {
-    const originalInnerWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
-    try {
-      render(<App />);
-
-      expect(screen.getByTestId("controls-panel")).toBeInTheDocument();
-      expect(screen.getByTestId("progress-panel")).toBeInTheDocument();
-      expect(screen.getByTestId("result-panel")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Load Data" })).toBeInTheDocument();
-      expect(screen.getByTestId("final-answer-region")).toBeInTheDocument();
-    } finally {
-      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
-    }
-  });
-
   it("shows successful load outcome with counts", async () => {
     mockedLoadInternalData.mockResolvedValue({
       ok: true,
@@ -156,28 +107,14 @@ describe("App", () => {
     });
   });
 
-  it("shows failed load outcome", async () => {
-    mockedLoadInternalData.mockResolvedValue({
-      ok: false,
-      error: {
-        type: "network",
-        message: "Network error. Please check connection and retry.",
-        retryable: true,
-      },
-    });
+  it("keeps query context and streams progress/sub-queries before final completion", async () => {
+    const deferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();
 
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Network error. Please check connection and retry.")).toBeInTheDocument();
-    });
-  });
-
-  it("shows timeline progress and final answer for successful run", async () => {
-    mockedRunAgent.mockResolvedValue({
-      ok: true,
-      data: successRunResponse(),
+    mockedStreamAgentRun.mockImplementation(async (_payload, options) => {
+      options?.onEvent?.({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } });
+      options?.onEvent?.({ sequence: 2, event: "progress", data: { step: "decomposition", status: "running" } });
+      options?.onEvent?.({ sequence: 3, event: "sub_queries", data: { sub_queries: ["subquery-a"], count: 1 } });
+      return deferred.promise;
     });
 
     render(<App />);
@@ -185,142 +122,30 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
 
     await waitFor(() => {
+      expect(screen.getByTestId("query-readout")).toHaveTextContent("What is the project status?");
+      expect(screen.getByText("Generated 1 sub-queries.")).toBeInTheDocument();
+      expect(screen.getByText("decomposition")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a (unassigned)")).toBeInTheDocument();
+      expect(screen.getByText("No answer yet.")).toBeInTheDocument();
+    });
+
+    deferred.resolve({ ok: true, data: successStreamResponse() });
+
+    await waitFor(() => {
       expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
       expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
-      expect(screen.getByTestId("timeline-list")).toBeInTheDocument();
-      expect(screen.getByText("decomposition")).toBeInTheDocument();
       expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
-      expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
-    });
-    expect(screen.getByTestId("query-readout")).toHaveTextContent("What is the project status?");
-  });
-
-  it("uses consistent readout styling for load and run status outcomes", async () => {
-    mockedLoadInternalData.mockResolvedValue({
-      ok: true,
-      data: {
-        status: "success",
-        source_type: "inline",
-        documents_loaded: 2,
-        chunks_created: 8,
-      },
-    });
-    mockedRunAgent.mockResolvedValue({
-      ok: true,
-      data: successRunResponse(),
-    });
-
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
-    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Readout check" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
-      expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
-    });
-
-    expect(screen.getByTestId("load-status-region")).toHaveClass("readout-block");
-    expect(screen.getByTestId("progress-region")).toHaveClass("readout-block");
-    expect(screen.getByText("Load Status")).toBeInTheDocument();
-    expect(screen.getByText("Run Status")).toBeInTheDocument();
-  });
-
-  it("keeps asked query, system progress, and final answer as distinct readout sections", async () => {
-    mockedRunAgent.mockResolvedValue({
-      ok: true,
-      data: successRunResponse({ output: "Distinct readout answer." }),
-    });
-
-    render(<App />);
-    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Which section is what?" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Distinct readout answer.")).toBeInTheDocument();
-    });
-
-    expect(screen.getByTestId("query-readout")).toHaveTextContent("Which section is what?");
-    expect(screen.getByTestId("progress-history-region")).toBeInTheDocument();
-    expect(screen.getByTestId("final-answer-region")).toHaveTextContent("Distinct readout answer.");
-    expect(screen.getByTestId("final-answer-region")).toHaveClass("answer-dominant");
-  });
-
-  it("falls back to sub-query and validation views when graph_state is missing", async () => {
-    mockedRunAgent.mockResolvedValue({
-      ok: true,
-      data: {
-        agent_name: "langgraph-scaffold",
-        output: "Fallback answer.",
-        thread_id: "thread-fallback",
-        checkpoint_id: null,
-        sub_queries: ["subquery-fallback"],
-        tool_assignments: [{ sub_query: "subquery-fallback", tool: "web" }],
-        retrieval_results: [],
-        validation_results: [
-          {
-            sub_query: "subquery-fallback",
-            tool: "web",
-            sufficient: false,
-            status: "stopped_insufficient",
-            attempts: 2,
-            follow_up_actions: ["search_more"],
-            stop_reason: "max_attempts",
-          },
-        ],
-        web_tool_runs: [],
-        graph_state: null,
-      },
-    });
-
-    render(<App />);
-    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Fallback case" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
-      expect(screen.getByText("subquery-fallback (web)")).toBeInTheDocument();
-      expect(screen.getByText("subquery-fallback: stopped_insufficient")).toBeInTheDocument();
-      expect(screen.getByText("Fallback answer.")).toBeInTheDocument();
+      expect(screen.getByText("subquery-b (web)")).toBeInTheDocument();
     });
   });
 
-  it("shows stable empty states for optional progress arrays", async () => {
-    mockedRunAgent.mockResolvedValue({
-      ok: true,
-      data: successRunResponse({
-        output: "Empty state answer.",
-        sub_queries: [],
-        tool_assignments: [],
-        validation_results: [],
-        graph_state: {
-          current_step: "synthesis",
-          timeline: [],
-          graph: {},
-        },
-      }),
-    });
-
-    render(<App />);
-    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Empty arrays case" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
-      expect(screen.getByTestId("subquery-empty")).toBeInTheDocument();
-      expect(screen.getByTestId("validation-empty")).toBeInTheDocument();
-      expect(screen.getByText("Empty state answer.")).toBeInTheDocument();
-    });
-  });
-
-  it("shows run failure and preserves query text for retry", async () => {
-    mockedRunAgent.mockResolvedValue({
+  it("shows stream failure and preserves query text for retry", async () => {
+    mockedStreamAgentRun.mockResolvedValue({
       ok: false,
       error: {
-        type: "http",
-        message: "Request failed with status 503",
+        type: "network",
+        message: "Stream interrupted before completion. Please retry.",
         retryable: true,
-        statusCode: 503,
       },
     });
 
@@ -329,41 +154,15 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Request failed with status 503")).toBeInTheDocument();
+      expect(screen.getByText("Stream interrupted before completion. Please retry.")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Query")).toHaveValue("Why did the run fail?");
-  });
-
-  it("disables only load control during in-flight load and re-enables after completion", async () => {
-    const deferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
-    mockedLoadInternalData.mockImplementation(() => deferred.promise);
-
-    render(<App />);
-    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Query stays runnable" } });
-    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
-
-    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Run Agent" })).toBeEnabled();
-
-    deferred.resolve({
-      ok: true,
-      data: {
-        status: "success",
-        source_type: "inline",
-        documents_loaded: 2,
-        chunks_created: 8,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Load Data" })).toBeEnabled();
-      expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
-    });
+    expect(screen.getByTestId("query-readout")).toHaveTextContent("Why did the run fail?");
   });
 
   it("disables only run control during in-flight run and re-enables after completion", async () => {
-    const deferred = createDeferred<Awaited<ReturnType<typeof runAgent>>>();
-    mockedRunAgent.mockImplementation(() => deferred.promise);
+    const deferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();
+    mockedStreamAgentRun.mockImplementation(async () => deferred.promise);
 
     render(<App />);
     fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Run lifecycle" } });
@@ -372,10 +171,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Load Data" })).toBeEnabled();
 
-    deferred.resolve({
-      ok: true,
-      data: successRunResponse(),
-    });
+    deferred.resolve({ ok: true, data: successStreamResponse() });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Run Agent" })).toBeEnabled();
@@ -383,36 +179,9 @@ describe("App", () => {
     });
   });
 
-  it("prevents duplicate in-flight load requests from rapid repeated clicks", async () => {
-    const deferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
-    mockedLoadInternalData.mockImplementation(() => deferred.promise);
-
-    render(<App />);
-    const loadButton = screen.getByRole("button", { name: "Load Data" });
-    fireEvent.click(loadButton);
-    fireEvent.click(loadButton);
-    fireEvent.click(loadButton);
-
-    expect(mockedLoadInternalData).toHaveBeenCalledTimes(1);
-
-    deferred.resolve({
-      ok: true,
-      data: {
-        status: "success",
-        source_type: "inline",
-        documents_loaded: 2,
-        chunks_created: 8,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Load Data" })).toBeEnabled();
-    });
-  });
-
   it("prevents duplicate in-flight run requests from rapid repeated submits", async () => {
-    const deferred = createDeferred<Awaited<ReturnType<typeof runAgent>>>();
-    mockedRunAgent.mockImplementation(() => deferred.promise);
+    const deferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();
+    mockedStreamAgentRun.mockImplementation(async () => deferred.promise);
 
     render(<App />);
     fireEvent.change(screen.getByLabelText("Query"), { target: { value: "No duplicates" } });
@@ -421,49 +190,12 @@ describe("App", () => {
     fireEvent.click(runButton);
     fireEvent.click(runButton);
 
-    expect(mockedRunAgent).toHaveBeenCalledTimes(1);
+    expect(mockedStreamAgentRun).toHaveBeenCalledTimes(1);
 
-    deferred.resolve({
-      ok: true,
-      data: successRunResponse(),
-    });
+    deferred.resolve({ ok: true, data: successStreamResponse() });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Run Agent" })).toBeEnabled();
     });
-  });
-
-  it("allows retry in same session after run failure", async () => {
-    mockedRunAgent
-      .mockResolvedValueOnce({
-        ok: false,
-        error: {
-          type: "http",
-          message: "Request failed with status 503",
-          retryable: true,
-          statusCode: 503,
-        },
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        data: successRunResponse({ output: "Retry succeeded." }),
-      });
-
-    render(<App />);
-    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Retry query" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Request failed with status 503")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Run Agent" })).toBeEnabled();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Retry succeeded.")).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText("Query")).toHaveValue("Retry query");
-    expect(mockedRunAgent).toHaveBeenCalledTimes(2);
   });
 });

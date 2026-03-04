@@ -1,20 +1,27 @@
-import { RuntimeAgentRunResponse } from "../../utils/api";
+import { RuntimeAgentGraphStep, RuntimeAgentRunResponse } from "../../utils/api";
 
 interface ProgressHistoryProps {
   runDetails: RuntimeAgentRunResponse | null;
+  streamedProgress: RuntimeAgentGraphStep[];
+  streamedSubQueries: string[];
 }
 
-export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
+export function ProgressHistory({ runDetails, streamedProgress, streamedSubQueries }: ProgressHistoryProps) {
+  const timeline = streamedProgress.length > 0 ? streamedProgress : runDetails?.graph_state?.timeline ?? [];
+  const subQueries = streamedSubQueries.length > 0 ? streamedSubQueries : runDetails?.sub_queries ?? [];
+  const toolAssignments = runDetails?.tool_assignments ?? [];
+  const validationResults = runDetails?.validation_results ?? [];
+
   return (
     <div className="progress-history" data-testid="progress-history-region">
       <h3>Progress History</h3>
-      {runDetails ? (
+      {runDetails || streamedProgress.length > 0 || streamedSubQueries.length > 0 ? (
         <>
           <div className="readout-group">
             <h4 className="readout-group-title">Timeline</h4>
-            {runDetails.graph_state?.timeline?.length ? (
+            {timeline.length ? (
               <ol data-testid="timeline-list">
-                {runDetails.graph_state.timeline.map((entry, index) => (
+                {timeline.map((entry, index) => (
                   <li key={`${entry.step}-${index}`}>
                     <strong>{entry.step}</strong>: {entry.status}
                   </li>
@@ -27,10 +34,10 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
 
           <div className="readout-group">
             <h4 className="readout-group-title">Sub-queries</h4>
-            {runDetails.sub_queries.length ? (
+            {subQueries.length ? (
               <ol data-testid="subquery-list">
-                {runDetails.sub_queries.map((subQuery) => {
-                  const assignment = runDetails.tool_assignments.find((item) => item.sub_query === subQuery);
+                {subQueries.map((subQuery) => {
+                  const assignment = toolAssignments.find((item) => item.sub_query === subQuery);
                   const toolLabel = assignment ? assignment.tool : "unassigned";
                   return (
                     <li key={subQuery}>
@@ -46,9 +53,9 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
 
           <div className="readout-group">
             <h4 className="readout-group-title">Validation</h4>
-            {runDetails.validation_results.length ? (
+            {validationResults.length ? (
               <ol data-testid="validation-list">
-                {runDetails.validation_results.map((validation) => (
+                {validationResults.map((validation) => (
                   <li key={`${validation.sub_query}-${validation.tool}`}>
                     {validation.sub_query}: {validation.status}
                   </li>

@@ -1,11 +1,13 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
-import { RuntimeAgentRunResponse, loadInternalData, runAgent } from "./utils/api";
+import { RuntimeAgentGraphStep, RuntimeAgentRunResponse, loadInternalData } from "./utils/api";
+import { RuntimeAgentStreamEvent } from "./lib/stream-events";
 import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
 import { ProgressHistory } from "./lib/components/ProgressHistory";
 import { QueryForm } from "./lib/components/QueryForm";
 import { StatusBanner } from "./lib/components/StatusBanner";
 import { RequestState } from "./lib/types";
 import { formatLoadSuccessMessage, formatRunSuccessMessage } from "./lib/utils/messages";
+import { streamAgentRun } from "./utils/stream";
 
 export default function App() {
   const [loadState, setLoadState] = useState<RequestState>("idle");
@@ -16,6 +18,8 @@ export default function App() {
   const [answer, setAnswer] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [runDetails, setRunDetails] = useState<RuntimeAgentRunResponse | null>(null);
+  const [streamedProgress, setStreamedProgress] = useState<RuntimeAgentGraphStep[]>([]);
+  const [streamedSubQueries, setStreamedSubQueries] = useState<string[]>([]);
   const loadInFlightRef = useRef(false);
   const runInFlightRef = useRef(false);
 
@@ -48,6 +52,37 @@ export default function App() {
     }
   }
 
+  function applyStreamEvent(
+    event: RuntimeAgentStreamEvent,
+    progress: RuntimeAgentGraphStep[],
+    subQueries: string[],
+  ): void {
+    // Called by `handleRun` for each streamed event so the UI can update readouts
+    // before completion without waiting for the entire stream response.
+    if (event.event === "heartbeat") {
+      setRunMessage(`Heartbeat: ${event.data.status}`);
+      return;
+    }
+
+    if (event.event === "progress") {
+      const timelineEntry: RuntimeAgentGraphStep = {
+        step: event.data.step,
+        status: event.data.status === "completed" ? "completed" : "started",
+        details: {},
+      };
+      progress.push(timelineEntry);
+      setStreamedProgress([...progress]);
+      setRunMessage(`Step ${event.data.step}: ${event.data.status}`);
+      return;
+    }
+
+    if (event.event === "sub_queries") {
+      subQueries.splice(0, subQueries.length, ...event.data.sub_queries);
+      setStreamedSubQueries([...subQueries]);
+      setRunMessage(`Generated ${event.data.count} sub-queries.`);
+    }
+  }
+
   async function handleRun(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (query.trim().length === 0 || runInFlightRef.current) {
@@ -56,19 +91,52 @@ export default function App() {
 
     runInFlightRef.current = true;
     const trimmedQuery = query.trim();
+    const streamProgressBuffer: RuntimeAgentGraphStep[] = [];
+    const streamSubQueryBuffer: string[] = [];
+
     setRunState("loading");
-    setRunMessage("Running agent...");
+    setRunMessage("Running agent stream...");
     setAnswer("");
     setRunDetails(null);
+    setStreamedProgress([]);
+    setStreamedSubQueries([]);
     setSubmittedQuery(trimmedQuery);
 
     try {
-      const result = await runAgent({ query: trimmedQuery });
+      const result = await streamAgentRun(
+        { query: trimmedQuery },
+        {
+          onEvent: (streamEvent) => {
+            applyStreamEvent(streamEvent, streamProgressBuffer, streamSubQueryBuffer);
+          },
+        },
+      );
+
       if (result.ok) {
+        setStreamedProgress([...streamProgressBuffer]);
+        setStreamedSubQueries([...result.data.completed.sub_queries]);
         setRunState("success");
-        setRunMessage(formatRunSuccessMessage(result.data.sub_queries.length));
-        setAnswer(result.data.output);
-        setRunDetails(result.data);
+        setRunMessage(formatRunSuccessMessage(result.data.completed.sub_queries.length));
+        setAnswer(result.data.completed.output);
+        setRunDetails({
+          agent_name: result.data.completed.agent_name,
+          output: result.data.completed.output,
+          thread_id: result.data.completed.thread_id,
+          checkpoint_id: result.data.completed.checkpoint_id ?? null,
+          sub_queries: result.data.completed.sub_queries,
+          tool_assignments: result.data.completed.tool_assignments,
+          retrieval_results: [],
+          validation_results: [],
+          web_tool_runs: [],
+          graph_state: {
+            current_step:
+              streamProgressBuffer.length > 0
+                ? streamProgressBuffer[streamProgressBuffer.length - 1].step
+                : "completed",
+            timeline: [...streamProgressBuffer],
+            graph: {},
+          },
+        });
         return;
       }
 
@@ -125,7 +193,11 @@ export default function App() {
             <span className="panel-kicker">READOUT</span>
           </div>
           <StatusBanner state={runState} message={runMessage} label="Run Status" testId="progress-region" />
-          <ProgressHistory runDetails={runDetails} />
+          <ProgressHistory
+            runDetails={runDetails}
+            streamedProgress={streamedProgress}
+            streamedSubQueries={streamedSubQueries}
+          />
         </section>
 
         <section className="card deck-panel deck-result" aria-label="result" data-testid="result-panel">

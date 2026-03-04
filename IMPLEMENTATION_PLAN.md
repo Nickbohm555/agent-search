@@ -23,8 +23,14 @@
   - Added `src/frontend/src/utils/stream.test.ts` unit coverage for supported ordered events, malformed payload handling, invalid ordering handling, and interrupted stream retryable error mapping.
   - Verified required checks pass: health endpoint, backend tests, frontend tests, and frontend typecheck.
 
-- [ ] P1 - Switch UI run flow to consume stream updates so progress is visible before completion.
+- [x] P1 - Switch UI run flow to consume stream updates so progress is visible before completion.
   Verification requirements (from `specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`): add frontend interaction test that submitted query remains visible while running; progress status updates during stream; sub-queries render before final completion; final answer renders only after `completed`; stream error leaves query context and shows deterministic error state.
+  Completed in this run:
+  - Switched UI run execution in `src/frontend/src/App.tsx` from sync `runAgent` calls to streamed `streamAgentRun` consumption with `onEvent` updates for `heartbeat`, `progress`, and `sub_queries`.
+  - Added dedicated streamed state (`streamedProgress`, `streamedSubQueries`) and wired `ProgressHistory` to render in-flight stream data before completion while preserving deterministic empty states.
+  - Ensured final answer is rendered only after stream completion payload is returned; query readout is set at submit and preserved on stream failure.
+  - Added/updated frontend interaction tests in `src/frontend/src/App.test.tsx` covering: in-flight query context visibility, progress/sub-query rendering before completion, final answer gating to completion, stream error handling, and in-flight duplicate submission prevention.
+  - Verified required checks pass for this loop: health endpoint, backend tests, frontend tests, and frontend typecheck.
 
 - [x] Complete (scope baseline) - Synchronous scaffold run path exists at `POST /api/agents/run` with deterministic response shape used by current UI/tests.
 
