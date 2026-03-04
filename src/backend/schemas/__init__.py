@@ -18,6 +18,7 @@ from .internal_data import (
     InternalDocumentInput,
     InternalRetrievedChunk,
 )
+from .mcp import MCPJsonRpcRequest
 from .search import SearchSkeletonResponse
 from .web import (
     WebOpenUrlRequest,
@@ -52,4 +53,5 @@ __all__ = [
     "WebOpenUrlRequest",
     "WebOpenUrlResponse",
     "WebToolRun",
+    "MCPJsonRpcRequest",
 ]

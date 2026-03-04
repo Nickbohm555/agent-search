@@ -39,15 +39,24 @@
   - Event ordering is deterministic with monotonic sequence values.
   - Early client disconnect test passes without backend errors.
 
-- [ ] P0 - Expose orchestrated pipeline via FastMCP-compatible wrapper (`specs/mcp-exposure.md`).
+- [x] P0 - Expose orchestrated pipeline via FastMCP-compatible wrapper (`specs/mcp-exposure.md`).
   - Tasks:
-  - Add MCP server/tool wrapper that accepts query input and delegates to shared orchestration path used by `/api/agents/run`.
-  - Define stable MCP input/output schema for FastMCP client usage in Dockerized runtime.
-  - Keep MCP streaming optional unless implemented in same increment.
+  - Added MCP JSON-RPC wrapper endpoint `POST /mcp` with MCP-compatible methods: `initialize`, `tools/list`, and `tools/call`.
+  - Added stable MCP tool contract `agent.run` with deterministic `inputSchema` and deterministic server protocol metadata.
+  - Wired `tools/call` delegation to shared orchestration path by invoking `run_runtime_agent` (same path used by `/api/agents/run`) with app runtime/tracing handles.
+  - Added deterministic backend smoke coverage for MCP initialization/tool listing contract and tool-call delegation equivalence.
   - Verification (outcomes):
-  - FastMCP-style client invocation returns synthesized answer for a query.
-  - MCP call delegates to orchestration path and returns equivalent answer semantics as `/api/agents/run`.
-  - MCP tool contract (name + schema) is deterministic/stable across repeated calls.
+  - `POST /mcp` `tools/call` with tool `agent.run` returns synthesized text content for a query and includes structured pipeline output payload.
+  - For the same query, MCP `tools/call` returns `structuredContent` equivalent to `/api/agents/run` response semantics (same orchestration data).
+  - MCP tool contract remains deterministic: tool name `agent.run` with fixed JSON schema (`query` non-empty string, no additional properties).
+  - Validation run after fresh environment reset succeeded:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `32 passed`
+    - `docker compose exec frontend npm run test` -> `25 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
 
 - [ ] P1 - Migrate internal vectorization/retrieval to pgvector-native storage and similarity querying (`specs/data-loading-vectorization.md`, `specs/per-subquery-retrieval.md`).
   - Tasks:
@@ -93,7 +102,7 @@
 ## Gap Confirmation (Code Search Evidence)
 
 - [x] Confirmed backend streaming route now exists at `POST /api/agents/run/stream` with SSE `text/event-stream` output.
-- [x] Confirmed no MCP/FastMCP wrapper exists today (`rg -n "mcp|fastmcp" src/backend`).
+- [x] Confirmed MCP wrapper now exists at `POST /mcp` with JSON-RPC methods (`initialize`, `tools/list`, `tools/call`) and shared orchestration delegation.
 - [x] Confirmed runtime dependencies include `langchain`/`langgraph`/`langchain-openai` in `src/backend/pyproject.toml`.
 - [x] Confirmed orchestration now executes via compiled LangGraph runtime graphs (top-level orchestration + subquery deep-agent subgraph) in `src/backend/agents/langgraph_agent.py`.
 - [x] Confirmed internal retrieval uses `embedding_json` + Python scoring instead of pgvector DB similarity (`src/backend/models.py`, `src/backend/services/internal_data_service.py`).

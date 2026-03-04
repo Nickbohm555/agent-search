@@ -5,6 +5,7 @@ from observability import initialize_langfuse_tracing
 from routers.agent import router as agent_router
 from routers.health import router as health_router
 from routers.internal_data import router as internal_data_router
+from routers.mcp import router as mcp_router
 from routers.search import router as search_router
 from routers.web import router as web_router
 from services.runtime_service import initialize_runtime_handle
@@ -24,6 +25,7 @@ app.include_router(search_router)
 app.include_router(agent_router)
 app.include_router(internal_data_router)
 app.include_router(web_router)
+app.include_router(mcp_router)
 
 
 @app.on_event("startup")
