@@ -8,3 +8,5 @@ src/backend/.pytest_cache/
 src/backend/.mypy_cache/
 
 src/backend/.venv/
+.loop-commit-msg
+.loop-commit-msg.full

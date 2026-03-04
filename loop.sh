@@ -93,9 +93,19 @@ while :; do
   fi
 
   if [ -n "$(git status --porcelain 2>/dev/null || true)" ]; then
+    REPO_ROOT="$(git rev-parse --show-toplevel)"
+    LOOP_MSG="$REPO_ROOT/.loop-commit-msg"
+    LOOP_FULL="$REPO_ROOT/.loop-commit-msg.full"
+    if [ -f "$LOOP_MSG" ]; then
+      SUMMARY=$(head -1 "$LOOP_MSG" | tr -d '\n\r')
+    else
+      SUMMARY="(no summary)"
+    fi
+    printf 'ralph loop %s (%s): %s\n' "$ITERATION" "$MODE" "$SUMMARY" > "$LOOP_FULL"
     git add -A || true
-    git commit -m "ralph: iteration $ITERATION ($MODE)" || true
-    git push || true
+    git commit -F "$LOOP_FULL" || true
+    rm -f "$LOOP_MSG" "$LOOP_FULL"
+    git push -u origin "$(git branch --show-current)" || true
   fi
 
   if [ "$MAX_ITERATIONS" -gt 0 ] && [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
