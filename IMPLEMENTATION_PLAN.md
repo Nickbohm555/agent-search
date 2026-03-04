@@ -1,106 +1,105 @@
 # IMPLEMENTATION_PLAN
 
 ## Scope
-- Frontend-only scoped planning for "all frontend work".
-- Inputs reviewed: `specs/*`, current frontend code in `src/frontend/*`, backend API contracts in `src/backend/routers/*` + `src/backend/schemas/*`, and existing plan.
-- Planning mode only (no implementation in this run).
+- Frontend-only scoped planning for: "all frontend work".
+- Sources reviewed: `specs/*`, `src/frontend/*`, `src/backend/routers/*`, `src/backend/schemas/*`, `src/backend/services/agent_service.py`, existing `IMPLEMENTATION_PLAN.md`.
+- Planning mode only; no implementation in this run.
 
-## Current State (2026-03-04)
-- [x] React + TypeScript + Vite scaffold exists (`src/frontend/src/App.tsx`).
-- [x] Frontend test harness exists with Vitest + Testing Library (`src/frontend/src/App.test.tsx`).
-- [x] Frontend API base URL helper exists (`src/frontend/src/utils/config.ts`).
-- [ ] Demo UI behavior from spec is not implemented (load/vectorize, query run, progress, final answer).
-- [ ] Frontend API client typing/normalization for backend contracts is not implemented.
-- [ ] Streaming heartbeat integration is not implemented and backend stream endpoint/contract is not yet exposed.
-- [ ] `src/lib/*` is absent in this repository (confirmed by file search); shared frontend code currently only exists under `src/frontend/src/*`.
+## Current Status (2026-03-04)
+- [x] Frontend scaffold exists in TypeScript/React/Vite (`src/frontend/src/App.tsx`, `src/frontend/src/main.tsx`).
+- [x] Frontend test harness exists (Vitest + Testing Library) (`src/frontend/src/App.test.tsx`, `src/frontend/src/test/setup.ts`).
+- [x] Frontend env-based API base URL helper exists (`src/frontend/src/utils/config.ts`).
+- [x] Confirmed `src/lib/*` does not exist in this repo; shared frontend utilities currently live under `src/frontend/src/*`.
+- [ ] Demo UI behavior from `specs/demo-ui-typescript.md` is not implemented.
+- [ ] Frontend API typing/error normalization for `/api/internal-data/load` and `/api/agents/run` is not implemented.
+- [ ] Streaming heartbeat UI integration is not implemented.
 
-## Frontend Tasks Remaining (Highest Priority First)
-- [ ] P0 - Implement typed frontend API client for demo UI load/run flows
-- Why this priority:
-  - The UI acceptance criteria depend on reliable request/response handling for load and run.
-  - Centralized typing/error normalization is prerequisite for deterministic UI states/tests.
+## Frontend Tasks Remaining (Priority Order)
+
+- [ ] P0 - Implement a typed frontend API client for load/run flows
+- Spec alignment:
+  - `specs/demo-ui-typescript.md` (load action + run action + final answer visibility).
+  - `specs/data-loading-vectorization.md` (load outcome must be observable).
+- Confirmed contracts to support:
+  - `POST /api/internal-data/load` => `{ status, source_type, documents_loaded, chunks_created }`.
+  - `POST /api/agents/run` => `{ output, sub_queries, tool_assignments, retrieval_results, validation_results, web_tool_runs, graph_state? }`.
+- Verification requirements (outcome-focused):
+  - Unit test: successful load call returns UI-consumable counts (`documents_loaded`, `chunks_created`).
+  - Unit test: successful run call returns UI-consumable answer/progress fields (`output`, `sub_queries`, `tool_assignments`, `validation_results`, optional `graph_state`).
+  - Unit test: network failure and non-2xx response both produce deterministic, user-safe error outcomes.
+  - Unit test: malformed payloads produce deterministic fallback error outcomes (no uncaught render/runtime crash).
+
+- [ ] P0 - Replace scaffold screen with demo UI flow (load/vectorize + run query + final answer)
+- Spec alignment:
+  - `specs/demo-ui-typescript.md` acceptance criteria require load trigger, query input/run action, streamed progress intent, and final answer display.
 - Deliverables:
-  - Add typed wrappers for `POST /api/internal-data/load` and `POST /api/agents/run`.
-  - Add deterministic normalization for transport failures, non-2xx responses, and invalid payload shapes.
-  - Keep shared helpers consolidated in `src/frontend/src/utils/*` for now; if cross-app reuse emerges, introduce `src/lib/*` in a follow-up task.
-- Verification requirements (outcomes, not implementation):
-  - Unit test: successful load call returns UI-consumable `documents_loaded` and `chunks_created` values.
-  - Unit test: successful run call returns UI-consumable `sub_queries`, `tool_assignments`, `validation_results`, optional `graph_state`, and `output`.
-  - Unit test: network failure and non-2xx API failure both produce consistent, user-safe error objects/messages.
-  - Unit test: malformed payloads are rejected into a deterministic error outcome (no uncaught runtime crash).
+  - Renderable controls for load trigger and query submission.
+  - Visible request lifecycle states: `idle`, `loading/running`, `success/completed`, `error`.
+  - Final answer region sourced from run result `output`.
+- Verification requirements (outcome-focused):
+  - Render test: load control, query input, run trigger, progress/status area, and final-answer area are present on first render.
+  - Interaction test: load success state is clearly shown with returned counts.
+  - Interaction test: load failure state is clearly shown with actionable error text.
+  - Interaction test: running a query renders the returned final answer text.
 
-- [ ] P0 - Implement TypeScript demo UI for load/vectorize + run + final answer
-- Why this priority:
-  - This is the core acceptance criteria in `specs/demo-ui-typescript.md`.
-  - Current app is still scaffold text only.
+- [ ] P0 - Implement progress timeline UI using existing run payload as non-stream heartbeat fallback
+- Spec alignment:
+  - `specs/demo-ui-typescript.md` + `specs/streaming-agent-heartbeat.md` require visible sub-query/progress updates; backend stream route is not available yet.
 - Deliverables:
-  - Replace scaffold screen with a simple/sleek UI including:
-    - load/vectorize action area with visible status
-    - query input + run action
-    - final answer display
-    - explicit UI lifecycle states (`idle`, `loading/running`, `success/completed`, `error`)
-- Verification requirements (outcomes, not implementation):
-  - Render test: load controls, query input, run trigger, status/progress region, and final-answer region are visible on first render.
-  - Interaction test: user triggers load and sees a clear success outcome with returned counts.
-  - Interaction test: load failure shows a clear error state and message.
-  - Interaction test: user submits a query and sees the final synthesized answer rendered.
+  - Show ordered progress from run payload (`sub_queries`, `tool_assignments`, `validation_results`, and `graph_state.timeline` when present).
+  - Display per-subquery status through completion next to final answer.
+  - Gracefully handle missing optional graph data.
+- Verification requirements (outcome-focused):
+  - Unit/render test: progress order reflects decomposition/tool-selection/retrieval/validation/synthesis completion when timeline is present.
+  - Unit/render test: when `graph_state` is absent, UI still shows available subquery/validation progress and final answer.
+  - Interaction test: single run shows both progress history and final answer in the same completed view.
 
-- [ ] P0 - Render per-subquery progress from available run payload as non-stream fallback heartbeat
-- Why this priority:
-  - Streaming backend is not yet exposed; UI still needs observable progress now.
-  - Backend already returns progress-compatible fields (`sub_queries`, `tool_assignments`, `validation_results`, `graph_state.timeline`).
+- [ ] P1 - Add request lifecycle safeguards (in-flight lockout + retry in-session)
+- Spec alignment:
+  - Supports reliable, clear UX outcomes required by `specs/demo-ui-typescript.md`.
 - Deliverables:
-  - Build a stable progress timeline/list derived from run response fields.
-  - Show per-subquery status and validation outcomes before/alongside final answer.
-  - Ensure UI tolerates missing optional graph fields without breaking.
-- Verification requirements (outcomes, not implementation):
-  - Unit test: progress view ordering reflects decomposition -> tool selection -> per-subquery retrieval/validation -> synthesis completion.
-  - Unit test: when `graph_state` or `timeline` is missing, UI still renders available progress data and final answer.
-  - Interaction test: completed run shows both progress history and final answer in one flow.
+  - Disable only the relevant control while its request is active.
+  - Permit retry after failure without page reload.
+  - Prevent duplicate concurrent calls from rapid repeat clicks/submits.
+- Verification requirements (outcome-focused):
+  - Interaction test: load control disables while load is in flight and re-enables afterward.
+  - Interaction test: run control disables while run is in flight and re-enables afterward.
+  - Interaction test: rapid repeated actions do not create duplicate concurrent calls.
+  - Interaction test: a failed call can be retried successfully in the same session.
 
-- [ ] P1 - Add request lifecycle safeguards (in-flight lockout + retry)
-- Why this priority:
-  - Prevents duplicate requests and improves recoverability after failures.
+- [ ] P1 - Integrate streaming heartbeat when backend stream contract is available
+- Spec alignment:
+  - `specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`.
+- Blocker (confirmed):
+  - No streaming endpoint/protocol is currently exposed in backend routers (`src/backend/routers/*` has no SSE/WebSocket stream route).
+- Deliverables (once unblocked):
+  - Stream client integration (SSE/WebSocket per backend contract).
+  - Merge streamed events into the same progress UI used by non-stream fallback.
+- Verification requirements (outcome-focused):
+  - Integration test: during a run, sub-queries appear near real time from stream events.
+  - Integration test: streamed progress reaches completion and final answer is displayed.
+  - Resilience test: stream interruption/unavailability falls back to non-stream result handling without UI failure.
+
+- [ ] P2 - Simple/sleek responsive polish for demo presentation
+- Spec alignment:
+  - UX clause in `specs/demo-ui-typescript.md` (simple and sleek TypeScript UI).
 - Deliverables:
-  - Disable only relevant controls while associated request is in flight.
-  - Allow retry for failed load/run without page reload.
-- Verification requirements (outcomes, not implementation):
-  - Interaction test: while load is in flight, load control is disabled and later re-enabled.
-  - Interaction test: while run is in flight, run control is disabled and later re-enabled.
-  - Interaction test: repeated rapid submit/click attempts do not create duplicate concurrent calls.
-  - Interaction test: failure can be retried successfully in the same session.
+  - Improve visual hierarchy for statuses, progress, and final answer readability.
+  - Ensure controls and outputs remain usable at narrow mobile widths.
+- Verification requirements (outcome-focused):
+  - Render test: core controls/status/final answer remain visible and usable at narrow viewport widths.
+  - Render/interaction test: loading/success/error/completed states are visually distinguishable.
+  - Manual QA check: demo flow remains readable and coherent on desktop and mobile.
 
-- [ ] P1 - Implement streaming heartbeat integration once backend stream contract exists
-- Why this priority:
-  - Required by `specs/demo-ui-typescript.md` acceptance criteria for near real-time updates.
-  - Currently blocked by missing backend stream endpoint/protocol contract.
-- Deliverables:
-  - Add stream client integration (protocol per backend contract: SSE/WebSocket).
-  - Merge streamed events into the progress UI and preserve non-stream fallback path.
-- Verification requirements (outcomes, not implementation):
-  - Integration test: when a run starts, streamed sub-queries appear in near real time.
-  - Integration test: streamed progress reaches completion and final answer is rendered.
-  - Reliability test: user-visible event ordering remains stable during typical runs.
-  - Resilience test: when stream is unavailable/interrupted, UI falls back to non-stream run result without crashing.
-
-- [ ] P2 - Apply responsive UI polish for "simple and sleek" demo UX
-- Why this priority:
-  - Lower risk than core behavior; should follow functional completion.
-- Deliverables:
-  - Improve visual hierarchy and state readability (success/error/loading/running/completed).
-  - Ensure usability on desktop and narrow mobile widths.
-- Verification requirements (outcomes, not implementation):
-  - Render test: at narrow viewport widths, load/run controls remain usable and readable.
-  - Render/interaction test: state changes are visually distinguishable and accessible to users.
-  - Manual QA: confirm simple/sleek presentation with clear progress + final answer readability.
-
-## Confirmed Dependencies / Blockers
-- Streaming UI work depends on backend exposing a documented streaming endpoint/contract. Current backend routes include `POST /api/agents/run` and do not expose `/stream`/SSE/WebSocket endpoint yet.
+## Out of Scope For This Frontend Plan
+- Backend pipeline implementation details (decomposition, retrieval, validation, synthesis internals).
+- Backend streaming service implementation itself (frontend integration only once available).
+- MCP exposure work.
 
 ## Frontend Quality Gates
-- [ ] For each new UI behavior, add at least one render or interaction test in the same change.
-- [ ] Keep frontend tests deterministic with explicit mocks (no hidden network dependency).
-- [ ] Before frontend implementation commits, pass:
+- [ ] For each new UI behavior, add at least one render/interaction test in the same change.
+- [ ] Keep tests deterministic with explicit mocks/stubs (no hidden network dependencies).
+- [ ] Before frontend completion/commit, pass:
   - `docker compose exec frontend npm run test`
   - `docker compose exec frontend npm run typecheck`
   - `docker compose exec frontend npm run build`
