@@ -149,6 +149,50 @@ def test_agent_run_with_disabled_tracing_returns_response_without_trace_creation
 
 
 @pytest.mark.smoke
+def test_agent_run_failure_still_records_error_trace_when_enabled(client, monkeypatch):
+    tracing_handle = _EnabledTracingHandle()
+    client.app.state.langfuse = tracing_handle
+
+    class _FailingGraphAgent:
+        def run(self, *_args, **_kwargs):
+            raise RuntimeError("simulated runtime failure")
+
+    monkeypatch.setattr(
+        "services.agent_service.AgentFactory.create_langgraph_agent",
+        lambda _self: _FailingGraphAgent(),
+    )
+
+    with pytest.raises(RuntimeError, match="simulated runtime failure"):
+        client.post(
+            "/api/agents/run",
+            json={
+                "query": "trace failing run",
+                "thread_id": "trace-failure-thread",
+                "user_id": "trace-failure-user",
+            },
+        )
+
+    assert len(tracing_handle.span_records) == 1
+    span_record = tracing_handle.span_records[0]
+    assert span_record["name"] == "agent.run"
+    assert span_record["kwargs"]["input"] == {"query": "trace failing run"}
+    assert span_record["span"].updates == [{
+        "input": {"query": "trace failing run"},
+        "output": {"error": "simulated runtime failure"},
+        "metadata": {
+            "agent_name": "agent-search-default",
+            "status": "error",
+            "error_type": "RuntimeError",
+            "persistence_context": {
+                "thread_id": "trace-failure-thread",
+                "checkpoint_id": None,
+                "user_id": "trace-failure-user",
+            },
+        },
+    }]
+
+
+@pytest.mark.smoke
 def test_consecutive_agent_runs_create_distinct_spans_when_enabled(client):
     tracing_handle = _EnabledTracingHandle()
     client.app.state.langfuse = tracing_handle

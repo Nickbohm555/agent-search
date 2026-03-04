@@ -208,3 +208,22 @@ Backend must expose this list (e.g. `GET /api/internal-data/wiki-sources` or equ
     - `docker compose exec backend uv run pytest` -> `56 passed`
     - `docker compose exec frontend npm run test` -> `31 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
+
+- [x] P0: Trace failed `/api/agents/run` executions so errors are not silently untraced.
+  - Implementation scope:
+    - Ensure Langfuse span lifecycle wraps runtime execution, not just successful post-processing.
+    - Record deterministic error trace payload fields (`query`, `agent_name`, `error_type`, `persistence_context`) before re-raising.
+    - Preserve success-path trace payload contract and runtime response shape.
+  - Verification requirements (acceptance outcomes):
+    - Backend smoke test: forced runtime failure still creates one `agent.run` span with error payload metadata.
+    - Existing tracing smoke tests for success/disabled/stream/MCP remain green.
+  - Completed in this loop:
+    - Updated `src/backend/services/agent_service.py::run_runtime_agent` so tracing starts before `graph_agent.run(...)`; on exceptions it writes error trace metadata and re-raises.
+    - Preserved the existing success trace update payload to avoid downstream contract regressions.
+    - Added smoke coverage in `src/backend/tests/api/test_agent_run_tracing.py::test_agent_run_failure_still_records_error_trace_when_enabled`.
+  - Verification run results:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest tests/api/test_agent_run_tracing.py -q` -> `7 passed`
+    - `docker compose exec backend uv run pytest` -> `57 passed`
+    - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass

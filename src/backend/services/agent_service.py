@@ -187,32 +187,49 @@ def run_runtime_agent(
     Called by `routers/agent.py::runtime_agent_run` to orchestrate one request and
     return API-contract response fields. It forwards request config
     (`thread_id`/`user_id`/`checkpoint_id`) to the runtime agent and emits a
-    trace span when tracing is enabled.
+    trace span when tracing is enabled, including explicit error metadata if
+    runtime execution raises.
     """
     factory = AgentFactory()
     agent = build_default_agent()
     graph_agent = factory.create_langgraph_agent()
-    graph_result = graph_agent.run(payload, db)
-    sub_queries = graph_result["sub_queries"]
-    tool_assignments = graph_result["tool_assignments"]
-    retrieval_results = graph_result["retrieval_results"]
-    validation_results = graph_result["validation_results"]
-    output = graph_result["output"]
-    graph_state = graph_result["graph_state"]
-    web_tool_runs: list[WebToolRun] = [
-        WebToolRun(
-            sub_query=result.sub_query,
-            search_results=result.web_search_results,
-            opened_urls=result.opened_urls,
-            opened_pages=result.opened_pages,
-        )
-        for result in retrieval_results
-        if result.tool == "web"
-    ]
-    persistence_context = _extract_persistence_context(payload, graph_result)
-
-    # this will be using langfuse tracing....
     with _start_agent_span(tracing_handle, payload.query) as span:
+        try:
+            graph_result = graph_agent.run(payload, db)
+            sub_queries = graph_result["sub_queries"]
+            tool_assignments = graph_result["tool_assignments"]
+            retrieval_results = graph_result["retrieval_results"]
+            validation_results = graph_result["validation_results"]
+            output = graph_result["output"]
+            graph_state = graph_result["graph_state"]
+            web_tool_runs: list[WebToolRun] = [
+                WebToolRun(
+                    sub_query=result.sub_query,
+                    search_results=result.web_search_results,
+                    opened_urls=result.opened_urls,
+                    opened_pages=result.opened_pages,
+                )
+                for result in retrieval_results
+                if result.tool == "web"
+            ]
+            persistence_context = _extract_persistence_context(payload, graph_result)
+        except Exception as exc:
+            span.update(
+                input={"query": payload.query},
+                output={"error": str(exc)},
+                metadata={
+                    "agent_name": agent.name,
+                    "status": "error",
+                    "error_type": type(exc).__name__,
+                    "persistence_context": {
+                        "thread_id": payload.thread_id,
+                        "checkpoint_id": payload.checkpoint_id,
+                        "user_id": payload.user_id or "anonymous",
+                    },
+                },
+            )
+            raise
+
         span.update(
             input={"query": payload.query},
             output={"response": output},
@@ -228,18 +245,19 @@ def run_runtime_agent(
                 "persistence_context": persistence_context,
             },
         )
-    return RuntimeAgentRunResponse(
-        agent_name=agent.name,
-        output=output,
-        thread_id=graph_result["thread_id"],
-        checkpoint_id=graph_result["checkpoint_id"],
-        sub_queries=sub_queries,
-        tool_assignments=tool_assignments,
-        retrieval_results=retrieval_results,
-        validation_results=validation_results,
-        web_tool_runs=web_tool_runs,
-        graph_state=graph_state,
-    )
+
+        return RuntimeAgentRunResponse(
+            agent_name=agent.name,
+            output=output,
+            thread_id=graph_result["thread_id"],
+            checkpoint_id=graph_result["checkpoint_id"],
+            sub_queries=sub_queries,
+            tool_assignments=tool_assignments,
+            retrieval_results=retrieval_results,
+            validation_results=validation_results,
+            web_tool_runs=web_tool_runs,
+            graph_state=graph_state,
+        )
 
 
 def _to_sse_payload(event: RuntimeAgentStreamEvent) -> str:
