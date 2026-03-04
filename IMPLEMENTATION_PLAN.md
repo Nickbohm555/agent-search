@@ -16,15 +16,15 @@
   - Startup succeeds when provider credentials/config are absent and run path deterministically falls back without crashing.
   - Added deterministic smoke tests for enabled (`stub`) and misconfigured (`langchain_openai` without key) modes; no external model calls in CI.
 
-- [ ] P0 - Replace projection scaffold with executable LangGraph orchestration using deep-agent pattern (`specs/orchestration-langgraph.md`).
+- [x] P0 - Replace projection scaffold with executable LangGraph orchestration using deep-agent pattern (`specs/orchestration-langgraph.md`).
   - Tasks:
-  - Implement executable graph nodes/edges for decomposition -> tool selection -> retrieval -> validation loop -> synthesis.
-  - Represent per-subquery execution via deep-agent subgraph/agent node(s).
-  - Preserve graph state/timeline projection needed by downstream streaming and clients.
+  - Implemented executable LangGraph orchestration invocation for `/api/agents/run` (decomposition -> tool selection -> subquery execution -> synthesis).
+  - Represented per-subquery execution via deep-agent LangGraph subgraph (`SubQueryExecutionAgent`) for retrieval -> validation.
+  - Preserved and expanded graph state/timeline projection for downstream streaming/client consumers (includes execution mode and deep-agent details).
   - Verification (outcomes):
-  - End-to-end `/api/agents/run` completes full graph path from decomposition through synthesis.
-  - Each logical step executes in intended order, with validation loop behavior per subquery until sufficient or stop condition.
-  - Deep-agent usage is observable in graph metadata/timeline payload.
+  - `docker compose exec backend uv run pytest` passes; orchestration smoke verifies graph metadata (`execution=langgraph_invoke`), ordered timeline, and per-subquery retrieval/validation counts.
+  - Validation loop behavior per subquery remains intact (including deterministic insufficient internal case at 2 attempts).
+  - Deep-agent usage is observable in graph metadata (`deep_agents.kind=langgraph-subgraph`) and timeline details (`deep_agent=subquery_execution_agent`).
   - Multi-subquery runs preserve subquery identity/order across assignments, retrieval outputs, and validation outputs.
 
 - [ ] P0 - Add streaming backend heartbeat endpoint sourced from orchestration events (`specs/streaming-agent-heartbeat.md`).
@@ -93,6 +93,6 @@
 
 - [x] Confirmed no backend streaming route exists today (no SSE/WebSocket router under `src/backend/routers/`).
 - [x] Confirmed no MCP/FastMCP wrapper exists today (`rg -n "mcp|fastmcp" src/backend`).
-- [x] Confirmed runtime dependencies do not yet include `langchain`/`langgraph` in `src/backend/pyproject.toml`.
-- [x] Confirmed orchestration is currently a scaffold projection, not executable LangGraph runtime graph (`src/backend/agents/langgraph_agent.py`).
+- [x] Confirmed runtime dependencies include `langchain`/`langgraph`/`langchain-openai` in `src/backend/pyproject.toml`.
+- [x] Confirmed orchestration now executes via compiled LangGraph runtime graphs (top-level orchestration + subquery deep-agent subgraph) in `src/backend/agents/langgraph_agent.py`.
 - [x] Confirmed internal retrieval uses `embedding_json` + Python scoring instead of pgvector DB similarity (`src/backend/models.py`, `src/backend/services/internal_data_service.py`).

@@ -19,6 +19,7 @@ def test_agent_run_exposes_compiled_langgraph_projection(client):
     assert graph_state["current_step"] == "completed"
     assert graph_state["graph"]["kind"] == "langgraph-runtime"
     assert graph_state["graph"]["compiled"] is True
+    assert graph_state["graph"]["execution"] == "langgraph_invoke"
     assert graph_state["graph"]["nodes"] == [
         "decomposition",
         "tool_selection",
@@ -27,7 +28,11 @@ def test_agent_run_exposes_compiled_langgraph_projection(client):
         "synthesis",
     ]
     assert graph_state["graph"]["deep_agents"] == [
-        {"name": "subquery_execution_agent", "nodes": ["retrieval", "validation"]}
+        {
+            "name": "subquery_execution_agent",
+            "nodes": ["retrieval", "validation"],
+            "kind": "langgraph-subgraph",
+        }
     ]
 
 
@@ -62,6 +67,11 @@ def test_agent_run_langgraph_enforces_pipeline_order_and_per_subquery_validation
     assert retrieval_completed[-1] < synthesis_completed[0]
     assert len(retrieval_completed) == len(payload["sub_queries"])
     assert len(validation_completed) == len(payload["sub_queries"])
+    assert all(
+        item["details"].get("deep_agent") == "subquery_execution_agent"
+        for item in timeline
+        if item.get("step") in {"subquery_execution.retrieval", "subquery_execution.validation"}
+    )
 
     internal_validations = [
         item for item in payload["validation_results"] if item["tool"] == "internal"
