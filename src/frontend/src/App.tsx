@@ -1,12 +1,112 @@
-import { API_BASE_URL } from "./utils/config";
+import { FormEvent, useMemo, useState } from "react";
+import { loadInternalData, runAgent } from "./utils/api";
 
 export default function App() {
+  const [loadState, setLoadState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [loadMessage, setLoadMessage] = useState("Not started.");
+  const [query, setQuery] = useState("");
+  const [runState, setRunState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [runMessage, setRunMessage] = useState("Waiting for query.");
+  const [answer, setAnswer] = useState("");
+
+  const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
+
+  async function handleLoad(): Promise<void> {
+    setLoadState("loading");
+    setLoadMessage("Loading and vectorizing internal docs...");
+
+    const result = await loadInternalData({
+      source_type: "inline",
+      documents: [
+        {
+          title: "Product Notes",
+          content: "Agent Search loads internal data and can retrieve chunked context.",
+          source_ref: "demo://product-notes",
+        },
+        {
+          title: "Roadmap",
+          content: "The orchestration flow decomposes user queries and synthesizes final answers.",
+          source_ref: "demo://roadmap",
+        },
+      ],
+    });
+
+    if (result.ok) {
+      setLoadState("success");
+      setLoadMessage(
+        `Loaded ${result.data.documents_loaded} documents and created ${result.data.chunks_created} chunks.`,
+      );
+      return;
+    }
+
+    setLoadState("error");
+    setLoadMessage(result.error.message);
+  }
+
+  async function handleRun(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (query.trim().length === 0 || runState === "loading") {
+      return;
+    }
+
+    setRunState("loading");
+    setRunMessage("Running agent...");
+    setAnswer("");
+
+    const result = await runAgent({ query: query.trim() });
+    if (result.ok) {
+      setRunState("success");
+      setRunMessage(`Run complete. ${result.data.sub_queries.length} sub-queries processed.`);
+      setAnswer(result.data.output);
+      return;
+    }
+
+    setRunState("error");
+    setRunMessage(result.error.message);
+  }
+
   return (
     <main className="container">
-      <h1>Agent Search Scaffold</h1>
-      <p>Frontend and backend are scaffolded only.</p>
-      <p>API base: <code>{API_BASE_URL}</code></p>
-      <p>Next step: implement specs and tests per plan mode.</p>
+      <h1>Agent Search Demo</h1>
+      <p className="lead">Load internal docs, run a query, and review the synthesized answer.</p>
+
+      <section className="card">
+        <h2>Load / Vectorize</h2>
+        <p>Ingest sample internal docs for retrieval.</p>
+        <button type="button" onClick={handleLoad} disabled={loadState === "loading"}>
+          {loadState === "loading" ? "Loading..." : "Load Data"}
+        </button>
+        <div className={`status status-${loadState}`} aria-live="polite" data-testid="load-status-region">
+          {loadMessage}
+        </div>
+      </section>
+
+      <section className="card">
+        <h2>Run Query</h2>
+        <form onSubmit={handleRun}>
+          <label htmlFor="query-input">Query</label>
+          <textarea
+            id="query-input"
+            name="query"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            rows={3}
+            placeholder="Ask a complex question..."
+          />
+          <button type="submit" disabled={isRunDisabled}>
+            {runState === "loading" ? "Running..." : "Run Agent"}
+          </button>
+        </form>
+
+        <div className={`status status-${runState}`} aria-live="polite" data-testid="progress-region">
+          {runMessage}
+        </div>
+
+        <div className="answer" aria-live="polite" data-testid="final-answer-region">
+          <h3>Final Answer</h3>
+          {answer ? <p>{answer}</p> : <p>No answer yet.</p>}
+        </div>
+      </section>
     </main>
   );
 }
