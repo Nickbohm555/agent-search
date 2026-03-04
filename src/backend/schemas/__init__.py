@@ -18,6 +18,12 @@ from .internal_data import (
     InternalDocumentInput,
     InternalRetrievedChunk,
 )
+from .mcp import (
+    McpToolDefinition,
+    McpToolInvokeRequest,
+    McpToolInvokeResponse,
+    McpToolsListResponse,
+)
 from .search import SearchSkeletonResponse
 from .web import (
     WebOpenUrlRequest,
@@ -52,4 +58,8 @@ __all__ = [
     "WebOpenUrlRequest",
     "WebOpenUrlResponse",
     "WebToolRun",
+    "McpToolDefinition",
+    "McpToolsListResponse",
+    "McpToolInvokeRequest",
+    "McpToolInvokeResponse",
 ]

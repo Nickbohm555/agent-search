@@ -1,0 +1,13 @@
+flowchart TD
+    A["MCP client trigger\n(file: external client)\nWhy: request final answer via MCP wrapper"] --> B["GET /api/mcp/tools\nsrc/backend/routers/mcp.py:get_mcp_tools"]
+    B --> C["src/backend/services/mcp_service.py:list_mcp_tools\nData: tool metadata + input_schema\nWhy: advertise stable callable contract"]
+    A --> D["POST /api/mcp/invoke\nsrc/backend/routers/mcp.py:invoke_mcp"]
+    D --> E["src/backend/services/mcp_service.py:invoke_mcp_tool\nData: tool_name + RuntimeAgentRunRequest\nWhy: route MCP call to runtime boundary"]
+    E --> F["src/backend/services/agent_service.py:run_runtime_agent\nData: query/thread_id/user_id/checkpoint_id\nWhy: execute existing orchestration path once"]
+    F --> G["RuntimeAgentRunResponse\nData: output + sub_queries + tool_assignments + thread_id"]
+    G --> H["McpToolInvokeResponse\nData: content=run.output + full run payload\nWhy: MCP client receives concise answer and traceable details"]
+
+    I["Decision: keep MCP wrapper in FastAPI routes first\nTradeoff: HTTP wrapper is easy to test now, full MCP transport server can be layered later"]:::note
+    D -.-> I
+
+    classDef note fill:#0f172a,stroke:#38bdf8,color:#e2e8f0,stroke-dasharray: 5 5;

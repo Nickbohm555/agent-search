@@ -1,3 +1,11 @@
+- [x] P0 - Expose the runtime pipeline through an MCP-style wrapper contract so clients can discover and invoke the `agent.run` tool.
+  Verification requirements (from `specs/mcp-exposure.md`): add backend smoke test that lists MCP tools and verifies `agent.run` metadata is present with stable input schema; add backend smoke test that invokes MCP `agent.run` with a deterministic query and verifies final answer content plus delegated runtime payload (`thread_id`, `sub_queries`, `tool_assignments`).
+  Completed in this run:
+  - Added MCP schemas in `src/backend/schemas/mcp.py` for tool discovery and invocation contracts (`McpToolsListResponse`, `McpToolInvokeRequest`, `McpToolInvokeResponse`).
+  - Added MCP service layer in `src/backend/services/mcp_service.py` with `list_mcp_tools` and `invoke_mcp_tool`, delegating invocation to existing `run_runtime_agent`.
+  - Added MCP router `src/backend/routers/mcp.py` and wired it in `src/backend/main.py` (`GET /api/mcp/tools`, `POST /api/mcp/invoke`).
+  - Added backend smoke coverage in `src/backend/tests/api/test_mcp_exposure.py` for MCP tool discovery and end-to-end invocation parity.
+
 - [x] P0 - Add backend streaming run endpoint `POST /api/agents/run/stream` that returns SSE (`text/event-stream`) with ordered scaffold events for a single run.
   Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/streaming-agent-heartbeat.md`): add backend smoke test that posts a deterministic query and verifies response media type is SSE; verifies at least 3 streamed events arrive before close (not only one final payload); verifies strictly increasing `sequence`; verifies event set includes `heartbeat`, `sub_queries`, and `completed`; verifies `completed.data` contains non-empty `agent_name`, non-empty `output`, and non-empty `thread_id`.
 
