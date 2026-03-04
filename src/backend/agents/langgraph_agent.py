@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from hashlib import sha256
+import json
 from dataclasses import dataclass
 from threading import Lock
 from uuid import uuid4
@@ -67,7 +69,7 @@ class DeepAgentPersistenceStore:
 
     def __init__(self) -> None:
         self._thread_checkpoints: dict[str, list[dict[str, Any]]] = {}
-        self._store: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        self._store: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
         self._lock = Lock()
 
     def _memory_namespace(self, context: RuntimeContext) -> tuple[str, str]:
@@ -110,41 +112,100 @@ class DeepAgentPersistenceStore:
         """Return user-scoped cross-thread namespace metadata before run execution."""
         namespace = self._memory_namespace(context)
         with self._lock:
-            namespace_entries = list(self._store.get(namespace, []))
+            namespace_entries = list(self._store.get(namespace, {}).values())
         return {
             "namespace": list(namespace),
             "entry_count": len(namespace_entries),
-            "thread_ids": sorted({entry["thread_id"] for entry in namespace_entries}),
+            "thread_ids": sorted({entry["last_writer_thread_id"] for entry in namespace_entries}),
         }
 
-    def persist_run(
+    def read_memories(
+        self,
+        *,
+        context: RuntimeContext,
+        query: str,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Read deterministic memory values for a user namespace before synthesis.
+
+        Called by `LangGraphAgentScaffold.run` during explicit memory-routing read.
+        Inputs:
+        - `context`: resolved runtime context containing `user_id`.
+        - `query`: current run query; included for future semantic filtering.
+        - `limit`: max memories to return.
+        Output:
+        - newest-first deterministic memory entries for metadata/timeline.
+        """
+        del query  # semantic query routing is optional in scaffold mode.
+        namespace = self._memory_namespace(context)
+        with self._lock:
+            entries = list(self._store.get(namespace, {}).values())
+        entries.sort(key=lambda item: item["memory_id"], reverse=True)
+        return entries[:limit]
+
+    def _build_memory_payload(self, *, query: str, output: str) -> dict[str, str]:
+        """Build a deterministic memory value from run input/output."""
+        return {
+            "kind": "final_answer_summary",
+            "query": query,
+            "summary": output,
+        }
+
+    def write_memory(
         self,
         *,
         context: RuntimeContext,
         thread_id: str,
         query: str,
         output: str,
+    ) -> dict[str, Any]:
+        """Write a deterministic memory value after synthesis for a user namespace.
+
+        Called by `LangGraphAgentScaffold.run` after synthesis completes to model
+        explicit memory-routing write behavior.
+        Inputs:
+        - `context`: resolved runtime context containing `user_id`.
+        - `thread_id`: thread that produced the memory.
+        - `query`: query persisted in deterministic memory payload.
+        - `output`: synthesized summary persisted in deterministic payload.
+        Output:
+        - stored memory record (`memory_id` + `value`) for metadata/timeline.
+        Side effects:
+        - upserts namespace memory entry keyed by deterministic `memory_id`.
+        """
+        namespace = self._memory_namespace(context)
+        memory_value = self._build_memory_payload(query=query, output=output)
+        memory_key_source = json.dumps(memory_value, sort_keys=True)
+        memory_id = sha256(memory_key_source.encode("utf-8")).hexdigest()[:16]
+
+        with self._lock:
+            namespace_entries = self._store.setdefault(namespace, {})
+            namespace_entries[memory_id] = {
+                "memory_id": memory_id,
+                "value": memory_value,
+                "last_writer_thread_id": thread_id,
+            }
+            stored_entry = dict(namespace_entries[memory_id])
+        return stored_entry
+
+    def persist_thread_checkpoint(
+        self,
+        *,
+        thread_id: str,
+        query: str,
+        output: str,
         checkpoint_id: str | None = None,
     ) -> str:
-        """Persist one run in thread checkpoints and user-scoped cross-thread store."""
+        """Persist one run checkpoint in thread history for replay/time-travel."""
         checkpoint_value = checkpoint_id or str(uuid4())
         checkpoint_data = {
             "checkpoint_id": checkpoint_value,
             "query": query,
             "output": output,
         }
-        namespace = self._memory_namespace(context)
 
         with self._lock:
             self._thread_checkpoints.setdefault(thread_id, []).append(checkpoint_data)
-            self._store.setdefault(namespace, []).append(
-                {
-                    "thread_id": thread_id,
-                    "checkpoint_id": checkpoint_value,
-                    "query": query,
-                    "output": output,
-                }
-            )
         return checkpoint_value
 
 
@@ -214,8 +275,17 @@ class LangGraphAgentScaffold:
         )
         persisted_store_state = self._persistence.get_store_state(context)
         execution_id = str(uuid4())
+        memory_reads = self._persistence.read_memories(context=context, query=payload.query)
 
         timeline: list[RuntimeAgentGraphStep] = []
+        timeline.append(RuntimeAgentGraphStep(step="memory.read", status="started"))
+        timeline.append(
+            RuntimeAgentGraphStep(
+                step="memory.read",
+                status="completed",
+                details={"namespace": list((context.user_id, "memories")), "memory_count": len(memory_reads)},
+            )
+        )
         timeline.append(RuntimeAgentGraphStep(step="decomposition", status="started"))
         sub_queries = decompose_query(payload.query)
         timeline.append(
@@ -286,8 +356,24 @@ class LangGraphAgentScaffold:
                 details={"output_length": len(output)},
             )
         )
-        resolved_checkpoint_id = self._persistence.persist_run(
+        timeline.append(RuntimeAgentGraphStep(step="memory.write", status="started"))
+        memory_write = self._persistence.write_memory(
             context=context,
+            thread_id=thread_id,
+            query=payload.query,
+            output=output,
+        )
+        timeline.append(
+            RuntimeAgentGraphStep(
+                step="memory.write",
+                status="completed",
+                details={
+                    "namespace": list((context.user_id, "memories")),
+                    "memory_id": memory_write["memory_id"],
+                },
+            )
+        )
+        resolved_checkpoint_id = self._persistence.persist_thread_checkpoint(
             thread_id=thread_id,
             query=payload.query,
             output=output,
@@ -335,6 +421,8 @@ class LangGraphAgentScaffold:
                                 "entry_count"
                             ],
                             "store_thread_ids_before_run": persisted_store_state["thread_ids"],
+                            "memory_reads_before_run": memory_reads,
+                            "memory_write_after_synthesis": memory_write,
                         },
                     },
                     "deep_agents": [

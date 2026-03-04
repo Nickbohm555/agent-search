@@ -19,8 +19,22 @@
     - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
     - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
-- [ ] P0 - Implement explicit memory routing using namespace `(user_id, "memories")` with read-before-execution and write-after-synthesis behavior.
+- [x] P0 - Implement explicit memory routing using namespace `(user_id, "memories")` with read-before-execution and write-after-synthesis behavior.
   Verification requirements (from deepAgent Memory acceptance criteria): backend smoke test verifies memory written for `user_id=A` is retrieved on later `user_id=A` run; `user_id=B` cannot read A namespace memories; timeline/graph metadata includes a memory-read event before synthesis and memory-write event after synthesis; stored memory payload shape is deterministic for identical inputs.
+  Completed in this loop:
+  - Split scaffold persistence wiring in `src/backend/agents/langgraph_agent.py` into explicit checkpoint history (`persist_thread_checkpoint`) and cross-thread memory routing (`read_memories` + `write_memory`) using namespace `(user_id, "memories")`.
+  - Added deterministic memory payload generation (`kind`, `query`, `summary`) with stable `memory_id` hashing so identical inputs produce identical stored memory payload identifiers.
+  - Added timeline instrumentation for `memory.read` before decomposition/synthesis and `memory.write` after synthesis; exposed read/write records in `graph_state.graph.execution.persistence` metadata.
+  - Added backend smoke coverage in `src/backend/tests/api/test_deepagent_persistence.py` for:
+    - user-scoped memory retrieval on later runs for same `user_id`;
+    - cross-user isolation (`user_id=B` cannot read `user_id=A` memories);
+    - ordering of `memory.read` before synthesis and `memory.write` after synthesis;
+    - deterministic stored memory payload/id for identical inputs.
+  - Verified required checks:
+    - Health: `curl http://localhost:8000/api/health` -> `200 {"status":"ok"}`.
+    - Backend tests: `docker compose exec backend uv run pytest` -> `34 passed`.
+    - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
+    - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
 - [ ] P1 - Add at least one specialized DeepAgent subagent with required fields (`name`, `description`, `system_prompt`, `tools`) and delegate relevant subquery work through the DeepAgent `task` path.
   Verification requirements (from deepAgent Subagents acceptance criteria): backend smoke test verifies subagent definitions include required keys and callable tools; runtime timeline/metadata shows at least one delegation to the named subagent; delegated subquery returns a single summarized result consumed by existing retrieval/validation/synthesis output contract.
