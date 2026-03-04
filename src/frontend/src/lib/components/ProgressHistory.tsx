@@ -5,6 +5,9 @@ interface ProgressHistoryProps {
 }
 
 export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
+  const timeline = runDetails?.graph_state?.timeline ?? [];
+  const currentTimelineIndex = timeline.length > 0 ? timeline.length - 1 : -1;
+
   return (
     <div className="progress-history" data-testid="progress-history-region">
       <h3>Progress History</h3>
@@ -12,10 +15,14 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
         <>
           <div className="readout-group">
             <h4 className="readout-group-title">Timeline</h4>
-            {runDetails.graph_state?.timeline?.length ? (
+            {timeline.length ? (
               <ol data-testid="timeline-list">
-                {runDetails.graph_state.timeline.map((entry, index) => (
-                  <li key={`${entry.step}-${index}`}>
+                {timeline.map((entry, index) => (
+                  <li
+                    key={`${entry.step}-${index}`}
+                    className={`timeline-item ${index === currentTimelineIndex ? "timeline-item-current" : ""}`}
+                    data-current-step={index === currentTimelineIndex ? "true" : "false"}
+                  >
                     <strong>{entry.step}</strong>: {entry.status}
                   </li>
                 ))}

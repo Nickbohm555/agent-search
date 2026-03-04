@@ -221,6 +221,23 @@
     - `docker compose exec frontend npm run test` -> `31 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
+- [x] P1 - Highlight active timeline step in progress readout for clearer streaming heartbeat feedback (`specs/motion-and-feedback.md`, `specs/content-and-readouts.md`).
+  - Tasks:
+  - Updated progress timeline rendering to mark the latest graph timeline entry as the active/current step via deterministic attributes and CSS classes (`timeline-item-current`, `data-current-step`).
+  - Added subtle neon emphasis for the active timeline step in the frontend stylesheet while keeping existing reduced-motion behavior intact.
+  - Added frontend interaction coverage to verify the latest timeline item is flagged active and earlier items are not.
+  - Verification (outcomes):
+  - During successful runs, the newest timeline entry is now explicitly distinguishable in the progress history, improving scanability of in-progress vs prior steps.
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -v --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `37 passed`
+    - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 ## Completed Baseline (Scoped)
 
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.

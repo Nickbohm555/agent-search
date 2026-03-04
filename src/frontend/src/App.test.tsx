@@ -190,6 +190,11 @@ describe("App", () => {
       expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
       expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
     });
+    const timelineItems = screen.getAllByRole("listitem").filter((item) =>
+      item.classList.contains("timeline-item"),
+    );
+    expect(timelineItems[timelineItems.length - 1]).toHaveAttribute("data-current-step", "true");
+    expect(timelineItems[0]).toHaveAttribute("data-current-step", "false");
     expect(screen.getByTestId("query-readout")).toHaveTextContent("What is the project status?");
   });
 
