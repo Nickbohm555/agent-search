@@ -19,6 +19,7 @@ export function ProgressHistory({
   const subQueries = streamedSubQueries.length > 0 ? streamedSubQueries : runDetails?.sub_queries ?? [];
   const toolAssignments =
     streamedToolAssignments.length > 0 ? streamedToolAssignments : runDetails?.tool_assignments ?? [];
+  const retrievalResults = runDetails?.retrieval_results ?? [];
   const validationResults = runDetails?.validation_results ?? [];
 
   return (
@@ -57,6 +58,23 @@ export function ProgressHistory({
               </ol>
             ) : (
               <p data-testid="subquery-empty">No sub-queries were returned.</p>
+            )}
+          </div>
+
+          <div className="readout-group">
+            <h4 className="readout-group-title">Retrieval</h4>
+            {retrievalResults.length ? (
+              <ol data-testid="retrieval-list">
+                {retrievalResults.map((retrieval) => (
+                  <li key={`${retrieval.sub_query}-${retrieval.tool}`}>
+                    {retrieval.tool === "internal"
+                      ? `${retrieval.sub_query}: internal results ${retrieval.internal_results.length}`
+                      : `${retrieval.sub_query}: opened ${retrieval.opened_urls.length} web pages`}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p data-testid="retrieval-empty">No retrieval results were returned.</p>
             )}
           </div>
 

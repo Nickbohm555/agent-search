@@ -1,0 +1,16 @@
+flowchart TD
+  A[Client POST /api/agents/run/stream] -->|trigger: src/backend/routers/agent.py::runtime_agent_run_stream\npayload: RuntimeAgentRunRequest\nwhy: start SSE heartbeat pipeline| B[src/backend/services/agent_service.py::stream_runtime_agent]
+
+  B -->|trigger: stream_runtime_agent -> runtime.ainvoke\ndata: RuntimeAgentRunResponse (sub_queries/tool_assignments/retrieval_results/validation_results)\nwhy: resolve deterministic final pipeline output| C[Compiled runtime adapter]
+
+  C -->|trigger: stream_runtime_agent fallback emitter\ndata: heartbeat/progress/sub_queries/tool_assignments/retrieval_result/validation_result/completed\nwhy: expose per-subquery execution state before completion| D[SSE event stream]
+
+  D -->|trigger: src/frontend/src/utils/stream.ts::streamAgentRun\ndata: ordered RuntimeAgentStreamEvent[] + completed payload\nwhy: validate schema/order and hand off UI-safe stream data| E[Frontend stream client]
+
+  E -->|trigger: src/frontend/src/App.tsx::deriveRunDetailsFromStream\ndata: retrieval_results + validation_results + web_tool_runs\nwhy: preserve execution readouts from streamed events| F[RuntimeAgentRunResponse-like UI state]
+
+  F -->|trigger: src/frontend/src/lib/components/ProgressHistory.tsx\ndata: retrieval counts + validation statuses\nwhy: show what system executed, not only final answer| G[Progress readout panel]
+
+  H{{Tradeoff: pair by index}} -.-> B
+  Hnote["Decision: emit retrieval/validation as paired index events from sync response arrays.\nPros: deterministic and parity-friendly tests.\nCons: assumes retrieval/validation arrays stay aligned; guarded by parity smoke tests."]
+  H --> Hnote

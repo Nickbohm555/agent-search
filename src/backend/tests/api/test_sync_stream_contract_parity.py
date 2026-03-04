@@ -68,3 +68,26 @@ def test_runtime_agent_stream_completed_payload_matches_sync_final_values(client
     assert completed_data["tool_assignments"] == sync_data["tool_assignments"]
     assert completed_data["thread_id"] == sync_data["thread_id"]
     assert completed_data["thread_id"] == thread_id
+
+
+@pytest.mark.smoke
+def test_runtime_agent_stream_retrieval_and_validation_events_match_sync_payload(client):
+    payload = {
+        "query": "parity retrieval validation event payload",
+        "thread_id": f"thread-parity-{uuid4()}",
+        "user_id": "parity-user",
+    }
+
+    sync_response = client.post("/api/agents/run", json=payload)
+    stream_response = client.post("/api/agents/run/stream", json=payload)
+
+    assert sync_response.status_code == 200
+    assert stream_response.status_code == 200
+
+    sync_data = sync_response.json()
+    stream_events = _extract_stream_events(stream_response.text)
+    retrieval_events = [item["data"] for item in stream_events if item["event"] == "retrieval_result"]
+    validation_events = [item["data"] for item in stream_events if item["event"] == "validation_result"]
+
+    assert retrieval_events == sync_data["retrieval_results"]
+    assert validation_events == sync_data["validation_results"]

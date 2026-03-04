@@ -278,9 +278,9 @@ def stream_runtime_agent(
     """Stream deterministic run progress events as SSE frames.
 
     Called by `routers/agent.py::runtime_agent_run_stream`.
-    Emits a heartbeat immediately, then deterministic progress, sub-query, and
-    tool-assignment data before final completion derived from runtime
-    `astream`/`ainvoke` entrypoints.
+    Emits a heartbeat immediately, then deterministic progress, sub-query,
+    tool-assignment, per-subquery retrieval/validation events, and final
+    completion derived from runtime `astream`/`ainvoke` entrypoints.
     """
     runtime = _get_or_compile_stream_runtime()
     sequence = 1
@@ -345,6 +345,29 @@ def stream_runtime_agent(
             },
         )
     )
+
+    paired_count = min(len(run_response.retrieval_results), len(run_response.validation_results))
+    for index in range(paired_count):
+        retrieval_result = run_response.retrieval_results[index]
+        validation_result = run_response.validation_results[index]
+
+        sequence += 1
+        yield _to_sse_payload(
+            RuntimeAgentStreamEvent(
+                sequence=sequence,
+                event="retrieval_result",
+                data=retrieval_result.model_dump(),
+            )
+        )
+
+        sequence += 1
+        yield _to_sse_payload(
+            RuntimeAgentStreamEvent(
+                sequence=sequence,
+                event="validation_result",
+                data=validation_result.model_dump(),
+            )
+        )
 
     sequence += 1
     completed_data = {

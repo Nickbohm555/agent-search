@@ -68,13 +68,15 @@ def test_runtime_stream_calls_astream_and_ainvoke_with_deterministic_fallback_ev
     assert response.status_code == 200
     events = _extract_stream_events(response.text)
     event_names = [item["event"] for item in events]
-    assert event_names[:5] == [
+    assert event_names[:4] == [
         "heartbeat",
         "progress",
         "sub_queries",
         "tool_assignments",
-        "completed",
     ]
+    assert "retrieval_result" in event_names
+    assert "validation_result" in event_names
+    assert event_names[-1] == "completed"
     assert fake_runtime.astream_calls == 1
     assert fake_runtime.ainvoke_calls == 1
 

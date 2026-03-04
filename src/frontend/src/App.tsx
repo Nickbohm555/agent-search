@@ -6,7 +6,7 @@ import {
   listWikiSources,
   loadInternalData,
 } from "./utils/api";
-import { RuntimeAgentStreamEvent } from "./lib/stream-events";
+import { RuntimeAgentStreamCompletedData, RuntimeAgentStreamEvent } from "./lib/stream-events";
 import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
 import { ProgressHistory } from "./lib/components/ProgressHistory";
 import { QueryForm } from "./lib/components/QueryForm";
@@ -15,6 +15,92 @@ import { RequestState } from "./lib/types";
 import { formatLoadSuccessMessage, formatRunSuccessMessage } from "./lib/utils/messages";
 import { usePrefersReducedMotion } from "./utils/motion";
 import { streamAgentRun } from "./utils/stream";
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSubQueryRetrievalResult(value: unknown): value is RuntimeAgentRunResponse["retrieval_results"][number] {
+  if (!isObject(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.sub_query === "string" &&
+    (value.tool === "internal" || value.tool === "web") &&
+    Array.isArray(value.internal_results) &&
+    Array.isArray(value.web_search_results) &&
+    Array.isArray(value.opened_urls) &&
+    Array.isArray(value.opened_pages)
+  );
+}
+
+function isSubQueryValidationResult(value: unknown): value is RuntimeAgentRunResponse["validation_results"][number] {
+  if (!isObject(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.sub_query === "string" &&
+    (value.tool === "internal" || value.tool === "web") &&
+    typeof value.sufficient === "boolean" &&
+    (value.status === "validated" || value.status === "stopped_insufficient") &&
+    typeof value.attempts === "number" &&
+    Array.isArray(value.follow_up_actions) &&
+    typeof value.stop_reason === "string"
+  );
+}
+
+function deriveRunDetailsFromStream(
+  streamEvents: RuntimeAgentStreamEvent[],
+  completed: RuntimeAgentStreamCompletedData,
+  streamProgressBuffer: RuntimeAgentGraphStep[],
+): RuntimeAgentRunResponse {
+  // Called by `handleRun` after a successful stream so final readouts preserve
+  // retrieval/validation details observed in-flight instead of defaulting to
+  // empty lists when only completed payload fields are available.
+  const retrievalResults: RuntimeAgentRunResponse["retrieval_results"] = [];
+  const validationResults: RuntimeAgentRunResponse["validation_results"] = [];
+
+  for (const event of streamEvents) {
+    if (event.event === "retrieval_result" && isSubQueryRetrievalResult(event.data)) {
+      retrievalResults.push(event.data);
+      continue;
+    }
+
+    if (event.event === "validation_result" && isSubQueryValidationResult(event.data)) {
+      validationResults.push(event.data);
+    }
+  }
+  const webToolRuns = retrievalResults
+    .filter((result) => result.tool === "web")
+    .map((result) => ({
+      sub_query: result.sub_query,
+      search_results: result.web_search_results,
+      opened_urls: result.opened_urls,
+      opened_pages: result.opened_pages,
+    }));
+
+  return {
+    agent_name: completed.agent_name,
+    output: completed.output,
+    thread_id: completed.thread_id,
+    checkpoint_id: completed.checkpoint_id ?? null,
+    sub_queries: completed.sub_queries,
+    tool_assignments: completed.tool_assignments,
+    retrieval_results: retrievalResults,
+    validation_results: validationResults,
+    web_tool_runs: webToolRuns,
+    graph_state: {
+      current_step:
+        streamProgressBuffer.length > 0
+          ? streamProgressBuffer[streamProgressBuffer.length - 1].step
+          : "completed",
+      timeline: [...streamProgressBuffer],
+      graph: {},
+    },
+  };
+}
 
 export default function App() {
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -218,25 +304,9 @@ export default function App() {
         setRunState("success");
         setRunMessage(formatRunSuccessMessage(result.data.completed.sub_queries.length));
         setAnswer(result.data.completed.output);
-        setRunDetails({
-          agent_name: result.data.completed.agent_name,
-          output: result.data.completed.output,
-          thread_id: result.data.completed.thread_id,
-          checkpoint_id: result.data.completed.checkpoint_id ?? null,
-          sub_queries: result.data.completed.sub_queries,
-          tool_assignments: result.data.completed.tool_assignments,
-          retrieval_results: [],
-          validation_results: [],
-          web_tool_runs: [],
-          graph_state: {
-            current_step:
-              streamProgressBuffer.length > 0
-                ? streamProgressBuffer[streamProgressBuffer.length - 1].step
-                : "completed",
-            timeline: [...streamProgressBuffer],
-            graph: {},
-          },
-        });
+        setRunDetails(
+          deriveRunDetailsFromStream(result.data.events, result.data.completed, streamProgressBuffer),
+        );
         return;
       }
 

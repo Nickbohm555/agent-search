@@ -87,6 +87,119 @@ function successStreamResponse(overrides?: Partial<RuntimeAgentStreamResponse>):
   };
 }
 
+function successStreamResponseWithExecutionEvents(): RuntimeAgentStreamResponse {
+  return {
+    events: [
+      { sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } },
+      { sequence: 2, event: "progress", data: { step: "decomposition", status: "running" } },
+      { sequence: 3, event: "sub_queries", data: { sub_queries: ["subquery-a", "subquery-b"], count: 2 } },
+      {
+        sequence: 4,
+        event: "tool_assignments",
+        data: {
+          tool_assignments: [
+            { sub_query: "subquery-a", tool: "internal" },
+            { sub_query: "subquery-b", tool: "web" },
+          ],
+          count: 2,
+        },
+      },
+      {
+        sequence: 5,
+        event: "retrieval_result",
+        data: {
+          sub_query: "subquery-a",
+          tool: "internal",
+          internal_results: [
+            {
+              chunk_id: 1,
+              document_id: 10,
+              document_title: "Doc A",
+              source_type: "wiki",
+              source_ref: "wiki://a",
+              content: "Internal evidence",
+              score: 0.9,
+            },
+          ],
+          web_search_results: [],
+          opened_urls: [],
+          opened_pages: [],
+        },
+      },
+      {
+        sequence: 6,
+        event: "validation_result",
+        data: {
+          sub_query: "subquery-a",
+          tool: "internal",
+          sufficient: true,
+          status: "validated",
+          attempts: 1,
+          follow_up_actions: [],
+          stop_reason: "sufficient",
+        },
+      },
+      {
+        sequence: 7,
+        event: "retrieval_result",
+        data: {
+          sub_query: "subquery-b",
+          tool: "web",
+          internal_results: [],
+          web_search_results: [
+            {
+              title: "web source",
+              url: "https://example.com/source",
+              snippet: "snippet",
+            },
+          ],
+          opened_urls: ["https://example.com/source"],
+          opened_pages: [{ url: "https://example.com/source", title: "web source", content: "details" }],
+        },
+      },
+      {
+        sequence: 8,
+        event: "validation_result",
+        data: {
+          sub_query: "subquery-b",
+          tool: "web",
+          sufficient: true,
+          status: "validated",
+          attempts: 1,
+          follow_up_actions: [],
+          stop_reason: "sufficient",
+        },
+      },
+      {
+        sequence: 9,
+        event: "completed",
+        data: {
+          agent_name: "langgraph-scaffold",
+          output: "This is the synthesized answer.",
+          thread_id: "thread-app-test",
+          checkpoint_id: null,
+          sub_queries: ["subquery-a", "subquery-b"],
+          tool_assignments: [
+            { sub_query: "subquery-a", tool: "internal" },
+            { sub_query: "subquery-b", tool: "web" },
+          ],
+        },
+      },
+    ],
+    completed: {
+      agent_name: "langgraph-scaffold",
+      output: "This is the synthesized answer.",
+      thread_id: "thread-app-test",
+      checkpoint_id: null,
+      sub_queries: ["subquery-a", "subquery-b"],
+      tool_assignments: [
+        { sub_query: "subquery-a", tool: "internal" },
+        { sub_query: "subquery-b", tool: "web" },
+      ],
+    },
+  };
+}
+
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -430,6 +543,21 @@ describe("App", () => {
       expect(mockedStreamAgentRun).toHaveBeenCalledTimes(1);
       expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
       expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
+    });
+  });
+
+  it("renders retrieval and validation readouts from streamed execution events on completion", async () => {
+    mockedStreamAgentRun.mockResolvedValue({ ok: true, data: successStreamResponseWithExecutionEvents() });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Show execution readouts" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("subquery-a: internal results 1")).toBeInTheDocument();
+      expect(screen.getByText("subquery-b: opened 1 web pages")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
+      expect(screen.getByText("subquery-b: validated")).toBeInTheDocument();
     });
   });
 

@@ -26,7 +26,7 @@ function eventStreamResponse(frames: string[], status = 200): Response {
 }
 
 describe("frontend streaming api client", () => {
-  it("parses supported heartbeat/progress/sub_queries/tool_assignments/completed events in order", async () => {
+  it("parses supported stream events including retrieval_result/validation_result in order", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       eventStreamResponse([
         sseFrame({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } }),
@@ -39,6 +39,31 @@ describe("frontend streaming api client", () => {
         }),
         sseFrame({
           sequence: 5,
+          event: "retrieval_result",
+          data: {
+            sub_query: "q1",
+            tool: "internal",
+            internal_results: [],
+            web_search_results: [],
+            opened_urls: [],
+            opened_pages: [],
+          },
+        }),
+        sseFrame({
+          sequence: 6,
+          event: "validation_result",
+          data: {
+            sub_query: "q1",
+            tool: "internal",
+            sufficient: true,
+            status: "validated",
+            attempts: 1,
+            follow_up_actions: [],
+            stop_reason: "sufficient",
+          },
+        }),
+        sseFrame({
+          sequence: 7,
           event: "completed",
           data: {
             agent_name: "langgraph-scaffold",
@@ -66,12 +91,14 @@ describe("frontend streaming api client", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.completed.output).toBe("Final");
-      expect(result.data.events).toHaveLength(5);
+      expect(result.data.events).toHaveLength(7);
       expect(received).toEqual([
         "heartbeat",
         "progress",
         "sub_queries",
         "tool_assignments",
+        "retrieval_result",
+        "validation_result",
         "completed",
       ]);
     }

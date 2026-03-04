@@ -1,4 +1,7 @@
 ---
+Re-start the entire application after each loop if env / DB / other changes were made.
+current blocker: ImportError: Could not import wikipedia python package. Please install it with `pip install wikipedia`.
+
 
 ## ⚠️ PRIORITY: Large wiki sources + LangChain loader + dropdown + check-before-load
 
@@ -226,4 +229,30 @@ Backend must expose this list (e.g. `GET /api/internal-data/wiki-sources` or equ
     - `docker compose exec backend uv run pytest tests/api/test_agent_run_tracing.py -q` -> `7 passed`
     - `docker compose exec backend uv run pytest` -> `57 passed`
     - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
+- [x] P1: Stream per-subquery retrieval/validation events and surface them in final progress readouts.
+  - Implementation scope:
+    - Extend `/api/agents/run/stream` fallback emission to include ordered `retrieval_result` and `validation_result` events per sub-query before `completed`.
+    - Keep stream completion payload contract stable (`agent_name`, `output`, `thread_id`, `checkpoint_id`, `sub_queries`, `tool_assignments`).
+    - Hydrate frontend final run details from streamed events so retrieval/validation sections show actual execution outcomes rather than empty placeholders.
+  - Verification requirements (acceptance outcomes):
+    - Backend smoke test: stream includes retrieval/validation events in order after tool assignments and before completion.
+    - Backend parity smoke test: streamed retrieval/validation event payloads match `/api/agents/run` response arrays for the same request.
+    - Frontend interaction test: when stream includes retrieval/validation events, progress readout renders retrieval counts and validation statuses after completion.
+  - Completed in this loop:
+    - Updated `src/backend/services/agent_service.py::stream_runtime_agent` to emit `retrieval_result` and `validation_result` events for each paired retrieval/validation result before `completed`.
+    - Updated backend smoke tests:
+      - `src/backend/tests/api/test_streaming_agent_heartbeat.py`
+      - `src/backend/tests/api/test_streaming_compile_invoke_dummy.py`
+      - `src/backend/tests/api/test_sync_stream_contract_parity.py::test_runtime_agent_stream_retrieval_and_validation_events_match_sync_payload`
+    - Updated frontend run assembly in `src/frontend/src/App.tsx` to derive `retrieval_results`, `validation_results`, and `web_tool_runs` from streamed events.
+    - Updated frontend readout component `src/frontend/src/lib/components/ProgressHistory.tsx` to render retrieval results alongside validation timeline sections.
+    - Added frontend coverage:
+      - `src/frontend/src/App.test.tsx::renders retrieval and validation readouts from streamed execution events on completion`
+      - `src/frontend/src/utils/stream.test.ts` updated ordered-event parser coverage for retrieval/validation events.
+  - Verification run results:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `58 passed`
+    - `docker compose exec frontend npm run test` -> `32 passed`
     - `docker compose exec frontend npm run typecheck` -> pass

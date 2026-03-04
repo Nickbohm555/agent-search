@@ -32,14 +32,26 @@ def test_runtime_agent_stream_endpoint_emits_ordered_heartbeat_subqueries_assign
     assert "heartbeat" in event_names
     assert "sub_queries" in event_names
     assert "tool_assignments" in event_names
+    assert "retrieval_result" in event_names
+    assert "validation_result" in event_names
     assert "completed" in event_names
 
     sub_queries_event = next(item for item in events if item["event"] == "sub_queries")
     tool_assignments_event = next(item for item in events if item["event"] == "tool_assignments")
+    retrieval_event = next(item for item in events if item["event"] == "retrieval_result")
+    validation_event = next(item for item in events if item["event"] == "validation_result")
     assert tool_assignments_event["sequence"] > sub_queries_event["sequence"]
+    assert retrieval_event["sequence"] > tool_assignments_event["sequence"]
+    assert validation_event["sequence"] > retrieval_event["sequence"]
     assert tool_assignments_event["data"]["count"] == len(
         tool_assignments_event["data"]["tool_assignments"]
     )
+    assert retrieval_event["data"]["sub_query"].strip() != ""
+    assert retrieval_event["data"]["tool"] in {"internal", "web"}
+    assert validation_event["data"]["sub_query"] == retrieval_event["data"]["sub_query"]
+    assert validation_event["data"]["tool"] == retrieval_event["data"]["tool"]
+    assert validation_event["data"]["status"] in {"validated", "stopped_insufficient"}
+    assert isinstance(validation_event["data"]["attempts"], int)
 
     completed_event = next(item for item in events if item["event"] == "completed")
     assert completed_event["data"]["agent_name"] != ""
