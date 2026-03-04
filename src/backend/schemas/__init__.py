@@ -17,6 +17,7 @@ from .internal_data import (
     InternalDataRetrieveResponse,
     InternalDocumentInput,
     InternalRetrievedChunk,
+    WikiLoadInput,
 )
 from .mcp import (
     McpToolDefinition,
@@ -52,6 +53,7 @@ __all__ = [
     "InternalDataRetrieveRequest",
     "InternalDataRetrieveResponse",
     "InternalRetrievedChunk",
+    "WikiLoadInput",
     "WebSearchRequest",
     "WebSearchResult",
     "WebSearchResponse",

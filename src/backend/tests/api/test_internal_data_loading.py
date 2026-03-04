@@ -98,3 +98,54 @@ def test_internal_retrieval_returns_loaded_content(internal_data_client: TestCli
     assert len(data["results"]) >= 1
     assert all(result["source_type"] == "inline" for result in data["results"])
     assert any("deployment" in result["content"].lower() for result in data["results"])
+
+
+@pytest.mark.smoke
+def test_wiki_data_load_returns_observable_counts(internal_data_client: TestClient):
+    response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "wiki",
+            "wiki": {
+                "topic": "Strait of Hormuz",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["source_type"] == "wiki"
+    assert data["documents_loaded"] >= 1
+    assert data["chunks_created"] >= 1
+
+
+@pytest.mark.smoke
+def test_wiki_retrieval_includes_wiki_attribution_and_content(internal_data_client: TestClient):
+    load_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "wiki",
+            "wiki": {
+                "url": "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+            },
+        },
+    )
+    assert load_response.status_code == 200
+
+    retrieve_response = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "Which corridor links the Persian Gulf and impacts oil shipping?", "limit": 5},
+    )
+
+    assert retrieve_response.status_code == 200
+    data = retrieve_response.json()
+    assert len(data["results"]) >= 1
+    wiki_results = [item for item in data["results"] if item["source_type"] == "wiki"]
+    assert len(wiki_results) >= 1
+    assert all(len(item["document_title"].strip()) > 0 for item in wiki_results)
+    assert all(len(item["content"].strip()) > 0 for item in wiki_results)
+    assert any(
+        item["source_ref"] == "https://en.wikipedia.org/wiki/Strait_of_Hormuz"
+        for item in wiki_results
+    )

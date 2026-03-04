@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from db import get_db
@@ -15,7 +15,11 @@ router = APIRouter(prefix="/api/internal-data", tags=["internal-data"])
 
 @router.post("/load", response_model=InternalDataLoadResponse)
 def load_data(payload: InternalDataLoadRequest, db: Session = Depends(get_db)) -> InternalDataLoadResponse:
-    return load_internal_data(payload, db)
+    """Load internal data from inline docs or deterministic wiki source."""
+    try:
+        return load_internal_data(payload, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/retrieve", response_model=InternalDataRetrieveResponse)

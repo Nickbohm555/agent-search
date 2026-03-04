@@ -1,0 +1,12 @@
+flowchart TD
+    A["POST /api/internal-data/load\nsrc/backend/routers/internal_data.py::load_data\nTrigger: API load request"] -->|"data: InternalDataLoadRequest\nwhy: route delegates source-specific load handling"| B["src/backend/services/internal_data_service.py::load_internal_data"]
+    B -->|"trigger: source_type == 'wiki'\ndata: payload.wiki (topic/url)\nwhy: resolve wiki article into ingestible docs"| C["src/backend/services/wiki_ingestion_service.py::resolve_wiki_documents"]
+    C -->|"data out: InternalDocumentInput[]\nfields: title/content/source_ref\nwhy: keep existing chunk+embed pipeline reusable"| D["src/backend/services/internal_data_service.py::_persist_documents"]
+    B -->|"trigger: source_type == 'inline'\ndata: payload.documents\nwhy: preserve existing inline ingest path"| D
+    D -->|"data write: internal_documents + internal_document_chunks\nwhy: persist retrieval-ready content and embeddings"| E["Postgres tables\ninternal_documents/internal_document_chunks"]
+    D -->|"data out: documents_loaded/chunks_created\nwhy: observable load status for API/UI"| F["InternalDataLoadResponse"]
+
+    N1["Decision: wiki ingestion uses deterministic local fixture mapping\nTradeoff: no live freshness, but CI-safe and network-independent behavior."]:::note
+    C -.-> N1
+
+    classDef note fill:#fff3cd,stroke:#ad8b00,color:#4a3b00;

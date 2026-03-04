@@ -1,4 +1,4 @@
-- [ ] P0: Add wiki-source loading path to `/api/internal-data/load` while keeping inline loading intact.
+- [x] P0: Add wiki-source loading path to `/api/internal-data/load` while keeping inline loading intact.
   - Implementation scope:
     - Extend backend load request schema to support a wiki mode plus wiki input (for example URL/topic) without breaking existing inline payloads.
     - Add wiki ingestion service in `src/backend/services/` that resolves one geopolitics wiki page into at least one structured document (`title`, `content`, `source_ref`, `source_type`).
@@ -8,6 +8,13 @@
     - Backend smoke test: stored wiki-derived document has non-empty `title` and non-empty `content` suitable for chunking.
     - Backend smoke test: retrieval after wiki load includes at least one result with wiki attribution (`source_type`/`source_ref`).
     - Determinism: ingestion tests use fixtures/mocks (no live wiki network dependency in CI).
+  - Completed in this loop:
+    - Added `source_type="wiki"` support plus request validation in `src/backend/schemas/internal_data.py` while preserving inline compatibility.
+    - Added deterministic wiki ingestion fixture service at `src/backend/services/wiki_ingestion_service.py` for geopolitics topic/url (`Strait of Hormuz`) with no live network dependency.
+    - Updated internal load service to ingest wiki-derived documents and persist attribution (`source_type`, `source_ref`) into existing document/chunk tables.
+    - Added smoke coverage in `src/backend/tests/api/test_internal_data_loading.py`:
+      - `test_wiki_data_load_returns_observable_counts`
+      - `test_wiki_retrieval_includes_wiki_attribution_and_content`
 
 - [ ] P0: Migrate chunk embedding storage from `embedding_json` to native pgvector column.
   - Implementation scope:
