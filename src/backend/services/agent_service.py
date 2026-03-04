@@ -1,5 +1,5 @@
 from contextlib import nullcontext
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from agents.factory import AgentFactory, build_default_agent
 from schemas import (
@@ -40,11 +40,16 @@ def run_runtime_agent(
     db: Session,
     tracing_handle: Optional[Any] = None,
     runtime_handle: Optional[Any] = None,
+    stream_event_callback: Optional[Callable[[str, dict[str, Any]], None]] = None,
 ) -> RuntimeAgentRunResponse:
     factory = AgentFactory(runtime_handle=runtime_handle)
     agent = build_default_agent()
     graph_agent = factory.create_langgraph_agent()
-    graph_result = graph_agent.run(payload.query, db)
+    graph_result = graph_agent.run(
+        payload.query,
+        db,
+        event_callback=stream_event_callback,
+    )
     sub_queries = graph_result["sub_queries"]
     tool_assignments = graph_result["tool_assignments"]
     retrieval_results = graph_result["retrieval_results"]

@@ -1,6 +1,8 @@
 import json
+import time
 
 import pytest
+from schemas import RuntimeAgentRunResponse
 
 
 def _collect_stream_events(response) -> list[dict]:
@@ -64,3 +66,48 @@ def test_agent_run_stream_allows_client_disconnect_without_server_error(client):
         if isinstance(first_line, bytes):
             first_line = first_line.decode("utf-8")
         assert first_line.startswith("event: ")
+
+
+@pytest.mark.smoke
+def test_agent_run_stream_emits_first_event_before_run_finishes(client, monkeypatch):
+    def fake_run_runtime_agent(*_args, **kwargs):
+        callback = kwargs.get("stream_event_callback")
+        if callback is not None:
+            callback(
+                "heartbeat",
+                {"step": "decomposition", "status": "started", "details": {}},
+            )
+        time.sleep(0.35)
+        return RuntimeAgentRunResponse(
+            agent_name="agent-search-default",
+            output="Synthetic final answer",
+            sub_queries=["synthetic-subquery"],
+            tool_assignments=[],
+            retrieval_results=[],
+            validation_results=[],
+            subquery_execution_results=[],
+            web_tool_runs=[],
+            graph_state=None,
+        )
+
+    monkeypatch.setattr("routers.agent.run_runtime_agent", fake_run_runtime_agent)
+
+    with client.stream(
+        "POST",
+        "/api/agents/run/stream",
+        json={"query": "timing check"},
+    ) as response:
+        assert response.status_code == 200
+        started_at = time.monotonic()
+        first_data_line = None
+        for raw_line in response.iter_lines():
+            line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+            if line.startswith("data: "):
+                first_data_line = line
+                break
+        elapsed = time.monotonic() - started_at
+
+    assert first_data_line is not None
+    assert elapsed < 0.25
+    first_event = json.loads(first_data_line.removeprefix("data: ").strip())
+    assert first_event["event"] == "heartbeat"

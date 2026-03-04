@@ -6,6 +6,23 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P0 - Make SSE run heartbeat truly in-flight by streaming orchestration events as they happen (`specs/streaming-agent-heartbeat.md`, `specs/demo-ui-typescript.md`).
+  - Tasks:
+  - Added callback-driven event emission from LangGraph orchestration so `heartbeat`, `sub_queries`, `tool_assignments`, `retrieval_result`, `validation_result`, and `subquery_execution_result` are emitted during node execution rather than after full run completion.
+  - Wired the callback through `run_runtime_agent` and changed `POST /api/agents/run/stream` to run agent execution in a background thread and flush SSE events from an async queue with monotonic sequence numbering.
+  - Added deterministic smoke coverage that proves first stream event can arrive before run completion by injecting an early callback followed by an artificial delay.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `42 passed`
+    - `docker compose exec frontend npm run test` -> `34 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Expose Google Docs load mode in demo UI controls with deterministic validation and payload tests (`specs/demo-ui-typescript.md`, `specs/data-loading-vectorization.md`).
   - Tasks:
   - Extended frontend load request contract to support discriminated payloads for both `inline` and `google_docs` source types.

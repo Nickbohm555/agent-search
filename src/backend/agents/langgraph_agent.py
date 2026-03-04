@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Any, Optional, TypedDict
+from typing import Any, Callable, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from schemas import (
@@ -97,6 +97,7 @@ class RuntimeOrchestrationState(TypedDict):
     output: str
     runtime_mode: str
     timeline: list[RuntimeAgentGraphStep]
+    event_callback: Optional[Callable[[str, dict[str, Any]], None]]
 
 
 @dataclass
@@ -142,12 +143,28 @@ class LangGraphAgentScaffold:
             )
         ]
 
+    @staticmethod
+    def _emit_event(
+        state: RuntimeOrchestrationState,
+        event: str,
+        data: dict[str, Any],
+    ) -> None:
+        callback = state.get("event_callback")
+        if callback is None:
+            return
+        callback(event, data)
+
     def _decomposition_node(self, state: RuntimeOrchestrationState) -> RuntimeOrchestrationState:
         timeline = self._append_timeline(
             state["timeline"],
             "decomposition",
             "started",
             {"query": state["query"]},
+        )
+        self._emit_event(
+            state,
+            "heartbeat",
+            {"step": "decomposition", "status": "started", "details": {"query": state["query"]}},
         )
         sub_queries = decompose_query(state["query"])
         timeline = self._append_timeline(
@@ -156,6 +173,13 @@ class LangGraphAgentScaffold:
             "completed",
             {"sub_query_count": len(sub_queries)},
         )
+        completed_payload = {
+            "step": "decomposition",
+            "status": "completed",
+            "details": {"sub_query_count": len(sub_queries)},
+        }
+        self._emit_event(state, "heartbeat", completed_payload)
+        self._emit_event(state, "sub_queries", {"sub_queries": sub_queries})
         return {
             "sub_queries": sub_queries,
             "timeline": timeline,
@@ -163,15 +187,35 @@ class LangGraphAgentScaffold:
 
     def _tool_selection_node(self, state: RuntimeOrchestrationState) -> RuntimeOrchestrationState:
         timeline = self._append_timeline(state["timeline"], "tool_selection", "started")
+        self._emit_event(
+            state,
+            "heartbeat",
+            {"step": "tool_selection", "status": "started", "details": {}},
+        )
         tool_assignments = [
             SubQueryToolAssignment(sub_query=sub_query, tool=tool)
             for sub_query, tool in assign_tools_to_sub_queries(state["sub_queries"])
         ]
+        assignments_payload = [assignment.model_dump() for assignment in tool_assignments]
         timeline = self._append_timeline(
             timeline,
             "tool_selection",
             "completed",
-            {"assignments": [assignment.model_dump() for assignment in tool_assignments]},
+            {"assignments": assignments_payload},
+        )
+        self._emit_event(
+            state,
+            "heartbeat",
+            {
+                "step": "tool_selection",
+                "status": "completed",
+                "details": {"assignments": assignments_payload},
+            },
+        )
+        self._emit_event(
+            state,
+            "tool_assignments",
+            {"tool_assignments": assignments_payload},
         )
         return {
             "tool_assignments": tool_assignments,
@@ -188,28 +232,46 @@ class LangGraphAgentScaffold:
         execution_results: list[SubQueryExecutionResult] = []
 
         for assignment in state["tool_assignments"]:
+            retrieval_started_details = {
+                "sub_query": assignment.sub_query,
+                "tool": assignment.tool,
+                "deep_agent": self.subquery_agent.name,
+            }
             timeline = self._append_timeline(
                 timeline,
                 "subquery_execution.retrieval",
                 "started",
+                retrieval_started_details,
+            )
+            self._emit_event(
+                state,
+                "heartbeat",
                 {
-                    "sub_query": assignment.sub_query,
-                    "tool": assignment.tool,
-                    "deep_agent": self.subquery_agent.name,
+                    "step": "subquery_execution.retrieval",
+                    "status": "started",
+                    "details": retrieval_started_details,
                 },
             )
             retrieval, validation = self.subquery_agent.run(assignment, state["db"])
             retrieval_results.append(retrieval)
+            retrieval_payload = retrieval.model_dump()
+            self._emit_event(state, "retrieval_result", retrieval_payload)
             timeline = self._append_timeline(
                 timeline,
                 "subquery_execution.retrieval",
                 "completed",
+                retrieval_started_details,
+            )
+            self._emit_event(
+                state,
+                "heartbeat",
                 {
-                    "sub_query": assignment.sub_query,
-                    "tool": assignment.tool,
-                    "deep_agent": self.subquery_agent.name,
+                    "step": "subquery_execution.retrieval",
+                    "status": "completed",
+                    "details": retrieval_started_details,
                 },
             )
+            validation_payload = validation.model_dump()
             timeline = self._append_timeline(
                 timeline,
                 "subquery_execution.validation",
@@ -225,14 +287,41 @@ class LangGraphAgentScaffold:
                     "deep_agent": self.subquery_agent.name,
                 },
             )
+            self._emit_event(
+                state,
+                "heartbeat",
+                {
+                    "step": "subquery_execution.validation",
+                    "status": "completed",
+                    "details": {
+                        "sub_query": assignment.sub_query,
+                        "tool": assignment.tool,
+                        "status": validation.status,
+                        "attempts": validation.attempts,
+                        "follow_up_actions": validation.follow_up_actions,
+                        "attempt_trace": [
+                            attempt.model_dump() for attempt in validation.attempt_trace
+                        ],
+                        "stop_reason": validation.stop_reason,
+                        "deep_agent": self.subquery_agent.name,
+                    },
+                },
+            )
+            self._emit_event(state, "validation_result", validation_payload)
             validation_results.append(validation)
+            execution_result = SubQueryExecutionResult(
+                sub_query=assignment.sub_query,
+                tool=assignment.tool,
+                retrieval_result=retrieval,
+                validation_result=validation,
+            )
             execution_results.append(
-                SubQueryExecutionResult(
-                    sub_query=assignment.sub_query,
-                    tool=assignment.tool,
-                    retrieval_result=retrieval,
-                    validation_result=validation,
-                )
+                execution_result
+            )
+            self._emit_event(
+                state,
+                "subquery_execution_result",
+                execution_result.model_dump(),
             )
 
         return {
@@ -244,6 +333,11 @@ class LangGraphAgentScaffold:
 
     def _synthesis_node(self, state: RuntimeOrchestrationState) -> RuntimeOrchestrationState:
         timeline = self._append_timeline(state["timeline"], "synthesis", "started")
+        self._emit_event(
+            state,
+            "heartbeat",
+            {"step": "synthesis", "status": "started", "details": {}},
+        )
         fallback_output = synthesize_answer(
             query=state["query"],
             execution_results=state["subquery_execution_results"],
@@ -261,6 +355,11 @@ class LangGraphAgentScaffold:
             )
             runtime_mode = getattr(self.runtime_handle, "status", "unknown")
         timeline = self._append_timeline(timeline, "synthesis", "completed")
+        self._emit_event(
+            state,
+            "heartbeat",
+            {"step": "synthesis", "status": "completed", "details": {}},
+        )
         return {
             "output": runtime_output,
             "runtime_mode": runtime_mode,
@@ -325,7 +424,12 @@ class LangGraphAgentScaffold:
             ],
         }
 
-    def run(self, query: str, db: Session) -> dict[str, Any]:
+    def run(
+        self,
+        query: str,
+        db: Session,
+        event_callback: Optional[Callable[[str, dict[str, Any]], None]] = None,
+    ) -> dict[str, Any]:
         final_state = self._get_graph().invoke(
             {
                 "query": query,
@@ -338,6 +442,7 @@ class LangGraphAgentScaffold:
                 "output": "",
                 "runtime_mode": "disabled",
                 "timeline": [],
+                "event_callback": event_callback,
             }
         )
         sub_queries = final_state["sub_queries"]
