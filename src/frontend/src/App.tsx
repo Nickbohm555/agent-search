@@ -14,6 +14,7 @@ export default function App() {
   const [runState, setRunState] = useState<RequestState>("idle");
   const [runMessage, setRunMessage] = useState("Waiting for query.");
   const [answer, setAnswer] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [runDetails, setRunDetails] = useState<RuntimeAgentRunResponse | null>(null);
   const loadInFlightRef = useRef(false);
   const runInFlightRef = useRef(false);
@@ -54,13 +55,15 @@ export default function App() {
     }
 
     runInFlightRef.current = true;
+    const trimmedQuery = query.trim();
     setRunState("loading");
     setRunMessage("Running agent...");
     setAnswer("");
     setRunDetails(null);
+    setSubmittedQuery(trimmedQuery);
 
     try {
-      const result = await runAgent({ query: query.trim() });
+      const result = await runAgent({ query: trimmedQuery });
       if (result.ok) {
         setRunState("success");
         setRunMessage(formatRunSuccessMessage(result.data.sub_queries.length));
@@ -101,7 +104,7 @@ export default function App() {
             >
               {loadState === "loading" ? "Loading..." : "Load Data"}
             </button>
-            <StatusBanner state={loadState} message={loadMessage} testId="load-status-region" />
+            <StatusBanner state={loadState} message={loadMessage} label="Load Status" testId="load-status-region" />
           </div>
 
           <div className="control-block">
@@ -121,7 +124,7 @@ export default function App() {
             <h2>System Progress</h2>
             <span className="panel-kicker">READOUT</span>
           </div>
-          <StatusBanner state={runState} message={runMessage} testId="progress-region" />
+          <StatusBanner state={runState} message={runMessage} label="Run Status" testId="progress-region" />
           <ProgressHistory runDetails={runDetails} />
         </section>
 
@@ -130,7 +133,11 @@ export default function App() {
             <h2>Final Readout</h2>
             <span className="panel-kicker">ANSWER</span>
           </div>
-          <div className="answer" aria-live="polite" data-testid="final-answer-region">
+          <div className="query-readout readout-block" data-testid="query-readout">
+            <p className="readout-label">Requested Query</p>
+            <p className="readout-value">{submittedQuery || "No query submitted yet."}</p>
+          </div>
+          <div className="answer answer-dominant readout-block" aria-live="polite" data-testid="final-answer-region">
             <h3>Final Answer</h3>
             {answer ? <p>{answer}</p> : <p>No answer yet.</p>}
           </div>

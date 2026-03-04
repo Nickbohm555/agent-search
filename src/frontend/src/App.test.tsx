@@ -190,6 +190,58 @@ describe("App", () => {
       expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
       expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("query-readout")).toHaveTextContent("What is the project status?");
+  });
+
+  it("uses consistent readout styling for load and run status outcomes", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+    mockedRunAgent.mockResolvedValue({
+      ok: true,
+      data: successRunResponse(),
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Readout check" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
+      expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("load-status-region")).toHaveClass("readout-block");
+    expect(screen.getByTestId("progress-region")).toHaveClass("readout-block");
+    expect(screen.getByText("Load Status")).toBeInTheDocument();
+    expect(screen.getByText("Run Status")).toBeInTheDocument();
+  });
+
+  it("keeps asked query, system progress, and final answer as distinct readout sections", async () => {
+    mockedRunAgent.mockResolvedValue({
+      ok: true,
+      data: successRunResponse({ output: "Distinct readout answer." }),
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Which section is what?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Distinct readout answer.")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("query-readout")).toHaveTextContent("Which section is what?");
+    expect(screen.getByTestId("progress-history-region")).toBeInTheDocument();
+    expect(screen.getByTestId("final-answer-region")).toHaveTextContent("Distinct readout answer.");
+    expect(screen.getByTestId("final-answer-region")).toHaveClass("answer-dominant");
   });
 
   it("falls back to sub-query and validation views when graph_state is missing", async () => {

@@ -200,11 +200,6 @@ button:disabled {
 
 .status {
   margin-top: 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(120, 152, 200, 0.42);
-  background: #091120;
-  padding: 10px 12px;
-  font-family: "JetBrains Mono", "Consolas", monospace;
   color: #d3e4ff;
 }
 
@@ -226,14 +221,65 @@ button:disabled {
 .answer,
 .progress-history {
   margin-top: 12px;
+}
+
+.readout-block {
   padding: 12px;
   border-radius: 10px;
   border: 1px solid rgba(120, 152, 200, 0.4);
   background: var(--surface);
 }
 
+.readout-label {
+  margin: 0;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-neon);
+}
+
+.readout-value {
+  margin: 8px 0 0;
+  color: var(--text-primary);
+  font-family: "JetBrains Mono", "Consolas", monospace;
+}
+
+.query-readout {
+  margin-top: 12px;
+}
+
 .answer {
+  margin-top: 12px;
   min-height: 140px;
+}
+
+.answer-dominant {
+  border-color: rgba(47, 243, 255, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(47, 243, 255, 0.1);
+}
+
+.answer-dominant h3 {
+  margin-bottom: 10px;
+  color: #eff7ff;
+  font-size: 1.1rem;
+}
+
+.progress-history > h3 {
+  margin-bottom: 10px;
+}
+
+.readout-group + .readout-group {
+  margin-top: 12px;
+}
+
+.readout-group-title {
+  margin: 0 0 8px;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b7caea;
 }
 
 ol,
