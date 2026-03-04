@@ -1,13 +1,19 @@
-- [ ] P0 — Implement real LangGraph runtime orchestration for `/api/agents/run` (spec: `specs/orchestration-langgraph.md`) by replacing the current scaffolded sequential runner in `src/backend/agents/langgraph_agent.py` with an actual LangGraph graph execution path.
-  Verification requirements: add/update backend smoke tests proving (1) the full run executes as a LangGraph graph from decomposition through synthesis, (2) decomposition/tool-selection/retrieval/validation/synthesis execute in intended order, (3) each subquery completes retrieval+validation before synthesis, and (4) response contract in `src/backend/schemas/agent.py` remains valid.
+- [ ] P0 — Replace scaffolded orchestration with a real LangGraph runtime for `/api/agents/run` (spec: `specs/orchestration-langgraph.md`).
+  Verification requirements:
+  - Add/update backend smoke tests that prove the run path executes through a compiled LangGraph graph instance (not a static projection) from decomposition to synthesis.
+  - Validate that one request still returns a single final answer payload and preserves the existing response schema contract in `src/backend/schemas/agent.py`.
+  - Validate that graph execution metadata/state in the response reflects the actual run (node progression and completion), not hardcoded placeholders.
 
-- [ ] P0 — Implement true deep-agent subgraph usage for per-subquery execution (spec: `specs/orchestration-langgraph.md`) so retrieval+validation are executed by a reusable nested deep-agent unit rather than scaffold metadata/import checks.
-  Verification requirements: add/update backend smoke tests proving (1) every produced subquery is handled by the deep-agent unit, (2) each subquery follows exactly one assigned tool path (`internal` or `web`), (3) validation loops terminate by sufficiency or stop condition, and (4) deep-agent execution state is exposed in graph-state projection for downstream consumers.
+- [ ] P0 — Implement true DeepAgent-based per-subquery execution inside the LangGraph flow (spec: `specs/orchestration-langgraph.md`).
+  Verification requirements:
+  - Add/update backend smoke tests that prove each produced subquery is executed via the deep-agent unit used by the graph (subgraph/agent node), not a plain loop helper.
+  - Validate that each subquery follows exactly one tool path (`internal` or `web`) and that retrieval+validation complete before synthesis consumes that subquery result.
+  - Validate that the validation loop per subquery terminates deterministically with either `validated` or `stopped_insufficient`.
 
-- [ ] P1 — Add backend streaming heartbeat endpoint driven by orchestration state/events (specs: `specs/streaming-agent-heartbeat.md`, `specs/orchestration-langgraph.md`) to deliver subquery and progress updates during a run.
-  Verification requirements: add backend smoke tests proving (1) a running query streams subqueries as generated, (2) progress events are ordered and parseable through completion, (3) terminal event includes final synthesized answer payload, and (4) stream behavior is stable for typical runs (no missing completion event).
+- [ ] P1 — Align LangGraph state projection for downstream consumers with real deep-agent execution state (spec: `specs/orchestration-langgraph.md`).
+  Verification requirements:
+  - Add/update backend smoke tests that prove returned `graph_state` can represent per-step progress for decomposition, tool selection, subquery retrieval/validation, and synthesis from real graph execution.
+  - Validate that repeated runs produce independent graph-state timelines (no state leakage across runs).
+  - Validate that per-subquery deep-agent progress is observable in state/timeline fields needed by future streaming consumers.
 
-- [ ] P1 — Update TypeScript demo UI to consume heartbeat streaming for live LangGraph/deep-agent progress (specs: `specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`) instead of only waiting for a single run response.
-  Verification requirements: add/update frontend interaction tests proving (1) subqueries render incrementally while run is in-flight, (2) progress indicators update from streamed events, (3) final answer renders on completion event, and (4) existing load/run error messaging remains deterministic.
-
-- [x] Completed baseline in this scope — Scaffold pipeline behavior exists and is covered by deterministic tests (`src/backend/tests/api/test_orchestration_langgraph.py`, `test_per_subquery_retrieval.py`, `test_retrieval_validation.py`, `test_answer_synthesis.py`), but this coverage does not yet satisfy real LangGraph runtime or true deep-agent execution acceptance criteria.
+- [x] Completed baseline relevant to this scope — Scaffold pipeline behavior exists and is deterministically covered (decomposition, tool assignment, retrieval, validation, synthesis, and graph-shaped response fields), but runtime execution is still scaffolded rather than true LangGraph + DeepAgent execution.
