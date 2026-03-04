@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
+from threading import Lock
 from uuid import uuid4
 from typing import Any
 
@@ -49,16 +51,116 @@ def get_config() -> dict[str, Any]:
     }
 
 
+@dataclass(frozen=True)
+class RuntimeContext:
+    """Runtime invocation context used by persistence wiring."""
+
+    user_id: str
+
+
+class DeepAgentPersistenceStore:
+    """In-process persistence for DeepAgent-like checkpoint and store semantics.
+
+    Called by `LangGraphAgentScaffold.run` to emulate thread checkpointing and a
+    user-scoped cross-thread store while the project remains scaffold-only.
+    """
+
+    def __init__(self) -> None:
+        self._thread_checkpoints: dict[str, list[dict[str, Any]]] = {}
+        self._store: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        self._lock = Lock()
+
+    def _memory_namespace(self, context: RuntimeContext) -> tuple[str, str]:
+        """Resolve a deterministic memory namespace from runtime context."""
+        return (context.user_id, "memories")
+
+    def get_thread_state(
+        self, thread_id: str, checkpoint_id: str | None = None
+    ) -> dict[str, Any]:
+        """Return persisted thread state before executing the current run.
+
+        Inputs:
+        - `thread_id`: thread namespace for checkpoints.
+        - `checkpoint_id`: optional checkpoint replay target.
+        Output:
+        - summary used by graph execution metadata and tests.
+        """
+        with self._lock:
+            history = list(self._thread_checkpoints.get(thread_id, []))
+
+        selected_checkpoint = None
+        if checkpoint_id:
+            selected_checkpoint = next(
+                (item for item in history if item["checkpoint_id"] == checkpoint_id),
+                None,
+            )
+
+        return {
+            "checkpoint_count": len(history),
+            "checkpoint_ids": [item["checkpoint_id"] for item in history],
+            "replayed_checkpoint_id": checkpoint_id if selected_checkpoint else None,
+            "known_checkpoint": selected_checkpoint is not None if checkpoint_id else None,
+            "previous_output": selected_checkpoint["output"] if selected_checkpoint else None,
+            "latest_output": history[-1]["output"] if history else None,
+            "previous_query": selected_checkpoint["query"] if selected_checkpoint else None,
+            "latest_query": history[-1]["query"] if history else None,
+        }
+
+    def get_store_state(self, context: RuntimeContext) -> dict[str, Any]:
+        """Return user-scoped cross-thread namespace metadata before run execution."""
+        namespace = self._memory_namespace(context)
+        with self._lock:
+            namespace_entries = list(self._store.get(namespace, []))
+        return {
+            "namespace": list(namespace),
+            "entry_count": len(namespace_entries),
+            "thread_ids": sorted({entry["thread_id"] for entry in namespace_entries}),
+        }
+
+    def persist_run(
+        self,
+        *,
+        context: RuntimeContext,
+        thread_id: str,
+        query: str,
+        output: str,
+        checkpoint_id: str | None = None,
+    ) -> str:
+        """Persist one run in thread checkpoints and user-scoped cross-thread store."""
+        checkpoint_value = checkpoint_id or str(uuid4())
+        checkpoint_data = {
+            "checkpoint_id": checkpoint_value,
+            "query": query,
+            "output": output,
+        }
+        namespace = self._memory_namespace(context)
+
+        with self._lock:
+            self._thread_checkpoints.setdefault(thread_id, []).append(checkpoint_data)
+            self._store.setdefault(namespace, []).append(
+                {
+                    "thread_id": thread_id,
+                    "checkpoint_id": checkpoint_value,
+                    "query": query,
+                    "output": output,
+                }
+            )
+        return checkpoint_value
+
+
 # --- Agent scaffold ---
 
 
 class LangGraphAgentScaffold:
     """DeepAgent used by FastAPI /api/agents/run. Initialized with tools, system_prompt, backend, subagents, config."""
 
+    _shared_persistence = DeepAgentPersistenceStore()
+
     def __init__(self, name: str = "agent", model: str = "gpt-4o-mini"):
         self.name = name
         self.model = model
         self._agent = None
+        self._persistence = self._shared_persistence
 
     def _get_or_create_agent(self):
         """Initialize the DeepAgent runtime client once and return the cached instance."""
@@ -88,9 +190,7 @@ class LangGraphAgentScaffold:
         if payload.checkpoint_id:
             configurable["checkpoint_id"] = payload.checkpoint_id
 
-        context: dict[str, str] = {}
-        if payload.user_id:
-            context["user_id"] = payload.user_id
+        context = RuntimeContext(user_id=payload.user_id or "anonymous")
 
         return thread_id, {"configurable": configurable, "context": context}
 
@@ -107,6 +207,12 @@ class LangGraphAgentScaffold:
         - reads internal-data tables and may call deterministic web-search fixtures.
         """
         thread_id, deepagent_run_config = self._build_run_config(payload)
+        context = deepagent_run_config["context"]
+        persisted_thread_state = self._persistence.get_thread_state(
+            thread_id=thread_id,
+            checkpoint_id=payload.checkpoint_id,
+        )
+        persisted_store_state = self._persistence.get_store_state(context)
         execution_id = str(uuid4())
 
         timeline: list[RuntimeAgentGraphStep] = []
@@ -180,6 +286,13 @@ class LangGraphAgentScaffold:
                 details={"output_length": len(output)},
             )
         )
+        resolved_checkpoint_id = self._persistence.persist_run(
+            context=context,
+            thread_id=thread_id,
+            query=payload.query,
+            output=output,
+            checkpoint_id=payload.checkpoint_id,
+        )
 
         return {
             "thread_id": thread_id,
@@ -202,9 +315,27 @@ class LangGraphAgentScaffold:
                         "subquery_execution_count": len(sub_queries),
                         "thread_id": thread_id,
                         "checkpoint_id": payload.checkpoint_id,
-                        "user_id": payload.user_id,
+                        "user_id": context.user_id,
                         "configurable": deepagent_run_config["configurable"],
-                        "context": deepagent_run_config["context"],
+                        "context": {"user_id": context.user_id},
+                        "persistence": {
+                            "thread_checkpoint_count_before_run": persisted_thread_state[
+                                "checkpoint_count"
+                            ],
+                            "thread_checkpoint_ids_before_run": persisted_thread_state[
+                                "checkpoint_ids"
+                            ],
+                            "replayed_checkpoint_id": persisted_thread_state[
+                                "replayed_checkpoint_id"
+                            ],
+                            "known_checkpoint": persisted_thread_state["known_checkpoint"],
+                            "resolved_checkpoint_id": resolved_checkpoint_id,
+                            "store_namespace": persisted_store_state["namespace"],
+                            "store_entry_count_before_run": persisted_store_state[
+                                "entry_count"
+                            ],
+                            "store_thread_ids_before_run": persisted_store_state["thread_ids"],
+                        },
                     },
                     "deep_agents": [
                         {"name": "subquery_execution_agent", "nodes": ["retrieval", "validation"]}

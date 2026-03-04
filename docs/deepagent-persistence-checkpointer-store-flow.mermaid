@@ -1,0 +1,13 @@
+flowchart TD
+    A["POST /api/agents/run\nsrc/backend/routers/agent.py::runtime_agent_run"] -->|"RuntimeAgentRunRequest(query, thread_id?, user_id?, checkpoint_id?)\nTrigger: HTTP request hits run route"| B["src/backend/services/agent_service.py::run_runtime_agent"]
+    B -->|"payload + db session\nWhy: orchestrate runtime call + preserve response contract"| C["src/backend/agents/langgraph_agent.py::LangGraphAgentScaffold.run"]
+    C -->|"LangGraphAgentScaffold._build_run_config\nData: configurable.thread_id/checkpoint_id + RuntimeContext.user_id"| D["DeepAgentPersistenceStore.get_thread_state"]
+    C -->|"LangGraphAgentScaffold._build_run_config\nData: RuntimeContext.user_id"| E["DeepAgentPersistenceStore.get_store_state"]
+    C -->|"pipeline outputs after synthesis\nData: thread_id, query, output, checkpoint_id?"| F["DeepAgentPersistenceStore.persist_run"]
+    D -->|"thread_checkpoint_count_before_run + replay metadata\nWhy: expose prior state for same-thread continuity checks"| G["graph_state.graph.execution.persistence"]
+    E -->|"store_namespace + entry/thread summary\nWhy: prove namespace resolution from runtime user_id"| G
+    F -->|"resolved_checkpoint_id\nWhy: checkpoint replay/fork input for later run"| G
+    C -->|"top-level response remains stable\nthread_id + optional checkpoint_id echo"| H["RuntimeAgentRunResponse"]
+
+    N1["Decision: keep top-level checkpoint_id echo behavior\nTradeoff: backward-compatible API now; resolved/generated checkpoint is exposed in execution.persistence."] --- G
+    N2["Decision: use shared in-process store/checkpointer in scaffold phase\nTradeoff: deterministic smoke coverage now; can swap to Postgres/Redis persistence later with same metadata contract."] --- F

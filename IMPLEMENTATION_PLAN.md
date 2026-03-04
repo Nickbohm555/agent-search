@@ -6,8 +6,18 @@
   - Added smoke coverage in `src/backend/tests/api/test_deepagent_run_config.py` for generated and explicit config paths.
   - Verified with `docker compose exec backend uv run pytest tests/api -m smoke` and full required checks.
 
-- [ ] P0 - Compile and invoke DeepAgent with persistent checkpointer + cross-thread store, using runtime `user_id` context for namespace resolution.
+- [x] P0 - Compile and invoke DeepAgent with persistent checkpointer + cross-thread store, using runtime `user_id` context for namespace resolution.
   Verification requirements (from deepAgent Checkpointing + Memory acceptance criteria): backend smoke test verifies two runs with same `thread_id` expose persisted thread state (via run metadata/state inspection); different `thread_id` values do not share checkpoint state; run with valid `checkpoint_id` replays/forks without error; persistence-enabled runs remain compatible with existing response shape.
+  Completed in this loop:
+  - Added runtime persistence scaffolding in `src/backend/agents/langgraph_agent.py` using a shared in-process checkpointer (thread-scoped history) and cross-thread store (user namespace `(user_id, "memories")`).
+  - Wired runtime context resolution so omitted `user_id` falls back to deterministic `"anonymous"` namespace, while explicit `user_id` controls store namespace selection.
+  - Extended runtime graph execution metadata with `persistence` fields (`thread_checkpoint_count_before_run`, checkpoint replay info, `resolved_checkpoint_id`, `store_namespace`, store entry/thread summaries) without changing top-level API response shape.
+  - Added backend smoke tests in `src/backend/tests/api/test_deepagent_persistence.py` covering same-thread persistence, thread isolation, checkpoint replay with valid checkpoint id, and user-scoped namespace reuse across threads.
+  - Verified required checks:
+    - Health: `curl http://localhost:8000/api/health` -> `200 {"status":"ok"}`.
+    - Backend tests: `docker compose exec backend uv run pytest` -> `32 passed`.
+    - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
+    - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
 - [ ] P0 - Implement explicit memory routing using namespace `(user_id, "memories")` with read-before-execution and write-after-synthesis behavior.
   Verification requirements (from deepAgent Memory acceptance criteria): backend smoke test verifies memory written for `user_id=A` is retrieved on later `user_id=A` run; `user_id=B` cannot read A namespace memories; timeline/graph metadata includes a memory-read event before synthesis and memory-write event after synthesis; stored memory payload shape is deterministic for identical inputs.
