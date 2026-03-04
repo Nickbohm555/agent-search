@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   RuntimeAgentGraphStep,
   RuntimeAgentRunResponse,
@@ -126,6 +126,7 @@ export default function App() {
   const [wipeMessage, setWipeMessage] = useState("");
   const wipeInFlightRef = useRef(false);
   const runInFlightRef = useRef(false);
+  const controlsPanelRef = useRef<HTMLElement | null>(null);
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
   const isWikiLoad = loadSourceType === "wiki";
@@ -342,19 +343,40 @@ export default function App() {
     }
   }
 
+  /**
+   * Called by the "Skip to controls" link so keyboard users can jump directly
+   * to the controls panel and continue tab navigation from that point.
+   * Side effects: prevents default anchor jump, then programmatically focuses
+   * the controls section heading target.
+   */
+  function handleSkipToControls(event: MouseEvent<HTMLAnchorElement>): void {
+    event.preventDefault();
+    controlsPanelRef.current?.focus();
+  }
+
   return (
     <main
       className={`container theme-cyberpunk deck-shell${prefersReducedMotion ? " reduced-motion" : ""}`}
       data-theme="cyberpunk"
       data-reduced-motion={prefersReducedMotion ? "true" : "false"}
     >
+      <a href="#controls-panel" className="skip-link" onClick={handleSkipToControls}>
+        Skip to controls
+      </a>
       <header className="deck-header">
         <h1>Agent Search Demo</h1>
         <p className="lead">Load internal docs, run a query, and review the synthesized answer.</p>
       </header>
 
       <div className="deck-grid">
-        <section className="card deck-panel deck-controls" aria-label="controls" data-testid="controls-panel">
+        <section
+          id="controls-panel"
+          className="card deck-panel deck-controls"
+          aria-label="controls"
+          data-testid="controls-panel"
+          tabIndex={-1}
+          ref={controlsPanelRef}
+        >
           <div className="panel-titlebar">
             <h2>Control Deck</h2>
             <span className="panel-kicker">ACTION</span>

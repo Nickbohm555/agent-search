@@ -594,4 +594,45 @@ describe("App", () => {
       expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
     });
   });
+
+  it("supports keyboard-only load and run flow from skip link to final answer", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+    mockedStreamAgentRun.mockResolvedValue({ ok: true, data: successStreamResponse() });
+
+    render(<App />);
+
+    const skipLink = screen.getByRole("link", { name: "Skip to controls" });
+    fireEvent.click(skipLink);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("controls-panel")).toHaveFocus();
+    });
+
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "inline" } });
+    const loadForm = screen.getByLabelText("Load Source").closest("form");
+    expect(loadForm).not.toBeNull();
+    fireEvent.submit(loadForm!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Keyboard-only full flow" } });
+    const runForm = screen.getByLabelText("Query").closest("form");
+    expect(runForm).not.toBeNull();
+    fireEvent.submit(runForm!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
+      expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
+    });
+  });
 });

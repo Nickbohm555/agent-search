@@ -101,3 +101,18 @@
   - `docker compose exec backend uv run pytest` (60 passed)
   - `docker compose exec frontend npm run test -- --run` (35 passed)
   - `docker compose exec frontend npm run typecheck` (pass)
+
+## Loop Update (2026-03-04, keyboard accessibility path)
+
+- **Completed highest-priority item this run:** improved accessibility within the cyberpunk UI by adding a keyboard skip path to controls and explicit focus-visible styling while preserving reduced-motion behavior.
+- **Implementation details:**
+  - Added a `Skip to controls` link at app start that programmatically focuses the controls panel (`App.handleSkipToControls`), enabling fast keyboard navigation through load/run actions.
+  - Added a focus target (`id="controls-panel"`, `tabIndex={-1}`) for deterministic keyboard focus handoff.
+  - Tightened theme focus styling to use `:focus-visible` for controls/links/sections and added skip-link reveal styling on keyboard focus.
+- **Tests added/updated for this item:**
+  - `src/frontend/src/App.test.tsx`: added `supports keyboard-only load and run flow from skip link to final answer`, covering skip-link focus handoff plus load+run submission without pointer interaction.
+- **Validation performed:**
+  - `curl -sf http://localhost:8000/api/health`
+  - `docker compose exec backend uv run pytest` (60 passed)
+  - `docker compose exec frontend npm run test -- --run` (36 passed)
+  - `docker compose exec frontend npm run typecheck` (pass)

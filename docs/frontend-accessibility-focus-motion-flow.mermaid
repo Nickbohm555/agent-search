@@ -8,16 +8,21 @@ flowchart TD
     C -->|SSE events: heartbeat/progress/sub_queries/completed| D[App.applyStreamEvent + state updates<br/>src/frontend/src/App.tsx]
     D -->|Render status/progress/answer readouts| E[StatusBanner + ProgressHistory + Final Readout<br/>src/frontend/src/lib/components/*]
 
-    F[Keyboard/programmatic focus enters textarea/input/select/button] -->|Trigger: :focus rule<br/>src/frontend/src/styles.css| G[Visible neon outline + halo]
+    S[Skip link activation<br/>Keyboard Enter on "Skip to controls"] -->|Trigger: src/frontend/src/App.tsx<br/>App.handleSkipToControls| S1[Programmatic focus on controls panel<br/>#controls-panel tabIndex -1]
+    S1 -->|Why: fast keyboard route to load/run forms| A1
+    F[Keyboard/programmatic focus enters textarea/input/select/button/link/section] -->|Trigger: :focus-visible rules<br/>src/frontend/src/styles.css| G[Visible neon outline + halo]
     H[OS reduced-motion preference] -->|Trigger: usePrefersReducedMotion()<br/>src/frontend/src/utils/motion.ts| I[App root renders reduced-motion class + data flag<br/>src/frontend/src/App.tsx]
     I -->|Trigger: .reduced-motion CSS rules<br/>src/frontend/src/styles.css| J[Disable decorative transitions + hover lift]
     J -->|Why: preserve essential feedback only| E
     H -->|Fallback trigger: @media (prefers-reduced-motion: reduce)<br/>src/frontend/src/styles.css| J
 
+    M2[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports keyboard-only load and run flow from skip link to final answer] -->|Verifies skip-link focus handoff plus keyboard load/run end-to-end| S
     M[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_run_flow] -->|Verifies deterministic keyboard submit path| B
     M1[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_load_flow] -->|Verifies keyboard submit path for data load| A1
     K[Frontend test guard<br/>src/frontend/src/App.test.tsx::marks app reduced-motion state when system preference requests less motion] -->|Verifies reduced-motion state detection and class wiring| I
     L[Frontend test guard<br/>src/frontend/src/App.test.tsx::keeps default motion mode when reduced-motion preference is not requested] -->|Verifies default mode does not apply reduced-motion class| I
 
-    N[Decision note: keep both JS class and CSS media fallback]
-    N -->|Tradeoff: adds small hook complexity<br/>Benefit: deterministic testability + OS fallback coverage| I
+    N[Decision note: use :focus-visible plus skip-link programmatic focus]
+    N -->|Tradeoff: adds one focus handler and anchor control<br/>Benefit: clear keyboard intent and predictable panel targeting| S1
+    N1[Decision note: keep both JS class and CSS media fallback]
+    N1 -->|Tradeoff: adds small hook complexity<br/>Benefit: deterministic testability + OS fallback coverage| I

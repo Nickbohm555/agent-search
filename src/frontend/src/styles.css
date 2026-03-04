@@ -196,10 +196,12 @@ button {
   transition: box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
-textarea:focus,
-input:focus,
-select:focus,
-button:focus {
+textarea:focus-visible,
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible,
+section:focus-visible {
   outline: 2px solid var(--accent-neon);
   outline-offset: 2px;
   border-color: var(--accent-neon);
@@ -230,6 +232,25 @@ button {
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 20;
+  transform: translateY(-180%);
+  background: #081a2c;
+  color: var(--accent-neon);
+  border: 1px solid var(--accent-neon);
+  border-radius: 6px;
+  padding: 6px 10px;
+  text-decoration: none;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
 }
 
 .status {
