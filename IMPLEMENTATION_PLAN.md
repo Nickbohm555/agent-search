@@ -2,104 +2,78 @@
 
 ## Scope
 - Scoped target: `all frontend work` only.
-- Inputs reviewed: `specs/*`, `src/frontend/*`, `src/frontend/src/lib/*`, existing `IMPLEMENTATION_PLAN.md`, and backend route/schema surface needed for frontend integration.
-- Mode: planning only (no feature implementation in this run).
+- Reviewed: `specs/*`, `src/frontend/*`, `src/frontend/src/lib/*`, and frontend-facing backend contracts in `src/backend/routers/*` + `src/backend/schemas/*`.
+- Planning mode only (no implementation in this run).
+- Note: `src/lib/*` does not exist in this repo; shared frontend library code is in `src/frontend/src/lib/*`.
 
-## Current Frontend Status (2026-03-04)
-- [x] TypeScript demo UI exists (`React + Vite`) with load and run controls.
-- [x] Typed API client exists for `POST /api/internal-data/load` and `POST /api/agents/run` with deterministic error mapping.
-- [x] Final answer rendering exists for successful runs.
-- [x] Non-stream fallback progress rendering exists (`graph_state.timeline`, sub-queries, validation results).
-- [x] Frontend tests exist for core load/run outcomes and API client behavior.
-- [ ] Streaming heartbeat consumption is not implemented in frontend (no SSE/WebSocket/EventSource client).
-- [ ] Cyberpunk visual theme is not implemented (current CSS is light neutral theme).
-- [ ] Deck-style panel/chrome layout is not implemented.
-- [ ] Readout-style output treatment is minimal and not themed.
-- [ ] Motion and retro-tech feedback treatment is minimal.
-- [ ] Accessibility hardening for cyberpunk styling (contrast/focus/reduced-motion/readability) is not implemented.
-
-## Spec Coverage Snapshot (Frontend)
-- `specs/demo-ui-typescript.md`: partial (load/run exists; streaming heartbeat UI missing).
-- `specs/visual-theme.md`: not implemented.
-- `specs/layout-and-chrome.md`: not implemented.
-- `specs/content-and-readouts.md`: partially implemented functionally, not aesthetically implemented.
-- `specs/motion-and-feedback.md`: minimally implemented functionally, not aesthetically implemented.
-- `specs/accessibility-within-aesthetic.md`: not implemented as an explicit themed accessibility pass.
+## Current Frontend Coverage (2026-03-04)
+- [x] TypeScript React/Vite demo shell with load/run controls is present.
+- [x] Frontend API client supports `POST /api/internal-data/load` and `POST /api/agents/run` with deterministic error handling.
+- [x] Final answer and fallback progress history rendering exist for non-stream response payloads.
+- [x] Frontend tests cover core load/run happy paths, failures, and in-flight duplicate prevention.
+- [ ] Streaming heartbeat consumption in UI is missing (no EventSource/WebSocket client path).
+- [ ] Cyberpunk theme, deck chrome, readout styling, motion polish, and accessibility hardening are not yet implemented.
 
 ## Prioritized Frontend Tasks (Highest Priority Incomplete First)
 
-- [ ] P0 - Integrate streaming heartbeat into run UX (`demo-ui-typescript`, `streaming-agent-heartbeat`)
-- Why:
-  - Frontend acceptance requires sub-queries/progress to appear as streamed events in near real-time.
-  - Current UI only shows post-response/fallback payload data.
+- [ ] P0 - Add streaming heartbeat run experience (`specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`)
 - Confirmed gap:
-  - No streaming route in `src/backend/routers/*`; frontend has no stream client.
-- Verification requirements (outcome-focused):
-  - Test: during a run, sub-queries appear incrementally before final completion.
-  - Test: visible progress state updates as heartbeat events arrive.
-  - Test: terminal completion event (or equivalent) shows final answer and complete state.
-  - Test: stream interruption shows degraded/connection-lost status without freezing the UI.
-  - Test: mocked stream transport keeps tests deterministic and offline.
-- Dependency:
-  - Requires backend streaming endpoint and stable event contract.
+  - Frontend currently waits for final `POST /api/agents/run` response; it does not render incremental stream events.
+  - Backend router currently exposes `POST /api/agents/run` only; no stream endpoint is exposed yet (`src/backend/routers/agent.py`), so this task is blocked on backend contract/endpoint availability.
+- Verification requirements (outcome-based):
+  - Test: when run starts, streamed sub-queries appear incrementally before completion.
+  - Test: streamed progress updates are visible during the run (not only after completion).
+  - Test: completion event updates UI to a terminal state and shows final answer.
+  - Test: interrupted stream shows explicit degraded/error status and keeps UI responsive for retry.
+  - Test: stream tests use deterministic mocked transport (no live network dependency).
 
-- [ ] P0 - Implement cyberpunk visual theme foundation (`visual-theme`)
-- Why:
-  - Theme is a core explicit frontend requirement and base for all other aesthetic specs.
-- Verification requirements (outcome-focused):
-  - Test: initial render uses dark/noir base surfaces with at least one neon accent for interactive or status elements.
-  - Test: headings, body, and readout text tiers are visually distinct.
-  - Test: panels/surfaces are visually distinct from background.
-  - QA: reviewer can reasonably identify look as cyberpunk/neon-noir.
+- [ ] P0 - Implement cyberpunk visual theme baseline (`specs/visual-theme.md`)
+- Verification requirements (outcome-based):
+  - Test: app loads with a dark/noir base and at least one neon accent on interactive/status elements.
+  - Test: text hierarchy is visually clear (title, body, readout/meta tiers).
+  - Test: panels/surfaces are distinguishable from page background.
+  - Review check: UI is recognizably neon-noir/cyberpunk to a reviewer.
 
-- [ ] P0 - Implement deck-style structure and chrome (`layout-and-chrome`)
-- Why:
-  - Acceptance requires clearly framed control/progress/result instrument areas.
-- Verification requirements (outcome-focused):
-  - Test: controls, progress/status, and result/readout are distinct sections.
-  - Test: section boundaries/chrome are visible and consistent.
-  - Test: first-time user path is clear (where to act vs where to read).
-  - Test: responsive layout preserves section hierarchy on narrower widths.
+- [ ] P0 - Implement deck layout and chrome framing (`specs/layout-and-chrome.md`)
+- Verification requirements (outcome-based):
+  - Test: controls, progress/status, and result/readout are visually distinct sections.
+  - Test: section boundaries/chrome are consistently visible.
+  - Test: first-time user can identify where to act vs where to read without ambiguity.
+  - Test: on narrow viewport widths, sections remain usable with preserved hierarchy.
 
-- [ ] P1 - Apply readout-oriented content presentation (`content-and-readouts`)
-- Why:
-  - Functional data exists, but presentation does not yet read as cohesive deck/readout output.
-- Verification requirements (outcome-focused):
-  - Test: load/run success and error outcomes are displayed in readout-style status treatment.
-  - Test: final answer is visually dominant and easy to scan.
-  - Test: sub-queries/progress remain ordered and scannable in themed output format.
-  - Test: users can distinguish asked query vs system progress vs system answer from UI structure/styling.
+- [ ] P1 - Upgrade status/progress/answer into consistent readouts (`specs/content-and-readouts.md`)
+- Verification requirements (outcome-based):
+  - Test: load/run success and error outcomes render in a coherent readout style.
+  - Test: final answer remains dominant and easy to scan.
+  - Test: progress and sub-query output remains ordered/scannable.
+  - Test: user can visually distinguish asked query vs system progress vs final answer.
 
-- [ ] P1 - Implement motion and action feedback patterns (`motion-and-feedback`)
-- Why:
-  - Current loading feedback is basic label swaps; spec expects cohesive retro-tech transitions/feedback.
-- Verification requirements (outcome-focused):
-  - Test: triggering load/run produces immediate, visible processing feedback tied to that action.
-  - Test: progress/status changes are perceptibly apparent as updates occur.
-  - Test: decorative motion does not obscure controls, progress, or answer readability.
-  - Test: transitions are consistent across major state changes.
+- [ ] P1 - Add motion and feedback treatment for action/state changes (`specs/motion-and-feedback.md`)
+- Verification requirements (outcome-based):
+  - Test: triggering load/run immediately shows visible processing feedback tied to the action.
+  - Test: incoming progress/status changes are perceptible when they occur.
+  - Test: decorative motion does not hide or hinder controls/content readability.
+  - Test: transition behavior is consistent across major state changes.
 
-- [ ] P1 - Accessibility hardening pass within the themed UI (`accessibility-within-aesthetic`)
-- Why:
-  - Cyberpunk styling must preserve usability and readability.
-- Verification requirements (outcome-focused):
-  - Test: all interactive controls show visible keyboard focus indicators.
+- [ ] P1 - Accessibility hardening for themed UI (`specs/accessibility-within-aesthetic.md`)
+- Verification requirements (outcome-based):
+  - Test: all interactive controls have visible keyboard focus indication.
   - Test: keyboard-only user can complete load and run flows in logical focus order.
   - Test: with `prefers-reduced-motion: reduce`, non-essential motion is reduced while essential status remains visible.
   - Test: final answer and primary statuses remain readable at 200% zoom.
-  - Audit task: contrast meets WCAG AA for core text/labels, or explicit exceptions are documented.
+  - Audit: WCAG AA contrast is met for core text/labels, or exceptions are explicitly documented.
 
-## Already Completed Frontend Work
-- [x] Load/vectorize trigger and status path in UI.
-- [x] Query run trigger and final answer rendering.
-- [x] API error handling path for HTTP/network/timeout/malformed responses.
-- [x] In-flight action safety (duplicate request prevention + retry after failure).
-- [x] Progress-history fallback UI from non-stream run payload.
+## Completed Frontend Work (Tracked)
+- [x] Load/vectorize trigger + status reporting.
+- [x] Query run trigger + final answer rendering.
+- [x] API error mapping for HTTP/network/timeout/malformed payloads.
+- [x] Duplicate request prevention while in-flight + same-session retry behavior.
+- [x] Non-stream progress fallback rendering from `graph_state`, sub-queries, and validation data.
 
-## Frontend Quality Gates
-- [ ] Each new UI behavior ships with at least one frontend render/interaction test in the same change.
-- [ ] Tests verify user-observable outcomes, not implementation internals.
-- [ ] Tests are deterministic (mocked stream/network behavior; no hidden network dependency).
-- [ ] Frontend checks pass before completion: `docker compose exec frontend npm run test`.
-- [ ] Frontend checks pass before completion: `docker compose exec frontend npm run typecheck`.
-- [ ] Frontend checks pass before completion: `docker compose exec frontend npm run build`.
+## Frontend Quality Gates (Per Change)
+- [ ] Add at least one render/interaction test for each new frontend behavior.
+- [ ] Keep tests outcome-based (avoid implementation-detail assertions).
+- [ ] Keep frontend tests deterministic (mock transport/network).
+- [ ] Pass: `docker compose exec frontend npm run test`.
+- [ ] Pass: `docker compose exec frontend npm run typecheck`.
+- [ ] Pass: `docker compose exec frontend npm run build`.
