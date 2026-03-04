@@ -3,7 +3,7 @@
 ## Scope
 - Scoped target: `all frontend work` only.
 - Reviewed: `specs/*`, `src/frontend/*`, `src/frontend/src/lib/*`, and frontend-facing backend contracts in `src/backend/routers/*` + `src/backend/schemas/*`.
-- Planning mode only (no implementation in this run).
+- Iteration mode: complete one highest-priority frontend item per run with tests.
 - Note: `src/lib/*` does not exist in this repo; shared frontend library code is in `src/frontend/src/lib/*`.
 
 ## Current Frontend Coverage (2026-03-04)
@@ -12,27 +12,21 @@
 - [x] Final answer and fallback progress history rendering exist for non-stream response payloads.
 - [x] Frontend tests cover core load/run happy paths, failures, and in-flight duplicate prevention.
 - [ ] Streaming heartbeat consumption in UI is missing (no EventSource/WebSocket client path).
-- [ ] Cyberpunk theme, deck chrome, readout styling, motion polish, and accessibility hardening are not yet implemented.
+- [x] Cyberpunk visual-theme baseline is implemented (dark/noir base, neon action/readout accents, panel/surface separation).
+- [ ] Deck chrome framing, readout polish, motion tuning, and accessibility hardening remain.
 
 ## Prioritized Frontend Tasks (Highest Priority Incomplete First)
 
 - [ ] P0 - Add streaming heartbeat run experience (`specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`)
 - Confirmed gap:
   - Frontend currently waits for final `POST /api/agents/run` response; it does not render incremental stream events.
-  - Backend router currently exposes `POST /api/agents/run` only; no stream endpoint is exposed yet (`src/backend/routers/agent.py`), so this task is blocked on backend contract/endpoint availability.
+  - Backend router still exposes `POST /api/agents/run` only; no stream endpoint is exposed yet (`src/backend/routers/agent.py`), so this task remains blocked on backend contract/endpoint availability.
 - Verification requirements (outcome-based):
   - Test: when run starts, streamed sub-queries appear incrementally before completion.
   - Test: streamed progress updates are visible during the run (not only after completion).
   - Test: completion event updates UI to a terminal state and shows final answer.
   - Test: interrupted stream shows explicit degraded/error status and keeps UI responsive for retry.
   - Test: stream tests use deterministic mocked transport (no live network dependency).
-
-- [ ] P0 - Implement cyberpunk visual theme baseline (`specs/visual-theme.md`)
-- Verification requirements (outcome-based):
-  - Test: app loads with a dark/noir base and at least one neon accent on interactive/status elements.
-  - Test: text hierarchy is visually clear (title, body, readout/meta tiers).
-  - Test: panels/surfaces are distinguishable from page background.
-  - Review check: UI is recognizably neon-noir/cyberpunk to a reviewer.
 
 - [ ] P0 - Implement deck layout and chrome framing (`specs/layout-and-chrome.md`)
 - Verification requirements (outcome-based):
@@ -69,11 +63,16 @@
 - [x] API error mapping for HTTP/network/timeout/malformed payloads.
 - [x] Duplicate request prevention while in-flight + same-session retry behavior.
 - [x] Non-stream progress fallback rendering from `graph_state`, sub-queries, and validation data.
+- [x] Cyberpunk visual-theme baseline (`specs/visual-theme.md`) with deterministic render coverage (`src/frontend/src/App.test.tsx`).
+
+## Run Notes (2026-03-04)
+- Completed this iteration: P0 visual theme baseline.
+- Verified after fresh rebuild/start: `curl -sSf http://localhost:8000/api/health`, `docker compose exec backend uv run pytest`, `docker compose exec frontend npm run test`, `docker compose exec frontend npm run typecheck`, `docker compose exec frontend npm run build`.
 
 ## Frontend Quality Gates (Per Change)
-- [ ] Add at least one render/interaction test for each new frontend behavior.
-- [ ] Keep tests outcome-based (avoid implementation-detail assertions).
-- [ ] Keep frontend tests deterministic (mock transport/network).
-- [ ] Pass: `docker compose exec frontend npm run test`.
-- [ ] Pass: `docker compose exec frontend npm run typecheck`.
-- [ ] Pass: `docker compose exec frontend npm run build`.
+- [x] Add at least one render/interaction test for each new frontend behavior.
+- [x] Keep tests outcome-based (avoid implementation-detail assertions).
+- [x] Keep frontend tests deterministic (mock transport/network).
+- [x] Pass: `docker compose exec frontend npm run test`.
+- [x] Pass: `docker compose exec frontend npm run typecheck`.
+- [x] Pass: `docker compose exec frontend npm run build`.

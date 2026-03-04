@@ -20,7 +20,7 @@ export function QueryForm({ query, onQueryChange, onSubmit, isRunDisabled, isLoa
         rows={3}
         placeholder="Ask a complex question..."
       />
-      <button type="submit" disabled={isRunDisabled}>
+      <button type="submit" className="action-button neon-action" disabled={isRunDisabled}>
         {isLoading ? "Running..." : "Run Agent"}
       </button>
     </form>

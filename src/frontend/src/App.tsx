@@ -77,14 +77,19 @@ export default function App() {
   }
 
   return (
-    <main className="container">
+    <main className="container theme-cyberpunk" data-theme="cyberpunk">
       <h1>Agent Search Demo</h1>
       <p className="lead">Load internal docs, run a query, and review the synthesized answer.</p>
 
       <section className="card">
         <h2>Load / Vectorize</h2>
         <p>Ingest sample internal docs for retrieval.</p>
-        <button type="button" onClick={handleLoad} disabled={loadState === "loading"}>
+        <button
+          type="button"
+          className="action-button neon-action"
+          onClick={handleLoad}
+          disabled={loadState === "loading"}
+        >
           {loadState === "loading" ? "Loading..." : "Load Data"}
         </button>
         <StatusBanner state={loadState} message={loadMessage} testId="load-status-region" />

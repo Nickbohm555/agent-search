@@ -71,6 +71,17 @@ describe("App", () => {
     expect(screen.getByTestId("progress-history-region")).toBeInTheDocument();
   });
 
+  it("applies the cyberpunk baseline theme with dark base, neon accents, and distinct surfaces", () => {
+    render(<App />);
+
+    expect(screen.getByRole("main")).toHaveAttribute("data-theme", "cyberpunk");
+    expect(screen.getByRole("button", { name: "Load Data" })).toHaveClass("neon-action");
+    expect(screen.getByRole("button", { name: "Run Agent" })).toHaveClass("neon-action");
+    expect(screen.getByTestId("load-status-region")).toHaveClass("status");
+    expect(screen.getByTestId("progress-region")).toHaveClass("status");
+    expect(document.querySelectorAll(".card").length).toBeGreaterThanOrEqual(2);
+  });
+
   it("shows successful load outcome with counts", async () => {
     mockedLoadInternalData.mockResolvedValue({
       ok: true,
