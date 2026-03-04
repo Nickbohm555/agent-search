@@ -1,0 +1,12 @@
+flowchart TD
+    A[Select highest-priority item\nP0 typed frontend API layer] --> B[Implement src/frontend/src/utils/api.ts]
+    B --> C[Add typed clients\nloadInternalData + runAgent]
+    C --> D[Add deterministic error mapping\nhttp | timeout | network | malformed_response]
+    D --> E[Add unit tests\napi.test.ts]
+    E --> F[Attempt required fresh Docker cycle]
+    F --> G{Docker daemon accessible?}
+    G -- No --> H[BLOCKED: docker socket permission denied]
+    H --> I[Document blocker in IMPLEMENTATION_PLAN.md\nwith failed command + next action]
+
+    J[Key decisions] --> J1[Return ApiResult<T> union instead of throwing]
+    J --> J2[Runtime response guards prevent UI crashes on malformed payloads]

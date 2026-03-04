@@ -3,19 +3,21 @@
 ## Scope
 - Frontend-only scoped planning for: "all frontend work".
 - Sources reviewed this run: `specs/*`, `src/frontend/*`, `src/backend/routers/*`, `src/backend/schemas/*`, `src/backend/services/agent_service.py`, `IMPLEMENTATION_PLAN.md`.
-- Planning mode only; no implementation in this run.
+- Implementation run completed for one P0 item (typed frontend API layer).
 
 ## Current Status (2026-03-04)
 - [x] Frontend scaffold exists in TypeScript/React/Vite (`src/frontend/src/App.tsx`, `src/frontend/src/main.tsx`).
 - [x] Frontend test harness exists (Vitest + Testing Library) (`src/frontend/src/App.test.tsx`, `src/frontend/src/test/setup.ts`).
 - [x] Frontend API base URL helper exists (`src/frontend/src/utils/config.ts`).
+- [x] Typed frontend API layer exists for `/api/internal-data/load` and `/api/agents/run` with deterministic error handling and payload validation (`src/frontend/src/utils/api.ts`).
+- [x] Frontend API layer unit tests added for success, HTTP error, timeout/network error, and malformed payload fallback (`src/frontend/src/utils/api.test.ts`).
 - [x] Confirmed `src/lib/*` is currently missing; no shared cross-app library exists yet.
 - [ ] Demo UI workflow from `specs/demo-ui-typescript.md` is not implemented.
 - [ ] Streaming heartbeat UI integration from `specs/streaming-agent-heartbeat.md` is not implemented.
 
 ## Frontend Tasks Remaining (Highest Priority First)
 
-- [ ] P0 - Build a typed frontend API layer for demo flows (load + run)
+- [x] P0 - Build a typed frontend API layer for demo flows (load + run)
 - Why: UI work depends on stable contract handling for `/api/internal-data/load` and `/api/agents/run`.
 - Spec alignment:
   - `specs/demo-ui-typescript.md` (load trigger, run trigger, final answer display)
@@ -29,6 +31,11 @@
   - Unit test: non-2xx API response yields deterministic user-safe error object.
   - Unit test: network failure/timeout yields deterministic retryable error object.
   - Unit test: malformed payload from backend is rejected into deterministic fallback error (no uncaught runtime crash).
+- Completion notes:
+  - Implemented `loadInternalData` and `runAgent` typed clients with `ApiResult<T>` and deterministic error object shape.
+  - Added runtime response guards to prevent malformed backend payload crashes.
+  - Added unit tests for all listed verification cases.
+  - Containerized verification is currently blocked in this environment (see BLOCKED section).
 
 - [ ] P0 - Implement demo UI workflow (load/vectorize + query run + final answer)
 - Why: This is the core acceptance surface in `demo-ui-typescript`.
@@ -123,3 +130,12 @@
   - `docker compose exec frontend npm run test`
   - `docker compose exec frontend npm run typecheck`
   - `docker compose exec frontend npm run build`
+
+## BLOCKED
+- BLOCKED (external dependency access): Docker daemon access is unavailable from this environment, so required fresh-build and containerized checks cannot run.
+- Failed command/test:
+  - `docker compose down -v --rmi all` -> `permission denied while trying to connect to the Docker daemon socket ... /Users/nickbohm/.docker/run/docker.sock: connect: operation not permitted`
+- Missing variable/access:
+  - Access to local Docker daemon socket for `docker compose` commands.
+- Next action:
+  - Re-run this loop where Docker daemon access is permitted, then execute: fresh cycle (`down -v --rmi all`, `build`, `up -d`), health check, backend tests, frontend tests, typecheck, and frontend build check.
