@@ -124,6 +124,16 @@ export default function App() {
     }
   }
 
+  /**
+   * Called by the load/vectorize form submit path so keyboard users can trigger
+   * the same load behavior as pointer users without duplicating load logic.
+   * Side effects: prevents browser form navigation and delegates to `handleLoad`.
+   */
+  async function handleLoadSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    await handleLoad();
+  }
+
   function applyStreamEvent(
     event: RuntimeAgentStreamEvent,
     progress: RuntimeAgentGraphStep[],
@@ -255,7 +265,7 @@ export default function App() {
             <span className="panel-kicker">ACTION</span>
           </div>
 
-          <div className="control-block">
+          <form className="control-block" onSubmit={handleLoadSubmit}>
             <h3>Load / Vectorize</h3>
             <p>Load sample docs or a wiki topic for retrieval.</p>
             <label htmlFor="load-source">Load Source</label>
@@ -290,15 +300,14 @@ export default function App() {
               </>
             ) : null}
             <button
-              type="button"
+              type="submit"
               className="action-button neon-action"
-              onClick={handleLoad}
               disabled={isLoadDisabled}
             >
               {loadState === "loading" ? "Loading..." : "Load Data"}
             </button>
             <StatusBanner state={loadState} message={loadMessage} label="Load Status" testId="load-status-region" />
-          </div>
+          </form>
 
           <div className="control-block">
             <h3>Run Query</h3>

@@ -432,4 +432,26 @@ describe("App", () => {
       expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
     });
   });
+
+  it("supports keyboard form submission for load flow", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+
+    render(<App />);
+    const form = screen.getByLabelText("Load Source").closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+
+    await waitFor(() => {
+      expect(mockedLoadInternalData).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
+    });
+  });
 });

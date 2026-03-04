@@ -188,3 +188,23 @@ Backend must expose this list (e.g. `GET /api/internal-data/wiki-sources` or equ
     - `docker compose exec backend uv run pytest` -> `56 passed`
     - `docker compose exec frontend npm run test` -> `30 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
+
+- [x] P1: Ensure keyboard-only operability for both load and run flows with visible focus styling.
+  - Implementation scope:
+    - Make the load/vectorize controls submit through a semantic form path so keyboard submission behaves the same as pointer activation.
+    - Keep the existing load behavior and duplicate-guard checks intact while routing keyboard submits through shared load logic.
+    - Strengthen interactive focus styling so keyboard and programmatic focus remain visibly highlighted in the cyberpunk theme.
+  - Verification requirements (acceptance outcomes):
+    - Frontend interaction test: load flow can be triggered through form submit (keyboard path) and renders success readout.
+    - Frontend interaction test: run flow remains keyboard-submittable and continues to render streamed/final readouts.
+    - Styling: interactive controls retain visible neon focus indicators via shared focus selectors.
+  - Completed in this loop:
+    - Added `handleLoadSubmit` in `src/frontend/src/App.tsx` and wired `Load / Vectorize` controls as a form submit path (`type="submit"`), preserving existing `handleLoad` side effects and guards.
+    - Updated focus styling in `src/frontend/src/styles.css` from `:focus-visible`-only to shared `:focus` selectors for `textarea`, `input`, `select`, and `button` to keep focus indicators visible for keyboard and programmatic focus.
+    - Added frontend interaction coverage in `src/frontend/src/App.test.tsx`:
+      - `supports keyboard form submission for load flow`
+  - Verification run results:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `56 passed`
+    - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass

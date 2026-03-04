@@ -196,10 +196,10 @@ button {
   transition: box-shadow 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 
-textarea:focus-visible,
-input:focus-visible,
-select:focus-visible,
-button:focus-visible {
+textarea:focus,
+input:focus,
+select:focus,
+button:focus {
   outline: 2px solid var(--accent-neon);
   outline-offset: 2px;
   border-color: var(--accent-neon);

@@ -1,16 +1,21 @@
 flowchart TD
     A[User interaction<br/>Keyboard or pointer] -->|Trigger: src/frontend/src/lib/components/QueryForm.tsx<br/>QueryForm onSubmit| B[App.handleRun<br/>src/frontend/src/App.tsx]
+    A -->|Trigger: src/frontend/src/App.tsx<br/>Load/Vectorize form onSubmit -> handleLoadSubmit| A1[App.handleLoadSubmit]
+    A1 -->|Data: selected load source + wiki source id<br/>Why: allow keyboard submit parity with click load| A2[App.handleLoad]
+    A2 -->|Data: load payload for inline/wiki vectorization| A3[loadInternalData<br/>src/frontend/src/utils/api.ts]
+    A3 -->|Data: load status + counts| E
     B -->|Data: query string| C[streamAgentRun<br/>src/frontend/src/utils/stream.ts]
     C -->|SSE events: heartbeat/progress/sub_queries/completed| D[App.applyStreamEvent + state updates<br/>src/frontend/src/App.tsx]
     D -->|Render status/progress/answer readouts| E[StatusBanner + ProgressHistory + Final Readout<br/>src/frontend/src/lib/components/*]
 
-    F[Keyboard focus enters textarea/button] -->|Trigger: :focus-visible rule<br/>src/frontend/src/styles.css| G[Visible neon outline + halo]
+    F[Keyboard/programmatic focus enters textarea/input/select/button] -->|Trigger: :focus rule<br/>src/frontend/src/styles.css| G[Visible neon outline + halo]
     H[OS reduced-motion preference] -->|Trigger: usePrefersReducedMotion()<br/>src/frontend/src/utils/motion.ts| I[App root renders reduced-motion class + data flag<br/>src/frontend/src/App.tsx]
     I -->|Trigger: .reduced-motion CSS rules<br/>src/frontend/src/styles.css| J[Disable decorative transitions + hover lift]
     J -->|Why: preserve essential feedback only| E
     H -->|Fallback trigger: @media (prefers-reduced-motion: reduce)<br/>src/frontend/src/styles.css| J
 
     M[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_run_flow] -->|Verifies deterministic keyboard submit path| B
+    M1[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_load_flow] -->|Verifies keyboard submit path for data load| A1
     K[Frontend test guard<br/>src/frontend/src/App.test.tsx::marks app reduced-motion state when system preference requests less motion] -->|Verifies reduced-motion state detection and class wiring| I
     L[Frontend test guard<br/>src/frontend/src/App.test.tsx::keeps default motion mode when reduced-motion preference is not requested] -->|Verifies default mode does not apply reduced-motion class| I
 
