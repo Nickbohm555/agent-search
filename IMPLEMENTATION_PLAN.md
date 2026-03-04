@@ -166,3 +166,25 @@ Backend must expose this list (e.g. `GET /api/internal-data/wiki-sources` or equ
   - `docker compose exec backend uv run pytest` -> `56 passed`
   - `docker compose exec frontend npm run test` -> `28 passed`
   - `docker compose exec frontend npm run typecheck` -> pass
+
+- [x] P1: Honor reduced-motion preference in UI state while preserving readout feedback.
+  - Implementation scope:
+    - Add deterministic reduced-motion state detection in frontend app startup/render path.
+    - Apply a dedicated reduced-motion class at the app shell so decorative transitions/hover motion can be disabled without hiding status text.
+    - Keep load/run status readouts unchanged so essential progress feedback remains visible.
+  - Verification requirements (acceptance outcomes):
+    - Frontend test: app marks reduced-motion mode when `matchMedia("(prefers-reduced-motion: reduce)")` is true.
+    - Frontend test: app remains in default motion mode when reduced-motion preference is false.
+    - Existing load/run tests remain green to confirm status/answer readouts are still visible with motion changes.
+  - Completed in this loop:
+    - Added `src/frontend/src/utils/motion.ts::usePrefersReducedMotion` hook to centralize reduced-motion preference detection from `window.matchMedia`.
+    - Updated `src/frontend/src/App.tsx` to apply `reduced-motion` class and `data-reduced-motion` attribute on the root `<main>` shell.
+    - Updated `src/frontend/src/styles.css` to support both app-driven `.reduced-motion` and OS-level `@media (prefers-reduced-motion: reduce)` fallbacks that disable non-essential transitions/hover motion.
+    - Added frontend interaction coverage in `src/frontend/src/App.test.tsx`:
+      - `marks app reduced-motion state when system preference requests less motion`
+      - `keeps default motion mode when reduced-motion preference is not requested`
+  - Verification run results:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `56 passed`
+    - `docker compose exec frontend npm run test` -> `30 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass

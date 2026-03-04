@@ -13,9 +13,11 @@ import { QueryForm } from "./lib/components/QueryForm";
 import { StatusBanner } from "./lib/components/StatusBanner";
 import { RequestState } from "./lib/types";
 import { formatLoadSuccessMessage, formatRunSuccessMessage } from "./lib/utils/messages";
+import { usePrefersReducedMotion } from "./utils/motion";
 import { streamAgentRun } from "./utils/stream";
 
 export default function App() {
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
   const [loadSourceType, setLoadSourceType] = useState<"inline" | "wiki">("inline");
@@ -236,7 +238,11 @@ export default function App() {
   }
 
   return (
-    <main className="container theme-cyberpunk deck-shell" data-theme="cyberpunk">
+    <main
+      className={`container theme-cyberpunk deck-shell${prefersReducedMotion ? " reduced-motion" : ""}`}
+      data-theme="cyberpunk"
+      data-reduced-motion={prefersReducedMotion ? "true" : "false"}
+    >
       <header className="deck-header">
         <h1>Agent Search Demo</h1>
         <p className="lead">Load internal docs, run a query, and review the synthesized answer.</p>

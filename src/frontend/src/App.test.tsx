@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { listWikiSources, loadInternalData } from "./utils/api";
 import { RuntimeAgentStreamResponse, streamAgentRun } from "./utils/stream";
@@ -16,6 +16,20 @@ vi.mock("./utils/stream", () => ({
 const mockedLoadInternalData = vi.mocked(loadInternalData);
 const mockedListWikiSources = vi.mocked(listWikiSources);
 const mockedStreamAgentRun = vi.mocked(streamAgentRun);
+const originalMatchMedia = window.matchMedia;
+
+function mockMatchMedia(matches: boolean): void {
+  window.matchMedia = vi.fn().mockImplementation(() => ({
+    matches,
+    media: "(prefers-reduced-motion: reduce)",
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+  }));
+}
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -76,6 +90,7 @@ function successStreamResponse(overrides?: Partial<RuntimeAgentStreamResponse>):
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockMatchMedia(false);
     mockedListWikiSources.mockResolvedValue({
       ok: true,
       data: {
@@ -95,6 +110,10 @@ describe("App", () => {
         ],
       },
     });
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
   });
 
   it("renders load/run controls and status regions", () => {
@@ -118,6 +137,22 @@ describe("App", () => {
     expect(screen.getByTestId("load-status-region")).toHaveClass("status");
     expect(screen.getByTestId("progress-region")).toHaveClass("status");
     expect(document.querySelectorAll(".card").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("marks app reduced-motion state when system preference requests less motion", () => {
+    mockMatchMedia(true);
+    render(<App />);
+
+    expect(screen.getByRole("main")).toHaveAttribute("data-reduced-motion", "true");
+    expect(screen.getByRole("main")).toHaveClass("reduced-motion");
+  });
+
+  it("keeps default motion mode when reduced-motion preference is not requested", () => {
+    mockMatchMedia(false);
+    render(<App />);
+
+    expect(screen.getByRole("main")).toHaveAttribute("data-reduced-motion", "false");
+    expect(screen.getByRole("main")).not.toHaveClass("reduced-motion");
   });
 
   it("shows successful load outcome with counts", async () => {

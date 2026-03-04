@@ -5,10 +5,14 @@ flowchart TD
     D -->|Render status/progress/answer readouts| E[StatusBanner + ProgressHistory + Final Readout<br/>src/frontend/src/lib/components/*]
 
     F[Keyboard focus enters textarea/button] -->|Trigger: :focus-visible rule<br/>src/frontend/src/styles.css| G[Visible neon outline + halo]
-    H[OS reduced-motion preference] -->|Trigger: @media (prefers-reduced-motion: reduce)<br/>src/frontend/src/styles.css| I[Disable decorative transitions/hover motion]
-    I -->|Why: preserve essential feedback only| E
+    H[OS reduced-motion preference] -->|Trigger: usePrefersReducedMotion()<br/>src/frontend/src/utils/motion.ts| I[App root renders reduced-motion class + data flag<br/>src/frontend/src/App.tsx]
+    I -->|Trigger: .reduced-motion CSS rules<br/>src/frontend/src/styles.css| J[Disable decorative transitions + hover lift]
+    J -->|Why: preserve essential feedback only| E
+    H -->|Fallback trigger: @media (prefers-reduced-motion: reduce)<br/>src/frontend/src/styles.css| J
 
-    J[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_run_flow] -->|Verifies deterministic keyboard submit path| B
+    M[Frontend test guard<br/>src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_run_flow] -->|Verifies deterministic keyboard submit path| B
+    K[Frontend test guard<br/>src/frontend/src/App.test.tsx::marks app reduced-motion state when system preference requests less motion] -->|Verifies reduced-motion state detection and class wiring| I
+    L[Frontend test guard<br/>src/frontend/src/App.test.tsx::keeps default motion mode when reduced-motion preference is not requested] -->|Verifies default mode does not apply reduced-motion class| I
 
-    N[Decision note: keep reduced-motion handling CSS-only]
-    N -->|Tradeoff: simple, deterministic, no JS matchMedia branch| I
+    N[Decision note: keep both JS class and CSS media fallback]
+    N -->|Tradeoff: adds small hook complexity<br/>Benefit: deterministic testability + OS fallback coverage| I
