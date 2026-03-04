@@ -8,12 +8,15 @@
   - `GET /api/search-skeleton` returns scaffold status/message.
   - `GET /api/agents/runtime` returns scaffold agent identity.
   - `POST /api/agents/run` returns scaffold agent output.
-  - Startup sets `app.state.langfuse` from placeholder initializer.
+  - Startup sets `app.state.langfuse` via credential-aware Langfuse initializer.
   - Alembic baseline exists with no domain tables.
   - Frontend renders static scaffold shell only.
 - Existing tests confirmed:
   - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
+- Newly implemented this iteration:
+  - Langfuse SDK initialization now loads env config, creates a real client when enabled + credentialed, and returns a safe no-op tracing handle otherwise.
+  - Added backend smoke tests for enabled startup initialization and disabled/missing-credential no-op behavior.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -23,15 +26,13 @@
 - [x] Scaffold Docker Compose + Postgres + Alembic + pgvector infrastructure.
 - [x] P0 - Add smoke coverage for existing scaffold endpoints
   - Added outcome-focused smoke tests for `GET /api/search-skeleton`, `GET /api/agents/runtime`, `POST /api/agents/run`, and empty-query validation behavior.
+- [x] P0 - Implement Langfuse SDK initialization (`specs/langfuse-sdk-setup.md`)
+  - Added `langfuse==2.60.1` to backend dependencies.
+  - Replaced placeholder initializer with environment/credential-aware Langfuse client setup.
+  - Startup remains resilient when disabled or misconfigured by returning a no-op tracing handle.
+  - Added smoke tests covering enabled startup wiring and disabled graceful behavior.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P0 - Implement Langfuse SDK initialization (`specs/langfuse-sdk-setup.md`)
-  - Scope gap confirmed: no Langfuse SDK dependency; initializer returns placeholder handle only.
-  - Verification requirements (outcome-focused):
-    - With `LANGFUSE_ENABLED=true` and valid credentials, startup succeeds and app state exposes a usable tracing handle.
-    - With `LANGFUSE_ENABLED=false` or missing credentials, startup still succeeds with graceful no-op behavior.
-    - A tracing-capable request path can create an observation via the initialized handle without runtime errors.
 
 - [ ] P0 - Instrument agent-run tracing (`specs/agent-run-tracing.md`)
   - Scope gap confirmed: `run_runtime_agent()` executes with no trace/span creation.
@@ -133,26 +134,39 @@
 - [ ] Before commit for implementation runs: pass health check + backend tests + frontend tests + frontend typecheck.
 
 ## BLOCKED (2026-03-04)
-- Blocker: Missing Docker daemon access in this execution environment (cannot connect to `/Users/nickbohm/.docker/run/docker.sock`), which prevents running required compose-based checks.
+- Blocker: Missing Docker daemon access in this execution environment (cannot connect to `/Users/nickbohm/.docker/run/docker.sock`), which prevents required compose-based verification commands.
   - Failed commands:
-    - `docker compose up -d` -> `permission denied while trying to connect to the Docker daemon socket ... connect: operation not permitted`
-    - `docker compose ps` -> same daemon socket permission error.
+    - `docker compose ps` -> `permission denied while trying to connect to the Docker daemon socket ... connect: operation not permitted`
+    - `docker compose up -d` -> same daemon socket permission error.
+    - `docker compose exec backend uv run pytest` -> same daemon socket permission error.
+    - `docker compose exec frontend npm run test` -> same daemon socket permission error.
+    - `docker compose exec frontend npm run typecheck` -> same daemon socket permission error.
+    - `curl -sS http://localhost:8000/api/health` -> `curl: (7) Couldn't connect to server`.
 - Secondary local-environment blockers when attempting non-Docker fallback:
   - Failed commands:
-    - `(src/backend) uv run pytest` -> `failed to open file /Users/nickbohm/.cache/uv/sdists-v9/.git: Operation not permitted`
-    - `(src/frontend) npm test -- --run` -> `sh: vitest: command not found`
+    - `(src/backend) uv run pytest tests/api/test_langfuse_observability.py` -> `failed to open file /Users/nickbohm/.cache/uv/sdists-v9/.git: Operation not permitted`
+    - `(src/backend) uv run pytest` -> same `uv` cache permission error.
+    - `(src/backend) uv lock` -> same `uv` cache permission error.
+    - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
+  - Supplemental successful fallback checks (non-authoritative for compose gate):
+    - `(src/backend) python3 -m pytest tests/api/test_langfuse_observability.py` -> `3 passed`
+    - `(src/backend) python3 -m pytest` -> `8 passed`
 - Repository write blocker in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: add scaffold endpoint smoke tests"` -> `fatal: Unable to create '.git/index.lock': Operation not permitted`
+    - `git add -A && git commit -m "blocked: implement langfuse sdk initialization"` -> `fatal: Unable to create '.git/index.lock': Operation not permitted`
 - Next action:
   - Run checks on a host with Docker daemon access and installed project dependencies, then re-run:
     - `docker compose up -d`
+    - `docker compose ps`
     - `docker compose exec backend uv run pytest`
     - `docker compose exec frontend npm run test`
     - `docker compose exec frontend npm run typecheck`
     - Health check: `curl http://localhost:8000/api/health`
-  - Commit and push from a shell that can write to `.git/`:
+  - Install backend/frontend dependencies in an environment where package tooling has cache access:
+    - `(src/backend) uv sync`
+    - `(src/frontend) npm ci`
+  - Commit and push:
     - `git add -A`
-    - `git commit -m "blocked: add scaffold endpoint smoke tests"`
+    - `git commit -m "blocked: implement langfuse sdk initialization with smoke tests"`
     - `git push`

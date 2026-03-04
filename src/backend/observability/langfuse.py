@@ -1,6 +1,12 @@
 from dataclasses import dataclass
+from contextlib import nullcontext
 import os
 from typing import Any, Optional
+
+try:
+    from langfuse import Langfuse as LangfuseClient
+except ImportError:  # pragma: no cover - exercised when dependency is absent
+    LangfuseClient = None
 
 
 @dataclass
@@ -15,11 +21,24 @@ class LangfuseConfig:
 
 @dataclass
 class LangfuseTracingHandle:
-    """Scaffold handle for future Langfuse tracer/client objects."""
+    """Runtime tracing handle with graceful no-op behavior."""
 
     client: Optional[Any]
     tracer: Optional[Any]
     enabled: bool
+
+    def start_as_current_span(self, name: str, **kwargs: Any) -> Any:
+        """Create a Langfuse span context manager or return a no-op context."""
+        if self.enabled and self.client is not None:
+            return self.client.start_as_current_span(name=name, **kwargs)
+        return nullcontext(_NoOpSpan())
+
+
+class _NoOpSpan:
+    """No-op span to keep tracing calls safe when disabled."""
+
+    def update(self, **_: Any) -> None:
+        return None
 
 
 def load_langfuse_config() -> LangfuseConfig:
@@ -36,16 +55,27 @@ def load_langfuse_config() -> LangfuseConfig:
 
 
 def initialize_langfuse_tracing() -> LangfuseTracingHandle:
-    """Scaffold-only initializer.
-
-    Future implementation should:
-    1. Instantiate Langfuse client/tracer SDK objects.
-    2. Register request/agent lifecycle tracing hooks.
-    3. Attach trace/span IDs to structured logs.
-    """
+    """Initialize Langfuse client when enabled and correctly configured."""
     config = load_langfuse_config()
     if not config.enabled:
         return LangfuseTracingHandle(client=None, tracer=None, enabled=False)
 
-    # Placeholder for future SDK setup.
-    return LangfuseTracingHandle(client=None, tracer=None, enabled=True)
+    if not config.public_key or not config.secret_key:
+        return LangfuseTracingHandle(client=None, tracer=None, enabled=False)
+
+    if LangfuseClient is None:
+        return LangfuseTracingHandle(client=None, tracer=None, enabled=False)
+
+    try:
+        client = LangfuseClient(
+            public_key=config.public_key,
+            secret_key=config.secret_key,
+            host=config.host,
+            environment=config.environment,
+            release=config.release,
+            tracing_enabled=True,
+        )
+    except Exception:
+        return LangfuseTracingHandle(client=None, tracer=None, enabled=False)
+
+    return LangfuseTracingHandle(client=client, tracer=client, enabled=True)
