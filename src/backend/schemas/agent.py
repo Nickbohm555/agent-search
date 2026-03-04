@@ -13,6 +13,9 @@ class RuntimeAgentInfo(BaseModel):
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
+    thread_id: Optional[str] = Field(default=None, min_length=1)
+    user_id: Optional[str] = Field(default=None, min_length=1)
+    checkpoint_id: Optional[str] = Field(default=None, min_length=1)
 
 
 class SubQueryToolAssignment(BaseModel):
@@ -67,6 +70,8 @@ class RuntimeAgentStreamEvent(BaseModel):
 class RuntimeAgentRunResponse(BaseModel):
     agent_name: str
     output: str
+    thread_id: str = Field(min_length=1)
+    checkpoint_id: Optional[str] = None
     sub_queries: list[str]
     tool_assignments: list[SubQueryToolAssignment]
     retrieval_results: list[SubQueryRetrievalResult] = Field(default_factory=list)

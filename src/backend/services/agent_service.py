@@ -41,10 +41,17 @@ def run_runtime_agent(
     db: Session,
     tracing_handle: Optional[Any] = None,
 ) -> RuntimeAgentRunResponse:
+    """Execute the runtime pipeline for `/api/agents/run`.
+
+    Called by `routers/agent.py::runtime_agent_run` to orchestrate one request and
+    return API-contract response fields. It forwards request config
+    (`thread_id`/`user_id`/`checkpoint_id`) to the runtime agent and emits a
+    trace span when tracing is enabled.
+    """
     factory = AgentFactory()
     agent = build_default_agent()
     graph_agent = factory.create_langgraph_agent()
-    graph_result = graph_agent.run(payload.query, db)
+    graph_result = graph_agent.run(payload, db)
     sub_queries = graph_result["sub_queries"]
     tool_assignments = graph_result["tool_assignments"]
     retrieval_results = graph_result["retrieval_results"]
@@ -81,6 +88,8 @@ def run_runtime_agent(
     return RuntimeAgentRunResponse(
         agent_name=agent.name,
         output=output,
+        thread_id=graph_result["thread_id"],
+        checkpoint_id=graph_result["checkpoint_id"],
         sub_queries=sub_queries,
         tool_assignments=tool_assignments,
         retrieval_results=retrieval_results,

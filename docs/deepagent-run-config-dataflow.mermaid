@@ -1,0 +1,34 @@
+flowchart TD
+    A["POST /api/agents/run
+src/backend/routers/agent.py
+runtime_agent_run()"] -->|"RuntimeAgentRunRequest
+query + optional thread_id/user_id/checkpoint_id
+Why: accept persistence config at API boundary"| B["src/backend/services/agent_service.py
+run_runtime_agent(payload, db, tracing_handle)"]
+
+    B -->|"Payload forwarded unchanged
+Why: preserve request-scoped config through service layer"| C["src/backend/agents/langgraph_agent.py
+LangGraphAgentScaffold.run(payload, db)"]
+
+    C -->|"LangGraphAgentScaffold._build_run_config()
+Creates thread_id when missing
+Builds configurable/context dicts
+Why: normalize runtime config contract"| D["Execution metadata in graph_state.graph.execution"]
+
+    C -->|"decompose_query()
+src/backend/utils/query_decomposition.py"| E["Sub-query list"]
+    E -->|"assign_tools_to_sub_queries()
+src/backend/utils/tool_selection.py"| F["Tool assignments"]
+    F -->|"execute_subquery_retrievals()
+src/backend/services/retrieval_service.py"| G["Retrieval results"]
+    G -->|"validate_retrieval_results()
+src/backend/services/validation_service.py"| H["Validation results"]
+    H -->|"synthesize_answer()
+src/backend/services/answer_synthesis_service.py"| I["Final output string"]
+
+    C -->|"RuntimeAgentRunResponse
+thread_id + optional checkpoint_id + existing fields
+Why: return resumable identifiers to clients"| J["API response"]
+
+    D -. "Tradeoff: keep tracing metadata unchanged in this loop
+to avoid cross-item scope creep; persistence IDs live in response + graph execution metadata for now." .-> J

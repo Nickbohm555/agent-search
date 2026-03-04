@@ -1,5 +1,10 @@
-- [ ] P0 - Add DeepAgent run config contract (`thread_id`, `user_id`, `checkpoint_id`) at `/api/agents/run` request/response boundaries and pass it through router -> service -> DeepAgent invocation config/context.
+- [x] P0 - Add DeepAgent run config contract (`thread_id`, `user_id`, `checkpoint_id`) at `/api/agents/run` request/response boundaries and pass it through router -> service -> DeepAgent invocation config/context.
   Verification requirements (from `specs/deepagents-memory-subagents-checkpointing.md` Config acceptance criteria): backend smoke test verifies query-only payload still succeeds; payload with `thread_id`/`user_id`/`checkpoint_id` is accepted; omitted `thread_id` yields generated non-empty response `thread_id`; provided `thread_id` is preserved in response and execution metadata; optional `checkpoint_id` is echoed when supplied.
+  Completed in this loop:
+  - Extended `RuntimeAgentRunRequest` and `RuntimeAgentRunResponse` to support persistence config fields.
+  - Propagated request payload through router/service into agent runtime config/context metadata.
+  - Added smoke coverage in `src/backend/tests/api/test_deepagent_run_config.py` for generated and explicit config paths.
+  - Verified with `docker compose exec backend uv run pytest tests/api -m smoke` and full required checks.
 
 - [ ] P0 - Compile and invoke DeepAgent with persistent checkpointer + cross-thread store, using runtime `user_id` context for namespace resolution.
   Verification requirements (from deepAgent Checkpointing + Memory acceptance criteria): backend smoke test verifies two runs with same `thread_id` expose persisted thread state (via run metadata/state inspection); different `thread_id` values do not share checkpoint state; run with valid `checkpoint_id` replays/forks without error; persistence-enabled runs remain compatible with existing response shape.
