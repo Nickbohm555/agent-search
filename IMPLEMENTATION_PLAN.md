@@ -1,55 +1,55 @@
-- [ ] P0: Add backend wiki-source loading path that can be triggered from `/api/internal-data/load`.
+- [ ] P0: Add wiki-source loading path to `/api/internal-data/load` while keeping inline loading intact.
   - Implementation scope:
-    - Extend `InternalDataLoadRequest` to accept a wiki load mode (for example `source_type: "wiki"` with URL/topic input) while keeping inline mode working.
-    - Add a wiki ingestion helper/service that fetches and extracts at least one non-empty document (`title`, `content`, `source_ref`) for the existing load pipeline.
-    - Ensure wiki origin attribution is persisted so retrieval can expose wiki provenance.
+    - Extend backend load request schema to support a wiki mode plus wiki input (for example URL/topic) without breaking existing inline payloads.
+    - Add wiki ingestion service in `src/backend/services/` that resolves one geopolitics wiki page into at least one structured document (`title`, `content`, `source_ref`, `source_type`).
+    - Persist wiki attribution fields so downstream retrieval responses can identify wiki origin.
   - Verification requirements (acceptance outcomes):
-    - Backend smoke test: wiki-mode load request returns `200` with `status="success"`, `documents_loaded >= 1`, and `chunks_created >= 1`.
-    - Backend smoke test: extracted wiki document payload persisted by load has non-empty `title` and `content`.
-    - Backend smoke test: retrieval after wiki load returns at least one result with wiki attribution (`source_type`/`source_ref` indicates wiki source).
-    - Determinism rule: tests use mocked/fixture wiki content (no live network dependency).
+    - Backend smoke test: wiki-mode load request returns `200` with `status="success"`, `source_type="wiki"`, `documents_loaded >= 1`, `chunks_created >= 1`.
+    - Backend smoke test: stored wiki-derived document has non-empty `title` and non-empty `content` suitable for chunking.
+    - Backend smoke test: retrieval after wiki load includes at least one result with wiki attribution (`source_type`/`source_ref`).
+    - Determinism: ingestion tests use fixtures/mocks (no live wiki network dependency in CI).
 
-- [ ] P0: Migrate internal chunk embeddings to native pgvector storage.
+- [ ] P0: Migrate chunk embedding storage from `embedding_json` to native pgvector column.
   - Implementation scope:
-    - Add Alembic migration(s) to enable `vector` extension and add vector embedding column on `internal_document_chunks` with correct dimension.
-    - Update SQLAlchemy model/storage writes to persist embeddings in the pgvector column (instead of text JSON as primary store).
-    - Preserve existing load API response contract fields.
+    - Add Alembic migration(s) to enable pgvector extension and add a vector column on `internal_document_chunks` with embedding dimension aligned to backend embedding output.
+    - Update SQLAlchemy model and load pipeline writes to persist embeddings into the vector column as the primary retrieval store.
+    - Preserve observable load API contract (`status`, `source_type`, `documents_loaded`, `chunks_created`).
   - Verification requirements (acceptance outcomes):
-    - Migration/DB smoke: after upgrade, pgvector extension is installed and chunk table contains vector embedding column.
-    - Backend smoke test: load flow writes embeddings into pgvector column for created chunks.
-    - Contract test: `/api/internal-data/load` response still returns observable `status`, `source_type`, `documents_loaded`, `chunks_created`.
+    - Migration smoke test (Postgres-backed): extension exists and chunk table exposes vector embedding column after `alembic upgrade head`.
+    - Backend smoke test: successful load writes non-null vectors for created chunks.
+    - Contract test: load response shape/fields remain unchanged for current consumers.
 
-- [ ] P0: Move internal retrieval ranking to database-side pgvector similarity search.
+- [ ] P0: Switch internal retrieval to database-side pgvector similarity ranking.
   - Implementation scope:
-    - Replace Python in-memory scoring over all chunks with SQL pgvector similarity ordering (`ORDER BY <vector op> LIMIT k`).
-    - Keep retrieval response schema stable for downstream consumers and agent flow.
-    - Ensure query embeddings use same model/dimension as stored vectors.
+    - Replace Python in-memory cosine ranking with SQL similarity ordering/limit against pgvector (`top-k` in DB).
+    - Keep retrieval response schema stable (`content`, `score`, `document_title`, `source_ref`, `source_type`, ids).
+    - Ensure query embeddings use the same model/dimension as stored vectors.
   - Verification requirements (acceptance outcomes):
-    - Backend smoke test: `/api/internal-data/retrieve` returns top-k chunks with existing fields (`content`, `score`, `document_title`, `source_ref`, etc.).
-    - Backend smoke test: `/api/agents/run` internal tool path retrieves only from loaded internal store (not web fallback for internal assignment).
-    - Deterministic relevance regression: for seeded documents, expected relevant chunk ranks at or above unrelated chunk for matching query.
+    - Backend smoke test: `/api/internal-data/retrieve` returns ranked `top-k` results with existing response fields unchanged.
+    - Relevance regression smoke test: with seeded relevant and unrelated docs, relevant chunk ranks at or above unrelated chunk for matching query.
+    - Agent-path smoke test: `/api/agents/run` internal retrieval path returns internal results from loaded store and preserves metadata.
 
-- [ ] P1: Update UI load action so clicking `Load Data` can trigger wiki loading and show outcome.
+- [ ] P1: Update UI `Load Data` flow to support wiki-triggered loads and clear status readout.
   - Implementation scope:
-    - Add minimal UI affordance for wiki source input/selection tied to existing load control.
-    - Extend frontend API types/client payload to send wiki load request shape.
-    - Preserve existing load status UX states (loading/success/error) with count feedback.
+    - Add a minimal wiki source control in the existing load panel (reuse shared `src/frontend/src/lib/*` patterns/components where practical).
+    - Extend frontend API request typing/client payload to send wiki load requests while preserving inline compatibility.
+    - Keep existing loading/success/error UX behavior and readable count feedback.
   - Verification requirements (acceptance outcomes):
-    - Frontend interaction test: user click on `Load Data` in wiki mode posts `/api/internal-data/load` with wiki payload.
-    - Frontend interaction test: successful response renders clear status including load counts.
-    - Frontend interaction test: failed response renders clear error state in load status region.
+    - Frontend interaction test: wiki mode + click `Load Data` sends `/api/internal-data/load` with wiki payload.
+    - Frontend interaction test: successful wiki load renders clear success message with counts.
+    - Frontend interaction test: failed wiki load renders clear error state in load status region.
 
-- [ ] P1: Add scoped end-to-end smoke coverage for “click load data -> wiki vectorized -> retrievable”.
+- [ ] P1: Add one scoped deterministic smoke path for “click load data -> wiki vectorized in pgvector -> retrievable”.
   - Implementation scope:
-    - Add one deterministic smoke path spanning UI/API/backend behavior for this scoped story.
-    - Use controlled wiki fixture data and deterministic embeddings to avoid flaky CI.
+    - Add an end-to-end smoke scenario covering user-triggered load through retrievable wiki-backed internal results.
+    - Use deterministic fixture content/embeddings and avoid hidden network calls.
   - Verification requirements (acceptance outcomes):
-    - User-triggered load completes with observable success result.
-    - Wiki-derived content is retrievable via internal RAG path after load.
-    - Retrieval metadata includes wiki attribution required by consumers.
+    - User-triggered load completes with observable success status and counts.
+    - Retrieval after load returns wiki-derived internal content.
+    - Returned retrieval metadata includes wiki attribution required by consumers.
 
-- [x] Completed baseline relevant to this scope:
+- [x] Completed baseline relevant to this scope (confirmed in current codebase):
   - `/api/internal-data/load` and `/api/internal-data/retrieve` endpoints exist and return observable counts/results.
-  - Frontend has a clickable `Load Data` control with loading/success/error status messaging.
-  - Internal retrieval is already connected to `/api/agents/run` for internal tool assignments.
-  - Current implementation is inline-only + JSON embeddings + in-memory cosine scoring (confirmed gaps vs wiki + pgvector requirements).
+  - Frontend has clickable `Load Data` control with deterministic loading/success/error status messaging.
+  - Internal retrieval is wired into `/api/agents/run` internal tool path.
+  - Current gaps remain: inline-only source schema, deterministic local chunker (not LangChain), JSON embedding storage, and Python in-memory similarity ranking.
