@@ -1,88 +1,77 @@
 # IMPLEMENTATION_PLAN
 
 ## Scope
-- Scoped target: `all frontend work` only.
-- Reviewed: `specs/*`, `src/frontend/*`, `src/frontend/src/lib/*`, and frontend-facing backend contracts in `src/backend/routers/*` + `src/backend/schemas/*`.
-- Iteration mode: complete one highest-priority frontend item per run with tests.
-- Note: `src/lib/*` does not exist in this repo; shared frontend library code is in `src/frontend/src/lib/*`.
+- Scoped target: `backend: langchain / langgraph setup, MCP setup, streaming backend, vectorization, doc retrieval, subquestion decomposition, agentic design` only.
+- Sources reviewed this run: `specs/*`, `src/backend/*`, `src/frontend/src/lib/*`, existing `IMPLEMENTATION_PLAN.md`.
+- Note: top-level `src/lib/*` does not exist in this repo; shared UI library code is under `src/frontend/src/lib/*`.
+- Project state constraint: scaffold-first; prefer tests alongside first implementation.
 
-## Completed Frontend Tasks (Merged to `main`)
-- [x] Typed frontend API layer for load/run flows with deterministic error mapping.
-- [x] Demo UI workflow closure for load -> run -> final-answer path (non-stream baseline).
-- [x] Non-stream progress timeline/readout fallback rendering.
-- [x] Request lifecycle protections: in-flight duplicate prevention and retry handling.
-- [x] Cyberpunk visual-theme baseline implementation.
-- [x] Deck layout/chrome framing for controls, progress, and result panels.
+## Current Scoped Status (Confirmed via Code Search)
+- [x] Query decomposition exists in backend (`utils/query_decomposition.py`) and is exercised through `/api/agents/run` smoke tests.
+- [x] Per-subquery tool assignment (internal vs web) exists (`utils/tool_selection.py`) with outcome coverage in API smoke tests.
+- [x] Vectorization + internal retrieval baseline exists (`services/internal_data_service.py`, `models.py`, Alembic `0002_internal_data_tables.py`) with smoke coverage.
+- [x] Web retrieval search+open_url baseline exists (`services/web_service.py`, `/api/web/*`) with smoke coverage.
+- [x] Validation loop and synthesis baseline exist and are covered by smoke tests.
+- [x] LangGraph-shaped orchestration scaffold exists (`agents/langgraph_agent.py`) with graph-state timeline tests.
+- [ ] Real streaming backend endpoint is missing (no SSE/WebSocket route; only non-stream `/api/agents/run` response).
+- [ ] MCP exposure is missing (no MCP server/wrapper/tool contract implementation found).
+- [ ] Explicit LangChain runtime setup is missing (no `langchain` dependency/wiring; added spec: `specs/langchain-runtime-setup.md`).
+- [ ] Agentic execution is scaffolded but not implemented as true LangGraph runtime/deep-agent execution with runtime state/event hooks.
 
-## Current Frontend Coverage (2026-03-04)
-- [x] TypeScript React/Vite demo shell with load/run controls is present.
-- [x] Frontend API client supports `POST /api/internal-data/load` and `POST /api/agents/run` with deterministic error handling.
-- [x] Final answer and fallback progress history rendering exist for non-stream response payloads.
-- [x] Frontend tests cover core load/run happy paths, failures, and in-flight duplicate prevention.
-- [ ] Streaming heartbeat consumption in UI is missing (no EventSource/WebSocket client path).
-- [x] Cyberpunk visual-theme baseline is implemented (dark/noir base, neon action/readout accents, panel/surface separation).
-- [x] Deck chrome framing with explicit controls/progress/result panel separation is implemented.
-- [ ] Readout polish, motion tuning, and accessibility hardening remain.
+## Prioritized Scoped Tasks (Highest Priority Incomplete First)
+- [ ] P0 - Implement LangChain runtime setup boundary (`specs/langchain-runtime-setup.md`)
+- Verification requirements:
+- Add smoke test: with runtime enabled config, backend startup succeeds and `/api/agents/run` executes without runtime wiring errors.
+- Add smoke test: with runtime disabled/missing config, backend startup still succeeds and run path returns deterministic non-crashing contract.
+- Add deterministic unit/smoke test: enabled-mode execution uses stubs/mocks only (no hidden external model/network dependency).
 
-## Prioritized Frontend Tasks (Highest Priority Incomplete First)
+- [ ] P0 - Replace LangGraph scaffold projection with executable LangGraph flow + deep-agent structure (`specs/orchestration-langgraph.md`)
+- Verification requirements:
+- Add smoke test: decomposition -> tool_selection -> retrieval -> validation -> synthesis execute in intended order for a mixed query.
+- Add smoke test: per-subquery validation loop retries until sufficient or stop condition and surfaces final status per subquery.
+- Add smoke test: graph state projection remains consumable by downstream streaming service (step/state payloads observable during run).
+- Add edge-case test: multi-subquery run preserves deterministic output shape (no missing subquery/tool/result alignment).
 
-- [ ] P0 - Add streaming heartbeat run experience (`specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`)
-- Confirmed gap:
-  - Frontend currently waits for final `POST /api/agents/run` response; it does not render incremental stream events.
-  - Backend router still exposes `POST /api/agents/run` only; no stream endpoint is exposed yet (`src/backend/routers/agent.py`), so this task remains blocked on backend contract/endpoint availability.
-- Verification requirements (outcome-based):
-  - Test: when run starts, streamed sub-queries appear incrementally before completion.
-  - Test: streamed progress updates are visible during the run (not only after completion).
-  - Test: completion event updates UI to a terminal state and shows final answer.
-  - Test: interrupted stream shows explicit degraded/error status and keeps UI responsive for retry.
-  - Test: stream tests use deterministic mocked transport (no live network dependency).
+- [ ] P0 - Add streaming backend heartbeat contract and endpoint (`specs/streaming-agent-heartbeat.md`)
+- Verification requirements:
+- Add smoke test: running a query through stream endpoint emits sub-query events before completion.
+- Add smoke test: stream emits sufficient progress events for UI heartbeat (current step/status transitions + completion payload).
+- Add smoke test: interrupted/disconnected stream closes cleanly and does not crash backend worker.
+- Add deterministic contract test: streamed events are ordered and parseable with stable event schema.
 
-- [x] P0 - Implement deck layout and chrome framing (`specs/layout-and-chrome.md`)
-- Verification requirements (outcome-based):
-  - Test: controls, progress/status, and result/readout are visually distinct sections.
-  - Test: section boundaries/chrome are consistently visible.
-  - Test: first-time user can identify where to act vs where to read without ambiguity.
-  - Test: on narrow viewport widths, sections remain usable with preserved hierarchy.
+- [ ] P0 - Implement MCP wrapper for pipeline invocation (FastMCP-compatible) (`specs/mcp-exposure.md`)
+- Verification requirements:
+- Add smoke test: MCP client invocation sends query and receives final synthesized answer.
+- Add smoke test: MCP wrapper delegates to backend orchestration path and returns same final-answer contract as API run.
+- Add contract test: invocation shape/tool name is stable for client integration (deterministic request/response schema).
+- Add optional smoke test (if streaming exposed via MCP): progress/sub-query updates are observable over MCP transport.
 
-- [ ] P1 - Upgrade status/progress/answer into consistent readouts (`specs/content-and-readouts.md`)
-- Verification requirements (outcome-based):
-  - Test: load/run success and error outcomes render in a coherent readout style.
-  - Test: final answer remains dominant and easy to scan.
-  - Test: progress and sub-query output remains ordered/scannable.
-  - Test: user can visually distinguish asked query vs system progress vs final answer.
+- [ ] P1 - Harden vector store implementation to pgvector-backed retrieval path (`specs/data-loading-vectorization.md`, `specs/per-subquery-retrieval.md`)
+- Verification requirements:
+- Add smoke test: load endpoint writes chunked vectors into DB-backed store and returns observable load counts.
+- Add smoke test: after load, relevant internal subquery retrieves loaded document content only from internal store.
+- Add edge-case test: retrieval with empty/unrelated corpus returns deterministic empty-or-low-signal result contract without crashing.
+- Add migration verification: schema/index changes required for vector ops ship with Alembic migration in same change.
 
-- [ ] P1 - Add motion and feedback treatment for action/state changes (`specs/motion-and-feedback.md`)
-- Verification requirements (outcome-based):
-  - Test: triggering load/run immediately shows visible processing feedback tied to the action.
-  - Test: incoming progress/status changes are perceptible when they occur.
-  - Test: decorative motion does not hide or hinder controls/content readability.
-  - Test: transition behavior is consistent across major state changes.
+- [ ] P1 - Strengthen decomposition quality and observability for downstream orchestration (`specs/query-decomposition.md`)
+- Verification requirements:
+- Add smoke test: complex mixed-domain query yields >=1 focused subquery and avoids mixed internal+web intent in a single subquery.
+- Add smoke test: produced subqueries are exposed in run response and stream payloads for downstream consumption.
+- Add edge-case test: duplicate/connector-heavy phrasing does not create duplicate empty subqueries.
 
-- [ ] P1 - Accessibility hardening for themed UI (`specs/accessibility-within-aesthetic.md`)
-- Verification requirements (outcome-based):
-  - Test: all interactive controls have visible keyboard focus indication.
-  - Test: keyboard-only user can complete load and run flows in logical focus order.
-  - Test: with `prefers-reduced-motion: reduce`, non-essential motion is reduced while essential status remains visible.
-  - Test: final answer and primary statuses remain readable at 200% zoom.
-  - Audit: WCAG AA contrast is met for core text/labels, or exceptions are explicitly documented.
+- [ ] P1 - Tighten per-subquery retrieval + validation observability for agentic control (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`)
+- Verification requirements:
+- Add smoke test: internal assignment uses internal retrieval path; web assignment uses search+open_url path.
+- Add smoke test: insufficient retrieval triggers at least one follow-up action and ends with explicit stop/validated status.
+- Add deterministic test: validation outcomes are observable in timeline/event payloads for each subquery.
 
-## Completed Frontend Work (Tracked)
-- [x] Load/vectorize trigger + status reporting.
-- [x] Query run trigger + final answer rendering.
-- [x] API error mapping for HTTP/network/timeout/malformed payloads.
-- [x] Duplicate request prevention while in-flight + same-session retry behavior.
-- [x] Non-stream progress fallback rendering from `graph_state`, sub-queries, and validation data.
-- [x] Cyberpunk visual-theme baseline (`specs/visual-theme.md`) with deterministic render coverage (`src/frontend/src/App.test.tsx`).
+## Scoped Tasks Already Considered Complete (No New Work This Run)
+- [x] Baseline internal data load/retrieve endpoints and deterministic local embedding scaffold are implemented with smoke tests.
+- [x] Baseline web search/open_url tool endpoints exist with smoke tests.
+- [x] Baseline synthesis consumes validated outputs and is covered by smoke tests.
+- [x] Langfuse startup + agent-run tracing baseline exists (outside this scoped plan except as integration context).
 
-## Run Notes (2026-03-04)
-- Completed this iteration: P0 deck layout and chrome framing.
-- Streaming heartbeat remains blocked by backend contract availability (`/api/agents/run` is request/response only; no stream endpoint yet).
-- Verified after fresh rebuild/start: `curl -sSf http://localhost:8000/api/health`, `docker compose exec backend uv run pytest`, `docker compose exec frontend npm run test`, `docker compose exec frontend npm run typecheck`, `docker compose exec frontend npm run build`.
-
-## Frontend Quality Gates (Per Change)
-- [x] Add at least one render/interaction test for each new frontend behavior.
-- [x] Keep tests outcome-based (avoid implementation-detail assertions).
-- [x] Keep frontend tests deterministic (mock transport/network).
-- [x] Pass: `docker compose exec frontend npm run test`.
-- [x] Pass: `docker compose exec frontend npm run typecheck`.
-- [x] Pass: `docker compose exec frontend npm run build`.
+## Notes For Next Implementation Loop
+- First implementation slice should be P0 LangChain runtime boundary + executable LangGraph integration because streaming and MCP depend on orchestration state/event hooks.
+- Keep routers thin; place runtime/model/tracing orchestration in backend services/agents per repository conventions.
+- Preserve deterministic test posture: mock model/tool/network dependencies in CI-facing tests.
