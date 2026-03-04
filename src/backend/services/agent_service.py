@@ -9,6 +9,7 @@ from schemas import (
     SubQueryToolAssignment,
     WebToolRun,
 )
+from services.answer_synthesis_service import synthesize_answer
 from services.retrieval_service import execute_subquery_retrievals
 from services.validation_service import validate_retrieval_results
 from sqlalchemy.orm import Session
@@ -52,6 +53,11 @@ def run_runtime_agent(
     ]
     retrieval_results = execute_subquery_retrievals(tool_assignments, db)
     retrieval_results, validation_results = validate_retrieval_results(retrieval_results, db)
+    output = synthesize_answer(
+        query=payload.query,
+        retrieval_results=retrieval_results,
+        validation_results=validation_results,
+    )
     web_tool_runs: list[WebToolRun] = [
         WebToolRun(
             sub_query=result.sub_query,
@@ -64,7 +70,6 @@ def run_runtime_agent(
     ]
 
     with _start_agent_span(tracing_handle, payload.query) as span:
-        output = agent.run(payload.query)
         span.update(
             input={"query": payload.query},
             output={"response": output},
