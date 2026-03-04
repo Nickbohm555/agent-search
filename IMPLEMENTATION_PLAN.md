@@ -6,6 +6,22 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Improve keyboard-only accessibility flow by moving focus to status readouts after action completion (`specs/accessibility-within-aesthetic.md`, `specs/content-and-readouts.md`).
+  - Tasks:
+  - Updated `StatusBanner` to support programmatic focus (`forwardRef` + `tabIndex=-1`) while preserving existing live-region semantics.
+  - Added completion focus handoff in `App` so keyboard users are moved to the updated load/run status readout when each action ends (`success` or `error`).
+  - Added deterministic frontend interaction coverage that verifies focus lands on `load-status-region` and `progress-region` after successful load/run cycles.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `39 passed`
+    - `docker compose exec frontend npm run test` -> `32 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 - [x] P1 - Ensure agent-run tracing coverage across all run entry points (`specs/agent-run-tracing.md`, `specs/mcp-exposure.md`, `specs/streaming-agent-heartbeat.md`).
   - Tasks:
   - Added smoke coverage proving tracing spans are created when runs are invoked through `POST /api/agents/run/stream` and MCP `POST /mcp` `tools/call`, not only `POST /api/agents/run`.

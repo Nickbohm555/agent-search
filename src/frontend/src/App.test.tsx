@@ -425,6 +425,37 @@ describe("App", () => {
     });
   });
 
+  it("moves keyboard focus to updated status readouts when load and run complete", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+    mockedRunAgentStream.mockResolvedValue({
+      ok: true,
+      data: successRunResponse(),
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+    await waitFor(() => {
+      expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
+      expect(screen.getByTestId("load-status-region")).toHaveFocus();
+    });
+
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Focus behavior query" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+    await waitFor(() => {
+      expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
+      expect(screen.getByTestId("progress-region")).toHaveFocus();
+    });
+  });
+
   it("shows an in-progress signal in status readouts only while actions are running", async () => {
     const loadDeferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
     mockedLoadInternalData.mockImplementation(() => loadDeferred.promise);

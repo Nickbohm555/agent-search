@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { RuntimeAgentRunResponse, loadInternalData, runAgentStream } from "./utils/api";
 import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
 import { ProgressHistory } from "./lib/components/ProgressHistory";
@@ -18,8 +18,22 @@ export default function App() {
   const [runDetails, setRunDetails] = useState<RuntimeAgentRunResponse | null>(null);
   const loadInFlightRef = useRef(false);
   const runInFlightRef = useRef(false);
+  const loadStatusRef = useRef<HTMLDivElement>(null);
+  const progressStatusRef = useRef<HTMLDivElement>(null);
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
+
+  useEffect(() => {
+    if (loadState === "success" || loadState === "error") {
+      loadStatusRef.current?.focus();
+    }
+  }, [loadState]);
+
+  useEffect(() => {
+    if (runState === "success" || runState === "error") {
+      progressStatusRef.current?.focus();
+    }
+  }, [runState]);
 
   async function handleLoad(): Promise<void> {
     if (loadInFlightRef.current) {
@@ -127,6 +141,7 @@ export default function App() {
               {loadState === "loading" ? "Loading..." : "Load Data"}
             </button>
             <StatusBanner
+              ref={loadStatusRef}
               state={loadState}
               message={loadMessage}
               label="Load Status"
@@ -153,6 +168,7 @@ export default function App() {
             <span className="panel-kicker">READOUT</span>
           </div>
           <StatusBanner
+            ref={progressStatusRef}
             state={runState}
             message={runMessage}
             label="Run Status"
