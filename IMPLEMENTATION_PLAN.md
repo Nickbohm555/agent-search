@@ -1,18 +1,18 @@
-- [ ] P0 - Add backend streaming run endpoint `POST /api/agents/run/stream` using SSE that emits deterministic scaffold events for one run.
-  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/streaming-agent-heartbeat.md`): backend smoke test verifies `content-type` is `text/event-stream`; stream emits multiple ordered events before termination; stream includes at least `heartbeat`, `sub_queries`, and `completed`; `sequence` increases monotonically; `completed.data` includes non-empty `agent_name`, non-empty `output`, and non-empty `thread_id`.
+- [ ] P0 - Implement backend streaming endpoint `POST /api/agents/run/stream` (SSE) that emits ordered scaffold events for one run.
+  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/streaming-agent-heartbeat.md`): backend smoke test verifies `content-type: text/event-stream`; stream yields multiple events before connection close (not a single final blob); events are ordered by monotonically increasing `sequence`; stream includes at least `heartbeat`, `sub_queries`, and `completed`; `completed.data` includes non-empty `agent_name`, non-empty `output`, and non-empty `thread_id`.
 
-- [ ] P0 - Exercise DeepAgent compile/invoke entrypoints in the scoped run path with per-process runtime caching.
-  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/orchestration-langgraph.md`): backend unit/smoke tests verify the runtime compile/init path is reused across consecutive runs (no per-request recompile), and run execution calls `astream` and/or `ainvoke`; when runtime stream output is absent in scaffold mode, deterministic dummy stream events still produce a valid `completed` payload.
+- [ ] P0 - Wire compile/invoke path to DeepAgent runtime entrypoints with per-process cache, plus deterministic dummy fallback when runtime streaming is unavailable.
+  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/orchestration-langgraph.md`): backend unit/smoke tests verify compile/init is cached across consecutive calls in one process (no per-request recompile); run path invokes `astream` and/or `ainvoke`; when runtime stream events are absent in scaffold mode, deterministic fallback events still produce valid ordered stream and `completed` payload.
 
-- [ ] P0 - Share final run-output assembly between synchronous `/api/agents/run` and streaming completion payload so contracts stay aligned.
-  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/orchestration-langgraph.md`): backend test verifies existing `/api/agents/run` response contract stays intact (`sub_queries`, `tool_assignments`, `retrieval_results`, `validation_results`, `output`, `graph_state`, `thread_id`); for the same deterministic query, streaming `completed` payload matches the synchronous final outcome fields.
+- [ ] P0 - Unify final payload assembly so streaming `completed` contract matches synchronous `/api/agents/run` outcome for deterministic inputs.
+  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/orchestration-langgraph.md`): backend contract test verifies `/api/agents/run` response shape remains intact (`sub_queries`, `tool_assignments`, `retrieval_results`, `validation_results`, `output`, `graph_state`, `thread_id`, optional `checkpoint_id`); parity test verifies streaming `completed.data` matches synchronous final fields for the same deterministic query.
 
-- [ ] P1 - Add frontend streaming client/types for typed SSE consumption and deterministic error handling.
-  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/demo-ui-typescript.md`): frontend unit tests verify supported events parse into stable TS shapes (`heartbeat`, `sub_queries`, optional progress events, `completed`); malformed event payload/order surfaces a deterministic error state; stream interruption produces actionable retryable messaging.
+- [ ] P1 - Add frontend SSE client + TypeScript stream event models for stable parsing and deterministic error states.
+  Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/demo-ui-typescript.md`): frontend unit tests verify parsing/typing for supported events (`heartbeat`, `sub_queries`, optional progress events, `completed`); malformed payload or invalid event order returns deterministic non-crashing error state; stream interruption maps to retryable user-facing error.
 
-- [ ] P1 - Wire frontend run flow to streaming heartbeat updates with progressive progress rendering and completion finalization.
-  Verification requirements (from `specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`): frontend interaction test verifies progress area updates during an active stream, sub-queries appear before completion, final answer renders only after `completed`, and failed stream states remain visible without clearing user query input.
+- [ ] P1 - Switch UI run flow to streaming heartbeat updates so users see progress before final answer.
+  Verification requirements (from `specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`): frontend interaction test verifies progress region updates while run is active, sub-queries render before completion, final answer appears only after `completed`, and error states remain visible without clearing submitted query context.
 
-- [x] Complete (scoped baseline) - Synchronous run path `/api/agents/run` exists and returns deterministic scaffold output with timeline/readout fields.
+- [x] Complete (scope baseline) - `POST /api/agents/run` synchronous scaffold path exists and returns deterministic runtime output + graph timeline.
 
-- [x] Complete (scope guard) - Exclude logging/tracing state streaming from this slice (`specs/compile-invoke-streaming-dummy.md` out-of-scope).
+- [x] Complete (scope guard) - Logging/tracing state streaming is excluded for this slice (explicitly out of scope in `specs/compile-invoke-streaming-dummy.md`).
