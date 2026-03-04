@@ -6,6 +6,23 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P0 - Revalidate the full fresh-build quality gate and reconfirm scoped queue exhaustion (2026-03-04 loop, rerun-9).
+  - Tasks:
+  - Re-ran the required clean environment cycle from scratch (`docker compose down -v --rmi all` -> `docker compose build` -> `docker compose up -d`).
+  - Re-executed the required verification gate (health, backend tests, frontend tests, frontend typecheck, frontend build) against the fresh stack.
+  - Re-checked scoped queue state in this plan and confirmed no unchecked scoped implementation items (`[ ]`) remain.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused --retry-all-errors http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `44 passed`
+    - `docker compose exec frontend npm run test` -> `38 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P0 - Revalidate the full fresh-build quality gate and reconfirm scoped queue exhaustion (2026-03-04 loop, rerun-8).
   - Tasks:
   - Re-ran the required clean environment cycle from scratch (`docker compose down -v --rmi all` -> `docker compose build` -> `docker compose up -d`).
