@@ -6,6 +6,24 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P0 - Add FastMCP streamable-HTTP exposure alongside existing MCP JSON-RPC wrapper (`specs/mcp-exposure.md`).
+  - Tasks:
+  - Added FastMCP service wiring (`services/mcp_service.py`) with `agent.run` tool delegation to the shared runtime agent path (`run_runtime_agent`) so FastMCP and API/MCP wrapper use the same orchestration.
+  - Mounted FastMCP streamable-HTTP app at `/mcp/fast` and added lifecycle-safe startup wiring so FastMCP session management initializes per app lifespan without cross-test reuse failures.
+  - Added backend smoke coverage for FastMCP initialize/list/call over streamable HTTP (`/mcp/fast/mcp/`) in `test_mcp_exposure.py`.
+  - Kept existing `/mcp` JSON-RPC wrapper for backward compatibility while adding FastMCP transport.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `43 passed`
+    - `docker compose exec frontend npm run test` -> `34 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P0 - Make SSE run heartbeat truly in-flight by streaming orchestration events as they happen (`specs/streaming-agent-heartbeat.md`, `specs/demo-ui-typescript.md`).
   - Tasks:
   - Added callback-driven event emission from LangGraph orchestration so `heartbeat`, `sub_queries`, `tool_assignments`, `retrieval_result`, `validation_result`, and `subquery_execution_result` are emitted during node execution rather than after full run completion.
@@ -169,6 +187,15 @@
   - Live API retrieval verified against Postgres-backed store after load (`/api/internal-data/load` then `/api/internal-data/retrieve`) with retrievable vector-scored results.
 
 ## Build Tradeoffs
+
+- Chosen + why:
+  - Kept the legacy `/mcp` JSON-RPC endpoint while adding FastMCP streamable HTTP at `/mcp/fast` to preserve existing deterministic tests/clients and avoid breaking current integration paths in the same loop.
+- Alternatives considered:
+  - Replacing `/mcp` outright with FastMCP-only transport (cleaner long-term surface, but immediate compatibility break for current JSON-RPC tests/consumers).
+- References for the human:
+  - Code locations: `src/backend/services/mcp_service.py`, `src/backend/main.py`, `src/backend/tests/api/test_mcp_exposure.py`.
+- HUMAN-ONLY NOTES:
+  - This loop introduces a parallel MCP surface (`/mcp/fast/mcp/`) without removing existing `/mcp`; future cleanup can consolidate once external clients migrate.
 
 - Chosen + why:
   - Kept a deterministic SQLite fallback scoring path in `retrieve_internal_data` while moving PostgreSQL retrieval to DB-side pgvector cosine ordering. This preserves fast, isolated smoke tests without requiring Postgres for every test fixture.
