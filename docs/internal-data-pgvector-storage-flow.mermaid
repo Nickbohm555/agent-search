@@ -5,6 +5,9 @@ flowchart TD
     C -->|"Data: embed_text(chunk) -> list[float;16]\nWhy: produce deterministic embedding aligned with pgvector dimension"| E["src/backend/utils/embeddings.py::embed_text"]
     E -->|"Data persisted: InternalDocumentChunk.embedding (vector(16))\nWhy: native pgvector storage replaces embedding_json"| F["src/backend/models.py::InternalDocumentChunk.embedding"]
     F -->|"Schema trigger: alembic upgrade head\nsrc/backend/alembic/versions/0003_pgvector_chunk_embeddings.py::upgrade\nData: CREATE EXTENSION vector + add/backfill/drop column\nWhy: move storage to db-native vector"| G["Postgres internal_document_chunks.embedding"]
-    H["POST /api/internal-data/retrieve\nsrc/backend/routers/internal_data.py::retrieve_data"] -->|"Data: query, limit\nWhy: serve internal retrieval contract"| I["src/backend/services/internal_data_service.py::retrieve_internal_data"]
-    I -->|"Data read: InternalDocumentChunk.embedding + metadata\nWhy: similarity scoring uses vector column as primary store"| G
-    I -->|"Tradeoff: scoring remains Python cosine in this loop\nReason: separate P0 item will move ranking ORDER BY to pgvector SQL"| J["Decision note"]
+    H["POST /api/internal-data/retrieve\nsrc/backend/routers/internal_data.py::retrieve_data"] -->|"Trigger: retrieval request\nData: InternalDataRetrieveRequest(query, limit)\nWhy: run semantic top-k lookup with stable API shape"| I["src/backend/services/internal_data_service.py::retrieve_internal_data"]
+    I -->|"Trigger: db dialect == postgresql\nData: query_embedding + cosine_distance ORDER BY + LIMIT\nWhy: rank top-k directly in database using pgvector operator"| K["Postgres SQL similarity ranking\ninternal_data_service.retrieve_internal_data"]
+    K -->|"Data moved: chunk_id/document_id/title/source_type/source_ref/content + distance\nWhy: preserve retrieval schema while converting distance -> score"| L["InternalDataRetrieveResponse.results"]
+    I -->|"Trigger: db dialect != postgresql (sqlite tests)\nData: chunk embeddings pulled in-process + cosine_similarity\nWhy: deterministic fallback where pgvector SQL is unavailable"| M["Fallback ranking path\ninternal_data_service.retrieve_internal_data"]
+    M --> L
+    N["Decision note:\nPostgres path is source of truth for production similarity ranking.\nFallback exists only to keep scaffold tests deterministic on SQLite."] --> I

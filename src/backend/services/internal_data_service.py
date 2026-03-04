@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
 
 from models import InternalDocument, InternalDocumentChunk
 from schemas import (
@@ -92,10 +93,47 @@ def retrieve_internal_data(
     """Retrieve top internal chunks by semantic similarity.
 
     Called by `routers/internal_data.py::retrieve_data` for `POST /api/internal-data/retrieve`.
-    Uses chunk vectors persisted in `internal_document_chunks.embedding` as the primary
-    embedding store; ranking remains in-process for this scaffold iteration.
+    Uses pgvector database-side ranking on Postgres (`cosine_distance` ordering) with a
+    deterministic in-process fallback for non-pgvector test backends.
     """
     query_embedding = embed_text(payload.query)
+    dialect = db.get_bind().dialect.name
+
+    if dialect == "postgresql":
+        distance_expr = InternalDocumentChunk.embedding.cosine_distance(query_embedding)
+        total_chunks_considered = (
+            db.query(func.count(InternalDocumentChunk.id))
+            .filter(InternalDocumentChunk.embedding.isnot(None))
+            .scalar()
+            or 0
+        )
+        rows = (
+            db.query(InternalDocumentChunk, distance_expr.label("distance"))
+            .join(InternalDocument, InternalDocument.id == InternalDocumentChunk.document_id)
+            .filter(InternalDocumentChunk.embedding.isnot(None))
+            .order_by(distance_expr.asc(), InternalDocumentChunk.id.asc())
+            .limit(payload.limit)
+            .all()
+        )
+
+        results = [
+            InternalRetrievedChunk(
+                chunk_id=chunk.id,
+                document_id=chunk.document.id,
+                document_title=chunk.document.title,
+                source_type=chunk.document.source_type,
+                source_ref=chunk.document.source_ref,
+                content=chunk.content,
+                score=1.0 - float(distance),
+            )
+            for chunk, distance in rows
+        ]
+
+        return InternalDataRetrieveResponse(
+            query=payload.query,
+            total_chunks_considered=total_chunks_considered,
+            results=results,
+        )
 
     candidate_chunks = (
         db.query(InternalDocumentChunk)

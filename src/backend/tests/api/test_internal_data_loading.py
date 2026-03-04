@@ -140,8 +140,54 @@ def test_internal_retrieval_returns_loaded_content(internal_data_client: TestCli
     assert data["query"] == "deployment checklist verification"
     assert data["total_chunks_considered"] >= 2
     assert len(data["results"]) >= 1
+    assert set(data["results"][0].keys()) == {
+        "chunk_id",
+        "document_id",
+        "document_title",
+        "source_type",
+        "source_ref",
+        "content",
+        "score",
+    }
     assert all(result["source_type"] == "inline" for result in data["results"])
     assert any("deployment" in result["content"].lower() for result in data["results"])
+
+
+@pytest.mark.smoke
+def test_internal_retrieval_ranks_relevant_chunk_above_unrelated(internal_data_client: TestClient):
+    load_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "inline",
+            "documents": [
+                {
+                    "title": "Operations Memo",
+                    "content": (
+                        "Strait of Hormuz chokepoint shipping lane transit risk "
+                        "affects tanker schedules and maritime insurance pricing."
+                    ),
+                    "source_ref": "internal://ops-memo",
+                },
+                {
+                    "title": "Office Lunch Menu",
+                    "content": "This memo lists cafeteria desserts and weekly salad rotations.",
+                    "source_ref": "internal://lunch-menu",
+                },
+            ],
+        },
+    )
+    assert load_response.status_code == 200
+
+    retrieve_response = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "shipping lane risk in the strait of hormuz", "limit": 2},
+    )
+    assert retrieve_response.status_code == 200
+
+    results = retrieve_response.json()["results"]
+    assert len(results) == 2
+    assert "ops-memo" in (results[0]["source_ref"] or "")
+    assert results[0]["score"] >= results[1]["score"]
 
 
 @pytest.mark.smoke

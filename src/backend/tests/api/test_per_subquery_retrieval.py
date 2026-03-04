@@ -42,6 +42,8 @@ def test_agent_run_executes_internal_retrieval_from_loaded_store(client):
     assert len(internal_result["internal_results"]) >= 1
     assert all(item["source_type"] == "inline" for item in internal_result["internal_results"])
     assert any(marker in item["content"] for item in internal_result["internal_results"])
+    assert all(item["document_title"] for item in internal_result["internal_results"])
+    assert any(item["source_ref"] == "internal://deployment-runbook" for item in internal_result["internal_results"])
 
 
 @pytest.mark.smoke

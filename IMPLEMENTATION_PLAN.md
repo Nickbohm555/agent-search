@@ -34,7 +34,7 @@
       - `src/backend/tests/api/test_internal_data_loading.py::test_internal_data_load_persists_non_null_chunk_vectors`
       - Strengthened contract assertion in `test_internal_data_load_returns_observable_counts` to enforce stable response keys.
 
-- [ ] P0: Switch internal retrieval to database-side pgvector similarity ranking.
+- [x] P0: Switch internal retrieval to database-side pgvector similarity ranking.
   - Implementation scope:
     - Replace Python in-memory cosine ranking with SQL similarity ordering/limit against pgvector (`top-k` in DB).
     - Keep retrieval response schema stable (`content`, `score`, `document_title`, `source_ref`, `source_type`, ids).
@@ -43,6 +43,14 @@
     - Backend smoke test: `/api/internal-data/retrieve` returns ranked `top-k` results with existing response fields unchanged.
     - Relevance regression smoke test: with seeded relevant and unrelated docs, relevant chunk ranks at or above unrelated chunk for matching query.
     - Agent-path smoke test: `/api/agents/run` internal retrieval path returns internal results from loaded store and preserves metadata.
+  - Completed in this loop:
+    - Updated `src/backend/services/internal_data_service.py::retrieve_internal_data` to use database-side `cosine_distance` ordering (`ORDER BY` + `LIMIT`) for Postgres pgvector backends.
+    - Preserved retrieval response contract while normalizing DB distance into `score` (`1 - distance`) and keeping source/document metadata unchanged.
+    - Added deterministic fallback to in-process cosine ranking for non-Postgres test backends so scaffold tests stay stable without pgvector.
+    - Added/updated smoke tests:
+      - `src/backend/tests/api/test_internal_data_loading.py::test_internal_retrieval_returns_loaded_content` now asserts retrieval result field shape stability.
+      - `src/backend/tests/api/test_internal_data_loading.py::test_internal_retrieval_ranks_relevant_chunk_above_unrelated` validates relevance ordering.
+      - `src/backend/tests/api/test_per_subquery_retrieval.py::test_agent_run_executes_internal_retrieval_from_loaded_store` now asserts metadata preservation (`document_title`, `source_ref`).
 
 - [ ] P1: Update UI `Load Data` flow to support wiki-triggered loads and clear status readout.
   - Implementation scope:
@@ -67,4 +75,4 @@
   - `/api/internal-data/load` and `/api/internal-data/retrieve` endpoints exist and return observable counts/results.
   - Frontend has clickable `Load Data` control with deterministic loading/success/error status messaging.
   - Internal retrieval is wired into `/api/agents/run` internal tool path.
-  - Current gaps remain: deterministic local chunker (not LangChain) and Python in-memory similarity ranking (DB-side pgvector ranking pending).
+  - Current gap remains: deterministic local chunker (not LangChain).
