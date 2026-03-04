@@ -17,6 +17,8 @@ from .internal_data import (
     InternalDataRetrieveResponse,
     InternalDocumentInput,
     InternalRetrievedChunk,
+    WikiSourceOption,
+    WikiSourcesResponse,
     WikiLoadInput,
 )
 from .mcp import (
@@ -54,6 +56,8 @@ __all__ = [
     "InternalDataRetrieveResponse",
     "InternalRetrievedChunk",
     "WikiLoadInput",
+    "WikiSourceOption",
+    "WikiSourcesResponse",
     "WebSearchRequest",
     "WebSearchResult",
     "WebSearchResponse",

@@ -1,60 +1,109 @@
 from __future__ import annotations
 
-from urllib.parse import unquote, urlparse
+from dataclasses import dataclass
+from typing import Any
 
 from schemas import InternalDocumentInput, WikiLoadInput
 
-_STRAIT_OF_HORMUZ_URL = "https://en.wikipedia.org/wiki/Strait_of_Hormuz"
 
-_WIKI_FIXTURES: dict[str, dict[str, str]] = {
-    "strait of hormuz": {
-        "title": "Strait of Hormuz",
-        "canonical_url": _STRAIT_OF_HORMUZ_URL,
-        "content": (
-            "The Strait of Hormuz is a narrow waterway connecting the Persian Gulf "
-            "with the Gulf of Oman and the Arabian Sea. A substantial share of "
-            "seaborne oil trade transits the strait, making it strategically "
-            "important to global energy markets. Regional military tensions, "
-            "shipping security incidents, and sanctions policy frequently affect "
-            "risk assessments for transit through the corridor."
-        ),
-    }
-}
+@dataclass(frozen=True)
+class WikiSourceDefinition:
+    source_id: str
+    label: str
+    article_query: str
 
 
-def _normalize_topic(value: str) -> str:
-    return value.strip().replace("_", " ").replace("-", " ").lower()
+_WIKI_SOURCE_DEFINITIONS: tuple[WikiSourceDefinition, ...] = (
+    WikiSourceDefinition("geopolitics", "Geopolitics", "Geopolitics"),
+    WikiSourceDefinition("strait_of_hormuz", "Strait of Hormuz", "Strait of Hormuz"),
+    WikiSourceDefinition("nato", "NATO", "NATO"),
+    WikiSourceDefinition("european_union", "European Union", "European Union"),
+    WikiSourceDefinition("united_nations", "United Nations", "United Nations"),
+    WikiSourceDefinition(
+        "foreign_policy_us",
+        "Foreign Policy of the United States",
+        "Foreign policy of the United States",
+    ),
+    WikiSourceDefinition("middle_east", "Middle East", "Middle East"),
+    WikiSourceDefinition("cold_war", "Cold War", "Cold War"),
+    WikiSourceDefinition("international_relations", "International Relations", "International relations"),
+    WikiSourceDefinition(
+        "balance_of_power",
+        "Balance of Power (IR)",
+        "Balance of power (international relations)",
+    ),
+)
+_WIKI_SOURCES_BY_ID = {item.source_id: item for item in _WIKI_SOURCE_DEFINITIONS}
+_MIN_WIKI_CHARS = 1000
+_WIKI_DOC_CHARS_MAX = 8000
 
 
-def _extract_topic_from_url(url: str) -> str:
-    path = urlparse(url).path
-    slug = path.rstrip("/").split("/")[-1]
-    return _normalize_topic(unquote(slug))
+def list_wiki_sources() -> tuple[WikiSourceDefinition, ...]:
+    """Return curated wiki-source definitions for load-time selection."""
+    return _WIKI_SOURCE_DEFINITIONS
+
+
+def resolve_wiki_source(source_id: str) -> WikiSourceDefinition:
+    """Resolve one curated wiki source identifier or raise a validation error."""
+    source = _WIKI_SOURCES_BY_ID.get(source_id.strip())
+    if source is None:
+        raise ValueError(f"Unsupported wiki source_id '{source_id}'.")
+    return source
+
+
+def _load_wikipedia_documents(article_query: str) -> list[Any]:
+    """Load wiki content with LangChain `WikipediaLoader`.
+
+    Called by `resolve_wiki_documents` for production wiki loads. Import remains
+    local so tests can monkeypatch this function without requiring network calls.
+    """
+    try:
+        from langchain_community.document_loaders import WikipediaLoader
+    except ImportError as exc:
+        raise ValueError("langchain_community is required for wiki loads.") from exc
+
+    loader = WikipediaLoader(
+        query=article_query,
+        load_max_docs=1,
+        doc_content_chars_max=_WIKI_DOC_CHARS_MAX,
+        load_all_available_meta=True,
+    )
+    return loader.load()
 
 
 def resolve_wiki_documents(wiki: WikiLoadInput) -> list[InternalDocumentInput]:
-    """Resolve deterministic wiki-derived documents for scaffold ingestion.
+    """Resolve LangChain wiki `Document` objects into ingestible internal docs.
 
-    Called by `internal_data_service.load_internal_data` when a caller selects
-    `source_type="wiki"`. This keeps CI deterministic by using local fixtures
-    instead of live network fetches while preserving a wiki-oriented contract.
+    Called by `internal_data_service.load_internal_data` when
+    `source_type='wiki'`. This enforces curated source IDs and large-content
+    requirements while preserving attribution fields for retrieval responses.
     """
-    candidate_topics: list[str] = []
-    if wiki.topic:
-        candidate_topics.append(_normalize_topic(wiki.topic))
-    if wiki.url:
-        candidate_topics.append(_extract_topic_from_url(wiki.url))
+    source = resolve_wiki_source(wiki.source_id)
+    loaded_documents = _load_wikipedia_documents(source.article_query)
+    resolved_documents: list[InternalDocumentInput] = []
+    total_chars = 0
 
-    for topic in candidate_topics:
-        fixture = _WIKI_FIXTURES.get(topic)
-        if not fixture:
+    for loaded in loaded_documents:
+        content = str(getattr(loaded, "page_content", "")).strip()
+        if not content:
             continue
-        return [
+        metadata = getattr(loaded, "metadata", {}) or {}
+        title = str(metadata.get("title") or source.label).strip()
+        source_ref = str(metadata.get("source") or source.source_id).strip() or source.source_id
+        total_chars += len(content)
+        resolved_documents.append(
             InternalDocumentInput(
-                title=fixture["title"],
-                content=fixture["content"],
-                source_ref=wiki.url or fixture["canonical_url"],
+                title=title,
+                content=content,
+                source_ref=source_ref,
             )
-        ]
+        )
 
-    raise ValueError("Unsupported wiki source. Supported topic: Strait of Hormuz.")
+    if not resolved_documents:
+        raise ValueError(f"No wiki content loaded for source_id '{source.source_id}'.")
+    if total_chars < _MIN_WIKI_CHARS:
+        raise ValueError(
+            f"Loaded wiki content too small ({total_chars} chars). Minimum required is {_MIN_WIKI_CHARS}.",
+        )
+
+    return resolved_documents

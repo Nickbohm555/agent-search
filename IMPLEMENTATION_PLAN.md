@@ -1,9 +1,44 @@
+---
+
+## ⚠️ PRIORITY: Large wiki sources + LangChain loader + dropdown + check-before-load
+
+**This is a top implementation priority.** All wiki loading must satisfy:
+
+1. **LARGE wiki sources only** — Minimum ~1000+ characters per source. Content must be chunked into multiple documents/chunks (no tiny fixture-style snippets). Small demo fixtures are acceptable only for deterministic CI; production/wiki mode must use real, large content.
+2. **Curated list (dropdown)** — User selects from a fixed list of options only (no free-form URL/topic). See **Allowed wiki source list** below.
+3. **Check before load** — Before allowing a wiki load, the system must indicate whether that source is already vectorized/downloaded (e.g. by `source_ref` or document title). UI/API should prevent or warn on duplicate load and only allow selection from the list.
+4. **MUST use LangChain document loader with metadata** — Wiki ingestion MUST use a LangChain document loader (e.g. `WikipediaLoader` from `langchain_community`) that returns Document objects with metadata (e.g. `title`, `source`, `summary`). Metadata must be persisted and exposed in retrieval responses for attribution. No ad-hoc HTTP scraping or fixture-only content for wiki mode in the main path.
+
+**Allowed wiki source list (dropdown options):**
+
+| Option ID / label        | Wikipedia article (query for loader) | Notes                    |
+|--------------------------|--------------------------------------|--------------------------|
+| `geopolitics`            | Geopolitics                          | Large, conceptual        |
+| `strait_of_hormuz`       | Strait of Hormuz                     | Chokepoint, energy       |
+| `nato`                   | NATO                                 | Alliance, large          |
+| `european_union`         | European Union                       | Large                    |
+| `united_nations`         | United Nations                       | Large                    |
+| `foreign_policy_us`      | Foreign policy of the United States  | Large                    |
+| `middle_east`            | Middle East                          | Region, large            |
+| `cold_war`               | Cold War                             | Large                    |
+| `international_relations` | International relations            | Large                    |
+| `balance_of_power`       | Balance of power (international relations) | Large              |
+
+Backend must expose this list (e.g. `GET /api/internal-data/wiki-sources` or equivalent) so the frontend dropdown is driven by config. Only these options are loadable; reject any other wiki identifier.
+
+---
+
 - [x] P0: Add wiki-source loading path to `/api/internal-data/load` while keeping inline loading intact.
   - Implementation scope:
     - Extend backend load request schema to support a wiki mode plus wiki input (for example URL/topic) without breaking existing inline payloads.
     - Add wiki ingestion service in `src/backend/services/` that resolves one geopolitics wiki page into at least one structured document (`title`, `content`, `source_ref`, `source_type`).
-    - Persist wiki attribution fields so downstream retrieval responses can identify wiki origin.
-    - I need large wiki sources, not small. chunk to multiple documents. give me a lsit to chose from.
+    - Persist wiki attribution fields so downstream retrieval responses can identify wiki origin. **Dropdown: list of only a few options; check if already vectorized/downloaded before allowing load.**
+    - **LARGE wiki sources only (1000+ chars); chunk to multiple documents. Use the curated list above.**
+    - **MUST use LangChain document loader with metadata** (e.g. `WikipediaLoader`) — Documents with metadata for attribution; no fixture-only path for main wiki load.
+  - Remaining work (to align with priority above):
+    - Replace or extend fixture-based wiki ingestion with LangChain `WikipediaLoader` (or equivalent) so real, large articles are loaded with metadata.
+    - Restrict wiki input to the **allowed wiki source list**; backend returns this list and rejects unknown IDs.
+    - Add "already loaded" check: before load, indicate which sources are already in the store; UI shows and optionally blocks duplicate load.
   - Verification requirements (acceptance outcomes):
     - Backend smoke test: wiki-mode load request returns `200` with `status="success"`, `source_type="wiki"`, `documents_loaded >= 1`, `chunks_created >= 1`.
     - Backend smoke test: stored wiki-derived document has non-empty `title` and non-empty `content` suitable for chunking.
@@ -92,14 +127,42 @@
       - Calls `POST /api/internal-data/retrieve` and asserts returned results include wiki attribution (`source_type="wiki"`, matching `source_ref`).
       - Cleans up inserted smoke documents by `source_ref` to keep repeated runs stable.
 
+- [x] **P0 (PRIORITY): Large wiki + LangChain document loader with metadata + dropdown + check-before-load**
+  - Implementation scope (see priority box at top of this file):
+    - Use **LangChain document loader** (e.g. `WikipediaLoader`) for wiki ingestion; Documents must carry **metadata** (title, source, etc.) and be persisted for attribution.
+    - **LARGE sources only** (1000+ chars); chunk to multiple documents. No small fixtures in the main wiki load path.
+    - **Curated list only**: backend exposes allowed wiki source list (e.g. `GET /api/internal-data/wiki-sources`); frontend **dropdown** shows only these options; reject unknown IDs.
+    - **Check before load**: indicate which sources are already vectorized/downloaded; UI prevents or warns on duplicate load.
+  - Verification requirements (acceptance outcomes):
+    - Wiki load uses LangChain loader and returns Documents with metadata; stored chunks have correct document/source attribution.
+    - Loaded wiki content is large enough to produce multiple chunks (e.g. `chunks_created >= 2` for a single wiki source).
+    - Dropdown is driven by backend list; only allowed IDs accepted; load returns 4xx or clear error for unknown wiki ID.
+    - API or UI exposes "already loaded" state for each wiki source so user can avoid re-loading.
+  - Completed in this loop:
+    - Replaced fixture-only main-path wiki ingestion with LangChain loader wiring in `src/backend/services/wiki_ingestion_service.py` via `WikipediaLoader` (`langchain_community`) and conversion of loader `Document` output + metadata into persisted internal documents.
+    - Added curated backend wiki-source registry (`geopolitics`, `strait_of_hormuz`, `nato`, `european_union`, `united_nations`, `foreign_policy_us`, `middle_east`, `cold_war`, `international_relations`, `balance_of_power`) and strict source-ID validation for wiki loads.
+    - Enforced large-content wiki ingestion threshold (`>=1000` chars aggregate) before persistence so wiki loads produce multi-chunk content.
+    - Added duplicate-load prevention in `src/backend/services/internal_data_service.py` (reject load when selected wiki source is already vectorized).
+    - Added `GET /api/internal-data/wiki-sources` in `src/backend/routers/internal_data.py` returning curated options with `already_loaded` state from persisted wiki docs.
+    - Updated frontend load UX in `src/frontend/src/App.tsx` to fetch wiki source list from backend, drive wiki selection from dropdown only, and block duplicate wiki loads with a clear status readout.
+    - Updated frontend API client in `src/frontend/src/utils/api.ts` with `listWikiSources()` plus schema validation for wiki-source responses.
+    - Added deterministic smoke and interaction coverage:
+      - Backend: `src/backend/tests/api/test_internal_data_loading.py`
+        - `test_wiki_sources_endpoint_reports_already_loaded_state`
+        - `test_wiki_load_rejects_unknown_source_id`
+        - `test_wiki_load_rejects_duplicate_source`
+        - Updated wiki load/retrieval smoke tests to use curated `source_id` and mocked LangChain loader docs.
+      - Backend Postgres smoke: updated `src/backend/tests/api/test_pgvector_storage.py::test_wiki_load_vectorize_and_retrieve_path_on_postgres` to use curated wiki source IDs with deterministic mocked wiki loader content.
+      - Frontend: `src/frontend/src/App.test.tsx` and `src/frontend/src/utils/api.test.ts` updated for dropdown/list contract and duplicate-load behavior.
+
 - [x] Completed baseline relevant to this scope (confirmed in current codebase):
   - `/api/internal-data/load` and `/api/internal-data/retrieve` endpoints exist and return observable counts/results.
   - Frontend has clickable `Load Data` control with deterministic loading/success/error status messaging.
   - Internal retrieval is wired into `/api/agents/run` internal tool path.
-  - Current gap remains: deterministic local chunker (not LangChain).
+  - Current gaps: none for this P0 wiki scope.
 
 - Verification run results:
   - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-  - `docker compose exec backend uv run pytest` -> `52 passed`
-  - `docker compose exec frontend npm run test` -> `26 passed`
+  - `docker compose exec backend uv run pytest` -> `56 passed`
+  - `docker compose exec frontend npm run test` -> `28 passed`
   - `docker compose exec frontend npm run typecheck` -> pass

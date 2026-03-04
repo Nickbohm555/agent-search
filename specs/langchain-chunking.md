@@ -16,15 +16,16 @@ This spec covers: taking raw document content (from inline docs, wiki ingestion,
 ## Requirements
 
 ### Input
-- Accept document content (and optional metadata) from the load pipeline; support at least inline documents and wiki-sourced documents.
+- Accept document content **and metadata** from the load pipeline. For wiki sources, input MUST come from a **LangChain document loader** (e.g. `WikipediaLoader`) that provides Document objects with metadata (e.g. `title`, `source`, `summary`). Support at least inline documents and wiki-sourced documents.
 
 ### Chunking
-- Use LangChain to produce chunks (e.g. LangChain text splitter abstractions).
+- Use LangChain to produce chunks (e.g. RecursiveCharacterTextSplitter or equivalent). **Document loader output (with metadata) must flow into the chunking step** so that metadata can be preserved per chunk for attribution.
 - Chunks are deterministic and reproducible for the same input and configuration.
 - Chunk boundaries and size/overlap are configurable (e.g. chunk size, overlap, separators).
 
 ### Output
 - Emit a list of chunks per document (order preserved) so the vectorization step can embed and store each chunk.
+- **Preserve document metadata** (from LangChain Document) on chunks or documents so retrieval responses can attribute results (source_ref, title, etc.).
 - Preserve link to source document (document_id or equivalent) for attribution in retrieval.
 
 ### Claude's Discretion
@@ -36,10 +37,11 @@ This spec covers: taking raw document content (from inline docs, wiki ingestion,
 <acceptance_criteria>
 ## Acceptance Criteria
 
-- When loading documents (inline or from wiki), chunks are produced by LangChain text splitting; chunk count and content reflect the chosen strategy.
+- When loading documents (inline or from wiki), **wiki path uses LangChain document loader output (Documents with metadata)**; chunks are produced by LangChain text splitting; chunk count and content reflect the chosen strategy.
+- **Metadata from the LangChain Document** (e.g. title, source) is preserved and visible in retrieval results for attribution.
 - Chunks are ordered and associated with their source document so retrieval results show correct document attribution.
 - After a load, internal RAG retrieval returns results from the LangChain-chunked content for relevant queries.
-- Chunking behavior is configurable (e.g. chunk size or overlap can be changed) and observable (e.g. chunks_created in load response).
+- Chunking behavior is configurable (e.g. chunk size or overlap) and observable (e.g. chunks_created in load response).
 </acceptance_criteria>
 
 <boundaries>

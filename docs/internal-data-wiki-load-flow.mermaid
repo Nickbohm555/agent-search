@@ -1,12 +1,19 @@
 flowchart TD
-    A["POST /api/internal-data/load\nsrc/backend/routers/internal_data.py::load_data\nTrigger: API load request"] -->|"data: InternalDataLoadRequest\nwhy: route delegates source-specific load handling"| B["src/backend/services/internal_data_service.py::load_internal_data"]
-    B -->|"trigger: source_type == 'wiki'\ndata: payload.wiki (topic/url)\nwhy: resolve wiki article into ingestible docs"| C["src/backend/services/wiki_ingestion_service.py::resolve_wiki_documents"]
-    C -->|"data out: InternalDocumentInput[]\nfields: title/content/source_ref\nwhy: keep existing chunk+embed pipeline reusable"| D["src/backend/services/internal_data_service.py::_persist_documents"]
-    B -->|"trigger: source_type == 'inline'\ndata: payload.documents\nwhy: preserve existing inline ingest path"| D
-    D -->|"data write: internal_documents + internal_document_chunks\nwhy: persist retrieval-ready content and embeddings"| E["Postgres tables\ninternal_documents/internal_document_chunks"]
-    D -->|"data out: documents_loaded/chunks_created\nwhy: observable load status for API/UI"| F["InternalDataLoadResponse"]
+    A["GET /api/internal-data/wiki-sources\nsrc/backend/routers/internal_data.py::list_wiki_sources\nTrigger: UI enters wiki-load mode or app startup"] -->|"data: DB session\nwhy: build curated dropdown with loaded-state"| B["src/backend/services/internal_data_service.py::list_wiki_sources_with_load_state"]
+    B -->|"data read: distinct InternalDocument.source_ref where source_type='wiki'\nwhy: detect vectorized sources for duplicate-prevention UX"| C["Postgres: internal_documents"]
+    B -->|"data out: sources[{source_id,label,article_query,already_loaded}]\nwhy: frontend dropdown and pre-load warning"| D["WikiSourcesResponse"]
 
-    N1["Decision: wiki ingestion uses deterministic local fixture mapping\nTradeoff: no live freshness, but CI-safe and network-independent behavior."]:::note
-    C -.-> N1
+    E["POST /api/internal-data/load\nsrc/backend/routers/internal_data.py::load_data\nTrigger: user clicks Load Data"] -->|"data: InternalDataLoadRequest(source_type='wiki', wiki.source_id)\nwhy: execute curated wiki ingestion"| F["src/backend/services/internal_data_service.py::load_internal_data"]
+    F -->|"trigger: source_id already loaded\nwhy: prevent duplicate vectorization"| G["HTTP 400 already loaded"]
+    F -->|"trigger: source_id new\nwhy: load fresh wiki content for vectorization"| H["src/backend/services/wiki_ingestion_service.py::resolve_wiki_documents"]
+    H -->|"trigger fn: _load_wikipedia_documents(query)\nwhy: MUST use LangChain WikipediaLoader with metadata"| I["langchain_community.document_loaders.WikipediaLoader.load"]
+    I -->|"data: Document.page_content + Document.metadata(title,source,summary...)\nwhy: attribution + large content requirements"| H
+    H -->|"guard: total_chars >= 1000\nwhy: avoid tiny fixture-sized wiki loads in main path"| J["Validated InternalDocumentInput[]"]
+    J -->|"call: _persist_documents\nwhy: reuse common split/embed/write pipeline"| K["src/backend/services/internal_data_service.py::_persist_documents"]
+    K -->|"data write: internal_documents(source_type/wiki source_ref) + internal_document_chunks(embedding)\nwhy: retrieval-ready persisted wiki vectors"| L["Postgres tables"]
+    K -->|"data out: documents_loaded/chunks_created\nwhy: observable status for UI readout"| M["InternalDataLoadResponse"]
+
+    N1["Tradeoff: source_ref persists curated source_id (stable dedupe key) instead of loader URL; loader metadata still sets document title/source defaults before persistence."]:::note
+    F -.-> N1
 
     classDef note fill:#fff3cd,stroke:#ad8b00,color:#4a3b00;

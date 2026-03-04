@@ -1,5 +1,11 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
-import { RuntimeAgentGraphStep, RuntimeAgentRunResponse, loadInternalData } from "./utils/api";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  RuntimeAgentGraphStep,
+  RuntimeAgentRunResponse,
+  WikiSourceOption,
+  listWikiSources,
+  loadInternalData,
+} from "./utils/api";
 import { RuntimeAgentStreamEvent } from "./lib/stream-events";
 import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
 import { ProgressHistory } from "./lib/components/ProgressHistory";
@@ -13,7 +19,8 @@ export default function App() {
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
   const [loadSourceType, setLoadSourceType] = useState<"inline" | "wiki">("inline");
-  const [wikiTopic, setWikiTopic] = useState("Strait of Hormuz");
+  const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>([]);
+  const [wikiSourceId, setWikiSourceId] = useState("");
   const [query, setQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
   const [runMessage, setRunMessage] = useState("Waiting for query.");
@@ -30,15 +37,42 @@ export default function App() {
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
   const isWikiLoad = loadSourceType === "wiki";
+  const selectedWikiSource = useMemo(
+    () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
+    [wikiSourceId, wikiSources],
+  );
+  const isLoadDisabled = useMemo(() => {
+    if (loadState === "loading") {
+      return true;
+    }
+    return isWikiLoad && (!selectedWikiSource || selectedWikiSource.already_loaded);
+  }, [isWikiLoad, loadState, selectedWikiSource]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadWikiSources() {
+      const result = await listWikiSources();
+      if (!isMounted || !result.ok) {
+        return;
+      }
+      setWikiSources(result.data.sources);
+      if (result.data.sources.length > 0) {
+        setWikiSourceId((previous) => previous || result.data.sources[0].source_id);
+      }
+    }
+    loadWikiSources();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function buildLoadPayload() {
     // Called by `handleLoad` so the load action can preserve inline compatibility
     // while supporting wiki-triggered ingestion from the same control surface.
     if (isWikiLoad) {
-      const topic = wikiTopic.trim() || "Strait of Hormuz";
       return {
         source_type: "wiki" as const,
-        wiki: { topic },
+        wiki: { source_id: wikiSourceId },
       };
     }
 
@@ -56,6 +90,13 @@ export default function App() {
     setLoadState("loading");
     setLoadMessage("Loading and vectorizing internal docs...");
 
+    if (isWikiLoad && selectedWikiSource?.already_loaded) {
+      setLoadState("error");
+      setLoadMessage(`"${selectedWikiSource.label}" is already loaded.`);
+      loadInFlightRef.current = false;
+      return;
+    }
+
     try {
       const result = await loadInternalData(buildLoadPayload());
 
@@ -64,6 +105,13 @@ export default function App() {
         setLoadMessage(
           formatLoadSuccessMessage(result.data.source_type, result.data.documents_loaded, result.data.chunks_created),
         );
+        if (isWikiLoad && selectedWikiSource) {
+          setWikiSources((existing) =>
+            existing.map((source) =>
+              source.source_id === selectedWikiSource.source_id ? { ...source, already_loaded: true } : source,
+            ),
+          );
+        }
         return;
       }
 
@@ -216,22 +264,30 @@ export default function App() {
             </select>
             {isWikiLoad ? (
               <>
-                <label htmlFor="wiki-topic">Wiki Topic</label>
-                <input
-                  id="wiki-topic"
-                  type="text"
-                  value={wikiTopic}
-                  onChange={(event) => setWikiTopic(event.target.value)}
-                  placeholder="e.g. Strait of Hormuz"
+                <label htmlFor="wiki-source-id">Wiki Source</label>
+                <select
+                  id="wiki-source-id"
+                  value={wikiSourceId}
+                  onChange={(event) => setWikiSourceId(event.target.value)}
                   disabled={loadState === "loading"}
-                />
+                >
+                  {wikiSources.map((source) => (
+                    <option key={source.source_id} value={source.source_id}>
+                      {source.label}
+                      {source.already_loaded ? " (loaded)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedWikiSource?.already_loaded ? (
+                  <p role="status">Selected wiki source is already loaded. Choose another source.</p>
+                ) : null}
               </>
             ) : null}
             <button
               type="button"
               className="action-button neon-action"
               onClick={handleLoad}
-              disabled={loadState === "loading"}
+              disabled={isLoadDisabled}
             >
               {loadState === "loading" ? "Loading..." : "Load Data"}
             </button>

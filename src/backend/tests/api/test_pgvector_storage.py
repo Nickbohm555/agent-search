@@ -5,6 +5,29 @@ from sqlalchemy import create_engine, text
 
 from main import app
 from fastapi.testclient import TestClient
+from services import wiki_ingestion_service
+
+
+def _mock_wikipedia_loader(*_args, **_kwargs):
+    long_content = " ".join(
+        [
+            "The Strait of Hormuz links the Persian Gulf with the Gulf of Oman and carries major energy shipments."
+        ]
+        * 30
+    )
+    return [
+        type(
+            "MockLoadedDocument",
+            (),
+            {
+                "page_content": long_content,
+                "metadata": {
+                    "title": "Strait of Hormuz",
+                    "source": "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+                },
+            },
+        )()
+    ]
 
 
 @pytest.mark.smoke
@@ -35,23 +58,34 @@ def test_pgvector_extension_and_embedding_column_exist_on_postgres():
 
 
 @pytest.mark.smoke
-def test_wiki_load_vectorize_and_retrieve_path_on_postgres():
+def test_wiki_load_vectorize_and_retrieve_path_on_postgres(monkeypatch: pytest.MonkeyPatch):
     """Exercise wiki load -> pgvector write -> retrieval in one deterministic smoke path."""
     database_url = os.getenv("DATABASE_URL", "")
     if "postgresql" not in database_url:
         pytest.skip("Postgres-backed smoke check requires a PostgreSQL DATABASE_URL")
 
     engine = create_engine(database_url, future=True)
-    source_ref = "https://en.wikipedia.org/wiki/Strait_of_Hormuz?source=pgvector-smoke"
+    source_id = "strait_of_hormuz"
+    monkeypatch.setattr(wiki_ingestion_service, "_load_wikipedia_documents", _mock_wikipedia_loader)
 
     try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    DELETE FROM internal_documents
+                    WHERE source_ref = :source_ref
+                    """
+                ),
+                {"source_ref": source_id},
+            )
         with TestClient(app) as client:
             load_response = client.post(
                 "/api/internal-data/load",
                 json={
                     "source_type": "wiki",
                     "wiki": {
-                        "url": source_ref,
+                        "source_id": source_id,
                     },
                 },
             )
@@ -74,7 +108,7 @@ def test_wiki_load_vectorize_and_retrieve_path_on_postgres():
                           AND chunks.embedding IS NOT NULL
                         """
                     ),
-                    {"source_ref": source_ref},
+                    {"source_ref": source_id},
                 ).scalar_one()
 
             assert vectorized_chunk_count >= 1
@@ -90,7 +124,7 @@ def test_wiki_load_vectorize_and_retrieve_path_on_postgres():
             retrieve_data = retrieve_response.json()
             assert len(retrieve_data["results"]) >= 1
             assert any(
-                item["source_type"] == "wiki" and item["source_ref"] == source_ref
+                item["source_type"] == "wiki" and item["source_ref"] == source_id
                 for item in retrieve_data["results"]
             )
     finally:
@@ -102,5 +136,5 @@ def test_wiki_load_vectorize_and_retrieve_path_on_postgres():
                     WHERE source_ref = :source_ref
                     """
                 ),
-                {"source_ref": source_ref},
+                {"source_ref": source_id},
             )

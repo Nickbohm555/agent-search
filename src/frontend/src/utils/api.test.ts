@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import { loadInternalData, runAgent } from "./api";
+import { listWikiSources, loadInternalData, runAgent } from "./api";
 
 function jsonResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
@@ -58,7 +58,7 @@ describe("frontend api client", () => {
     const payload = {
       source_type: "wiki" as const,
       wiki: {
-        topic: "Strait of Hormuz",
+        source_id: "strait_of_hormuz",
       },
     };
     const result = await loadInternalData(payload, { fetchImpl: fetchMock as unknown as typeof fetch });
@@ -71,6 +71,28 @@ describe("frontend api client", () => {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+    );
+  });
+
+  it("lists curated wiki sources with loaded state", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        sources: [
+          {
+            source_id: "strait_of_hormuz",
+            label: "Strait of Hormuz",
+            article_query: "Strait of Hormuz",
+            already_loaded: false,
+          },
+        ],
+      }),
+    );
+
+    const result = await listWikiSources({ fetchImpl: fetchMock as unknown as typeof fetch });
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/internal-data/wiki-sources",
+      expect.objectContaining({ method: "GET" }),
     );
   });
 

@@ -7,8 +7,13 @@ from schemas import (
     InternalDataLoadResponse,
     InternalDataRetrieveRequest,
     InternalDataRetrieveResponse,
+    WikiSourcesResponse,
 )
-from services.internal_data_service import load_internal_data, retrieve_internal_data
+from services.internal_data_service import (
+    list_wiki_sources_with_load_state,
+    load_internal_data,
+    retrieve_internal_data,
+)
 
 router = APIRouter(prefix="/api/internal-data", tags=["internal-data"])
 
@@ -20,6 +25,12 @@ def load_data(payload: InternalDataLoadRequest, db: Session = Depends(get_db)) -
         return load_internal_data(payload, db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/wiki-sources", response_model=WikiSourcesResponse)
+def list_wiki_sources(db: Session = Depends(get_db)) -> WikiSourcesResponse:
+    """Return curated wiki source options with already-loaded state for the UI."""
+    return list_wiki_sources_with_load_state(db)
 
 
 @router.post("/retrieve", response_model=InternalDataRetrieveResponse)

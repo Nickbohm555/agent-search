@@ -6,6 +6,8 @@
 
 **Status:** Draft
 
+**Priority (wiki path):** Wiki loading MUST use **LARGE** sources (1000+ chars), a **curated dropdown list** only, **check-before-load** (already vectorized?), and a **LangChain document loader with metadata**. See IMPLEMENTATION_PLAN.md (priority box) and specs/wiki-ingestion.md.
+
 <scope>
 ## Topic Boundary
 

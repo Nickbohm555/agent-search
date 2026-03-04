@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { loadInternalData } from "./utils/api";
+import { listWikiSources, loadInternalData } from "./utils/api";
 import { RuntimeAgentStreamResponse, streamAgentRun } from "./utils/stream";
 
 vi.mock("./utils/api", () => ({
+  listWikiSources: vi.fn(),
   loadInternalData: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock("./utils/stream", () => ({
 }));
 
 const mockedLoadInternalData = vi.mocked(loadInternalData);
+const mockedListWikiSources = vi.mocked(listWikiSources);
 const mockedStreamAgentRun = vi.mocked(streamAgentRun);
 
 function createDeferred<T>() {
@@ -74,6 +76,25 @@ function successStreamResponse(overrides?: Partial<RuntimeAgentStreamResponse>):
 describe("App", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockedListWikiSources.mockResolvedValue({
+      ok: true,
+      data: {
+        sources: [
+          {
+            source_id: "strait_of_hormuz",
+            label: "Strait of Hormuz",
+            article_query: "Strait of Hormuz",
+            already_loaded: false,
+          },
+          {
+            source_id: "nato",
+            label: "NATO",
+            article_query: "NATO",
+            already_loaded: false,
+          },
+        ],
+      },
+    });
   });
 
   it("renders load/run controls and status regions", () => {
@@ -131,13 +152,16 @@ describe("App", () => {
 
     render(<App />);
     fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "wiki" } });
-    fireEvent.change(screen.getByLabelText("Wiki Topic"), { target: { value: "Strait of Hormuz" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Wiki Source")).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText("Wiki Source"), { target: { value: "strait_of_hormuz" } });
     fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
 
     await waitFor(() => {
       expect(mockedLoadInternalData).toHaveBeenCalledWith({
         source_type: "wiki",
-        wiki: { topic: "Strait of Hormuz" },
+        wiki: { source_id: "strait_of_hormuz" },
       });
       expect(screen.getByText("Wiki load complete. Loaded 1 documents and created 5 chunks.")).toBeInTheDocument();
     });
@@ -156,12 +180,40 @@ describe("App", () => {
 
     render(<App />);
     fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "wiki" } });
+    await waitFor(() => {
+      expect(screen.getByLabelText("Wiki Source")).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
 
     await waitFor(() => {
       expect(screen.getByTestId("load-status-region")).toHaveTextContent("ERROR");
       expect(screen.getByText("Request failed with status 400")).toBeInTheDocument();
     });
+  });
+
+  it("prevents wiki load when selected source is already loaded", async () => {
+    mockedListWikiSources.mockResolvedValue({
+      ok: true,
+      data: {
+        sources: [
+          {
+            source_id: "strait_of_hormuz",
+            label: "Strait of Hormuz",
+            article_query: "Strait of Hormuz",
+            already_loaded: true,
+          },
+        ],
+      },
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "wiki" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Selected wiki source is already loaded. Choose another source.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Load Data" })).toBeDisabled();
+    });
+    expect(mockedLoadInternalData).not.toHaveBeenCalled();
   });
 
   it("shows processing readout indicators while load and run are in flight", async () => {

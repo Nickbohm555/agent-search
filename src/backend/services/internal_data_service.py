@@ -9,8 +9,10 @@ from schemas import (
     InternalDataRetrieveResponse,
     InternalDocumentInput,
     InternalRetrievedChunk,
+    WikiSourceOption,
+    WikiSourcesResponse,
 )
-from services.wiki_ingestion_service import resolve_wiki_documents
+from services.wiki_ingestion_service import list_wiki_sources, resolve_wiki_documents, resolve_wiki_source
 from utils.chunking import split_text
 from utils.embeddings import cosine_similarity, embed_text
 
@@ -71,7 +73,18 @@ def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> Interna
     if payload.source_type == "wiki":
         if payload.wiki is None:
             raise ValueError("wiki payload is required when source_type='wiki'")
+        source = resolve_wiki_source(payload.wiki.source_id)
+        existing_count = (
+            db.query(func.count(InternalDocument.id))
+            .filter(InternalDocument.source_type == "wiki", InternalDocument.source_ref == source.source_id)
+            .scalar()
+            or 0
+        )
+        if existing_count > 0:
+            raise ValueError(f"Wiki source '{source.source_id}' is already loaded.")
         documents_to_load = resolve_wiki_documents(payload.wiki)
+        for document in documents_to_load:
+            document.source_ref = source.source_id
     else:
         documents_to_load = payload.documents or []
 
@@ -87,6 +100,37 @@ def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> Interna
         source_type=payload.source_type,
         documents_loaded=documents_loaded,
         chunks_created=chunks_created,
+    )
+
+
+def list_wiki_sources_with_load_state(db: Session) -> WikiSourcesResponse:
+    """List curated wiki sources plus whether each source is already vectorized.
+
+    Called by `routers/internal_data.py::list_wiki_sources` to power the UI
+    dropdown and duplicate-load warnings before a wiki load is triggered.
+    """
+    source_definitions = list_wiki_sources()
+    loaded_refs = {
+        source_ref
+        for (source_ref,) in (
+            db.query(InternalDocument.source_ref)
+            .filter(InternalDocument.source_type == "wiki", InternalDocument.source_ref.isnot(None))
+            .distinct()
+            .all()
+        )
+        if source_ref
+    }
+
+    return WikiSourcesResponse(
+        sources=[
+            WikiSourceOption(
+                source_id=source.source_id,
+                label=source.label,
+                article_query=source.article_query,
+                already_loaded=source.source_id in loaded_refs,
+            )
+            for source in source_definitions
+        ]
     )
 
 

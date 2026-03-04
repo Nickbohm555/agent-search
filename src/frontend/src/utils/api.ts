@@ -22,8 +22,18 @@ export interface InternalDocumentInput {
 }
 
 export interface WikiLoadInput {
-  topic?: string;
-  url?: string;
+  source_id: string;
+}
+
+export interface WikiSourceOption {
+  source_id: string;
+  label: string;
+  article_query: string;
+  already_loaded: boolean;
+}
+
+export interface WikiSourcesResponse {
+  sources: WikiSourceOption[];
 }
 
 export type InternalDataLoadRequest =
@@ -147,6 +157,15 @@ export async function loadInternalData(
   });
 }
 
+export async function listWikiSources(options: RequestOptions = {}): Promise<ApiResult<WikiSourcesResponse>> {
+  return requestJson<WikiSourcesResponse>({
+    path: "/api/internal-data/wiki-sources",
+    method: "GET",
+    validate: isWikiSourcesResponse,
+    options,
+  });
+}
+
 export async function runAgent(
   payload: RuntimeAgentRunRequest,
   options: RequestOptions = {},
@@ -164,24 +183,28 @@ export async function runAgent(
 
 interface RequestJsonArgs<T> {
   path: string;
-  payload: unknown;
+  payload?: unknown;
+  method?: "GET" | "POST";
   validate: (value: unknown) => value is T;
   options: RequestOptions;
 }
 
-async function requestJson<T>({ path, payload, validate, options }: RequestJsonArgs<T>): Promise<ApiResult<T>> {
+async function requestJson<T>({ path, payload, method = "POST", validate, options }: RequestJsonArgs<T>): Promise<ApiResult<T>> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const fetchImpl = options.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetchImpl(`${API_BASE_URL}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    const requestInit: RequestInit = {
+      method,
       signal: controller.signal,
-    });
+    };
+    if (method !== "GET") {
+      requestInit.headers = { "Content-Type": "application/json" };
+      requestInit.body = JSON.stringify(payload);
+    }
+    const response = await fetchImpl(`${API_BASE_URL}${path}`, requestInit);
 
     if (!response.ok) {
       await safeReadText(response);
@@ -261,6 +284,25 @@ function isInternalDataLoadResponse(value: unknown): value is InternalDataLoadRe
     typeof value.documents_loaded === "number" &&
     typeof value.chunks_created === "number"
   );
+}
+
+function isWikiSourcesResponse(value: unknown): value is WikiSourcesResponse {
+  if (!isObject(value) || !Array.isArray(value.sources)) {
+    return false;
+  }
+
+  return value.sources.every((source) => {
+    return (
+      isObject(source) &&
+      typeof source.source_id === "string" &&
+      source.source_id.trim().length > 0 &&
+      typeof source.label === "string" &&
+      source.label.trim().length > 0 &&
+      typeof source.article_query === "string" &&
+      source.article_query.trim().length > 0 &&
+      typeof source.already_loaded === "boolean"
+    );
+  });
 }
 
 function isToolKind(value: unknown): value is "internal" | "web" {

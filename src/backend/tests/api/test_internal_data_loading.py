@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 from db import Base, get_db
 from main import app
 from models import InternalDocumentChunk
+from services import wiki_ingestion_service
 from utils.embeddings import EMBEDDING_DIM
 
 
@@ -17,6 +18,29 @@ def _embedding_size(value: object) -> int:
             return 0
         return len([part for part in stripped.split(",") if part.strip()])
     return len(list(value))
+
+
+def _mock_wikipedia_loader(*_args, **_kwargs):
+    long_content = " ".join(
+        [
+            "The Strait of Hormuz is a strategic maritime corridor linking the Persian Gulf and the Gulf of Oman."
+        ]
+        * 30
+    )
+    return [
+        type(
+            "MockLoadedDocument",
+            (),
+            {
+                "page_content": long_content,
+                "metadata": {
+                    "title": "Strait of Hormuz",
+                    "source": "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+                    "summary": "A critical global energy chokepoint.",
+                },
+            },
+        )()
+    ]
 
 
 @pytest.fixture()
@@ -191,23 +215,26 @@ def test_internal_retrieval_ranks_relevant_chunk_above_unrelated(internal_data_c
 
 
 @pytest.mark.smoke
-def test_wiki_data_load_returns_observable_counts(internal_data_client: TestClient):
+def test_wiki_data_load_returns_observable_counts(
+    internal_data_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(wiki_ingestion_service, "_load_wikipedia_documents", _mock_wikipedia_loader)
     response = internal_data_client.post(
         "/api/internal-data/load",
         json={
             "source_type": "wiki",
             "wiki": {
-                "topic": "Strait of Hormuz",
+                "source_id": "strait_of_hormuz",
             },
         },
     )
-
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
     assert data["source_type"] == "wiki"
     assert data["documents_loaded"] >= 1
-    assert data["chunks_created"] >= 1
+    assert data["chunks_created"] >= 2
 
 
 @pytest.mark.smoke
@@ -287,13 +314,17 @@ def test_internal_data_load_honors_langchain_chunking_env_config(
 
 
 @pytest.mark.smoke
-def test_wiki_retrieval_includes_wiki_attribution_and_content(internal_data_client: TestClient):
+def test_wiki_retrieval_includes_wiki_attribution_and_content(
+    internal_data_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(wiki_ingestion_service, "_load_wikipedia_documents", _mock_wikipedia_loader)
     load_response = internal_data_client.post(
         "/api/internal-data/load",
         json={
             "source_type": "wiki",
             "wiki": {
-                "url": "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+                "source_id": "strait_of_hormuz",
             },
         },
     )
@@ -311,7 +342,57 @@ def test_wiki_retrieval_includes_wiki_attribution_and_content(internal_data_clie
     assert len(wiki_results) >= 1
     assert all(len(item["document_title"].strip()) > 0 for item in wiki_results)
     assert all(len(item["content"].strip()) > 0 for item in wiki_results)
-    assert any(
-        item["source_ref"] == "https://en.wikipedia.org/wiki/Strait_of_Hormuz"
-        for item in wiki_results
+    assert any(item["source_ref"] == "strait_of_hormuz" for item in wiki_results)
+
+
+@pytest.mark.smoke
+def test_wiki_sources_endpoint_reports_already_loaded_state(
+    internal_data_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(wiki_ingestion_service, "_load_wikipedia_documents", _mock_wikipedia_loader)
+
+    before_response = internal_data_client.get("/api/internal-data/wiki-sources")
+    assert before_response.status_code == 200
+    before_payload = before_response.json()["sources"]
+    before_strait = next(item for item in before_payload if item["source_id"] == "strait_of_hormuz")
+    assert before_strait["already_loaded"] is False
+
+    load_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={"source_type": "wiki", "wiki": {"source_id": "strait_of_hormuz"}},
     )
+    assert load_response.status_code == 200
+
+    after_response = internal_data_client.get("/api/internal-data/wiki-sources")
+    assert after_response.status_code == 200
+    after_payload = after_response.json()["sources"]
+    after_strait = next(item for item in after_payload if item["source_id"] == "strait_of_hormuz")
+    assert after_strait["already_loaded"] is True
+
+
+@pytest.mark.smoke
+def test_wiki_load_rejects_unknown_source_id(internal_data_client: TestClient):
+    response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={"source_type": "wiki", "wiki": {"source_id": "not_in_allowed_list"}},
+    )
+    assert response.status_code == 400
+    assert "Unsupported wiki source_id" in response.json()["detail"]
+
+
+@pytest.mark.smoke
+def test_wiki_load_rejects_duplicate_source(internal_data_client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wiki_ingestion_service, "_load_wikipedia_documents", _mock_wikipedia_loader)
+    first_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={"source_type": "wiki", "wiki": {"source_id": "strait_of_hormuz"}},
+    )
+    assert first_response.status_code == 200
+
+    duplicate_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={"source_type": "wiki", "wiki": {"source_id": "strait_of_hormuz"}},
+    )
+    assert duplicate_response.status_code == 400
+    assert "already loaded" in duplicate_response.json()["detail"]

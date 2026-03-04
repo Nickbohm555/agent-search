@@ -10,14 +10,7 @@ class InternalDocumentInput(BaseModel):
 
 
 class WikiLoadInput(BaseModel):
-    url: Optional[str] = Field(default=None, min_length=1)
-    topic: Optional[str] = Field(default=None, min_length=1)
-
-    @model_validator(mode="after")
-    def validate_topic_or_url(self) -> "WikiLoadInput":
-        if not self.url and not self.topic:
-            raise ValueError("wiki load requires either url or topic")
-        return self
+    source_id: str = Field(min_length=1)
 
 
 class InternalDataLoadRequest(BaseModel):
@@ -68,3 +61,14 @@ class InternalDataRetrieveResponse(BaseModel):
     query: str
     total_chunks_considered: int
     results: list[InternalRetrievedChunk]
+
+
+class WikiSourceOption(BaseModel):
+    source_id: str
+    label: str
+    article_query: str
+    already_loaded: bool
+
+
+class WikiSourcesResponse(BaseModel):
+    sources: list[WikiSourceOption]
