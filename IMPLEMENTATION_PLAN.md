@@ -6,6 +6,25 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Add retrieval activity readout to frontend progress panel for clearer "what the system did" visibility (`specs/content-and-readouts.md`, `specs/per-subquery-retrieval.md`).
+  - Tasks:
+  - Added a dedicated `Retrieval` section in `ProgressHistory` that summarizes per-subquery retrieval outcomes with tool-aware messaging:
+    - internal subqueries show retrieved internal result counts
+    - web subqueries show opened web page counts
+  - Added deterministic empty-state handling for retrieval readouts (`No retrieval results were returned.`) to keep optional arrays stable.
+  - Added frontend interaction coverage proving retrieval summaries render for both internal and web retrieval paths.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `43 passed`
+    - `docker compose exec frontend npm run test` -> `35 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P0 - Add FastMCP streamable-HTTP exposure alongside existing MCP JSON-RPC wrapper (`specs/mcp-exposure.md`).
   - Tasks:
   - Added FastMCP service wiring (`services/mcp_service.py`) with `agent.run` tool delegation to the shared runtime agent path (`run_runtime_agent`) so FastMCP and API/MCP wrapper use the same orchestration.

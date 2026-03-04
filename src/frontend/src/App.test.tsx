@@ -243,6 +243,69 @@ describe("App", () => {
     expect(screen.getByTestId("query-readout")).toHaveTextContent("What is the project status?");
   });
 
+  it("shows retrieval summaries for internal and web sub-queries", async () => {
+    mockedRunAgentStream.mockResolvedValue({
+      ok: true,
+      data: successRunResponse({
+        retrieval_results: [
+          {
+            sub_query: "subquery-a",
+            tool: "internal",
+            internal_results: [
+              {
+                chunk_id: 1,
+                document_id: 10,
+                document_title: "Roadmap",
+                source_type: "inline",
+                source_ref: "doc://roadmap",
+                content: "Roadmap details",
+                score: 0.92,
+              },
+            ],
+            web_search_results: [],
+            opened_urls: [],
+            opened_pages: [],
+          },
+          {
+            sub_query: "subquery-b",
+            tool: "web",
+            internal_results: [],
+            web_search_results: [
+              {
+                title: "Release notes",
+                url: "https://example.com/release",
+                snippet: "Latest release details",
+              },
+            ],
+            opened_urls: ["https://example.com/release", "https://example.com/analysis"],
+            opened_pages: [
+              {
+                url: "https://example.com/release",
+                title: "Release notes",
+                content: "Release body",
+              },
+              {
+                url: "https://example.com/analysis",
+                title: "Analysis",
+                content: "Analysis body",
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Show retrieval summaries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("retrieval-list")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a: internal results 1")).toBeInTheDocument();
+      expect(screen.getByText("subquery-b: opened 2 web pages")).toBeInTheDocument();
+    });
+  });
+
   it("uses consistent readout styling for load and run status outcomes", async () => {
     mockedLoadInternalData.mockResolvedValue({
       ok: true,
@@ -338,6 +401,7 @@ describe("App", () => {
         output: "Empty state answer.",
         sub_queries: [],
         tool_assignments: [],
+        retrieval_results: [],
         validation_results: [],
         graph_state: {
           current_step: "synthesis",
@@ -354,6 +418,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
       expect(screen.getByTestId("subquery-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("retrieval-empty")).toBeInTheDocument();
       expect(screen.getByTestId("validation-empty")).toBeInTheDocument();
       expect(screen.getByText("Empty state answer.")).toBeInTheDocument();
     });

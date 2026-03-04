@@ -52,6 +52,32 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
           </div>
 
           <div className="readout-group">
+            <h4 className="readout-group-title">Retrieval</h4>
+            {runDetails.retrieval_results.length ? (
+              <ol data-testid="retrieval-list">
+                {runDetails.retrieval_results.map((retrieval) => {
+                  if (retrieval.tool === "internal") {
+                    return (
+                      <li key={`${retrieval.sub_query}-${retrieval.tool}`}>
+                        {retrieval.sub_query}: internal results {retrieval.internal_results.length}
+                      </li>
+                    );
+                  }
+
+                  return (
+                    <li key={`${retrieval.sub_query}-${retrieval.tool}`}>
+                      {retrieval.sub_query}: opened {retrieval.opened_urls.length} web page
+                      {retrieval.opened_urls.length === 1 ? "" : "s"}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p data-testid="retrieval-empty">No retrieval results were returned.</p>
+            )}
+          </div>
+
+          <div className="readout-group">
             <h4 className="readout-group-title">Validation</h4>
             {runDetails.validation_results.length ? (
               <ol data-testid="validation-list">
