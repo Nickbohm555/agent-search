@@ -3,7 +3,7 @@
 ## Scope
 - Frontend-only scoped planning for: "all frontend work".
 - Sources reviewed this run: `specs/*`, `src/frontend/*`, `src/backend/routers/*`, `src/backend/schemas/*`, `src/backend/services/agent_service.py`, `IMPLEMENTATION_PLAN.md`.
-- Implementation run completed for one P0 item (progress timeline fallback in demo UI).
+- Implementation run completed for one P0 item (demo UI workflow verification + closure).
 
 ## Current Status (2026-03-04)
 - [x] Frontend scaffold exists in TypeScript/React/Vite (`src/frontend/src/App.tsx`, `src/frontend/src/main.tsx`).
@@ -37,7 +37,7 @@
   - Added runtime response guards to prevent malformed backend payload crashes.
   - Added unit tests for all listed verification cases.
 
-- [ ] P0 - Implement demo UI workflow (load/vectorize + query run + final answer)
+- [x] P0 - Implement demo UI workflow (load/vectorize + query run + final answer)
 - Why: This is the core acceptance surface in `demo-ui-typescript`.
 - Spec alignment:
   - `specs/demo-ui-typescript.md`
@@ -51,6 +51,10 @@
   - Interaction test: failed load visibly reports error outcome.
   - Interaction test: successful run renders returned final answer text.
   - Interaction test: failed run visibly reports error outcome while preserving user-entered query for retry.
+- Completion notes:
+  - Confirmed implementation in `src/frontend/src/App.tsx` satisfies required load/run/final-answer behaviors.
+  - Confirmed interaction coverage in `src/frontend/src/App.test.tsx` for all listed acceptance checks.
+  - Verified required checks in a fresh Docker reset/build/up cycle: health endpoint `200`, backend tests, frontend tests, frontend typecheck, and frontend build.
 
 - [x] P0 - Render agent progress timeline from run response as pre-stream heartbeat fallback
 - Why: No backend stream route exists yet; UI still must show sub-queries/progress for demo utility.

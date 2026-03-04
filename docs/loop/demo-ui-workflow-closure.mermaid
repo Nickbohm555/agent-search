@@ -1,0 +1,14 @@
+flowchart TD
+    A[Start run] --> B[Read specs/* and IMPLEMENTATION_PLAN.md]
+    B --> C{Highest-priority open item}
+    C -->|P0 demo UI workflow| D[Verify existing App.tsx + App.test.tsx coverage]
+    D --> E[Fresh reset: docker compose down -v --rmi all]
+    E --> F[Rebuild and restart: docker compose build && up -d]
+    F --> G[Validate health endpoint /api/health => 200]
+    G --> H[Run backend tests: 26 passed]
+    H --> I[Run frontend tests: 13 passed]
+    I --> J[Run frontend typecheck + build: passed]
+    J --> K[Update IMPLEMENTATION_PLAN.md: mark P0 done + completion notes]
+    K --> L[Write .loop-commit-msg and this diagram]
+
+    M[Blocked external dependency?] -->|No| L
