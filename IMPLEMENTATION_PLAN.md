@@ -43,3 +43,10 @@
 - [x] Complete (scope baseline) - Synchronous scaffold run path exists at `POST /api/agents/run` with deterministic response shape used by current UI/tests.
 
 - [x] Complete (scope guard) - Logging/tracing state streaming is explicitly out of scope for this slice (`specs/compile-invoke-streaming-dummy.md`).
+
+- [x] P1 - Enforce accessible interaction affordances for the cyberpunk UI theme (visible focus indicators + reduced-motion support) without changing runtime behavior.
+  Verification requirements (from `specs/accessibility-within-aesthetic.md`): add frontend interaction test that the run form can be submitted through form-submit keyboard flow (not only pointer click); ensure theme CSS defines visible keyboard focus treatment for interactive controls; ensure `prefers-reduced-motion: reduce` disables non-essential motion while preserving status/readout visibility.
+  Completed in this run:
+  - Added keyboard interaction coverage in `src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_run_flow` validating the run pipeline can be executed via form submission with deterministic success output.
+  - Updated `src/frontend/src/styles.css` with explicit `:focus-visible` outlines/halo for `textarea` and `button`, preserving clear focus visibility in the themed UI.
+  - Added a global `@media (prefers-reduced-motion: reduce)` rule in `src/frontend/src/styles.css` that minimizes transitions/animations and removes decorative hover motion.

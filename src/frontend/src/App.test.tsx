@@ -198,4 +198,21 @@ describe("App", () => {
       expect(screen.getByRole("button", { name: "Run Agent" })).toBeEnabled();
     });
   });
+
+  it("supports keyboard form submission for run flow", async () => {
+    mockedStreamAgentRun.mockResolvedValue({ ok: true, data: successStreamResponse() });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Keyboard submission" } });
+
+    const form = screen.getByLabelText("Query").closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+
+    await waitFor(() => {
+      expect(mockedStreamAgentRun).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
+      expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
+    });
+  });
 });
