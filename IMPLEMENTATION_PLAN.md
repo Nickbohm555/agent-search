@@ -3,7 +3,7 @@
 ## Scope
 - Frontend-only scoped planning for: "all frontend work".
 - Sources reviewed this run: `specs/*`, `src/frontend/*`, `src/backend/routers/*`, `src/backend/schemas/*`, `src/backend/services/agent_service.py`, `IMPLEMENTATION_PLAN.md`.
-- Implementation run completed for one P0 item (typed frontend API layer).
+- Implementation run completed for one P0 item (progress timeline fallback in demo UI).
 
 ## Current Status (2026-03-04)
 - [x] Frontend scaffold exists in TypeScript/React/Vite (`src/frontend/src/App.tsx`, `src/frontend/src/main.tsx`).
@@ -12,8 +12,9 @@
 - [x] Typed frontend API layer exists for `/api/internal-data/load` and `/api/agents/run` with deterministic error handling and payload validation (`src/frontend/src/utils/api.ts`).
 - [x] Frontend API layer unit tests added for success, HTTP error, timeout/network error, and malformed payload fallback (`src/frontend/src/utils/api.test.ts`).
 - [x] Confirmed `src/lib/*` is currently missing; no shared cross-app library exists yet.
-- [ ] Demo UI workflow from `specs/demo-ui-typescript.md` is not implemented.
-- [ ] Streaming heartbeat UI integration from `specs/streaming-agent-heartbeat.md` is not implemented.
+- [x] Demo UI workflow from `specs/demo-ui-typescript.md` is implemented (`src/frontend/src/App.tsx`, `src/frontend/src/App.test.tsx`).
+- [ ] Real-time streaming heartbeat UI integration from `specs/streaming-agent-heartbeat.md` is not implemented (backend stream route still missing).
+- [x] Pre-stream progress history fallback is implemented from run payload (`graph_state.timeline`, sub-query + validation fallback) (`src/frontend/src/App.tsx`, `src/frontend/src/App.test.tsx`).
 
 ## Frontend Tasks Remaining (Highest Priority First)
 
@@ -35,7 +36,6 @@
   - Implemented `loadInternalData` and `runAgent` typed clients with `ApiResult<T>` and deterministic error object shape.
   - Added runtime response guards to prevent malformed backend payload crashes.
   - Added unit tests for all listed verification cases.
-  - Containerized verification is currently blocked in this environment (see BLOCKED section).
 
 - [ ] P0 - Implement demo UI workflow (load/vectorize + query run + final answer)
 - Why: This is the core acceptance surface in `demo-ui-typescript`.
@@ -52,7 +52,7 @@
   - Interaction test: successful run renders returned final answer text.
   - Interaction test: failed run visibly reports error outcome while preserving user-entered query for retry.
 
-- [ ] P0 - Render agent progress timeline from run response as pre-stream heartbeat fallback
+- [x] P0 - Render agent progress timeline from run response as pre-stream heartbeat fallback
 - Why: No backend stream route exists yet; UI still must show sub-queries/progress for demo utility.
 - Spec alignment:
   - `specs/demo-ui-typescript.md` (progress visibility)
@@ -68,6 +68,12 @@
   - Render test: when `graph_state` is missing, UI still shows sub-query and validation outcomes.
   - Interaction test: completed run view includes both progress history and final answer.
   - Edge-case test: empty arrays for optional sections render stable "no data" states without crash.
+- Completion notes:
+  - Added run-details state storage so final answer and progress history coexist post-run.
+  - Rendered ordered `graph_state.timeline` when present, with deterministic no-data fallback when absent.
+  - Added fallback sections for sub-query/tool assignments and validation results when no graph timeline is returned.
+  - Added frontend interaction tests for timeline rendering, graph-state missing fallback, and optional-array empty states.
+  - Verified required checks in containers: health endpoint, backend tests, frontend tests, frontend typecheck, and frontend build.
 
 - [ ] P1 - Add request lifecycle protections (in-flight lockout + same-session retry)
 - Why: Required for reliable UX during demo interactions.
@@ -132,10 +138,4 @@
   - `docker compose exec frontend npm run build`
 
 ## BLOCKED
-- BLOCKED (external dependency access): Docker daemon access is unavailable from this environment, so required fresh-build and containerized checks cannot run.
-- Failed command/test:
-  - `docker compose down -v --rmi all` -> `permission denied while trying to connect to the Docker daemon socket ... /Users/nickbohm/.docker/run/docker.sock: connect: operation not permitted`
-- Missing variable/access:
-  - Access to local Docker daemon socket for `docker compose` commands.
-- Next action:
-  - Re-run this loop where Docker daemon access is permitted, then execute: fresh cycle (`down -v --rmi all`, `build`, `up -d`), health check, backend tests, frontend tests, typecheck, and frontend build check.
+- None.

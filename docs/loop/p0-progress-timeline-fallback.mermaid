@@ -1,0 +1,28 @@
+flowchart TD
+    A[Start run: user submits query] --> B[POST /api/agents/run]
+    B --> C{API result}
+    C -->|error| D[Show deterministic run error\nKeep query for retry]
+    C -->|success| E[Store runDetails + output]
+    E --> F{graph_state.timeline present?}
+    F -->|yes| G[Render ordered timeline steps]
+    F -->|no| H[Render 'No graph timeline available']
+    E --> I{Sub-queries present?}
+    I -->|yes| J[Render sub-query list with tool labels]
+    I -->|no| K[Render sub-query empty state]
+    E --> L{Validation results present?}
+    L -->|yes| M[Render validation statuses]
+    L -->|no| N[Render validation empty state]
+    G --> O[Final answer + progress history coexist]
+    H --> O
+    J --> O
+    K --> O
+    M --> O
+    N --> O
+
+    P[Test/Build Validation] --> Q[Health endpoint 200]
+    P --> R[Backend pytest: pass]
+    P --> S[Frontend vitest: pass]
+    P --> T[Frontend typecheck: pass after adding vite-env.d.ts]
+    P --> U[Frontend build: pass]
+
+    V[Blocked items] --> W[None]

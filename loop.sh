@@ -55,7 +55,8 @@ if [ -z "${AGENT_CMD:-}" ]; then
         break
         ;;
       codex)
-        AGENT_CMD="codex exec --sandbox workspace-write -"
+        # danger-full-access required so agent can reach Docker daemon (e.g. docker compose)
+        AGENT_CMD="codex exec --sandbox danger-full-access -"
         break
         ;;
       cursor)

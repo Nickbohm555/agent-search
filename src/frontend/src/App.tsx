@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { loadInternalData, runAgent } from "./utils/api";
+import { RuntimeAgentRunResponse, loadInternalData, runAgent } from "./utils/api";
 
 export default function App() {
   const [loadState, setLoadState] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -8,6 +8,7 @@ export default function App() {
   const [runState, setRunState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [runMessage, setRunMessage] = useState("Waiting for query.");
   const [answer, setAnswer] = useState("");
+  const [runDetails, setRunDetails] = useState<RuntimeAgentRunResponse | null>(null);
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
 
@@ -52,12 +53,14 @@ export default function App() {
     setRunState("loading");
     setRunMessage("Running agent...");
     setAnswer("");
+    setRunDetails(null);
 
     const result = await runAgent({ query: query.trim() });
     if (result.ok) {
       setRunState("success");
       setRunMessage(`Run complete. ${result.data.sub_queries.length} sub-queries processed.`);
       setAnswer(result.data.output);
+      setRunDetails(result.data);
       return;
     }
 
@@ -105,6 +108,55 @@ export default function App() {
         <div className="answer" aria-live="polite" data-testid="final-answer-region">
           <h3>Final Answer</h3>
           {answer ? <p>{answer}</p> : <p>No answer yet.</p>}
+        </div>
+
+        <div className="progress-history" data-testid="progress-history-region">
+          <h3>Progress History</h3>
+          {runDetails ? (
+            <>
+              {runDetails.graph_state?.timeline?.length ? (
+                <ol data-testid="timeline-list">
+                  {runDetails.graph_state.timeline.map((entry, index) => (
+                    <li key={`${entry.step}-${index}`}>
+                      <strong>{entry.step}</strong>: {entry.status}
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p data-testid="timeline-empty">No graph timeline available.</p>
+              )}
+
+              {runDetails.sub_queries.length ? (
+                <ul data-testid="subquery-list">
+                  {runDetails.sub_queries.map((subQuery) => {
+                    const assignment = runDetails.tool_assignments.find((item) => item.sub_query === subQuery);
+                    const toolLabel = assignment ? assignment.tool : "unassigned";
+                    return (
+                      <li key={subQuery}>
+                        {subQuery} ({toolLabel})
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p data-testid="subquery-empty">No sub-queries were returned.</p>
+              )}
+
+              {runDetails.validation_results.length ? (
+                <ul data-testid="validation-list">
+                  {runDetails.validation_results.map((validation) => (
+                    <li key={`${validation.sub_query}-${validation.tool}`}>
+                      {validation.sub_query}: {validation.status}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p data-testid="validation-empty">No validation results were returned.</p>
+              )}
+            </>
+          ) : (
+            <p>No run details yet.</p>
+          )}
         </div>
       </section>
     </main>

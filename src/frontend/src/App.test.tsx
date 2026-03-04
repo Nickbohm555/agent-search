@@ -25,6 +25,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Run Agent" })).toBeInTheDocument();
     expect(screen.getByTestId("progress-region")).toBeInTheDocument();
     expect(screen.getByTestId("final-answer-region")).toBeInTheDocument();
+    expect(screen.getByTestId("progress-history-region")).toBeInTheDocument();
   });
 
   it("shows successful load outcome with counts", async () => {
@@ -64,7 +65,7 @@ describe("App", () => {
     });
   });
 
-  it("shows final answer for successful run", async () => {
+  it("shows timeline progress and final answer for successful run", async () => {
     mockedRunAgent.mockResolvedValue({
       ok: true,
       data: {
@@ -76,9 +77,26 @@ describe("App", () => {
           { sub_query: "subquery-b", tool: "web" },
         ],
         retrieval_results: [],
-        validation_results: [],
+        validation_results: [
+          {
+            sub_query: "subquery-a",
+            tool: "internal",
+            sufficient: true,
+            status: "validated",
+            attempts: 1,
+            follow_up_actions: [],
+            stop_reason: "sufficient",
+          },
+        ],
         web_tool_runs: [],
-        graph_state: null,
+        graph_state: {
+          current_step: "synthesis",
+          timeline: [
+            { step: "decomposition", status: "completed", details: {} },
+            { step: "synthesis", status: "completed", details: {} },
+          ],
+          graph: {},
+        },
       },
     });
 
@@ -89,6 +107,78 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
       expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
+      expect(screen.getByTestId("timeline-list")).toBeInTheDocument();
+      expect(screen.getByText("decomposition")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to sub-query and validation views when graph_state is missing", async () => {
+    mockedRunAgent.mockResolvedValue({
+      ok: true,
+      data: {
+        agent_name: "langgraph-scaffold",
+        output: "Fallback answer.",
+        sub_queries: ["subquery-fallback"],
+        tool_assignments: [{ sub_query: "subquery-fallback", tool: "web" }],
+        retrieval_results: [],
+        validation_results: [
+          {
+            sub_query: "subquery-fallback",
+            tool: "web",
+            sufficient: false,
+            status: "stopped_insufficient",
+            attempts: 2,
+            follow_up_actions: ["search_more"],
+            stop_reason: "max_attempts",
+          },
+        ],
+        web_tool_runs: [],
+        graph_state: null,
+      },
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Fallback case" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
+      expect(screen.getByText("subquery-fallback (web)")).toBeInTheDocument();
+      expect(screen.getByText("subquery-fallback: stopped_insufficient")).toBeInTheDocument();
+      expect(screen.getByText("Fallback answer.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows stable empty states for optional progress arrays", async () => {
+    mockedRunAgent.mockResolvedValue({
+      ok: true,
+      data: {
+        agent_name: "langgraph-scaffold",
+        output: "Empty state answer.",
+        sub_queries: [],
+        tool_assignments: [],
+        retrieval_results: [],
+        validation_results: [],
+        web_tool_runs: [],
+        graph_state: {
+          current_step: "synthesis",
+          timeline: [],
+          graph: {},
+        },
+      },
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Empty arrays case" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("subquery-empty")).toBeInTheDocument();
+      expect(screen.getByTestId("validation-empty")).toBeInTheDocument();
+      expect(screen.getByText("Empty state answer.")).toBeInTheDocument();
     });
   });
 
