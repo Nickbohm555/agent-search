@@ -344,6 +344,16 @@ textarea:focus-visible {
   color: #b7caea;
 }
 
+.execution-item p {
+  margin: 0;
+}
+
+.execution-attempt-summary {
+  margin-top: 4px;
+  font-size: 0.84rem;
+  color: #bdd2f4;
+}
+
 ol,
 ul {
   margin: 0;

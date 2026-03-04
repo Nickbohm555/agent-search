@@ -77,6 +77,36 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
           </div>
 
           <div className="readout-group">
+            <h4 className="readout-group-title">Execution</h4>
+            {runDetails.subquery_execution_results.length ? (
+              <ol data-testid="execution-list">
+                {runDetails.subquery_execution_results.map((result) => {
+                  const latestAttempt =
+                    result.validation_result.attempt_trace[result.validation_result.attempt_trace.length - 1] ?? null;
+
+                  return (
+                    <li key={`${result.sub_query}-${result.tool}`} className="execution-item">
+                      <p>
+                        {result.sub_query} ({result.tool}): {result.validation_result.status} in{" "}
+                        {result.validation_result.attempts} attempt
+                        {result.validation_result.attempts === 1 ? "" : "s"}
+                      </p>
+                      {latestAttempt ? (
+                        <p className="execution-attempt-summary">
+                          latest attempt: {latestAttempt.sufficient ? "sufficient" : "insufficient"} | internal{" "}
+                          {latestAttempt.internal_result_count} | opened {latestAttempt.opened_page_count}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p data-testid="execution-empty">No execution results were returned.</p>
+            )}
+          </div>
+
+          <div className="readout-group">
             <h4 className="readout-group-title">Retrieval</h4>
             {runDetails.retrieval_results.length ? (
               <ol data-testid="retrieval-list">

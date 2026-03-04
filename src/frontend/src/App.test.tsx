@@ -349,6 +349,122 @@ describe("App", () => {
     });
   });
 
+  it("shows per-subquery execution outcomes in a dedicated execution readout", async () => {
+    mockedRunAgentStream.mockResolvedValue({
+      ok: true,
+      data: successRunResponse({
+        subquery_execution_results: [
+          {
+            sub_query: "subquery-a",
+            tool: "internal",
+            retrieval_result: {
+              sub_query: "subquery-a",
+              tool: "internal",
+              internal_results: [
+                {
+                  chunk_id: 1,
+                  document_id: 11,
+                  document_title: "Roadmap",
+                  source_type: "inline",
+                  source_ref: "doc://roadmap",
+                  content: "Roadmap content",
+                  score: 0.91,
+                },
+              ],
+              web_search_results: [],
+              opened_urls: [],
+              opened_pages: [],
+            },
+            validation_result: {
+              sub_query: "subquery-a",
+              tool: "internal",
+              sufficient: true,
+              status: "validated",
+              attempts: 1,
+              follow_up_actions: [],
+              attempt_trace: [
+                {
+                  attempt: 1,
+                  sufficient: true,
+                  internal_result_count: 1,
+                  opened_page_count: 0,
+                  follow_up_action: null,
+                },
+              ],
+              stop_reason: "sufficient",
+            },
+          },
+          {
+            sub_query: "subquery-b",
+            tool: "web",
+            retrieval_result: {
+              sub_query: "subquery-b",
+              tool: "web",
+              internal_results: [],
+              web_search_results: [
+                {
+                  title: "Release notes",
+                  url: "https://example.com/release",
+                  snippet: "Latest release details",
+                },
+              ],
+              opened_urls: ["https://example.com/release", "https://example.com/analysis"],
+              opened_pages: [
+                {
+                  url: "https://example.com/release",
+                  title: "Release notes",
+                  content: "Release body",
+                },
+                {
+                  url: "https://example.com/analysis",
+                  title: "Analysis",
+                  content: "Analysis body",
+                },
+              ],
+            },
+            validation_result: {
+              sub_query: "subquery-b",
+              tool: "web",
+              sufficient: false,
+              status: "stopped_insufficient",
+              attempts: 2,
+              follow_up_actions: ["search_more"],
+              attempt_trace: [
+                {
+                  attempt: 1,
+                  sufficient: false,
+                  internal_result_count: 0,
+                  opened_page_count: 1,
+                  follow_up_action: "search_more",
+                },
+                {
+                  attempt: 2,
+                  sufficient: false,
+                  internal_result_count: 0,
+                  opened_page_count: 2,
+                  follow_up_action: null,
+                },
+              ],
+              stop_reason: "max_attempts",
+            },
+          },
+        ],
+      }),
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Show execution outcomes" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("execution-list")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a (internal): validated in 1 attempt")).toBeInTheDocument();
+      expect(screen.getByText("subquery-b (web): stopped_insufficient in 2 attempts")).toBeInTheDocument();
+      expect(screen.getByText("latest attempt: sufficient | internal 1 | opened 0")).toBeInTheDocument();
+      expect(screen.getByText("latest attempt: insufficient | internal 0 | opened 2")).toBeInTheDocument();
+    });
+  });
+
   it("uses consistent readout styling for load and run status outcomes", async () => {
     mockedLoadInternalData.mockResolvedValue({
       ok: true,

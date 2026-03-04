@@ -6,6 +6,24 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Surface per-subquery execution outcomes in frontend progress readout for clearer retrieval-validation observability (`specs/retrieval-validation.md`, `specs/content-and-readouts.md`, `specs/demo-ui-typescript.md`).
+  - Tasks:
+  - Added a dedicated `Execution` section in `ProgressHistory` that renders `subquery_execution_results` entries as deterministic per-subquery summaries (`tool`, final validation status, attempts).
+  - Added latest-attempt summary lines (`sufficient/insufficient`, internal result count, opened page count) so users can quickly scan how each subquery ended.
+  - Added lightweight execution summary styling for readable scanability inside the existing readout panel.
+  - Added deterministic frontend interaction coverage asserting execution section rendering for both validated and stopped-insufficient outcomes.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `43 passed`
+    - `docker compose exec frontend npm run test` -> `37 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Show timeline step details in frontend progress readout for explicit "what the system did" visibility (`specs/content-and-readouts.md`, `specs/streaming-agent-heartbeat.md`, `specs/demo-ui-typescript.md`).
   - Tasks:
   - Added deterministic timeline detail formatter/rendering in `ProgressHistory` so each timeline step can display event detail payloads (sorted key-value readout) instead of only step/status labels.
