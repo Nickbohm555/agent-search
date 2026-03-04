@@ -21,14 +21,16 @@
   - Backend: smoke tests now also cover web tool search/open contracts and web-assigned agent sub-query execution.
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Implemented Onyx-style web tool pair with deterministic scaffold-safe corpus:
-    - `web.search` behavior via `POST /api/web/search` returns links/snippets metadata only.
-    - `web.open_url` behavior via `POST /api/web/open-url` returns full/main page content.
-  - Updated runtime agent run flow to execute search-then-open for `web`-assigned sub-queries and expose observable `web_tool_runs` (including `opened_urls`) in API/tracing metadata.
+  - Implemented per-subquery retrieval executor (`specs/per-subquery-retrieval.md`):
+    - Added `services/retrieval_service.py` to execute retrieval for each `(sub_query, assigned_tool)` pair.
+    - `internal` assignments now execute vector-store retrieval via existing internal retrieval service.
+    - `web` assignments now execute search+open_url and return retrievable opened-page content.
+  - Updated runtime agent run response/tracing metadata to expose ordered `retrieval_results` consumable by upcoming validation/synthesis stages.
+  - Updated API test harness DB wiring (`tests/conftest.py`) to use deterministic in-memory SQLite for agent/internal retrieval tests.
   - Added backend smoke coverage for:
-    - search metadata-only contract,
-    - open-url full-content contract,
-    - observable search-then-open execution from `/api/agents/run` for web-assigned sub-queries.
+    - internal retrieval execution from loaded/vectorized store through `/api/agents/run`,
+    - web retrieval execution through search+open_url via `/api/agents/run`,
+    - `retrieval_results` presence/shape in runtime agent and tracing payloads.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -66,16 +68,14 @@
   - Added web open-url endpoint returning full page content for selected URL.
   - Added observable search-then-open execution data (`web_tool_runs`, `opened_urls`) to runtime agent runs.
   - Added smoke tests verifying web-assigned sub-queries execute via search then open-url.
+- [x] P1 - Implement per-subquery retrieval executor (`specs/per-subquery-retrieval.md`)
+  - Added dedicated retrieval executor consuming `(sub_query, assigned_tool)` and executing the matching retrieval path.
+  - Added ordered `retrieval_results` contract to `/api/agents/run` output/tracing metadata for downstream validation/synthesis.
+  - Internal retrieval path now returns chunk content sourced from loaded/vectorized internal corpus entries.
+  - Web retrieval path follows search+open_url and returns retrievable page content.
+  - Added smoke tests verifying internal and web retrieval execution outcomes through runtime-agent API.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P1 - Implement per-subquery retrieval executor (`specs/per-subquery-retrieval.md`)
-  - Scope gap confirmed: no executor consuming `(subquery, assigned_tool)`.
-  - Verification requirements (outcome-focused):
-    - `internal` assignment runs internal retrieval and returns retrievable corpus content.
-    - `web` assignment runs web retrieval through search+open_url and returns retrievable web content.
-    - Internal path returns results sourced only from loaded/vectorized internal store.
-    - Retrieval output contract is usable by validation stage.
 
 - [ ] P1 - Implement retrieval validation loop (`specs/retrieval-validation.md`)
   - Scope gap confirmed: no sufficiency evaluator, no retry/deepen loop, no stop policy.
@@ -134,6 +134,7 @@
 ## BLOCKED (2026-03-04)
 - Blocker: Missing Docker daemon access in this execution environment (cannot connect to `/Users/nickbohm/.docker/run/docker.sock`), which prevents required compose-based verification commands.
   - Failed commands:
+    - `docker compose ps` -> daemon socket permission error (`operation not permitted`).
     - `docker compose exec backend uv run pytest` -> same daemon socket permission error.
     - `docker compose exec frontend npm run test` -> same daemon socket permission error.
     - `docker compose exec frontend npm run typecheck` -> same daemon socket permission error.
@@ -143,11 +144,11 @@
     - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
   - Supplemental successful fallback checks (non-authoritative for compose gate):
-    - `(repo root) python3 -m pytest src/backend/tests/api/test_web_tools.py src/backend/tests/api/test_agent_run_tracing.py` -> `6 passed`.
-    - `(repo root) python3 -m pytest src/backend/tests` -> `18 passed`.
+    - `(src/backend) python3 -m pytest tests/api/test_per_subquery_retrieval.py tests/api/test_agent_run_tracing.py tests/api/test_scaffold_endpoints.py tests/api/test_web_tools.py` -> `14 passed`.
+    - `(src/backend) python3 -m pytest tests` -> `20 passed`.
 - Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: implement web tool pair with observable search-open runs"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
+    - `git add -A && git commit -m "blocked: ralph loop 5 (build): implement per-subquery retrieval executor and retrieval_results contract"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
     - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`
 - Next action:
   - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
@@ -159,5 +160,5 @@
     - `(src/frontend) npm ci`
   - Complete commit/push on a host with git write/network access:
     - `git add -A`
-    - `git commit -m "blocked: implement web tool pair with observable search-open runs"`
+    - `git commit -m "blocked: implement per-subquery retrieval executor with retrieval_results"`
     - `git push`

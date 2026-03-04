@@ -2,6 +2,7 @@ from .agent import (
     RuntimeAgentInfo,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
+    SubQueryRetrievalResult,
     SubQueryToolAssignment,
 )
 from .health import HealthResponse
@@ -29,6 +30,7 @@ __all__ = [
     "RuntimeAgentInfo",
     "RuntimeAgentRunRequest",
     "RuntimeAgentRunResponse",
+    "SubQueryRetrievalResult",
     "SubQueryToolAssignment",
     "InternalDocumentInput",
     "InternalDataLoadRequest",

@@ -79,6 +79,9 @@ def test_runtime_agent_run_endpoint(client):
     assert len(data["tool_assignments"]) == len(data["sub_queries"])
     assert [item["sub_query"] for item in data["tool_assignments"]] == data["sub_queries"]
     assert all(item["tool"] in {"internal", "web"} for item in data["tool_assignments"])
+    assert isinstance(data["retrieval_results"], list)
+    assert len(data["retrieval_results"]) == len(data["sub_queries"])
+    assert [item["sub_query"] for item in data["retrieval_results"]] == data["sub_queries"]
 
 
 @pytest.mark.smoke

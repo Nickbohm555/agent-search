@@ -9,7 +9,8 @@ from schemas import (
     SubQueryToolAssignment,
     WebToolRun,
 )
-from services.web_service import run_web_search_then_open
+from services.retrieval_service import execute_subquery_retrievals
+from sqlalchemy.orm import Session
 from utils.query_decomposition import decompose_query
 from utils.tool_selection import assign_tools_to_sub_queries
 
@@ -39,6 +40,7 @@ def _start_agent_span(tracing_handle: Any, query: str) -> Any:
 
 def run_runtime_agent(
     payload: RuntimeAgentRunRequest,
+    db: Session,
     tracing_handle: Optional[Any] = None,
 ) -> RuntimeAgentRunResponse:
     agent = build_default_agent()
@@ -47,11 +49,17 @@ def run_runtime_agent(
         SubQueryToolAssignment(sub_query=sub_query, tool=tool)
         for sub_query, tool in assign_tools_to_sub_queries(sub_queries)
     ]
-    web_tool_runs: list[WebToolRun] = []
-    for assignment in tool_assignments:
-        if assignment.tool != "web":
-            continue
-        web_tool_runs.append(run_web_search_then_open(assignment.sub_query))
+    retrieval_results = execute_subquery_retrievals(tool_assignments, db)
+    web_tool_runs: list[WebToolRun] = [
+        WebToolRun(
+            sub_query=result.sub_query,
+            search_results=result.web_search_results,
+            opened_urls=result.opened_urls,
+            opened_pages=result.opened_pages,
+        )
+        for result in retrieval_results
+        if result.tool == "web"
+    ]
 
     with _start_agent_span(tracing_handle, payload.query) as span:
         output = agent.run(payload.query)
@@ -64,6 +72,7 @@ def run_runtime_agent(
                 "tool_assignments": [
                     assignment.model_dump() for assignment in tool_assignments
                 ],
+                "retrieval_results": [result.model_dump() for result in retrieval_results],
                 "web_tool_runs": [run.model_dump() for run in web_tool_runs],
             },
         )
@@ -72,5 +81,6 @@ def run_runtime_agent(
         output=output,
         sub_queries=sub_queries,
         tool_assignments=tool_assignments,
+        retrieval_results=retrieval_results,
         web_tool_runs=web_tool_runs,
     )

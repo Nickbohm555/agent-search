@@ -53,6 +53,7 @@ def test_agent_run_executes_search_then_open_for_web_subquery(client):
     payload = response.json()
     assert any(item["tool"] == "web" for item in payload["tool_assignments"])
     assert len(payload["web_tool_runs"]) >= 1
+    assert any(item["tool"] == "web" for item in payload["retrieval_results"])
 
     web_run = payload["web_tool_runs"][0]
     assert web_run["sub_query"].strip() != ""

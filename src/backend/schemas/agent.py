@@ -2,7 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from .web import WebToolRun
+from .internal_data import InternalRetrievedChunk
+from .web import WebOpenUrlResponse, WebSearchResult, WebToolRun
 
 
 class RuntimeAgentInfo(BaseModel):
@@ -19,9 +20,19 @@ class SubQueryToolAssignment(BaseModel):
     tool: Literal["internal", "web"]
 
 
+class SubQueryRetrievalResult(BaseModel):
+    sub_query: str
+    tool: Literal["internal", "web"]
+    internal_results: list[InternalRetrievedChunk] = Field(default_factory=list)
+    web_search_results: list[WebSearchResult] = Field(default_factory=list)
+    opened_urls: list[str] = Field(default_factory=list)
+    opened_pages: list[WebOpenUrlResponse] = Field(default_factory=list)
+
+
 class RuntimeAgentRunResponse(BaseModel):
     agent_name: str
     output: str
     sub_queries: list[str]
     tool_assignments: list[SubQueryToolAssignment]
+    retrieval_results: list[SubQueryRetrievalResult] = Field(default_factory=list)
     web_tool_runs: list[WebToolRun] = Field(default_factory=list)
