@@ -16,7 +16,7 @@
       - `test_wiki_data_load_returns_observable_counts`
       - `test_wiki_retrieval_includes_wiki_attribution_and_content`
 
-- [ ] P0: Migrate chunk embedding storage from `embedding_json` to native pgvector column.
+- [x] P0: Migrate chunk embedding storage from `embedding_json` to native pgvector column.
   - Implementation scope:
     - Add Alembic migration(s) to enable pgvector extension and add a vector column on `internal_document_chunks` with embedding dimension aligned to backend embedding output.
     - Update SQLAlchemy model and load pipeline writes to persist embeddings into the vector column as the primary retrieval store.
@@ -25,6 +25,14 @@
     - Migration smoke test (Postgres-backed): extension exists and chunk table exposes vector embedding column after `alembic upgrade head`.
     - Backend smoke test: successful load writes non-null vectors for created chunks.
     - Contract test: load response shape/fields remain unchanged for current consumers.
+  - Completed in this loop:
+    - Added migration `src/backend/alembic/versions/0003_pgvector_chunk_embeddings.py` to create pgvector extension, add `internal_document_chunks.embedding` (`vector(16)`), backfill from `embedding_json`, and remove legacy JSON storage.
+    - Updated ORM model `src/backend/models.py` so `InternalDocumentChunk` now persists `embedding` as native pgvector.
+    - Updated load/retrieve service `src/backend/services/internal_data_service.py` to write/read vector embeddings while preserving existing API response contracts.
+    - Added smoke coverage:
+      - `src/backend/tests/api/test_pgvector_storage.py::test_pgvector_extension_and_embedding_column_exist_on_postgres`
+      - `src/backend/tests/api/test_internal_data_loading.py::test_internal_data_load_persists_non_null_chunk_vectors`
+      - Strengthened contract assertion in `test_internal_data_load_returns_observable_counts` to enforce stable response keys.
 
 - [ ] P0: Switch internal retrieval to database-side pgvector similarity ranking.
   - Implementation scope:
@@ -59,4 +67,4 @@
   - `/api/internal-data/load` and `/api/internal-data/retrieve` endpoints exist and return observable counts/results.
   - Frontend has clickable `Load Data` control with deterministic loading/success/error status messaging.
   - Internal retrieval is wired into `/api/agents/run` internal tool path.
-  - Current gaps remain: inline-only source schema, deterministic local chunker (not LangChain), JSON embedding storage, and Python in-memory similarity ranking.
+  - Current gaps remain: deterministic local chunker (not LangChain) and Python in-memory similarity ranking (DB-side pgvector ranking pending).

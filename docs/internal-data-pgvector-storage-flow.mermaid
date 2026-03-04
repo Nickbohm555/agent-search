@@ -1,0 +1,10 @@
+flowchart TD
+    A["POST /api/internal-data/load\nsrc/backend/routers/internal_data.py::load_data"] -->|"Trigger: load request\nData: InternalDataLoadRequest\nWhy: route delegates source-specific ingestion"| B["src/backend/services/internal_data_service.py::load_internal_data"]
+    B -->|"Trigger: source_type=inline/wiki\nData: InternalDocumentInput[]\nWhy: normalize inputs before persistence"| C["src/backend/services/internal_data_service.py::_persist_documents"]
+    C -->|"Data: chunk_text(content)\nWhy: split documents for retrieval granularity"| D["src/backend/utils/embeddings.py::chunk_text"]
+    C -->|"Data: embed_text(chunk) -> list[float;16]\nWhy: produce deterministic embedding aligned with pgvector dimension"| E["src/backend/utils/embeddings.py::embed_text"]
+    E -->|"Data persisted: InternalDocumentChunk.embedding (vector(16))\nWhy: native pgvector storage replaces embedding_json"| F["src/backend/models.py::InternalDocumentChunk.embedding"]
+    F -->|"Schema trigger: alembic upgrade head\nsrc/backend/alembic/versions/0003_pgvector_chunk_embeddings.py::upgrade\nData: CREATE EXTENSION vector + add/backfill/drop column\nWhy: move storage to db-native vector"| G["Postgres internal_document_chunks.embedding"]
+    H["POST /api/internal-data/retrieve\nsrc/backend/routers/internal_data.py::retrieve_data"] -->|"Data: query, limit\nWhy: serve internal retrieval contract"| I["src/backend/services/internal_data_service.py::retrieve_internal_data"]
+    I -->|"Data read: InternalDocumentChunk.embedding + metadata\nWhy: similarity scoring uses vector column as primary store"| G
+    I -->|"Tradeoff: scoring remains Python cosine in this loop\nReason: separate P0 item will move ranking ORDER BY to pgvector SQL"| J["Decision note"]

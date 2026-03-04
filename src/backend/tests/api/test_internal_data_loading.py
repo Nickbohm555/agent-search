@@ -6,6 +6,17 @@ from sqlalchemy.pool import StaticPool
 
 from db import Base, get_db
 from main import app
+from models import InternalDocumentChunk
+from utils.embeddings import EMBEDDING_DIM
+
+
+def _embedding_size(value: object) -> int:
+    if isinstance(value, str):
+        stripped = value.strip().strip("[]")
+        if not stripped:
+            return 0
+        return len([part for part in stripped.split(",") if part.strip()])
+    return len(list(value))
 
 
 @pytest.fixture()
@@ -35,6 +46,33 @@ def internal_data_client():
     Base.metadata.drop_all(bind=engine)
 
 
+@pytest.fixture()
+def internal_data_client_with_session():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        future=True,
+    )
+    testing_session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    Base.metadata.create_all(bind=engine)
+
+    def override_get_db():
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    with TestClient(app) as client:
+        yield client, testing_session_local
+
+    app.dependency_overrides.clear()
+    Base.metadata.drop_all(bind=engine)
+
+
 @pytest.mark.smoke
 def test_internal_data_load_returns_observable_counts(internal_data_client: TestClient):
     response = internal_data_client.post(
@@ -58,6 +96,12 @@ def test_internal_data_load_returns_observable_counts(internal_data_client: Test
 
     assert response.status_code == 200
     data = response.json()
+    assert set(data.keys()) == {
+        "status",
+        "source_type",
+        "documents_loaded",
+        "chunks_created",
+    }
     assert data["status"] == "success"
     assert data["source_type"] == "inline"
     assert data["documents_loaded"] == 2
@@ -118,6 +162,32 @@ def test_wiki_data_load_returns_observable_counts(internal_data_client: TestClie
     assert data["source_type"] == "wiki"
     assert data["documents_loaded"] >= 1
     assert data["chunks_created"] >= 1
+
+
+@pytest.mark.smoke
+def test_internal_data_load_persists_non_null_chunk_vectors(internal_data_client_with_session):
+    internal_data_client, testing_session_local = internal_data_client_with_session
+    response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "inline",
+            "documents": [
+                {
+                    "title": "Geo Notes",
+                    "content": "Hormuz transit remains a key shipping constraint and geopolitical chokepoint.",
+                    "source_ref": "internal://geo-notes",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+
+    with testing_session_local() as db:
+        chunks = db.query(InternalDocumentChunk).all()
+        assert len(chunks) >= 1
+        for chunk in chunks:
+            assert chunk.embedding is not None
+            assert _embedding_size(chunk.embedding) == EMBEDDING_DIM
 
 
 @pytest.mark.smoke

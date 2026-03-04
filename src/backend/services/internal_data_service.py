@@ -1,5 +1,3 @@
-import json
-
 from sqlalchemy.orm import Session
 
 from models import InternalDocument, InternalDocumentChunk
@@ -44,11 +42,12 @@ def _persist_documents(
             chunks = [document_input.content.strip()]
 
         for index, chunk_content in enumerate(chunks):
+            embedding = embed_text(chunk_content)
             chunk = InternalDocumentChunk(
                 document_id=document.id,
                 chunk_index=index,
                 content=chunk_content,
-                embedding_json=json.dumps(embed_text(chunk_content)),
+                embedding=embedding,
             )
             db.add(chunk)
             chunks_created += 1
@@ -90,6 +89,12 @@ def retrieve_internal_data(
     payload: InternalDataRetrieveRequest,
     db: Session,
 ) -> InternalDataRetrieveResponse:
+    """Retrieve top internal chunks by semantic similarity.
+
+    Called by `routers/internal_data.py::retrieve_data` for `POST /api/internal-data/retrieve`.
+    Uses chunk vectors persisted in `internal_document_chunks.embedding` as the primary
+    embedding store; ranking remains in-process for this scaffold iteration.
+    """
     query_embedding = embed_text(payload.query)
 
     candidate_chunks = (
@@ -100,8 +105,9 @@ def retrieve_internal_data(
 
     scored_results: list[InternalRetrievedChunk] = []
     for chunk in candidate_chunks:
-        chunk_embedding = json.loads(chunk.embedding_json)
-        score = cosine_similarity(query_embedding, chunk_embedding)
+        if chunk.embedding is None:
+            continue
+        score = cosine_similarity(query_embedding, list(chunk.embedding))
 
         scored_results.append(
             InternalRetrievedChunk(

@@ -1,7 +1,9 @@
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import relationship
 
 from db import Base
+from utils.embeddings import EMBEDDING_DIM
 
 
 class InternalDocument(Base):
@@ -34,7 +36,7 @@ class InternalDocumentChunk(Base):
     )
     chunk_index = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    embedding_json = Column(Text, nullable=False)
+    embedding = Column(Vector(EMBEDDING_DIM), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     document = relationship("InternalDocument", back_populates="chunks")
