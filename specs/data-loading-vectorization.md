@@ -17,16 +17,17 @@ This spec covers: ingesting a data source (e.g. Google Docs), processing it into
 
 ### Data sources
 - Support at least one source of “internal” documents; primary example: Google Docs (e.g. selected docs or folder).
-- “Load” means: fetch content, chunk, embed, and write to the vector store used by per-subquery retrieval.
+- "Load" means: fetch/content → chunk (LangChain, see langchain-chunking.md) → embed → write to vector store (pgvector, see pgvector-storage.md) used by per-subquery retrieval.
 
 ### Output
 - Vector store is populated so that internal RAG retrieval can run queries against it.
 - UI or API can trigger a load (see demo-ui-typescript.md for UI surface).
 
 ### Codex's Discretion
-- Chunking strategy, embedding model, and vector store choice.
+- Embedding model and pgvector index parameters (see pgvector-storage.md).
 - Google Docs integration (API, auth, scope).
-- Support for other sources (e.g. local files, Notion) in addition to Google Docs.
+- Support for other sources (e.g. local files, Notion) in addition to Google Docs and wiki.
+- Exact LangChain splitter and defaults (see langchain-chunking.md).
 </requirements>
 
 <acceptance_criteria>
@@ -43,6 +44,9 @@ This spec covers: ingesting a data source (e.g. Google Docs), processing it into
 - Running retrieval over the store → per-subquery-retrieval.md
 - UI for triggering load → demo-ui-typescript.md
 - Orchestration and tool selection → orchestration-langgraph.md
+- Wiki ingestion details → wiki-ingestion.md
+- LangChain chunking details → langchain-chunking.md
+- pgvector storage and similarity search → pgvector-storage.md
 </boundaries>
 
 ---
