@@ -262,6 +262,10 @@ button:disabled {
   margin: 8px 0 0;
   color: var(--text-primary);
   font-family: "JetBrains Mono", "Consolas", monospace;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .query-readout {
@@ -276,6 +280,40 @@ button:disabled {
 .answer-dominant {
   border-color: rgba(47, 243, 255, 0.5);
   box-shadow: inset 0 0 0 1px rgba(47, 243, 255, 0.1);
+}
+
+.status-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 152, 200, 0.55);
+  background: rgba(7, 16, 31, 0.75);
+  color: #c8d9f5;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.status-chip-loading {
+  border-color: rgba(47, 243, 255, 0.75);
+  color: var(--accent-neon);
+  box-shadow: 0 0 0 1px rgba(47, 243, 255, 0.22);
+  animation: statusPulse 1100ms ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0% {
+    opacity: 0.72;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+  100% {
+    opacity: 0.72;
+    transform: translateY(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -107,6 +107,48 @@ describe("App", () => {
     });
   });
 
+  it("shows processing readout indicators while load and run are in flight", async () => {
+    const loadDeferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
+    const runDeferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();
+    mockedLoadInternalData.mockImplementation(async () => loadDeferred.promise);
+    mockedStreamAgentRun.mockImplementation(async () => runDeferred.promise);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("load-status-region")).toHaveAttribute("data-processing", "true");
+      expect(screen.getByTestId("load-status-region")).toHaveTextContent("PROCESSING");
+      expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Track active run state" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("progress-region")).toHaveAttribute("data-processing", "true");
+      expect(screen.getByTestId("progress-region")).toHaveTextContent("PROCESSING");
+      expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
+    });
+
+    loadDeferred.resolve({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+    runDeferred.resolve({ ok: true, data: successStreamResponse() });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("load-status-region")).toHaveAttribute("data-processing", "false");
+      expect(screen.getByTestId("progress-region")).toHaveAttribute("data-processing", "false");
+      expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
+    });
+  });
+
   it("keeps query context and streams progress/sub-queries before final completion", async () => {
     const deferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();
 

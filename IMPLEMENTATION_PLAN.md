@@ -50,3 +50,10 @@
   - Added keyboard interaction coverage in `src/frontend/src/App.test.tsx::supports_keyboard_form_submission_for_run_flow` validating the run pipeline can be executed via form submission with deterministic success output.
   - Updated `src/frontend/src/styles.css` with explicit `:focus-visible` outlines/halo for `textarea` and `button`, preserving clear focus visibility in the themed UI.
   - Added a global `@media (prefers-reduced-motion: reduce)` rule in `src/frontend/src/styles.css` that minimizes transitions/animations and removes decorative hover motion.
+
+- [x] P1 - Improve cyberpunk motion/feedback readouts with explicit in-flight processing indicators for load and run states.
+  Verification requirements (from `specs/motion-and-feedback.md`, `specs/content-and-readouts.md`): add frontend interaction test that load and run status regions expose a deterministic processing indicator while work is in flight; ensure the indicator clears after completion; keep reduced-motion compatibility via existing `prefers-reduced-motion` handling.
+  Completed in this run:
+  - Updated `src/frontend/src/lib/components/StatusBanner.tsx` to render deterministic status chips (`PROCESSING`/`IDLE`/`SUCCESS`/`ERROR`) and expose `data-processing` for explicit in-flight readout state.
+  - Updated `src/frontend/src/styles.css` with animated `status-chip-loading` treatment to make active processing visible without delaying critical feedback.
+  - Added frontend interaction coverage in `src/frontend/src/App.test.tsx::shows_processing_readout_indicators_while_load_and_run_are_in_flight` validating both load/run in-flight indicators and post-completion clearing.
