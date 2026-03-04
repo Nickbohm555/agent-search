@@ -6,6 +6,23 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Ensure agent-run tracing coverage across all run entry points (`specs/agent-run-tracing.md`, `specs/mcp-exposure.md`, `specs/streaming-agent-heartbeat.md`).
+  - Tasks:
+  - Added smoke coverage proving tracing spans are created when runs are invoked through `POST /api/agents/run/stream` and MCP `POST /mcp` `tools/call`, not only `POST /api/agents/run`.
+  - Reused existing shared tracing test doubles and asserted span input/output payloads match streamed completion output and MCP text content.
+  - Verification (outcomes):
+  - Added deterministic backend smoke tests in `src/backend/tests/api/test_agent_run_tracing.py`:
+    - `test_agent_run_stream_creates_trace_when_enabled`
+    - `test_mcp_tools_call_creates_trace_when_enabled`
+  - Required verification after fresh reset/build/start succeeded:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+    - `curl -v --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `39 passed`
+    - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 - [x] P0 - Implement LangChain runtime boundary with graceful enabled/disabled behavior (`specs/langchain-runtime-setup.md`).
   - Tasks:
   - Added runtime dependencies (`langchain`, `langgraph`, `langchain-openai`) in backend project config and lockfile.

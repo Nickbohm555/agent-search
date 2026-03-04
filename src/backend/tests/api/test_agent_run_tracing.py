@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 
@@ -40,6 +42,27 @@ class _DisabledTracingHandle:
     def start_as_current_span(self, name: str, **kwargs):
         self.calls += 1
         raise AssertionError("Disabled tracing handle should not be used.")
+
+
+def _collect_stream_events(response) -> list[dict]:
+    events: list[dict] = []
+    event_name = ""
+    data_json = ""
+    for raw_line in response.iter_lines():
+        line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+        if line.startswith("event: "):
+            event_name = line.removeprefix("event: ").strip()
+            continue
+        if line.startswith("data: "):
+            data_json = line.removeprefix("data: ").strip()
+            continue
+        if line == "" and data_json:
+            payload = json.loads(data_json)
+            payload["__sse_event_name"] = event_name
+            events.append(payload)
+            event_name = ""
+            data_json = ""
+    return events
 
 
 @pytest.mark.smoke
@@ -119,3 +142,55 @@ def test_consecutive_agent_runs_create_distinct_spans_when_enabled(client):
     assert first_span is not second_span
     assert tracing_handle.span_records[0]["kwargs"]["input"] == {"query": "first"}
     assert tracing_handle.span_records[1]["kwargs"]["input"] == {"query": "second"}
+
+
+@pytest.mark.smoke
+def test_agent_run_stream_creates_trace_when_enabled(client):
+    tracing_handle = _EnabledTracingHandle()
+    client.app.state.langfuse = tracing_handle
+
+    with client.stream(
+        "POST",
+        "/api/agents/run/stream",
+        json={"query": "stream trace this run"},
+    ) as response:
+        assert response.status_code == 200
+        events = _collect_stream_events(response)
+
+    assert events[-1]["event"] == "completed"
+    completed_output = events[-1]["data"]["output"]
+    assert len(tracing_handle.span_records) == 1
+    span_record = tracing_handle.span_records[0]
+    assert span_record["name"] == "agent.run"
+    assert span_record["kwargs"]["input"] == {"query": "stream trace this run"}
+    assert span_record["span"].updates[-1]["output"] == {"response": completed_output}
+
+
+@pytest.mark.smoke
+def test_mcp_tools_call_creates_trace_when_enabled(client):
+    tracing_handle = _EnabledTracingHandle()
+    client.app.state.langfuse = tracing_handle
+
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {
+                "name": "agent.run",
+                "arguments": {"query": "mcp trace this run"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["isError"] is False
+    assert len(tracing_handle.span_records) == 1
+    span_record = tracing_handle.span_records[0]
+    assert span_record["name"] == "agent.run"
+    assert span_record["kwargs"]["input"] == {"query": "mcp trace this run"}
+    assert span_record["span"].updates[-1]["output"] == {
+        "response": payload["result"]["content"][0]["text"]
+    }
