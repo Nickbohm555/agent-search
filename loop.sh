@@ -4,6 +4,7 @@ set -euo pipefail
 # Usage:
 #   ./loop.sh                               # Build mode, unlimited
 #   ./loop.sh 20                            # Build mode, max 20
+#   ./loop.sh build 15                      # Build mode, max 15 (explicit)
 #   ./loop.sh plan                          # Full planning, unlimited
 #   ./loop.sh plan 5                        # Full planning, max 5
 #   ./loop.sh plan-work "user auth"         # Scoped planning, default max 5
@@ -28,6 +29,10 @@ elif [ "${1:-}" = "plan-work" ]; then
     exit 1
   fi
   MAX_ITERATIONS="${3:-5}"
+elif [ "${1:-}" = "build" ]; then
+  MODE="build"
+  PROMPT_FILE="PROMPT_build.md"
+  MAX_ITERATIONS="${2:-0}"
 elif [[ "${1:-}" =~ ^[0-9]+$ ]]; then
   MAX_ITERATIONS="$1"
 fi
@@ -109,8 +114,11 @@ while :; do
     git push -u origin "$(git branch --show-current)" || true
   fi
 
+  # Stop after n iterations when MAX_ITERATIONS is set (e.g. ./loop.sh build 15 or ./loop.sh 15)
   if [ "$MAX_ITERATIONS" -gt 0 ] && [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
-    echo "Reached max iterations ($MAX_ITERATIONS)."
+    echo "Reached max iterations ($MAX_ITERATIONS). Stopping."
     break
   fi
 done
+echo "Loop finished."
+exit 0
