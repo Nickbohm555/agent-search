@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from agents.factory import build_default_agent
 from schemas import RuntimeAgentInfo, RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from utils.query_decomposition import decompose_query
 
 
 def get_runtime_agent_info() -> RuntimeAgentInfo:
@@ -33,11 +34,16 @@ def run_runtime_agent(
     tracing_handle: Optional[Any] = None,
 ) -> RuntimeAgentRunResponse:
     agent = build_default_agent()
+    sub_queries = decompose_query(payload.query)
     with _start_agent_span(tracing_handle, payload.query) as span:
         output = agent.run(payload.query)
         span.update(
             input={"query": payload.query},
             output={"response": output},
-            metadata={"agent_name": agent.name},
+            metadata={"agent_name": agent.name, "sub_queries": sub_queries},
         )
-    return RuntimeAgentRunResponse(agent_name=agent.name, output=output)
+    return RuntimeAgentRunResponse(
+        agent_name=agent.name,
+        output=output,
+        sub_queries=sub_queries,
+    )

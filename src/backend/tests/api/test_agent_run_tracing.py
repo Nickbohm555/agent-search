@@ -53,6 +53,7 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
     payload = response.json()
     assert payload["agent_name"] != ""
     assert payload["output"] != ""
+    assert payload["sub_queries"] == ["trace this run"]
 
     assert len(tracing_handle.span_records) == 1
     span_record = tracing_handle.span_records[0]
@@ -62,7 +63,10 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
         {
             "input": {"query": "trace this run"},
             "output": {"response": payload["output"]},
-            "metadata": {"agent_name": payload["agent_name"]},
+            "metadata": {
+                "agent_name": payload["agent_name"],
+                "sub_queries": payload["sub_queries"],
+            },
         }
     ]
 
@@ -77,6 +81,7 @@ def test_agent_run_with_disabled_tracing_returns_response_without_trace_creation
     assert response.status_code == 200
     assert response.json()["agent_name"] != ""
     assert response.json()["output"] != ""
+    assert response.json()["sub_queries"] == ["still works"]
     assert tracing_handle.calls == 0
 
 

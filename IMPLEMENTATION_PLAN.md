@@ -15,9 +15,9 @@
   - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Added agent-run tracing at the execution boundary so enabled Langfuse handles receive `agent.run` span creation with query input, agent identity metadata, and run output.
-  - Routed `request.app.state.langfuse` into the agent service to keep instrumentation centralized in service execution rather than router logic.
-  - Added backend smoke tests for enabled trace creation, disabled no-trace behavior, and distinct spans for consecutive runs.
+  - Implemented deterministic query decomposition in backend utilities to convert a user query into ordered, focused sub-queries.
+  - Exposed decomposed sub-queries from `POST /api/agents/run` so downstream orchestration/streaming layers can consume them.
+  - Extended backend smoke coverage for sub-query output shape and complex-query decomposition that avoids mixed-domain sub-queries.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -36,15 +36,12 @@
   - Added tracing instrumentation in `run_runtime_agent()` so all runtime-agent executions pass through a single trace boundary.
   - Trace/span payload now includes query input, agent name metadata, and output response for each run when tracing is enabled.
   - Added smoke coverage to verify enabled tracing payload, disabled graceful behavior, and distinct spans across consecutive runs.
+- [x] P0 - Implement query decomposition (`specs/query-decomposition.md`)
+  - Added `utils.query_decomposition.decompose_query()` with deterministic clause/domain-aware splitting and non-empty fallback behavior.
+  - Updated runtime agent run response schema and service output to include ordered `sub_queries`.
+  - Added smoke coverage verifying basic sub-query exposure and complex-query decomposition into non-mixed-domain sub-queries.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P0 - Implement query decomposition (`specs/query-decomposition.md`)
-  - Scope gap confirmed: no decomposition component/state in backend.
-  - Verification requirements (outcome-focused):
-    - Complex query produces at least one focused sub-query.
-    - Each sub-query is suitable for a single retrieval domain (internal or web, not both simultaneously).
-    - Produced sub-queries are available to downstream orchestration and stream projection.
 
 - [ ] P0 - Implement per-subquery tool selection (`specs/tool-selection-per-subquery.md`)
   - Scope gap confirmed: no assignment layer mapping sub-query -> `internal|web`.
@@ -134,28 +131,23 @@
 ## BLOCKED (2026-03-04)
 - Blocker: Missing Docker daemon access in this execution environment (cannot connect to `/Users/nickbohm/.docker/run/docker.sock`), which prevents required compose-based verification commands.
   - Failed commands:
-    - `docker compose ps` -> `permission denied while trying to connect to the Docker daemon socket ... connect: operation not permitted`
-    - `docker compose up -d` -> same daemon socket permission error.
     - `docker compose exec backend uv run pytest` -> same daemon socket permission error.
     - `docker compose exec frontend npm run test` -> same daemon socket permission error.
     - `docker compose exec frontend npm run typecheck` -> same daemon socket permission error.
     - `curl -sS http://localhost:8000/api/health` -> `curl: (7) Couldn't connect to server`.
 - Secondary local-environment blockers when attempting non-Docker fallback:
   - Failed commands:
-    - `(repo root) python3 -m pytest src/backend/tests/api/test_agent_run_tracing.py` initially failed due runtime annotation compatibility (`Any | None`) under local Python 3.9.
     - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
   - Supplemental successful fallback checks (non-authoritative for compose gate):
-    - `(repo root) python3 -m pytest src/backend/tests/api/test_agent_run_tracing.py` -> `3 passed` (after annotation compatibility fix).
-    - `(repo root) python3 -m pytest src/backend/tests` -> `11 passed`.
+    - `(repo root) python3 -m pytest src/backend/tests/api/test_scaffold_endpoints.py src/backend/tests/api/test_agent_run_tracing.py` -> `8 passed`.
+    - `(repo root) python3 -m pytest src/backend/tests` -> `12 passed`.
 - Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: instrument agent run tracing with smoke tests"` -> `fatal: Unable to create '.git/index.lock': Operation not permitted`
-    - `git push` -> `Could not resolve host: github.com`
+    - `git add -A && git commit -m "blocked: implement query decomposition with smoke coverage"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
+    - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`
 - Next action:
   - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
-    - `docker compose up -d`
-    - `docker compose ps`
     - `docker compose exec backend uv run pytest`
     - `docker compose exec frontend npm run test`
     - `docker compose exec frontend npm run typecheck`
@@ -164,5 +156,5 @@
     - `(src/frontend) npm ci`
   - Complete commit/push on a host with git write/network access:
     - `git add -A`
-    - `git commit -m "blocked: instrument agent run tracing with smoke tests"`
+    - `git commit -m "blocked: implement query decomposition with smoke coverage"`
     - `git push`

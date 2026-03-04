@@ -13,3 +13,4 @@ class RuntimeAgentRunRequest(BaseModel):
 class RuntimeAgentRunResponse(BaseModel):
     agent_name: str
     output: str
+    sub_queries: list[str]
