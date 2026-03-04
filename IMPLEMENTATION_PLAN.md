@@ -6,6 +6,24 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Surface streaming run failures as explicit error outcomes instead of fake completed payloads (`specs/streaming-agent-heartbeat.md`, `specs/demo-ui-typescript.md`, `specs/content-and-readouts.md`).
+  - Tasks:
+  - Extended runtime stream event schema/contract with an `error` event type for deterministic failure signaling.
+  - Updated backend `/api/agents/run/stream` failure path to emit `error` with a message payload instead of emitting a synthetic `completed` success event.
+  - Updated frontend stream parser/client handling to treat `error` events as deterministic run failures (`ApiError.type=runtime`) so UI run status can surface an error outcome.
+  - Added deterministic smoke coverage for backend stream failure emission and frontend SSE parser coverage for runtime error mapping.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused --retry-all-errors http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `44 passed`
+    - `docker compose exec frontend npm run test` -> `38 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Surface per-subquery execution outcomes in frontend progress readout for clearer retrieval-validation observability (`specs/retrieval-validation.md`, `specs/content-and-readouts.md`, `specs/demo-ui-typescript.md`).
   - Tasks:
   - Added a dedicated `Execution` section in `ProgressHistory` that renders `subquery_execution_results` entries as deterministic per-subquery summaries (`tool`, final validation status, attempts).

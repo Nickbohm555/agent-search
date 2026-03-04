@@ -271,4 +271,38 @@ describe("frontend api client", () => {
       },
     });
   });
+
+  it("returns runtime error when stream emits error event", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        [
+          "event: heartbeat",
+          'data: {"sequence":1,"event":"heartbeat","data":{"step":"decomposition","status":"started","details":{}}}',
+          "",
+          "event: error",
+          'data: {"sequence":2,"event":"error","data":{"message":"Run failed: intentional stream failure"}}',
+          "",
+        ].join("\n"),
+        {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        },
+      ),
+    );
+
+    const result = await runAgentStream(
+      { query: "Hello" },
+      {},
+      { fetchImpl: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "runtime",
+        message: "Run failed: intentional stream failure",
+        retryable: true,
+      },
+    });
+  });
 });

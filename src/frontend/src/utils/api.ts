@@ -2,7 +2,7 @@ import { API_BASE_URL } from "./config";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
-export type ApiErrorType = "http" | "network" | "timeout" | "malformed_response";
+export type ApiErrorType = "http" | "network" | "timeout" | "malformed_response" | "runtime";
 
 export interface ApiError {
   type: ApiErrorType;
@@ -146,6 +146,7 @@ export interface RuntimeAgentStreamEvent {
     | "subquery_execution_result"
     | "retrieval_result"
     | "validation_result"
+    | "error"
     | "completed";
   data: Record<string, unknown>;
 }
@@ -499,6 +500,21 @@ async function readSseEvents(
     if (!parsed.ok) {
       return parsed.error;
     }
+    if (parsed.data.event === "error") {
+      const message = readRuntimeStreamErrorMessage(parsed.data.data);
+      if (!message) {
+        return {
+          type: "malformed_response",
+          message: "Backend response did not match expected shape.",
+          retryable: false,
+        };
+      }
+      return {
+        type: "runtime",
+        message,
+        retryable: true,
+      };
+    }
     state = applyRuntimeStreamEvent(state, parsed.data);
     onEvent(parsed.data, state);
     eventName = "";
@@ -592,6 +608,7 @@ function parseRuntimeStreamEvent(eventName: string, rawData: string): ApiResult<
     "subquery_execution_result",
     "retrieval_result",
     "validation_result",
+    "error",
     "completed",
   ]);
   if (!allowedEvents.has(parsed.event) || parsed.event !== eventName) {
@@ -606,6 +623,13 @@ function parseRuntimeStreamEvent(eventName: string, rawData: string): ApiResult<
   }
 
   return { ok: true, data: parsed as unknown as RuntimeAgentStreamEvent };
+}
+
+function readRuntimeStreamErrorMessage(data: Record<string, unknown>): string | null {
+  if (typeof data.message !== "string" || data.message.trim().length === 0) {
+    return null;
+  }
+  return data.message;
 }
 
 function readTimelineEntry(data: Record<string, unknown>): RuntimeAgentGraphStep | null {

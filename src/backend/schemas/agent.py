@@ -76,6 +76,7 @@ class RuntimeAgentStreamEvent(BaseModel):
         "retrieval_result",
         "validation_result",
         "subquery_execution_result",
+        "error",
         "completed",
     ]
     data: dict[str, Any] = Field(default_factory=dict)

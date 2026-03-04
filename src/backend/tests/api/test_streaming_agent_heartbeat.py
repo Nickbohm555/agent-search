@@ -111,3 +111,24 @@ def test_agent_run_stream_emits_first_event_before_run_finishes(client, monkeypa
     assert elapsed < 0.25
     first_event = json.loads(first_data_line.removeprefix("data: ").strip())
     assert first_event["event"] == "heartbeat"
+
+
+@pytest.mark.smoke
+def test_agent_run_stream_emits_error_event_when_runtime_fails(client, monkeypatch):
+    def fake_run_runtime_agent(*_args, **_kwargs):
+        raise RuntimeError("intentional stream failure")
+
+    monkeypatch.setattr("routers.agent.run_runtime_agent", fake_run_runtime_agent)
+
+    with client.stream(
+        "POST",
+        "/api/agents/run/stream",
+        json={"query": "error path check"},
+    ) as response:
+        assert response.status_code == 200
+        events = _collect_stream_events(response)
+
+    assert events
+    assert events[-1]["event"] == "error"
+    assert events[-1]["__sse_event_name"] == "error"
+    assert "intentional stream failure" in events[-1]["data"]["message"]

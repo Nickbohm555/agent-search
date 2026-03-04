@@ -80,11 +80,9 @@ async def runtime_agent_run_stream(
             )
         except Exception as exc:  # pragma: no cover - defensive fallback path
             enqueue_stream_event(
-                "completed",
+                "error",
                 {
-                    "agent_name": get_runtime_agent_info().name,
-                    "output": f"Run failed: {exc}",
-                    "graph_state": None,
+                    "message": f"Run failed: {exc}",
                 },
             )
         finally:
