@@ -408,3 +408,46 @@ def test_wiki_load_rejects_duplicate_source(internal_data_client: TestClient, mo
     )
     assert duplicate_response.status_code == 400
     assert "already loaded" in duplicate_response.json()["detail"]
+
+
+@pytest.mark.smoke
+def test_internal_data_wipe_removes_loaded_documents_and_chunks(internal_data_client: TestClient):
+    """Ensure `POST /api/internal-data/wipe` removes all retrievable internal chunks.
+
+    Called by the backend smoke suite to verify wipe behavior remains portable
+    for SQLite test runs and production Postgres usage.
+    """
+    load_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "inline",
+            "documents": [
+                {
+                    "title": "Wipe Validation Doc",
+                    "content": "This content exists to validate wipe behavior for internal retrieval.",
+                    "source_ref": "internal://wipe-validation",
+                }
+            ],
+        },
+    )
+    assert load_response.status_code == 200
+
+    retrieve_before = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "wipe validation behavior", "limit": 5},
+    )
+    assert retrieve_before.status_code == 200
+    assert len(retrieve_before.json()["results"]) >= 1
+
+    wipe_response = internal_data_client.post("/api/internal-data/wipe")
+    assert wipe_response.status_code == 200
+    assert wipe_response.json()["status"] == "success"
+
+    retrieve_after = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "wipe validation behavior", "limit": 5},
+    )
+    assert retrieve_after.status_code == 200
+    after_payload = retrieve_after.json()
+    assert after_payload["total_chunks_considered"] == 0
+    assert after_payload["results"] == []

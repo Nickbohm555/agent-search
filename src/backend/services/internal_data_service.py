@@ -110,8 +110,19 @@ def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> Interna
 
 
 def wipe_internal_data(db: Session) -> None:
-    """Remove all internal documents and chunks. Chunks are dropped by CASCADE."""
-    db.execute(text("TRUNCATE internal_documents CASCADE"))
+    """Remove all internal documents and chunks for the current DB dialect.
+
+    Called by `routers/internal_data.py::wipe_data` when users trigger
+    `POST /api/internal-data/wipe` from the UI/API. Uses Postgres `TRUNCATE ...
+    CASCADE` in production for speed and a portable `DELETE` fallback for
+    SQLite-backed tests where TRUNCATE is unsupported.
+    """
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        db.execute(text("TRUNCATE internal_documents CASCADE"))
+    else:
+        db.query(InternalDocumentChunk).delete()
+        db.query(InternalDocument).delete()
     db.commit()
 
 

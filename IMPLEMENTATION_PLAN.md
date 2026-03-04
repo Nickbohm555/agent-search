@@ -87,3 +87,17 @@
   - `docker compose exec backend uv run pytest` (59 passed)
   - `docker compose exec frontend npm run test -- --run` (35 passed)
   - `docker compose exec frontend npm run typecheck` (pass)
+
+## Loop Update (2026-03-04, portable internal-data wipe)
+
+- **Completed highest-priority item this run:** made internal-data wipe portable across DB dialects and added smoke coverage for the wipe outcome.
+- **Implementation details:**
+  - Updated `wipe_internal_data` to use Postgres `TRUNCATE internal_documents CASCADE` on PostgreSQL and deterministic ORM `DELETE` fallback on non-Postgres backends (notably SQLite test runs).
+  - Added a backend smoke test that loads internal data, verifies retrieval is non-empty, calls `/api/internal-data/wipe`, and then verifies retrieval returns zero chunks/results.
+- **Tests added/updated for this item:**
+  - `src/backend/tests/api/test_internal_data_loading.py`: added `test_internal_data_wipe_removes_loaded_documents_and_chunks`.
+- **Validation performed:**
+  - `curl -sf http://localhost:8000/api/health`
+  - `docker compose exec backend uv run pytest` (60 passed)
+  - `docker compose exec frontend npm run test -- --run` (35 passed)
+  - `docker compose exec frontend npm run typecheck` (pass)
