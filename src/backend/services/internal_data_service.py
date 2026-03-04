@@ -1,3 +1,4 @@
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
@@ -106,6 +107,12 @@ def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> Interna
         documents_loaded=documents_loaded,
         chunks_created=chunks_created,
     )
+
+
+def wipe_internal_data(db: Session) -> None:
+    """Remove all internal documents and chunks. Chunks are dropped by CASCADE."""
+    db.execute(text("TRUNCATE internal_documents CASCADE"))
+    db.commit()
 
 
 def list_wiki_sources_with_load_state(db: Session) -> WikiSourcesResponse:

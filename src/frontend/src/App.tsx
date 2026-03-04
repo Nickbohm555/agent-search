@@ -5,6 +5,7 @@ import {
   WikiSourceOption,
   listWikiSources,
   loadInternalData,
+  wipeInternalData,
 } from "./utils/api";
 import { RuntimeAgentStreamCompletedData, RuntimeAgentStreamEvent } from "./lib/stream-events";
 import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
@@ -106,7 +107,7 @@ export default function App() {
   const prefersReducedMotion = usePrefersReducedMotion();
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
-  const [loadSourceType, setLoadSourceType] = useState<"inline" | "wiki">("inline");
+  const [loadSourceType, setLoadSourceType] = useState<"inline" | "wiki">("wiki");
   const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>([]);
   const [wikiSourceId, setWikiSourceId] = useState("");
   const [query, setQuery] = useState("");
@@ -121,6 +122,9 @@ export default function App() {
     [],
   );
   const loadInFlightRef = useRef(false);
+  const [wipeState, setWipeState] = useState<RequestState>("idle");
+  const [wipeMessage, setWipeMessage] = useState("");
+  const wipeInFlightRef = useRef(false);
   const runInFlightRef = useRef(false);
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
@@ -218,6 +222,27 @@ export default function App() {
   async function handleLoadSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     await handleLoad();
+  }
+
+  async function handleWipe(): Promise<void> {
+    if (wipeInFlightRef.current) return;
+    wipeInFlightRef.current = true;
+    setWipeState("loading");
+    setWipeMessage("Wiping...");
+    try {
+      const result = await wipeInternalData();
+      if (result.ok) {
+        setWipeState("success");
+        setWipeMessage(result.data.message);
+        const sourcesResult = await listWikiSources();
+        if (sourcesResult.ok) setWikiSources(sourcesResult.data.sources);
+      } else {
+        setWipeState("error");
+        setWipeMessage(result.error.message);
+      }
+    } finally {
+      wipeInFlightRef.current = false;
+    }
   }
 
   function applyStreamEvent(
@@ -377,6 +402,18 @@ export default function App() {
               {loadState === "loading" ? "Loading..." : "Load Data"}
             </button>
             <StatusBanner state={loadState} message={loadMessage} label="Load Status" testId="load-status-region" />
+            <div className="control-block">
+              <button
+                type="button"
+                className="action-button"
+                onClick={handleWipe}
+                disabled={wipeState === "loading"}
+                aria-label="Wipe all internal documents and chunks"
+              >
+                {wipeState === "loading" ? "Wiping..." : "Wipe data"}
+              </button>
+              {wipeMessage ? <p role="status">{wipeMessage}</p> : null}
+            </div>
           </form>
 
           <div className="control-block">

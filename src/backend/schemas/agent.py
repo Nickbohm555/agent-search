@@ -63,6 +63,7 @@ class RuntimeAgentStreamEvent(BaseModel):
         "tool_assignments",
         "retrieval_result",
         "validation_result",
+        "error",
         "completed",
     ]
     data: dict[str, Any] = Field(default_factory=dict)

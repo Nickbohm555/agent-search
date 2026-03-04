@@ -216,4 +216,27 @@ describe("frontend streaming api client", () => {
       },
     });
   });
+
+  it("returns runtime error when backend emits structured error event", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      eventStreamResponse([
+        sseFrame({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } }),
+        sseFrame({ sequence: 2, event: "error", data: { message: "runtime failed", retryable: false } }),
+      ]),
+    );
+
+    const result = await streamAgentRun(
+      { query: "Hello" },
+      { fetchImpl: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "runtime",
+        message: "runtime failed",
+        retryable: false,
+      },
+    });
+  });
 });

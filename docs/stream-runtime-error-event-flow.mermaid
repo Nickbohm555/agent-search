@@ -1,0 +1,23 @@
+flowchart TD
+    A[Client POST /api/agents/run/stream] -->|trigger: src/backend/routers/agent.py::runtime_agent_run_stream\n data: RuntimeAgentRunRequest| B[services.agent_service::stream_runtime_agent]
+
+    B -->|always emits first\n RuntimeAgentStreamEvent(event=heartbeat)| C[SSE heartbeat frame]
+
+    B -->|trigger: _await_runtime_call(runtime.astream)| D[Compiled runtime astream]
+    D -->|runtime events (optional)| E[SSE progress/retrieval/validation frames]
+
+    B -->|trigger: _await_runtime_call(runtime.ainvoke)| F[services.agent_service::run_runtime_agent]
+    F -->|success data: sub_queries/tool_assignments/retrieval_results/validation_results/output| G[SSE completed path]
+    G -->|event order| H[sub_queries -> tool_assignments -> retrieval_result* -> validation_result* -> completed]
+
+    F -. raises exception .-> I[stream_runtime_agent except block]
+    D -. raises exception .-> I
+    I -->|RuntimeAgentStreamEvent(event=error)\n data: {message, retryable}| J[SSE error frame]
+
+    J -->|trigger: src/frontend/src/utils/stream.ts::streamAgentRun loop\n maps to ApiError(type=runtime)| K[Frontend run state error]
+    K -->|trigger: src/frontend/src/App.tsx::handleRun| L[StatusBanner shows runtime failure message]
+
+    M[[Tradeoff]]:::note --> N[Decision: emit structured SSE error instead of abrupt stream termination\nWhy: keeps client contract deterministic and preserves actionable message]
+    M --> O[Decision: no completed event after error\nWhy: prevents false success semantics and allows immediate retry UX]
+
+    classDef note fill:#111827,color:#e5e7eb,stroke:#6b7280,stroke-width:1px

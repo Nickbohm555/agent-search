@@ -13,8 +13,8 @@ class ChunkingConfig:
     without code changes.
     """
 
-    chunk_size: int = 280
-    chunk_overlap: int = 40
+    chunk_size: int = 500
+    chunk_overlap: int = 80
     separators: tuple[str, ...] = ("\n\n", "\n", ". ", " ", "")
 
 
@@ -33,9 +33,9 @@ def load_chunking_config() -> ChunkingConfig:
     `services/internal_data_service.py::_persist_documents`.
     """
 
-    chunk_size = _positive_int(os.getenv("INTERNAL_DATA_CHUNK_SIZE", "280"), 280)
-    chunk_overlap_raw = os.getenv("INTERNAL_DATA_CHUNK_OVERLAP", "40")
-    chunk_overlap = _positive_int(chunk_overlap_raw, 40)
+    chunk_size = _positive_int(os.getenv("INTERNAL_DATA_CHUNK_SIZE", "500"), 500)
+    chunk_overlap_raw = os.getenv("INTERNAL_DATA_CHUNK_OVERLAP", "80")
+    chunk_overlap = _positive_int(chunk_overlap_raw, 80)
     chunk_overlap = min(chunk_overlap, chunk_size - 1)
 
     return ChunkingConfig(

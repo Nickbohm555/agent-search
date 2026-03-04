@@ -7,11 +7,12 @@ export type RuntimeAgentStreamEventName =
   | "tool_assignments"
   | "retrieval_result"
   | "validation_result"
+  | "error"
   | "completed";
 
 type RuntimeAgentStreamOtherEventName = Exclude<
   RuntimeAgentStreamEventName,
-  "heartbeat" | "progress" | "sub_queries" | "tool_assignments" | "completed"
+  "heartbeat" | "progress" | "sub_queries" | "tool_assignments" | "error" | "completed"
 >;
 
 export interface RuntimeAgentStreamEventBase {
@@ -66,6 +67,14 @@ export interface RuntimeAgentStreamCompletedEvent extends RuntimeAgentStreamEven
   data: RuntimeAgentStreamCompletedData;
 }
 
+export interface RuntimeAgentStreamErrorEvent extends RuntimeAgentStreamEventBase {
+  event: "error";
+  data: {
+    message: string;
+    retryable?: boolean;
+  };
+}
+
 export interface RuntimeAgentStreamOtherEvent extends RuntimeAgentStreamEventBase {
   event: RuntimeAgentStreamOtherEventName;
   data: Record<string, unknown>;
@@ -76,6 +85,7 @@ export type RuntimeAgentStreamEvent =
   | RuntimeAgentStreamProgressEvent
   | RuntimeAgentStreamSubQueriesEvent
   | RuntimeAgentStreamToolAssignmentsEvent
+  | RuntimeAgentStreamErrorEvent
   | RuntimeAgentStreamCompletedEvent
   | RuntimeAgentStreamOtherEvent;
 
@@ -86,6 +96,7 @@ const STREAM_EVENT_NAMES: ReadonlySet<string> = new Set([
   "tool_assignments",
   "retrieval_result",
   "validation_result",
+  "error",
   "completed",
 ]);
 
@@ -169,6 +180,14 @@ export function isRuntimeAgentStreamEvent(value: unknown): value is RuntimeAgent
 
   if (value.event === "completed") {
     return isRuntimeAgentStreamCompletedData(value.data);
+  }
+
+  if (value.event === "error") {
+    return (
+      typeof value.data.message === "string" &&
+      value.data.message.trim().length > 0 &&
+      (value.data.retryable === undefined || typeof value.data.retryable === "boolean")
+    );
   }
 
   return true;

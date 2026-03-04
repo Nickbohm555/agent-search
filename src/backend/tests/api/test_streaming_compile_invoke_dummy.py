@@ -91,3 +91,44 @@ def test_runtime_stream_calls_astream_and_ainvoke_with_deterministic_fallback_ev
     assert completed_event["data"]["output"] != ""
     assert completed_event["data"]["thread_id"] != ""
     assert "graph_state" not in completed_event["data"]
+
+
+@pytest.mark.smoke
+def test_runtime_stream_emits_structured_error_event_when_runtime_invoke_fails(client, monkeypatch):
+    agent_service._reset_stream_runtime_cache_for_tests()
+
+    class FailingCompiledRuntime:
+        async def astream(
+            self,
+            *,
+            payload: RuntimeAgentRunRequest,
+            db: Session,
+            tracing_handle: Optional[Any],
+        ) -> list[RuntimeAgentStreamEvent]:
+            del payload, db, tracing_handle
+            return []
+
+        async def ainvoke(
+            self,
+            *,
+            payload: RuntimeAgentRunRequest,
+            db: Session,
+            tracing_handle: Optional[Any],
+        ) -> RuntimeAgentRunResponse:
+            del payload, db, tracing_handle
+            raise RuntimeError("simulated stream invoke failure")
+
+    monkeypatch.setattr(agent_service, "_compile_stream_runtime", lambda: FailingCompiledRuntime())
+
+    try:
+        response = client.post("/api/agents/run/stream", json={"query": "stream error path"})
+
+        assert response.status_code == 200
+        events = _extract_stream_events(response.text)
+        assert [item["event"] for item in events] == ["heartbeat", "error"]
+        assert events[-1]["data"] == {
+            "message": "simulated stream invoke failure",
+            "retryable": True,
+        }
+    finally:
+        agent_service._reset_stream_runtime_cache_for_tests()

@@ -69,3 +69,21 @@
   - `docker compose exec backend uv run pytest` (58 passed)
   - `docker compose exec frontend npm run test -- --run` (34 passed)
   - `docker compose exec frontend npm run typecheck` (pass)
+
+## Loop Update (2026-03-04, streamed runtime error contract)
+
+- **Completed highest-priority item this run:** added structured streamed runtime error handling so `/api/agents/run/stream` emits an `error` SSE event on runtime failure and the frontend stream client surfaces it as a deterministic `runtime` API error.
+- **Implementation details:**
+  - Extended backend stream event schema to include `error`.
+  - Updated `stream_runtime_agent` to catch `astream`/`ainvoke` failures and emit an ordered `{ message, retryable }` error event after heartbeat instead of failing with opaque stream interruption.
+  - Extended frontend stream event type guards to accept `error` events and updated stream parsing to return `{ type: "runtime" }` errors immediately when such an event is received.
+  - Stabilized two existing App in-flight tests by explicitly selecting `inline` load source (app default is `wiki`), preventing false negatives unrelated to stream logic.
+- **Tests added/updated for this item:**
+  - `src/backend/tests/api/test_streaming_compile_invoke_dummy.py`: added smoke test asserting stream emits `heartbeat` then `error` with structured payload on invoke failure.
+  - `src/frontend/src/utils/stream.test.ts`: added unit test asserting backend `error` event maps to frontend `runtime` error result.
+  - `src/frontend/src/App.test.tsx`: adjusted two existing in-flight UI tests to explicitly set inline source for deterministic control-state assertions.
+- **Validation performed:**
+  - `curl -sf http://localhost:8000/api/health`
+  - `docker compose exec backend uv run pytest` (59 passed)
+  - `docker compose exec frontend npm run test -- --run` (35 passed)
+  - `docker compose exec frontend npm run typecheck` (pass)

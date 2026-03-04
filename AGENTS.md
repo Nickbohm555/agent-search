@@ -27,7 +27,7 @@ you have access to openAI API key and langfuse for testing now.
 26. Alembic current: `docker compose exec backend uv run alembic current`.
 27. Verify pgvector extension: `docker compose exec db psql -U agent_user -d agent_search -c "\\dx"`.
 28. Verify tables: `docker compose exec db psql -U agent_user -d agent_search -c "\\dt"`.
-29. Wipe internal data (documents + chunks only): `docker compose exec db psql -U agent_user -d agent_search -c "TRUNCATE internal_documents CASCADE;"`.
+29. Wipe internal data (documents + chunks only): `POST /api/internal-data/wipe` or `docker compose exec db psql -U agent_user -d agent_search -c "TRUNCATE internal_documents CASCADE;"`.
 30. Backend tests: `docker compose exec backend uv run pytest`.
 31. Backend smoke tests: `docker compose exec backend uv run pytest tests/api -m smoke`.
 32. Frontend tests: `docker compose exec frontend npm run test`.

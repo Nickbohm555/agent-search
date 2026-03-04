@@ -284,6 +284,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "inline" } });
     fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
 
     await waitFor(() => {
@@ -375,6 +376,7 @@ describe("App", () => {
     mockedStreamAgentRun.mockImplementation(async () => runDeferred.promise);
 
     render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "inline" } });
     fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
 
     await waitFor(() => {
@@ -499,6 +501,7 @@ describe("App", () => {
     mockedStreamAgentRun.mockImplementation(async () => deferred.promise);
 
     render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "inline" } });
     fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Run lifecycle" } });
     fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
 
@@ -581,6 +584,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "inline" } });
     const form = screen.getByLabelText("Load Source").closest("form");
     expect(form).not.toBeNull();
     fireEvent.submit(form!);

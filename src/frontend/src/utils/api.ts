@@ -2,7 +2,7 @@ import { API_BASE_URL } from "./config";
 
 const DEFAULT_TIMEOUT_MS = 15000;
 
-export type ApiErrorType = "http" | "network" | "timeout" | "malformed_response";
+export type ApiErrorType = "http" | "network" | "timeout" | "malformed_response" | "runtime";
 
 export interface ApiError {
   type: ApiErrorType;
@@ -149,6 +149,11 @@ interface RequestOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface WipeInternalDataResponse {
+  status: "success";
+  message: string;
+}
+
 export async function loadInternalData(
   payload: InternalDataLoadRequest,
   options: RequestOptions = {},
@@ -157,6 +162,17 @@ export async function loadInternalData(
     path: "/api/internal-data/load",
     payload,
     validate: isInternalDataLoadResponse,
+    options,
+  });
+}
+
+export async function wipeInternalData(options: RequestOptions = {}): Promise<ApiResult<WipeInternalDataResponse>> {
+  return requestJson<WipeInternalDataResponse>({
+    path: "/api/internal-data/wipe",
+    payload: {},
+    method: "POST",
+    validate: (x): x is WipeInternalDataResponse =>
+      typeof x === "object" && x !== null && (x as WipeInternalDataResponse).status === "success",
     options,
   });
 }

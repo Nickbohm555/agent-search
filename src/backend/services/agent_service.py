@@ -292,71 +292,44 @@ def stream_runtime_agent(
         )
     )
 
-    runtime_events = _await_runtime_call(
-        runtime.astream(payload=payload, db=db, tracing_handle=tracing_handle)
-    )
-    if runtime_events:
-        for runtime_event in runtime_events:
+    try:
+        runtime_events = _await_runtime_call(
+            runtime.astream(payload=payload, db=db, tracing_handle=tracing_handle)
+        )
+        if runtime_events:
+            for runtime_event in runtime_events:
+                sequence += 1
+                yield _to_sse_payload(
+                    RuntimeAgentStreamEvent(
+                        sequence=sequence,
+                        event=runtime_event.event,
+                        data=runtime_event.data,
+                    )
+                )
+
+        run_response = _await_runtime_call(
+            runtime.ainvoke(payload=payload, db=db, tracing_handle=tracing_handle)
+        )
+
+        if not runtime_events:
             sequence += 1
             yield _to_sse_payload(
                 RuntimeAgentStreamEvent(
                     sequence=sequence,
-                    event=runtime_event.event,
-                    data=runtime_event.data,
+                    event="progress",
+                    data={"step": "invoke_fallback", "status": "running"},
                 )
             )
 
-    run_response = _await_runtime_call(
-        runtime.ainvoke(payload=payload, db=db, tracing_handle=tracing_handle)
-    )
-
-    if not runtime_events:
         sequence += 1
         yield _to_sse_payload(
             RuntimeAgentStreamEvent(
                 sequence=sequence,
-                event="progress",
-                data={"step": "invoke_fallback", "status": "running"},
-            )
-        )
-
-    sequence += 1
-    yield _to_sse_payload(
-        RuntimeAgentStreamEvent(
-            sequence=sequence,
-            event="sub_queries",
-            data={
-                "sub_queries": run_response.sub_queries,
-                "count": len(run_response.sub_queries),
-            },
-        )
-    )
-
-    sequence += 1
-    yield _to_sse_payload(
-        RuntimeAgentStreamEvent(
-            sequence=sequence,
-            event="tool_assignments",
-            data={
-                "tool_assignments": [
-                    item.model_dump() for item in run_response.tool_assignments
-                ],
-                "count": len(run_response.tool_assignments),
-            },
-        )
-    )
-
-    paired_count = min(len(run_response.retrieval_results), len(run_response.validation_results))
-    for index in range(paired_count):
-        retrieval_result = run_response.retrieval_results[index]
-        validation_result = run_response.validation_results[index]
-
-        sequence += 1
-        yield _to_sse_payload(
-            RuntimeAgentStreamEvent(
-                sequence=sequence,
-                event="retrieval_result",
-                data=retrieval_result.model_dump(),
+                event="sub_queries",
+                data={
+                    "sub_queries": run_response.sub_queries,
+                    "count": len(run_response.sub_queries),
+                },
             )
         )
 
@@ -364,24 +337,64 @@ def stream_runtime_agent(
         yield _to_sse_payload(
             RuntimeAgentStreamEvent(
                 sequence=sequence,
-                event="validation_result",
-                data=validation_result.model_dump(),
+                event="tool_assignments",
+                data={
+                    "tool_assignments": [
+                        item.model_dump() for item in run_response.tool_assignments
+                    ],
+                    "count": len(run_response.tool_assignments),
+                },
             )
         )
 
-    sequence += 1
-    completed_data = {
-        "agent_name": run_response.agent_name,
-        "output": run_response.output,
-        "thread_id": run_response.thread_id,
-        "checkpoint_id": run_response.checkpoint_id,
-        "sub_queries": run_response.sub_queries,
-        "tool_assignments": [item.model_dump() for item in run_response.tool_assignments],
-    }
-    yield _to_sse_payload(
-        RuntimeAgentStreamEvent(
-            sequence=sequence,
-            event="completed",
-            data=completed_data,
+        paired_count = min(len(run_response.retrieval_results), len(run_response.validation_results))
+        for index in range(paired_count):
+            retrieval_result = run_response.retrieval_results[index]
+            validation_result = run_response.validation_results[index]
+
+            sequence += 1
+            yield _to_sse_payload(
+                RuntimeAgentStreamEvent(
+                    sequence=sequence,
+                    event="retrieval_result",
+                    data=retrieval_result.model_dump(),
+                )
+            )
+
+            sequence += 1
+            yield _to_sse_payload(
+                RuntimeAgentStreamEvent(
+                    sequence=sequence,
+                    event="validation_result",
+                    data=validation_result.model_dump(),
+                )
+            )
+
+        sequence += 1
+        completed_data = {
+            "agent_name": run_response.agent_name,
+            "output": run_response.output,
+            "thread_id": run_response.thread_id,
+            "checkpoint_id": run_response.checkpoint_id,
+            "sub_queries": run_response.sub_queries,
+            "tool_assignments": [item.model_dump() for item in run_response.tool_assignments],
+        }
+        yield _to_sse_payload(
+            RuntimeAgentStreamEvent(
+                sequence=sequence,
+                event="completed",
+                data=completed_data,
+            )
         )
-    )
+    except Exception as exc:
+        sequence += 1
+        yield _to_sse_payload(
+            RuntimeAgentStreamEvent(
+                sequence=sequence,
+                event="error",
+                data={
+                    "message": str(exc),
+                    "retryable": True,
+                },
+            )
+        )

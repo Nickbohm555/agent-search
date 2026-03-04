@@ -13,6 +13,7 @@ from services.internal_data_service import (
     list_wiki_sources_with_load_state,
     load_internal_data,
     retrieve_internal_data,
+    wipe_internal_data,
 )
 
 router = APIRouter(prefix="/api/internal-data", tags=["internal-data"])
@@ -25,6 +26,13 @@ def load_data(payload: InternalDataLoadRequest, db: Session = Depends(get_db)) -
         return load_internal_data(payload, db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/wipe")
+def wipe_data(db: Session = Depends(get_db)) -> dict[str, str]:
+    """Wipe all internal documents and chunks. Data loads only when the user clicks Load Data."""
+    wipe_internal_data(db)
+    return {"status": "success", "message": "All internal documents and chunks removed."}
 
 
 @router.get("/wiki-sources", response_model=WikiSourcesResponse)

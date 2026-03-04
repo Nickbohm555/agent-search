@@ -123,6 +123,17 @@ export async function streamAgentRun(
           completed = event.data;
         }
 
+        if (event.event === "error") {
+          return {
+            ok: false,
+            error: {
+              type: "runtime",
+              message: event.data.message,
+              retryable: event.data.retryable ?? true,
+            },
+          };
+        }
+
         lastSequence = event.sequence;
         events.push(event);
         options.onEvent?.(event);
