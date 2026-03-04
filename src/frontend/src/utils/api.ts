@@ -22,9 +22,16 @@ export interface InternalDocumentInput {
 }
 
 export interface InternalDataLoadRequest {
-  source_type?: "inline";
+  source_type: "inline";
   documents: InternalDocumentInput[];
 }
+
+export interface InternalDataLoadGoogleDocsRequest {
+  source_type: "google_docs";
+  document_ids: string[];
+}
+
+export type InternalDataLoadPayload = InternalDataLoadRequest | InternalDataLoadGoogleDocsRequest;
 
 export interface InternalDataLoadResponse {
   status: "success";
@@ -136,7 +143,7 @@ interface RequestOptions {
 }
 
 export async function loadInternalData(
-  payload: InternalDataLoadRequest,
+  payload: InternalDataLoadPayload,
   options: RequestOptions = {},
 ): Promise<ApiResult<InternalDataLoadResponse>> {
   return requestJson<InternalDataLoadResponse>({

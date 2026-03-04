@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { loadInternalData, runAgentStream } from "./utils/api";
 import { RuntimeAgentRunResponse } from "./utils/api";
+import { SAMPLE_INTERNAL_DOCUMENTS } from "./lib/constants";
 
 vi.mock("./utils/api", () => ({
   loadInternalData: vi.fn(),
@@ -150,8 +151,52 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
 
     await waitFor(() => {
+      expect(mockedLoadInternalData).toHaveBeenCalledWith({
+        source_type: "inline",
+        documents: SAMPLE_INTERNAL_DOCUMENTS,
+      });
+    });
+    await waitFor(() => {
       expect(screen.getByText("Loaded 2 documents and created 8 chunks.")).toBeInTheDocument();
     });
+  });
+
+  it("sends google docs load payload when Google Docs source is selected", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "google_docs",
+        documents_loaded: 2,
+        chunks_created: 6,
+      },
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByLabelText("Google Docs IDs"));
+    fireEvent.change(screen.getByLabelText("Google Doc IDs"), {
+      target: { value: "docA, docB" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() => {
+      expect(mockedLoadInternalData).toHaveBeenCalledWith({
+        source_type: "google_docs",
+        document_ids: ["docA", "docB"],
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Loaded 2 documents and created 6 chunks.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows validation message when Google Docs source is selected without IDs", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByLabelText("Google Docs IDs"));
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(mockedLoadInternalData).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter at least one Google Doc ID.")).toBeInTheDocument();
   });
 
   it("shows failed load outcome", async () => {

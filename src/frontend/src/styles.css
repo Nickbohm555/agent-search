@@ -156,6 +156,22 @@ p {
   margin-top: 20px;
 }
 
+.load-source-picker {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.load-source-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.google-docs-input {
+  margin-bottom: 10px;
+}
+
 form {
   display: grid;
   gap: 8px;

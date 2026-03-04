@@ -6,6 +6,24 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Expose Google Docs load mode in demo UI controls with deterministic validation and payload tests (`specs/demo-ui-typescript.md`, `specs/data-loading-vectorization.md`).
+  - Tasks:
+  - Extended frontend load request contract to support discriminated payloads for both `inline` and `google_docs` source types.
+  - Updated demo UI load controls to include source selection (`Sample Inline Docs` vs `Google Docs IDs`) and a Google Doc IDs input path.
+  - Added deterministic client-side validation for the Google Docs path so empty ID submission is surfaced as a user-facing error before network call.
+  - Added frontend interaction coverage verifying inline payload shape, Google Docs payload shape, and missing-ID validation behavior.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `41 passed`
+    - `docker compose exec frontend npm run test` -> `34 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Add Google Docs internal-data load path with deterministic test coverage (`specs/data-loading-vectorization.md`, `specs/demo-ui-typescript.md`).
   - Tasks:
   - Extended internal-data load contract to support discriminated source types: `inline` and `google_docs`.

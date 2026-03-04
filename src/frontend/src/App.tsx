@@ -7,9 +7,13 @@ import { StatusBanner } from "./lib/components/StatusBanner";
 import { RequestState } from "./lib/types";
 import { formatHeartbeatMessage, formatLoadSuccessMessage, formatRunSuccessMessage } from "./lib/utils/messages";
 
+type LoadSourceType = "inline" | "google_docs";
+
 export default function App() {
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
+  const [loadSource, setLoadSource] = useState<LoadSourceType>("inline");
+  const [googleDocIdsInput, setGoogleDocIdsInput] = useState("");
   const [query, setQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
   const [runMessage, setRunMessage] = useState("Waiting for query.");
@@ -39,15 +43,37 @@ export default function App() {
     if (loadInFlightRef.current) {
       return;
     }
+
+    const googleDocIds = googleDocIdsInput
+      .split(/\s|,/)
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    if (loadSource === "google_docs" && googleDocIds.length === 0) {
+      setLoadState("error");
+      setLoadMessage("Enter at least one Google Doc ID.");
+      return;
+    }
+
     loadInFlightRef.current = true;
     setLoadState("loading");
-    setLoadMessage("Loading and vectorizing internal docs...");
+    setLoadMessage(
+      loadSource === "google_docs"
+        ? "Loading and vectorizing Google Docs..."
+        : "Loading and vectorizing internal docs...",
+    );
 
     try {
-      const result = await loadInternalData({
-        source_type: "inline",
-        documents: SAMPLE_INTERNAL_DOCUMENTS,
-      });
+      const result = await loadInternalData(
+        loadSource === "google_docs"
+          ? {
+              source_type: "google_docs",
+              document_ids: googleDocIds,
+            }
+          : {
+              source_type: "inline",
+              documents: SAMPLE_INTERNAL_DOCUMENTS,
+            },
+      );
 
       if (result.ok) {
         setLoadState("success");
@@ -130,7 +156,42 @@ export default function App() {
 
           <div className="control-block">
             <h3>Load / Vectorize</h3>
-            <p>Ingest sample internal docs for retrieval.</p>
+            <p>Choose a source and ingest docs for retrieval.</p>
+            <div className="load-source-picker" role="radiogroup" aria-label="Load Source">
+              <label>
+                <input
+                  type="radio"
+                  name="load-source"
+                  value="inline"
+                  checked={loadSource === "inline"}
+                  onChange={() => setLoadSource("inline")}
+                />
+                Sample Inline Docs
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="load-source"
+                  value="google_docs"
+                  checked={loadSource === "google_docs"}
+                  onChange={() => setLoadSource("google_docs")}
+                />
+                Google Docs IDs
+              </label>
+            </div>
+            {loadSource === "google_docs" ? (
+              <div className="google-docs-input">
+                <label htmlFor="google-doc-ids">Google Doc IDs</label>
+                <textarea
+                  id="google-doc-ids"
+                  name="google-doc-ids"
+                  value={googleDocIdsInput}
+                  onChange={(event) => setGoogleDocIdsInput(event.target.value)}
+                  rows={3}
+                  placeholder="Paste one or more document IDs, separated by commas or spaces."
+                />
+              </div>
+            ) : null}
             <button
               type="button"
               className="action-button neon-action"

@@ -30,6 +30,7 @@ describe("frontend api client", () => {
 
     const result = await loadInternalData(
       {
+        source_type: "inline",
         documents: [
           { title: "Doc 1", content: "A" },
           { title: "Doc 2", content: "B" },
