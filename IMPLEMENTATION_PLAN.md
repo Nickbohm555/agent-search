@@ -76,7 +76,7 @@
     - `docker compose exec frontend npm run test` -> `26 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
-- [ ] P1: Add one scoped deterministic smoke path for “click load data -> wiki vectorized in pgvector -> retrievable”.
+- [x] P1: Add one scoped deterministic smoke path for “click load data -> wiki vectorized in pgvector -> retrievable”.
   - Implementation scope:
     - Add an end-to-end smoke scenario covering user-triggered load through retrievable wiki-backed internal results.
     - Use deterministic fixture content/embeddings and avoid hidden network calls.
@@ -84,9 +84,21 @@
     - User-triggered load completes with observable success status and counts.
     - Retrieval after load returns wiki-derived internal content.
     - Returned retrieval metadata includes wiki attribution required by consumers.
+  - Completed in this loop:
+    - Added `src/backend/tests/api/test_pgvector_storage.py::test_wiki_load_vectorize_and_retrieve_path_on_postgres` as a deterministic Postgres-backed smoke path that:
+      - Calls `POST /api/internal-data/load` with `source_type="wiki"` (user-triggered API surface) and asserts observable success/count fields.
+      - Verifies wiki-loaded chunks were vectorized (`internal_document_chunks.embedding IS NOT NULL`) for the loaded wiki `source_ref`.
+      - Calls `POST /api/internal-data/retrieve` and asserts returned results include wiki attribution (`source_type="wiki"`, matching `source_ref`).
+      - Cleans up inserted smoke documents by `source_ref` to keep repeated runs stable.
 
 - [x] Completed baseline relevant to this scope (confirmed in current codebase):
   - `/api/internal-data/load` and `/api/internal-data/retrieve` endpoints exist and return observable counts/results.
   - Frontend has clickable `Load Data` control with deterministic loading/success/error status messaging.
   - Internal retrieval is wired into `/api/agents/run` internal tool path.
   - Current gap remains: deterministic local chunker (not LangChain).
+
+- Verification run results:
+  - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+  - `docker compose exec backend uv run pytest` -> `52 passed`
+  - `docker compose exec frontend npm run test` -> `26 passed`
+  - `docker compose exec frontend npm run typecheck` -> pass

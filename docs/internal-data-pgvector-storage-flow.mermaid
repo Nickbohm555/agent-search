@@ -11,3 +11,7 @@ flowchart TD
     I -->|"Trigger: db dialect != postgresql (sqlite tests)\nData: chunk embeddings pulled in-process + cosine_similarity\nWhy: deterministic fallback where pgvector SQL is unavailable"| M["Fallback ranking path\ninternal_data_service.retrieve_internal_data"]
     M --> L
     N["Decision note:\nPostgres path is source of truth for production similarity ranking.\nFallback exists only to keep scaffold tests deterministic on SQLite."] --> I
+    T["Smoke trigger\nsrc/backend/tests/api/test_pgvector_storage.py::test_wiki_load_vectorize_and_retrieve_path_on_postgres"] -->|"Trigger: TestClient POST /api/internal-data/load\nData: source_type=wiki + wiki.url\nWhy: deterministic user-triggered load path assertion"| A
+    T -->|"Trigger: SQL verification query\nData: COUNT(chunks.embedding) joined by docs.source_ref\nWhy: prove wiki chunks are vectorized in pgvector storage"| G
+    T -->|"Trigger: TestClient POST /api/internal-data/retrieve\nData: retrieval query + limit\nWhy: confirm wiki-attributed results are retrievable after vectorization"| H
+    U["Tradeoff note:\nTest uses deterministic local wiki fixture (no live network).\nCleanup deletes docs by source_ref so repeated smoke runs stay stable."] --> T
