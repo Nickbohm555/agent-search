@@ -2,14 +2,17 @@
 0b. Study @IMPLEMENTATION_PLAN.md.
 0c. For reference, the application source code is in `src/*`.
 
-999. Required tests derived from acceptance criteria must exist and pass before committing. Tests are part of implementation scope, not optional. Test-driven development approach: tests can be written first or alongside implementation.
+997. Iteration scope: aim to complete ONE highest-priority implementation-plan item per run, then stop for the next loop.
+998. Special case - Blocked external dependency (missing env/API key/service access): if required tests cannot run or pass only because external configuration is missing, do not claim full success. Complete what is possible, then record a blocker.
+999. Tests derived from acceptance criteria should be treated as part of implementation scope. TDD is encouraged (tests first or alongside implementation).
 
 1. Implement functionality per the specifications.
-2. Follow @IMPLEMENTATION_PLAN.md and choose the most important item to address. Tasks include required tests - implement tests as part of task scope.
-3. Before making changes, search the codebase; do not assume not implemented.
-4. After implementing functionality, run all required tests specified in the task definition. All required tests must exist and pass before the task is considered complete.
+2. Follow @IMPLEMENTATION_PLAN.md and choose the single most important item to address. Include relevant tests in the task scope.
+3. Before making changes, search the codebase so existing functionality is reused when possible.
+4. After implementing functionality, run the required tests from the task definition. Prefer all required tests passing unless blocked by rule 998.
 5. Update @IMPLEMENTATION_PLAN.md with findings and completion state.
-6. When checks pass: `git add -A`, `git commit` with a clear message, then `git push`.
+6. For blocked external dependency (rule 998): update @IMPLEMENTATION_PLAN.md with a `BLOCKED` item including missing variable/access, failed command/test, and next action; commit partial progress with message prefix `blocked:`; then end this run.
+7. When checks pass (or blocked state is documented under rule 998): `git add -A`, `git commit` with a clear message, then `git push`; then end this run.
 
-IMPORTANT: Keep @AGENTS.md operational only (how to build/test/run). Keep status/progress in @IMPLEMENTATION_PLAN.md.
-IMPORTANT: Implement functionality completely; avoid placeholders/stubs unless explicitly required.
+NOTE: Keep @AGENTS.md operational only (how to build/test/run). Keep status/progress in @IMPLEMENTATION_PLAN.md.
+NOTE: Prefer complete functionality over placeholders/stubs unless explicitly needed.

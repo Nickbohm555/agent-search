@@ -8,6 +8,6 @@
 3. For each task, derive verification requirements from acceptance criteria in specs (what outcomes must be validated, not implementation details).
 4. Keep @IMPLEMENTATION_PLAN.md up to date with complete/incomplete status.
 
-IMPORTANT: Plan only. Do NOT implement anything. Do NOT commit anything.
-IMPORTANT: Do NOT assume functionality is missing; confirm with code search first.
-IMPORTANT: Treat `src/lib/*` as the project's shared standard library and prefer consolidated implementations.
+NOTE: Keep this run focused on planning. Avoid implementation and commits in this mode.
+NOTE: Try to confirm missing functionality with code search before marking gaps.
+NOTE: Treat `src/lib/*` as the project's shared standard library and prefer consolidated implementations.

@@ -8,11 +8,11 @@
 3. For each task, derive verification requirements from acceptance criteria in specs (what outcomes must be validated, not implementation details).
 4. Keep @IMPLEMENTATION_PLAN.md up to date with items considered complete/incomplete.
 
-IMPORTANT: This is SCOPED PLANNING for "${WORK_SCOPE}" only. Create a plan containing ONLY tasks directly related to this work scope.
-IMPORTANT: Be conservative. If uncertain whether a task belongs to this scope, exclude it.
-IMPORTANT: Plan only. Do NOT implement anything. Do NOT commit anything.
-IMPORTANT: Do NOT assume functionality is missing; confirm with code search first.
-IMPORTANT: Treat `src/lib/*` as the project's standard library for shared utilities and components. Prefer consolidated, idiomatic implementations there over ad-hoc copies.
+NOTE: This is scoped planning for "${WORK_SCOPE}" only. Keep the plan focused on tasks directly related to this scope.
+NOTE: If a task seems unrelated or uncertain, prefer leaving it out for now.
+NOTE: Keep this run in planning mode; avoid implementation and commits.
+NOTE: Try to confirm missing functionality with code search before marking gaps.
+NOTE: Treat `src/lib/*` as the project's standard library for shared utilities/components and prefer consolidated implementations.
 
 ULTIMATE GOAL: Achieve the scoped work "${WORK_SCOPE}".
 If a needed element is missing, search first to confirm it does not exist, then if needed author/update the related spec at `specs/FILENAME.md`.

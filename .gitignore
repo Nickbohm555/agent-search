@@ -6,3 +6,5 @@ node_modules/
 src/frontend/dist/
 src/backend/.pytest_cache/
 src/backend/.mypy_cache/
+
+src/backend/.venv/
