@@ -59,6 +59,8 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
     ]
     assert len(payload["retrieval_results"]) == 1
     assert payload["retrieval_results"][0]["tool"] == "internal"
+    assert len(payload["validation_results"]) == 1
+    assert payload["validation_results"][0]["tool"] == "internal"
 
     assert len(tracing_handle.span_records) == 1
     span_record = tracing_handle.span_records[0]
@@ -73,6 +75,7 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
                 "sub_queries": payload["sub_queries"],
                 "tool_assignments": payload["tool_assignments"],
                 "retrieval_results": payload["retrieval_results"],
+                "validation_results": payload["validation_results"],
                 "web_tool_runs": payload["web_tool_runs"],
             },
         }
@@ -94,6 +97,7 @@ def test_agent_run_with_disabled_tracing_returns_response_without_trace_creation
         {"sub_query": "still works", "tool": "internal"}
     ]
     assert response.json()["retrieval_results"][0]["tool"] == "internal"
+    assert response.json()["validation_results"][0]["tool"] == "internal"
     assert tracing_handle.calls == 0
 
 

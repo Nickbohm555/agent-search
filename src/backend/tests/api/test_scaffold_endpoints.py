@@ -82,6 +82,11 @@ def test_runtime_agent_run_endpoint(client):
     assert isinstance(data["retrieval_results"], list)
     assert len(data["retrieval_results"]) == len(data["sub_queries"])
     assert [item["sub_query"] for item in data["retrieval_results"]] == data["sub_queries"]
+    assert isinstance(data["validation_results"], list)
+    assert len(data["validation_results"]) == len(data["sub_queries"])
+    assert [item["sub_query"] for item in data["validation_results"]] == data["sub_queries"]
+    assert all(item["status"] in {"validated", "stopped_insufficient"} for item in data["validation_results"])
+    assert all(item["attempts"] >= 1 for item in data["validation_results"])
 
 
 @pytest.mark.smoke

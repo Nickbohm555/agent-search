@@ -29,10 +29,21 @@ class SubQueryRetrievalResult(BaseModel):
     opened_pages: list[WebOpenUrlResponse] = Field(default_factory=list)
 
 
+class SubQueryValidationResult(BaseModel):
+    sub_query: str
+    tool: Literal["internal", "web"]
+    sufficient: bool
+    status: Literal["validated", "stopped_insufficient"]
+    attempts: int = Field(ge=1)
+    follow_up_actions: list[str] = Field(default_factory=list)
+    stop_reason: str
+
+
 class RuntimeAgentRunResponse(BaseModel):
     agent_name: str
     output: str
     sub_queries: list[str]
     tool_assignments: list[SubQueryToolAssignment]
     retrieval_results: list[SubQueryRetrievalResult] = Field(default_factory=list)
+    validation_results: list[SubQueryValidationResult] = Field(default_factory=list)
     web_tool_runs: list[WebToolRun] = Field(default_factory=list)

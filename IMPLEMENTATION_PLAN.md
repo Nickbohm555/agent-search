@@ -21,16 +21,17 @@
   - Backend: smoke tests now also cover web tool search/open contracts and web-assigned agent sub-query execution.
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Implemented per-subquery retrieval executor (`specs/per-subquery-retrieval.md`):
-    - Added `services/retrieval_service.py` to execute retrieval for each `(sub_query, assigned_tool)` pair.
-    - `internal` assignments now execute vector-store retrieval via existing internal retrieval service.
-    - `web` assignments now execute search+open_url and return retrievable opened-page content.
-  - Updated runtime agent run response/tracing metadata to expose ordered `retrieval_results` consumable by upcoming validation/synthesis stages.
-  - Updated API test harness DB wiring (`tests/conftest.py`) to use deterministic in-memory SQLite for agent/internal retrieval tests.
+  - Implemented retrieval validation loop (`specs/retrieval-validation.md`):
+    - Added `services/validation_service.py` with deterministic sufficiency evaluation per retrieval result.
+    - Added retry/deepen follow-up behavior:
+      - `internal`: re-retrieval with increased limit (`search_more_internal`).
+      - `web`: search+open with expanded read depth (`open_more_web_pages`).
+    - Added explicit max-attempt stop policy (`max_attempts_reached`) with observable result status.
+  - Updated runtime agent run response/tracing metadata to expose ordered `validation_results` for downstream synthesis/streaming consumption.
   - Added backend smoke coverage for:
-    - internal retrieval execution from loaded/vectorized store through `/api/agents/run`,
-    - web retrieval execution through search+open_url via `/api/agents/run`,
-    - `retrieval_results` presence/shape in runtime agent and tracing payloads.
+    - validated internal retrieval success path (`validated` + no follow-up),
+    - insufficient internal retrieval retry path (`search_more_internal`) and deterministic stop,
+    - `validation_results` presence/shape in runtime-agent and tracing payloads.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -74,16 +75,14 @@
   - Internal retrieval path now returns chunk content sourced from loaded/vectorized internal corpus entries.
   - Web retrieval path follows search+open_url and returns retrievable page content.
   - Added smoke tests verifying internal and web retrieval execution outcomes through runtime-agent API.
+- [x] P1 - Implement retrieval validation loop (`specs/retrieval-validation.md`)
+  - Added deterministic sufficiency evaluation for each subquery retrieval result (`internal`/`web`).
+  - Added follow-up loop behavior for insufficient retrievals with explicit action recording (`follow_up_actions`).
+  - Added deterministic stop policy after bounded attempts with observable status (`validated` vs `stopped_insufficient`).
+  - Updated `/api/agents/run` and tracing metadata contracts to include ordered `validation_results`.
+  - Added smoke tests for sufficient validation and retry-then-stop behavior.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P1 - Implement retrieval validation loop (`specs/retrieval-validation.md`)
-  - Scope gap confirmed: no sufficiency evaluator, no retry/deepen loop, no stop policy.
-  - Verification requirements (outcome-focused):
-    - Each retrieval result is evaluated for sufficiency.
-    - Insufficient result triggers at least one follow-up action (additional retrieval or deeper read).
-    - Loop stops deterministically via sufficiency or explicit stopping rule.
-    - Validation status/result is available for synthesis and streaming.
 
 - [ ] P1 - Implement answer synthesis (`specs/answer-synthesis.md`)
   - Scope gap confirmed: no synthesis component.
@@ -144,11 +143,11 @@
     - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
   - Supplemental successful fallback checks (non-authoritative for compose gate):
-    - `(src/backend) python3 -m pytest tests/api/test_per_subquery_retrieval.py tests/api/test_agent_run_tracing.py tests/api/test_scaffold_endpoints.py tests/api/test_web_tools.py` -> `14 passed`.
-    - `(src/backend) python3 -m pytest tests` -> `20 passed`.
+    - `(src/backend) python3 -m pytest tests/api/test_retrieval_validation.py tests/api/test_agent_run_tracing.py tests/api/test_scaffold_endpoints.py tests/api/test_per_subquery_retrieval.py` -> `13 passed`.
+    - `(src/backend) python3 -m pytest tests` -> `22 passed`.
 - Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: ralph loop 5 (build): implement per-subquery retrieval executor and retrieval_results contract"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
+    - `git add -A && git commit -m "blocked: ralph loop 6 (build): implement retrieval validation loop with retry and deterministic stop"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
     - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`
 - Next action:
   - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
@@ -160,5 +159,5 @@
     - `(src/frontend) npm ci`
   - Complete commit/push on a host with git write/network access:
     - `git add -A`
-    - `git commit -m "blocked: implement per-subquery retrieval executor with retrieval_results"`
+    - `git commit -m "blocked: ralph loop 6 (build): implement retrieval validation loop with retry and stop policy"`
     - `git push`

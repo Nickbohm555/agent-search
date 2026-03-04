@@ -10,6 +10,7 @@ from schemas import (
     WebToolRun,
 )
 from services.retrieval_service import execute_subquery_retrievals
+from services.validation_service import validate_retrieval_results
 from sqlalchemy.orm import Session
 from utils.query_decomposition import decompose_query
 from utils.tool_selection import assign_tools_to_sub_queries
@@ -50,6 +51,7 @@ def run_runtime_agent(
         for sub_query, tool in assign_tools_to_sub_queries(sub_queries)
     ]
     retrieval_results = execute_subquery_retrievals(tool_assignments, db)
+    retrieval_results, validation_results = validate_retrieval_results(retrieval_results, db)
     web_tool_runs: list[WebToolRun] = [
         WebToolRun(
             sub_query=result.sub_query,
@@ -73,6 +75,7 @@ def run_runtime_agent(
                     assignment.model_dump() for assignment in tool_assignments
                 ],
                 "retrieval_results": [result.model_dump() for result in retrieval_results],
+                "validation_results": [result.model_dump() for result in validation_results],
                 "web_tool_runs": [run.model_dump() for run in web_tool_runs],
             },
         )
@@ -82,5 +85,6 @@ def run_runtime_agent(
         sub_queries=sub_queries,
         tool_assignments=tool_assignments,
         retrieval_results=retrieval_results,
+        validation_results=validation_results,
         web_tool_runs=web_tool_runs,
     )
