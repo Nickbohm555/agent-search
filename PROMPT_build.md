@@ -12,9 +12,22 @@
 3. Before making changes, search the codebase so existing functionality is reused when possible.
 4. After implementing functionality, run the required tests from the task definition. Prefer all required tests passing unless blocked by rule 998.
 5. Update @IMPLEMENTATION_PLAN.md with findings and completion state.
-6. For blocked external dependency (rule 998): update @IMPLEMENTATION_PLAN.md with a `BLOCKED` item including missing variable/access, failed command/test, and next action; then write `.loop-commit-msg`, write the mermaid file, then end this run.
-7. When checks pass (or blocked state is documented under rule 998): write `.loop-commit-msg`, write the mermaid file (step 8), then end this run.
-8. At the end of every run: (a) Write one line to `.loop-commit-msg` in the repo root so the loop can use it for the commit (e.g. `Worked on: <brief>. Blocked: <if any>.`). (b) Add one Mermaid diagram file under `docs/loop/`. Create the directory if needed. One file per run; use a filename that identifies the work (e.g. `per-subquery-tools.mermaid` or `auth-flow.mermaid`). The diagram should summarize what was implemented, what was blocked (if any), and key decisions or flow for this run (e.g. flowchart or sequence diagram in Mermaid syntax).
+6. For blocked external dependency (rule 998): update @IMPLEMENTATION_PLAN.md with a `BLOCKED` item including:
+- what is missing (env var / API key / account / access)
+- exact failed command/test + error excerpt
+- **Nicholas, the human needs to**: explicit instructions (e.g. "provide OPENAI_API_KEY", "create Langfuse account + set LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY", "grant access to <service>")
+Then write `.loop-commit-msg` and end this run.
+7. If you made a build tradeoff: record it in @IMPLEMENTATION_PLAN.md with:
+- what you chose + why (1-2 lines)
+- alternatives considered
+- references for the human: PR link/number (if applicable) and exact code location(s) (file paths, key symbols)
+- a clearly marked section `HUMAN-ONLY NOTES` (assume only Nicholas reads it) that references the PR (or commit/message) + code locations
+8. At the end of every run: write one line to `.loop-commit-msg` in the repo root so the loop can use it for the commit (e.g. `Worked on: <brief>. Blocked: <if any>.`).
+9. Mermaid doc (ONLY if it adds value beyond @IMPLEMENTATION_PLAN.md): add at most one `.mermaid` file under `docs/` in a topic subfolder that matches the work, e.g.:
+- `docs/backend/mcp/<descriptive-name>.mermaid` for MCP-related work
+- `docs/frontend/ui/<descriptive-name>.mermaid` for UI flows
+- `docs/loop/<descriptive-name>.mermaid` only for loop-process diagrams
+Name it with a short, specific slug (avoid generic `diagram.mermaid`). Only add it when it clarifies a flow/interaction/tradeoff better than text; otherwise skip.
 
 NOTE: Keep @AGENTS.md operational only (how to build/test/run). Keep status/progress in @IMPLEMENTATION_PLAN.md.
 NOTE: Prefer complete functionality over placeholders/stubs unless explicitly needed.
