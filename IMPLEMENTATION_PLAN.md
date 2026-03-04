@@ -167,6 +167,23 @@
     - `docker compose exec frontend npm run test` -> `29 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
+- [x] P1 - Add explicit motion/feedback run-state signal in readout status surfaces (`specs/motion-and-feedback.md`, `specs/content-and-readouts.md`).
+  - Tasks:
+  - Added deterministic in-progress indicator contract on status readouts via `data-busy-indicator` (`active`/`idle`) in `StatusBanner`.
+  - Added compact terminal-style status signal chip with pulse animation for active load/run states (`status-signal-active`) while preserving static messaging as the primary feedback.
+  - Kept motion low-intensity and compatible with existing reduced-motion guard (`prefers-reduced-motion: reduce`) by using CSS animation that is disabled by the global reduced-motion rule.
+  - Added frontend interaction test to verify the status signal appears only while each corresponding action is in flight.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `36 passed`
+    - `docker compose exec frontend npm run test` -> `30 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 ## Completed Baseline (Scoped)
 
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.

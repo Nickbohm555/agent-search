@@ -420,6 +420,49 @@ describe("App", () => {
     });
   });
 
+  it("shows an in-progress signal in status readouts only while actions are running", async () => {
+    const loadDeferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
+    mockedLoadInternalData.mockImplementation(() => loadDeferred.promise);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(screen.getByTestId("load-status-region")).toHaveAttribute("data-busy-indicator", "active");
+    expect(screen.getByTestId("progress-region")).toHaveAttribute("data-busy-indicator", "idle");
+
+    loadDeferred.resolve({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("load-status-region")).toHaveAttribute("data-busy-indicator", "idle");
+    });
+
+    const runDeferred = createDeferred<Awaited<ReturnType<typeof runAgentStream>>>();
+    mockedRunAgentStream.mockImplementation(() => runDeferred.promise);
+
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Signal test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    expect(screen.getByTestId("progress-region")).toHaveAttribute("data-busy-indicator", "active");
+    expect(screen.getByTestId("load-status-region")).toHaveAttribute("data-busy-indicator", "idle");
+
+    runDeferred.resolve({
+      ok: true,
+      data: successRunResponse(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("progress-region")).toHaveAttribute("data-busy-indicator", "idle");
+    });
+  });
+
   it("prevents duplicate in-flight load requests from rapid repeated clicks", async () => {
     const deferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
     mockedLoadInternalData.mockImplementation(() => deferred.promise);
