@@ -1,97 +1,97 @@
 # IMPLEMENTATION_PLAN
 
 - Scope: `backend: langchain / langgraph setup, MCP setup, streaming backend, vectorization, doc retrieval, subquestion decomp, agentic design` only.
-- Project status reality check: backend already has scaffolded decomposition/tool-selection/retrieval/validation/synthesis endpoints and smoke tests; remaining work is runtime-grade execution and exposure.
-- Inputs reviewed: `specs/*`, existing `IMPLEMENTATION_PLAN.md`, `src/backend/*`, `src/frontend/src/lib/*` (no top-level `src/lib/*` exists).
+- Project status: scaffold-only, with deterministic backend stubs and smoke tests already present for baseline pipeline steps.
+- Inputs reviewed this run: `specs/*`, existing `IMPLEMENTATION_PLAN.md`, `src/backend/*`, `src/frontend/src/lib/*` (no repository-level `src/lib/*` exists).
 
-## Highest Priority Incomplete Tasks
+## Highest Priority Incomplete (Scoped)
 
-- [ ] P0 - Add LangChain/LangGraph runtime boundary and environment wiring (`specs/langchain-runtime-setup.md`).
+- [ ] P0 - Add real LangChain runtime boundary with graceful enabled/disabled modes (`specs/langchain-runtime-setup.md`).
   - Implementation tasks:
-  - Add runtime dependencies (`langchain`, `langgraph`, provider adapter package) in `src/backend/pyproject.toml` and lockfile.
-  - Introduce a single runtime integration boundary (service/app-state handle) consumed by agent orchestration; routers remain SDK-agnostic.
-  - Add explicit enabled/disabled runtime mode from env with deterministic stub mode for CI/local no-network runs.
-  - Verification requirements (derive from spec acceptance criteria):
-  - Smoke: with runtime-enabled config and stub provider, backend starts and `/api/agents/run` executes without runtime wiring/import errors.
-  - Smoke: with runtime disabled/missing credentials, backend still starts and `/api/agents/run` returns deterministic non-crashing contract (or controlled explicit error contract).
-  - Test: enabled and disabled modes are both covered with deterministic stubs/mocks (no hidden external model calls in CI).
-
-- [ ] P0 - Replace scaffold orchestration with executable LangGraph flow using deep-agent subgraph execution (`specs/orchestration-langgraph.md`).
-  - Implementation tasks:
-  - Build real LangGraph nodes/edges for decomposition, tool selection, retrieval, validation loop, and synthesis.
-  - Model per-subquery execution as deep-agent/subgraph behavior and preserve projection of graph state for downstream consumers.
-  - Ensure state carries subqueries, assignments, retrieval artifacts, validation outcomes, and synthesis outputs.
+  - Add runtime deps in backend (`langchain`, `langgraph`, provider adapter) and update `uv.lock`.
+  - Create one runtime integration boundary (service/app-state handle) that orchestration consumes; routers stay SDK-agnostic.
+  - Add env-driven runtime mode with deterministic stub path for tests/no-network CI.
   - Verification requirements:
-  - Smoke: full decomposition->tool-selection->retrieval->validation->synthesis pipeline executes as LangGraph and returns final answer.
-  - Smoke: each logical step executes in intended order; validation loops per subquery until sufficient or stopping condition.
-  - Smoke: deep-agent/subgraph participation is observable in returned graph state/timeline.
-  - Edge-case: multi-subquery runs preserve index/identity consistency across subqueries, assignments, retrieval results, and validation results.
+  - Smoke: runtime-enabled config starts backend and `/api/agents/run` executes through runtime path without wiring/import failures.
+  - Smoke: runtime disabled or missing credentials still allows startup and returns deterministic non-crashing run contract (or explicit controlled error contract).
+  - Tests: both modes covered with deterministic stubs/mocks and zero hidden external model calls.
 
-- [ ] P0 - Implement streaming heartbeat backend endpoint driven by orchestration state (`specs/streaming-agent-heartbeat.md`).
+- [ ] P0 - Replace LangGraph projection scaffold with executable LangGraph graph using deep-agent subgraph pattern (`specs/orchestration-langgraph.md`).
   - Implementation tasks:
-  - Add streaming route (SSE or WebSocket) under `src/backend/routers/` with schema contract under `src/backend/schemas/`.
-  - Emit incremental events from orchestration: subqueries, active step/progress, validation status transitions, completion payload.
-  - Handle client disconnect/cancellation safely.
+  - Implement LangGraph nodes/edges for decomposition, tool selection, per-subquery retrieval, validation loop, and synthesis.
+  - Model subquery execution as deep-agent/subgraph behavior and preserve graph-state projection for downstream consumers.
+  - Keep state payloads consistent: subqueries, assignments, retrieval outputs, validation outputs, synthesis output.
   - Verification requirements:
-  - Smoke: streaming run emits subquery updates while run is in progress (not only terminal payload).
-  - Smoke: stream provides enough information for UI heartbeat (current step/progress and final completion payload).
-  - Edge-case: disconnecting the client does not crash backend and stream closes cleanly.
-  - Contract: event ordering and sequence identifiers are stable/parseable for typical runs.
+  - Smoke: full decomposition -> tool selection -> retrieval -> validation -> synthesis run completes and returns final answer.
+  - Smoke: each logical step appears and executes in intended order; validation loops per subquery until sufficient or stop condition.
+  - Smoke: deep-agent/subgraph presence is observable in graph metadata/timeline.
+  - Edge-case: multi-subquery runs preserve identity/order alignment across subqueries, assignments, retrieval, and validation records.
 
-- [ ] P0 - Expose pipeline through FastMCP-compatible MCP wrapper (`specs/mcp-exposure.md`).
+- [ ] P0 - Add backend streaming heartbeat endpoint powered by orchestration events (`specs/streaming-agent-heartbeat.md`).
   - Implementation tasks:
-  - Add MCP server/tool wrapper that accepts query input and delegates to the same orchestration path as `/api/agents/run`.
-  - Define stable request/response contract for client usage; wire through Docker service/runtime path as needed.
-  - Keep optional MCP streaming separate unless explicitly implemented.
+  - Add streaming API route (SSE or WebSocket) under `src/backend/routers/` and event schema under `src/backend/schemas/`.
+  - Emit incremental events for subqueries, active step/progress, validation updates, and completion payload.
+  - Handle cancellation/disconnect cleanly.
   - Verification requirements:
-  - Smoke: MCP client invocation returns final synthesized answer for a query.
-  - Smoke: MCP answer semantics match API pipeline output for equivalent input.
-  - Contract: tool name and request/response schema are deterministic and integration-stable for FastMCP client usage.
+  - Smoke: run emits subquery/progress events before completion event (not completion-only).
+  - Smoke: stream payload is sufficient for UI heartbeat: current step/progress plus final answer payload.
+  - Edge-case: client disconnect does not crash worker/request handling and stream terminates cleanly.
+  - Contract: ordered events with stable sequence fields are parseable in tests.
 
-- [ ] P1 - Migrate internal vectorization/retrieval to pgvector-native storage and similarity querying (`specs/data-loading-vectorization.md`, `specs/per-subquery-retrieval.md`).
+- [ ] P0 - Expose pipeline via FastMCP-compatible wrapper and transport (`specs/mcp-exposure.md`).
   - Implementation tasks:
-  - Add schema changes for vector column/index and keep existing content metadata; ship Alembic migration in same change.
-  - Update load path to persist vector embeddings in pgvector-backed form and retrieval path to query similarity in DB.
-  - Maintain deterministic test mode for embeddings so CI remains network-free.
+  - Add MCP server/tool entrypoint that accepts query input and delegates to same orchestration used by `/api/agents/run`.
+  - Define stable MCP request/response contract for FastMCP client use; wire runtime entrypoint for Dockerized usage.
+  - Keep streaming-over-MCP optional unless explicitly added.
   - Verification requirements:
-  - Smoke: load endpoint vectorizes and stores chunks in DB-backed vector store and returns observable outcome counts.
-  - Smoke: after load, internal-assigned subquery retrieval returns relevant chunk(s) from loaded corpus.
-  - Edge-case: empty or unrelated corpus yields deterministic empty/low-signal retrieval contract without crashing.
-  - Migration: Alembic upgrade creates required vector structures and retrieval still functions post-migration.
+  - Smoke: FastMCP-style client invocation returns synthesized answer for provided query.
+  - Smoke: MCP output semantics match `/api/agents/run` output for equivalent query input.
+  - Contract: tool name and input/output schema are deterministic and stable for repeated client calls.
 
-- [ ] P1 - Strengthen subquestion decomposition quality and propagation (`specs/query-decomposition.md`).
+- [ ] P1 - Move vectorization/retrieval to pgvector-native storage and DB similarity search (`specs/data-loading-vectorization.md`, `specs/per-subquery-retrieval.md`).
   - Implementation tasks:
-  - Improve decomposition for complex mixed-intent prompts (while preserving deterministic testability).
-  - Ensure decomposed subqueries propagate consistently to run response, graph state, streaming events, and MCP response metadata if exposed.
+  - Add vector column/index schema changes with Alembic migration in same change.
+  - Persist embeddings in pgvector format at load time; execute similarity ranking in DB (not Python JSON cosine pass).
+  - Keep deterministic embedding mode for CI/test environments.
   - Verification requirements:
-  - Smoke: complex mixed-domain query yields focused subqueries where each is answerable by one retrieval path.
-  - Smoke: subqueries are visible to downstream pipeline consumers (run response + streaming events; MCP metadata if implemented).
-  - Edge-case: connector-heavy or duplicated phrasing does not emit duplicate/empty subqueries.
+  - Smoke: load endpoint reports observable load outcomes (success + doc/chunk counts) and stores retrievable vectors.
+  - Smoke: internal retrieval after load returns relevant chunks from loaded corpus.
+  - Edge-case: empty/unrelated corpus returns deterministic empty-or-low-signal results without crashes.
+  - Migration: `alembic upgrade head` produces required vector structures and retrieval remains functional after migration.
 
-- [ ] P1 - Expand per-subquery retrieval/validation observability for agentic control surfaces (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`).
+- [ ] P1 - Improve subquestion decomposition quality and consistency across agentic surfaces (`specs/query-decomposition.md`).
   - Implementation tasks:
-  - Preserve strict retrieval-path fidelity by tool assignment (`internal` uses internal store only; `web` uses search+open_url behavior).
-  - Surface validation retries/follow-up actions as explicit per-subquery state/events for stream/MCP consumers.
+  - Improve decomposition for complex mixed-intent prompts while keeping deterministic tests feasible.
+  - Ensure subqueries propagate consistently to run response, graph state, stream events, and MCP metadata (if exposed).
   - Verification requirements:
-  - Smoke: internal-assigned subquery returns internal corpus evidence and does not require web fields to satisfy retrieval.
-  - Smoke: web-assigned subquery follows search->open_url behavior with observable opened URL/page outputs.
-  - Smoke: insufficient evidence triggers at least one follow-up action then terminates with explicit stop reason.
-  - Contract: per-subquery validation status, attempts, and follow-up actions are observable in timeline/event payloads.
+  - Smoke: complex mixed-domain query yields focused single-path subqueries (each answerable by one retrieval path).
+  - Smoke: subqueries are visible in all enabled downstream surfaces (run response, stream, MCP metadata if implemented).
+  - Edge-case: duplicate-heavy phrasing does not create duplicate/empty subqueries.
 
-## Scoped Items Confirmed Complete
+- [ ] P1 - Expand per-subquery retrieval/validation observability for agentic control loops (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`).
+  - Implementation tasks:
+  - Preserve strict retrieval-path fidelity per assignment (`internal` only internal store; `web` follows search+open_url flow).
+  - Expose retry/follow-up validation actions as explicit per-subquery state for stream/MCP and timeline consumers.
+  - Verification requirements:
+  - Smoke: internal-assigned subquery returns internal evidence without requiring web artifacts.
+  - Smoke: web-assigned subquery performs search -> open_url with observable opened URL/page content outputs.
+  - Smoke: insufficient evidence triggers at least one follow-up action and ends with explicit stop reason.
+  - Contract: per-subquery validation status, attempt count, and follow-up actions are visible in response/timeline/events.
 
-- [x] Baseline decomposition exists and has smoke coverage (`specs/query-decomposition.md` baseline outcomes).
-- [x] Baseline one-tool-per-subquery assignment exists and has smoke coverage (`specs/tool-selection-per-subquery.md`).
-- [x] Baseline web tools (`search` + `open_url`) exist and have smoke coverage (`specs/web-search-onyx-style.md`).
-- [x] Baseline per-subquery retrieval and validation loop behavior exist and have smoke coverage (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`).
-- [x] Baseline synthesis step exists and has smoke coverage (`specs/answer-synthesis.md`).
-- [x] Baseline internal load/retrieve endpoints with observable counts exist (current storage is JSON embedding text, not pgvector-native retrieval).
-- [x] Langfuse setup and agent-run tracing baselines exist as adjacent infrastructure (`specs/langfuse-sdk-setup.md`, `specs/agent-run-tracing.md`).
+## Scoped Items Already Complete (Baseline Scaffold)
 
-## Gap Confirmation Notes (Code Search)
+- [x] Baseline decomposition output exists and is smoke-tested (`specs/query-decomposition.md`).
+- [x] Baseline one-tool-per-subquery assignment exists and is smoke-tested (`specs/tool-selection-per-subquery.md`).
+- [x] Baseline web tools (`search` + `open_url`) exist and are smoke-tested (`specs/web-search-onyx-style.md`).
+- [x] Baseline per-subquery retrieval and validation loop exist and are smoke-tested (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`).
+- [x] Baseline synthesis output exists and is smoke-tested (`specs/answer-synthesis.md`).
+- [x] Baseline internal load/retrieve endpoints with observable counts exist (currently JSON embeddings + Python scoring, not pgvector-native retrieval).
+- [x] Langfuse SDK scaffolding and agent-run tracing baseline exist (`specs/langfuse-sdk-setup.md`, `specs/agent-run-tracing.md`).
 
-- LangChain/LangGraph runtime dependencies are not present in `src/backend/pyproject.toml`.
-- Current `src/backend/agents/langgraph_agent.py` is a deterministic scaffold/projection, not executable LangGraph runtime wiring.
-- No streaming run endpoint exists in backend routers (no SSE/WebSocket route for `/api/agents/*`).
-- No MCP/FastMCP server wrapper is present in backend source.
-- Internal chunk vectors are persisted as `embedding_json` text and scored in Python rather than pgvector DB similarity queries.
+## Gap Confirmation (Code Search)
+
+- Missing runtime deps for LangChain/LangGraph in [pyproject.toml](/Users/nickbohm/Desktop/Tinkering/agent-search/src/backend/pyproject.toml).
+- Current graph implementation in [langgraph_agent.py](/Users/nickbohm/Desktop/Tinkering/agent-search/src/backend/agents/langgraph_agent.py) is a deterministic projection scaffold, not an executable LangGraph runtime graph.
+- No streaming endpoint in backend routers for agent run heartbeat (no SSE/WebSocket route under [routers](/Users/nickbohm/Desktop/Tinkering/agent-search/src/backend/routers)).
+- No MCP/FastMCP wrapper found in backend source (`rg -n "mcp|fastmcp"` in `src/backend`).
+- Internal chunk vectors in [models.py](/Users/nickbohm/Desktop/Tinkering/agent-search/src/backend/models.py) and [internal_data_service.py](/Users/nickbohm/Desktop/Tinkering/agent-search/src/backend/services/internal_data_service.py) use `embedding_json` and in-Python similarity scoring rather than pgvector DB similarity queries.
