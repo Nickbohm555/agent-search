@@ -360,6 +360,22 @@ li {
   margin: 0;
 }
 
+.validation-follow-up {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: #b8ccef;
+}
+
+.validation-attempt-list {
+  margin: 6px 0 0;
+  padding-left: 16px;
+}
+
+.validation-attempt-item {
+  font-size: 0.82rem;
+  color: #c9dcff;
+}
+
 .retrieval-url-list {
   margin: 6px 0 0;
   padding-left: 16px;

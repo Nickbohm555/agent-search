@@ -6,6 +6,24 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Expose retrieval-validation loop attempt details in frontend readout with schema parity (`specs/retrieval-validation.md`, `specs/content-and-readouts.md`, `specs/demo-ui-typescript.md`).
+  - Tasks:
+  - Updated frontend runtime response contract parsing to include `validation_results[*].attempt_trace` and `subquery_execution_results[*]` for parity with backend payload/schema.
+  - Added stream-event handling for `subquery_execution_result` so progressive UI snapshots preserve per-subquery execution artifacts.
+  - Enhanced `ProgressHistory` validation rendering to show deterministic attempt summaries (`attempt`, sufficiency, result counts, and follow-up action) and top-level follow-up actions.
+  - Added deterministic frontend test coverage for schema-parsed execution results and rendered validation attempt traces.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `43 passed`
+    - `docker compose exec frontend npm run test` -> `35 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Surface opened web URLs in frontend retrieval readout for explicit "what the agent read" visibility (`specs/web-search-onyx-style.md`, `specs/content-and-readouts.md`).
   - Tasks:
   - Updated `ProgressHistory` retrieval rendering for web-assigned subqueries to include the list of `opened_urls` under each web retrieval summary.

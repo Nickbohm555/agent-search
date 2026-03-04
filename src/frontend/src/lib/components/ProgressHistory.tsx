@@ -94,7 +94,26 @@ export function ProgressHistory({ runDetails }: ProgressHistoryProps) {
               <ol data-testid="validation-list">
                 {runDetails.validation_results.map((validation) => (
                   <li key={`${validation.sub_query}-${validation.tool}`}>
-                    {validation.sub_query}: {validation.status}
+                    <p>
+                      {validation.sub_query}: {validation.status} after {validation.attempts} attempt
+                      {validation.attempts === 1 ? "" : "s"}
+                    </p>
+                    {validation.follow_up_actions.length ? (
+                      <p className="validation-follow-up">
+                        follow-up: {validation.follow_up_actions.join(", ")}
+                      </p>
+                    ) : null}
+                    {validation.attempt_trace.length ? (
+                      <ul className="validation-attempt-list" data-testid="validation-attempt-trace">
+                        {validation.attempt_trace.map((attempt) => (
+                          <li key={`${validation.sub_query}-attempt-${attempt.attempt}`} className="validation-attempt-item">
+                            attempt {attempt.attempt}: {attempt.sufficient ? "sufficient" : "insufficient"} | internal{" "}
+                            {attempt.internal_result_count} | opened {attempt.opened_page_count}
+                            {attempt.follow_up_action ? ` | next ${attempt.follow_up_action}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </li>
                 ))}
               </ol>

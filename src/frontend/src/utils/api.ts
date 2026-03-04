@@ -87,7 +87,23 @@ export interface SubQueryValidationResult {
   status: "validated" | "stopped_insufficient";
   attempts: number;
   follow_up_actions: string[];
+  attempt_trace: SubQueryValidationAttempt[];
   stop_reason: string;
+}
+
+export interface SubQueryValidationAttempt {
+  attempt: number;
+  sufficient: boolean;
+  internal_result_count: number;
+  opened_page_count: number;
+  follow_up_action: string | null;
+}
+
+export interface SubQueryExecutionResult {
+  sub_query: string;
+  tool: "internal" | "web";
+  retrieval_result: SubQueryRetrievalResult;
+  validation_result: SubQueryValidationResult;
 }
 
 export interface WebToolRun {
@@ -116,6 +132,7 @@ export interface RuntimeAgentRunResponse {
   tool_assignments: SubQueryToolAssignment[];
   retrieval_results: SubQueryRetrievalResult[];
   validation_results: SubQueryValidationResult[];
+  subquery_execution_results: SubQueryExecutionResult[];
   web_tool_runs: WebToolRun[];
   graph_state?: RuntimeAgentGraphState | null;
 }
@@ -421,6 +438,16 @@ function applyRuntimeStreamEvent(
     };
   }
 
+  if (event.event === "subquery_execution_result") {
+    if (!isSubQueryExecutionResult(event.data)) {
+      return current;
+    }
+    return {
+      ...current,
+      subquery_execution_results: [...current.subquery_execution_results, event.data],
+    };
+  }
+
   if (event.event === "completed") {
     const output = event.data.output;
     const agentName = event.data.agent_name;
@@ -459,6 +486,7 @@ async function readSseEvents(
     tool_assignments: [],
     retrieval_results: [],
     validation_results: [],
+    subquery_execution_results: [],
     web_tool_runs: [],
     graph_state: null,
   };
@@ -620,7 +648,34 @@ function isSubQueryValidationResult(value: unknown): value is SubQueryValidation
     (value.status === "validated" || value.status === "stopped_insufficient") &&
     typeof value.attempts === "number" &&
     isStringArray(value.follow_up_actions) &&
+    Array.isArray(value.attempt_trace) &&
+    value.attempt_trace.every(isSubQueryValidationAttempt) &&
     typeof value.stop_reason === "string"
+  );
+}
+
+function isSubQueryValidationAttempt(value: unknown): value is SubQueryValidationAttempt {
+  if (!isObject(value)) {
+    return false;
+  }
+  return (
+    typeof value.attempt === "number" &&
+    typeof value.sufficient === "boolean" &&
+    typeof value.internal_result_count === "number" &&
+    typeof value.opened_page_count === "number" &&
+    (typeof value.follow_up_action === "string" || value.follow_up_action === null)
+  );
+}
+
+function isSubQueryExecutionResult(value: unknown): value is SubQueryExecutionResult {
+  if (!isObject(value)) {
+    return false;
+  }
+  return (
+    typeof value.sub_query === "string" &&
+    isToolKind(value.tool) &&
+    isSubQueryRetrievalResult(value.retrieval_result) &&
+    isSubQueryValidationResult(value.validation_result)
   );
 }
 
@@ -654,6 +709,7 @@ function isRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResp
     !Array.isArray(value.tool_assignments) ||
     !Array.isArray(value.retrieval_results) ||
     !Array.isArray(value.validation_results) ||
+    !Array.isArray(value.subquery_execution_results) ||
     !Array.isArray(value.web_tool_runs)
   ) {
     return false;
@@ -680,11 +736,18 @@ function isRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResp
       (result.status === "validated" || result.status === "stopped_insufficient") &&
       typeof result.attempts === "number" &&
       isStringArray(result.follow_up_actions) &&
+      Array.isArray(result.attempt_trace) &&
+      result.attempt_trace.every(isSubQueryValidationAttempt) &&
       typeof result.stop_reason === "string"
     );
   });
 
   if (!validValidationResults) {
+    return false;
+  }
+
+  const validExecutionResults = value.subquery_execution_results.every(isSubQueryExecutionResult);
+  if (!validExecutionResults) {
     return false;
   }
 

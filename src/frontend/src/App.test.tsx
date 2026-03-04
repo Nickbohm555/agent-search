@@ -39,9 +39,19 @@ function successRunResponse(overrides?: Partial<RuntimeAgentRunResponse>): Runti
         status: "validated",
         attempts: 1,
         follow_up_actions: [],
+        attempt_trace: [
+          {
+            attempt: 1,
+            sufficient: true,
+            internal_result_count: 2,
+            opened_page_count: 0,
+            follow_up_action: null,
+          },
+        ],
         stop_reason: "sufficient",
       },
     ],
+    subquery_execution_results: [],
     web_tool_runs: [],
     graph_state: {
       current_step: "synthesis",
@@ -233,7 +243,7 @@ describe("App", () => {
       expect(screen.getByTestId("timeline-list")).toBeInTheDocument();
       expect(screen.getByText("decomposition")).toBeInTheDocument();
       expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
-      expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a: validated after 1 attempt")).toBeInTheDocument();
     });
     const timelineItems = screen.getAllByRole("listitem").filter((item) =>
       item.classList.contains("timeline-item"),
@@ -376,9 +386,26 @@ describe("App", () => {
             status: "stopped_insufficient",
             attempts: 2,
             follow_up_actions: ["search_more"],
+            attempt_trace: [
+              {
+                attempt: 1,
+                sufficient: false,
+                internal_result_count: 0,
+                opened_page_count: 1,
+                follow_up_action: "search_more",
+              },
+              {
+                attempt: 2,
+                sufficient: false,
+                internal_result_count: 0,
+                opened_page_count: 2,
+                follow_up_action: null,
+              },
+            ],
             stop_reason: "max_attempts",
           },
         ],
+        subquery_execution_results: [],
         web_tool_runs: [],
         graph_state: null,
       },
@@ -391,7 +418,9 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByTestId("timeline-empty")).toBeInTheDocument();
       expect(screen.getByText("subquery-fallback (web)")).toBeInTheDocument();
-      expect(screen.getByText("subquery-fallback: stopped_insufficient")).toBeInTheDocument();
+      expect(screen.getByText("subquery-fallback: stopped_insufficient after 2 attempts")).toBeInTheDocument();
+      expect(screen.getByText("follow-up: search_more")).toBeInTheDocument();
+      expect(screen.getByText("attempt 1: insufficient | internal 0 | opened 1 | next search_more")).toBeInTheDocument();
       expect(screen.getByText("Fallback answer.")).toBeInTheDocument();
     });
   });
@@ -405,6 +434,7 @@ describe("App", () => {
         tool_assignments: [],
         retrieval_results: [],
         validation_results: [],
+        subquery_execution_results: [],
         graph_state: {
           current_step: "synthesis",
           timeline: [],
@@ -701,6 +731,7 @@ describe("App", () => {
         output: "",
         sub_queries: ["streamed-subquery"],
         validation_results: [],
+        subquery_execution_results: [],
       });
       handlers?.onEvent?.(
         {
@@ -721,9 +752,19 @@ describe("App", () => {
             status: "validated",
             attempts: 1,
             follow_up_actions: [],
+            attempt_trace: [
+              {
+                attempt: 1,
+                sufficient: true,
+                internal_result_count: 1,
+                opened_page_count: 0,
+                follow_up_action: null,
+              },
+            ],
             stop_reason: "sufficient",
           },
         ],
+        subquery_execution_results: [],
       });
       return { ok: true, data: final };
     });
@@ -757,6 +798,7 @@ describe("App", () => {
           sub_queries: [],
           tool_assignments: [],
           validation_results: [],
+          subquery_execution_results: [],
           graph_state: {
             current_step: "decomposition",
             timeline: [{ step: "decomposition", status: "started", details: {} }],

@@ -65,9 +65,19 @@ describe("frontend api client", () => {
             status: "validated",
             attempts: 1,
             follow_up_actions: [],
+            attempt_trace: [
+              {
+                attempt: 1,
+                sufficient: true,
+                internal_result_count: 2,
+                opened_page_count: 0,
+                follow_up_action: null,
+              },
+            ],
             stop_reason: "sufficient",
           },
         ],
+        subquery_execution_results: [],
         web_tool_runs: [],
         graph_state: {
           current_step: "synthesis",
@@ -107,10 +117,13 @@ describe("frontend api client", () => {
       'data: {"sequence":3,"event":"tool_assignments","data":{"tool_assignments":[{"sub_query":"q1","tool":"internal"}]}}',
       "",
       "event: validation_result",
-      'data: {"sequence":4,"event":"validation_result","data":{"sub_query":"q1","tool":"internal","sufficient":true,"status":"validated","attempts":1,"follow_up_actions":[],"stop_reason":"sufficient"}}',
+      'data: {"sequence":4,"event":"validation_result","data":{"sub_query":"q1","tool":"internal","sufficient":true,"status":"validated","attempts":1,"follow_up_actions":[],"attempt_trace":[{"attempt":1,"sufficient":true,"internal_result_count":0,"opened_page_count":0,"follow_up_action":null}],"stop_reason":"sufficient"}}',
+      "",
+      "event: subquery_execution_result",
+      'data: {"sequence":5,"event":"subquery_execution_result","data":{"sub_query":"q1","tool":"internal","retrieval_result":{"sub_query":"q1","tool":"internal","internal_results":[],"web_search_results":[],"opened_urls":[],"opened_pages":[]},"validation_result":{"sub_query":"q1","tool":"internal","sufficient":true,"status":"validated","attempts":1,"follow_up_actions":[],"attempt_trace":[{"attempt":1,"sufficient":true,"internal_result_count":0,"opened_page_count":0,"follow_up_action":null}],"stop_reason":"sufficient"}}}',
       "",
       "event: completed",
-      'data: {"sequence":5,"event":"completed","data":{"agent_name":"langgraph-scaffold","output":"Final answer","graph_state":{"current_step":"synthesis","timeline":[{"step":"decomposition","status":"completed","details":{}}],"graph":{}}}}',
+      'data: {"sequence":6,"event":"completed","data":{"agent_name":"langgraph-scaffold","output":"Final answer","graph_state":{"current_step":"synthesis","timeline":[{"step":"decomposition","status":"completed","details":{}}],"graph":{}}}}',
       "",
     ].join("\n");
 
@@ -138,6 +151,8 @@ describe("frontend api client", () => {
       expect(result.data.output).toBe("Final answer");
       expect(result.data.tool_assignments).toEqual([{ sub_query: "q1", tool: "internal" }]);
       expect(result.data.validation_results).toHaveLength(1);
+      expect(result.data.subquery_execution_results).toHaveLength(1);
+      expect(result.data.subquery_execution_results[0]?.validation_result.attempt_trace[0]?.attempt).toBe(1);
     }
     expect(snapshots.some((snapshot) => snapshot.sub_queries.includes("q1"))).toBe(true);
     expect(snapshots[snapshots.length - 1]?.output).toBe("Final answer");
