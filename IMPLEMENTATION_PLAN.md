@@ -3,6 +3,7 @@
     - Extend backend load request schema to support a wiki mode plus wiki input (for example URL/topic) without breaking existing inline payloads.
     - Add wiki ingestion service in `src/backend/services/` that resolves one geopolitics wiki page into at least one structured document (`title`, `content`, `source_ref`, `source_type`).
     - Persist wiki attribution fields so downstream retrieval responses can identify wiki origin.
+    - I need large wiki sources, not small. chunk to multiple documents. give me a lsit to chose from.
   - Verification requirements (acceptance outcomes):
     - Backend smoke test: wiki-mode load request returns `200` with `status="success"`, `source_type="wiki"`, `documents_loaded >= 1`, `chunks_created >= 1`.
     - Backend smoke test: stored wiki-derived document has non-empty `title` and non-empty `content` suitable for chunking.

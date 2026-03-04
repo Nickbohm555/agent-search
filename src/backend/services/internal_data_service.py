@@ -11,7 +11,8 @@ from schemas import (
     InternalRetrievedChunk,
 )
 from services.wiki_ingestion_service import resolve_wiki_documents
-from utils.embeddings import chunk_text, cosine_similarity, embed_text
+from utils.chunking import split_text
+from utils.embeddings import cosine_similarity, embed_text
 
 
 def _persist_documents(
@@ -23,6 +24,9 @@ def _persist_documents(
     """Persist source documents and chunks for internal retrieval.
 
     Called by `load_internal_data` for both inline and wiki-backed inputs.
+    Uses LangChain chunk splitting via `utils.chunking.split_text` (env
+    configurable `INTERNAL_DATA_CHUNK_SIZE` / `INTERNAL_DATA_CHUNK_OVERLAP`)
+    before embedding and chunk-row persistence.
     Returns `(documents_loaded, chunks_created)` for response observability.
     """
     documents_loaded = 0
@@ -38,7 +42,7 @@ def _persist_documents(
         db.add(document)
         db.flush()
 
-        chunks = chunk_text(document_input.content)
+        chunks = split_text(document_input.content)
         if not chunks:
             chunks = [document_input.content.strip()]
 

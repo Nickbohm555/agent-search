@@ -12,27 +12,6 @@ def _tokenize(text: str) -> list[str]:
     return [match.group(0).lower() for match in _TOKEN_PATTERN.finditer(text)]
 
 
-def chunk_text(text: str, chunk_size: int = 60, overlap: int = 10) -> list[str]:
-    """Create deterministic word chunks suitable for retrieval.
-
-    The defaults keep chunks readable for tests and local demo usage.
-    """
-    words = text.split()
-    if not words:
-        return []
-
-    step = max(chunk_size - overlap, 1)
-    chunks: list[str] = []
-    for start in range(0, len(words), step):
-        window = words[start : start + chunk_size]
-        if not window:
-            continue
-        chunks.append(" ".join(window).strip())
-        if start + chunk_size >= len(words):
-            break
-    return chunks
-
-
 def embed_text(text: str, dimensions: int = EMBEDDING_DIM) -> list[float]:
     """Generate a deterministic local embedding for scaffold-only retrieval.
 

@@ -237,6 +237,56 @@ def test_internal_data_load_persists_non_null_chunk_vectors(internal_data_client
 
 
 @pytest.mark.smoke
+def test_internal_data_load_honors_langchain_chunking_env_config(
+    internal_data_client_with_session,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("INTERNAL_DATA_CHUNK_SIZE", "120")
+    monkeypatch.setenv("INTERNAL_DATA_CHUNK_OVERLAP", "20")
+
+    internal_data_client, testing_session_local = internal_data_client_with_session
+    content = (
+        "Segment Alpha explains deployment preflight checks for services and data stores. "
+        "It includes release gates, validation scripts, and rollback ownership. "
+        "Segment Beta describes smoke-test execution and post-deploy verification for APIs. "
+        "Segment Gamma covers escalations, incident triage, and customer communication templates. "
+        "Segment Omega captures final sign-off criteria and production handoff details."
+    )
+    source_ref = "internal://chunking-config-smoke"
+
+    response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "inline",
+            "documents": [{"title": "Chunking Config Runbook", "content": content, "source_ref": source_ref}],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["documents_loaded"] == 1
+    assert payload["chunks_created"] >= 2
+
+    with testing_session_local() as db:
+        chunks = (
+            db.query(InternalDocumentChunk)
+            .filter(InternalDocumentChunk.document.has(source_ref=source_ref))
+            .order_by(InternalDocumentChunk.chunk_index.asc())
+            .all()
+        )
+        assert len(chunks) == payload["chunks_created"]
+        assert chunks[0].content.startswith("Segment Alpha")
+        assert "Segment Omega" in chunks[-1].content
+
+    retrieve_response = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "final sign-off criteria production handoff", "limit": 3},
+    )
+    assert retrieve_response.status_code == 200
+    retrieval_results = retrieve_response.json()["results"]
+    assert any((result["source_ref"] or "") == source_ref for result in retrieval_results)
+
+
+@pytest.mark.smoke
 def test_wiki_retrieval_includes_wiki_attribution_and_content(internal_data_client: TestClient):
     load_response = internal_data_client.post(
         "/api/internal-data/load",
