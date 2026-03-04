@@ -1,135 +1,135 @@
 # IMPLEMENTATION_PLAN
 
 ## Status Snapshot (2026-03-04)
-- Project remains scaffold-only after code/spec comparison.
-- Confirmed implemented behavior in `src/*`:
-  - `GET /api/health` returns `{ "status": "ok" }`.
+- Project is still scaffold-only after comparing `specs/*` to `src/*`.
+- Confirmed implemented behavior:
+  - `GET /api/health` returns `{"status":"ok"}`.
   - `GET /api/search-skeleton` returns scaffold status/message.
   - `GET /api/agents/runtime` returns scaffold agent metadata.
   - `POST /api/agents/run` returns scaffold runtime output.
-  - Startup sets `app.state.langfuse` via placeholder initializer (no real SDK client/tracer).
-  - Alembic baseline migration exists with no domain schema objects.
-  - Frontend renders static scaffold-only UI.
-- Confirmed test coverage:
-  - Backend: only `/api/health` smoke test exists.
-  - Frontend: only scaffold heading render test exists.
-- `src/lib/*` is currently absent.
+  - Startup sets `app.state.langfuse` via placeholder initializer (no real Langfuse client/tracer).
+  - Alembic baseline migration exists with no domain tables.
+  - Frontend renders static scaffold UI only.
+- Confirmed tests present:
+  - Backend: `tests/api/test_health.py` only.
+  - Frontend: `src/App.test.tsx` heading render only.
+- `src/lib/*` does not exist in this repo (checked via `rg --files src/lib`).
 
 ## Completed
-- [x] Backend scaffold routes/services/schemas for health/search skeleton/agent runtime.
-- [x] Frontend scaffold app with TypeScript + Vite.
-- [x] DB/Alembic baseline scaffold and compose wiring.
+- [x] Scaffold FastAPI app, routers, services, schemas, and runtime-agent placeholders.
+- [x] Scaffold React + TypeScript + Vite frontend shell.
+- [x] Scaffold Docker Compose + Postgres + Alembic baseline wiring.
 
-## Remaining (Prioritized)
+## Remaining Work (Prioritized, Outcome-Based)
 
-- [ ] P0 - Add smoke tests for already-exposed scaffold endpoints (incomplete)
-  - Gap confirmed by code search: missing tests for `/api/search-skeleton`, `/api/agents/runtime`, `/api/agents/run`.
-  - Verification requirements (outcomes):
-    - `GET /api/search-skeleton` returns `200`, `status="scaffold"`, and non-empty `message`.
+- [ ] P0 - Add smoke tests for existing scaffold endpoints (incomplete)
+  - Gap confirmation: no tests for `/api/search-skeleton`, `/api/agents/runtime`, `/api/agents/run`.
+  - Required verification outcomes:
+    - `GET /api/search-skeleton` returns `200`, `status="scaffold"`, non-empty `message`.
     - `GET /api/agents/runtime` returns `200` with non-empty `name` and `version`.
-    - `POST /api/agents/run` with valid `query` returns `200` with non-empty `agent_name` and `output`.
-    - Edge case: empty `query` is rejected with request-validation 4xx.
+    - `POST /api/agents/run` with valid query returns `200` with non-empty `agent_name` and `output`.
+    - Empty `query` is rejected with request-validation 4xx.
 
 - [ ] P0 - Langfuse SDK setup (`specs/langfuse-sdk-setup.md`) (incomplete)
-  - Gap confirmed: no Langfuse dependency in `pyproject.toml`; initializer returns placeholder objects only.
-  - Verification requirements (outcomes):
-    - With `LANGFUSE_ENABLED=true` and valid keys, app startup succeeds and exposes a usable Langfuse handle on app state.
-    - With disabled flag or missing credentials, app startup still succeeds with no-op behavior.
-    - A tracing-capable request path can create an observation via that handle without runtime errors.
+  - Gap confirmation: no Langfuse dependency in `pyproject.toml`; initializer is placeholder-only.
+  - Required verification outcomes:
+    - With `LANGFUSE_ENABLED=true` and valid credentials, app startup succeeds and a usable tracing handle exists on app state.
+    - With `LANGFUSE_ENABLED=false` or missing credentials, app startup still succeeds with graceful no-op handle.
+    - A tracing-capable path can create an observation through this handle without runtime errors.
 
-- [ ] P0 - Trace every agent run at execution boundary (`specs/agent-run-tracing.md`) (incomplete)
-  - Gap confirmed: `run_runtime_agent()` has no trace/span instrumentation.
-  - Verification requirements (outcomes):
-    - With tracing enabled, `POST /api/agents/run` creates an observation containing query, agent identity, and output.
-    - With tracing disabled, endpoint response behavior remains unchanged and succeeds without tracing side effects.
-    - Edge case: consecutive runs create distinct observations.
+- [ ] P0 - Agent run tracing at execution boundary (`specs/agent-run-tracing.md`) (incomplete)
+  - Gap confirmation: `run_runtime_agent()` has no tracing instrumentation.
+  - Required verification outcomes:
+    - With tracing enabled, each `POST /api/agents/run` creates an observation including query input, agent identity, and output.
+    - With tracing disabled, endpoint behavior/response remains unchanged and succeeds.
+    - Consecutive runs produce distinct observations.
 
 - [ ] P0 - Query decomposition (`specs/query-decomposition.md`) (incomplete)
-  - Gap confirmed: no decomposition component/state exists.
-  - Verification requirements (outcomes):
+  - Gap confirmation: no decomposition module/state exposed.
+  - Required verification outcomes:
     - Complex query yields at least one focused sub-query.
-    - Each sub-query is reasonably answerable by a single tool domain.
-    - Sub-queries are exposed to downstream orchestration/state and stream projection.
+    - Each produced sub-query is answerable by a single tool domain (`internal` or `web`, not both).
+    - Sub-queries are exposed for downstream orchestration and streaming.
 
 - [ ] P0 - Tool selection per sub-query (`specs/tool-selection-per-subquery.md`) (incomplete)
-  - Gap confirmed: no assignment logic for `internal` vs `web`.
-  - Verification requirements (outcomes):
-    - Every sub-query receives exactly one tool assignment.
-    - Edge case: no sub-query is assigned both tools.
-    - Assignments are available to retrieval/orchestration and stream projection.
+  - Gap confirmation: no `internal` vs `web` assignment logic exists.
+  - Required verification outcomes:
+    - Every sub-query receives exactly one assignment (`internal` or `web`).
+    - No sub-query is assigned both tools.
+    - Assignments are available to retrieval/orchestration (and stream projection where needed).
 
-- [ ] P0 - Internal data loading + vectorization (`specs/data-loading-vectorization.md`) (incomplete)
-  - Gap confirmed: no ingestion pipeline/API, no corpus schema, embeddings util is placeholder.
-  - Verification requirements (outcomes):
-    - Supported source load can be triggered and completes successfully.
-    - After successful load, internal retrieval returns relevant results from loaded docs.
-    - Load outcome is observable with success/failure and doc/chunk counts for UI status.
+- [ ] P0 - Internal data loading and vectorization (`specs/data-loading-vectorization.md`) (incomplete)
+  - Gap confirmation: no ingestion API/workflow, no corpus schema, and embeddings util is placeholder.
+  - Required verification outcomes:
+    - A supported internal source load can be triggered and completes successfully.
+    - After successful load, internal retrieval returns results from loaded documents for relevant queries.
+    - Load result is observable with success/failure plus doc/chunk counts for UI status.
 
 - [ ] P0 - Web search tool pair (`specs/web-search-onyx-style.md`) (incomplete)
-  - Gap confirmed: no `web.search`/`web.open_url` tool interfaces.
-  - Verification requirements (outcomes):
+  - Gap confirmation: no `web.search`/`web.open_url` tool interfaces implemented.
+  - Required verification outcomes:
     - `web.search` returns links/snippets metadata only (no full page body).
     - `web.open_url` returns main/full page content for a URL.
-    - Search->select->open behavior is observable (including opened URLs).
-    - Sub-queries routed to `web` execute through this tool pair.
+    - Search then open behavior is observable (including which URLs were opened).
+    - Sub-queries assigned to `web` use this tool pair.
 
 - [ ] P1 - Per-subquery retrieval executor (`specs/per-subquery-retrieval.md`) (incomplete)
-  - Gap confirmed: no executor consuming `(subquery, assigned_tool)`.
-  - Verification requirements (outcomes):
+  - Gap confirmation: no executor that consumes `(subquery, assigned_tool)`.
+  - Required verification outcomes:
     - `internal` assignment runs internal retrieval and returns retrievable content.
     - `web` assignment runs web retrieval and returns retrievable content.
-    - Edge case: internal path returns only content from loaded internal store.
-    - Retrieval output contract is consumable by validation stage.
+    - Internal retrieval returns content from loaded internal store only.
+    - Retrieval output contract is consumable by validation step.
 
 - [ ] P1 - Retrieval validation loop (`specs/retrieval-validation.md`) (incomplete)
-  - Gap confirmed: no sufficiency evaluator, no follow-up loop, no stop policy.
-  - Verification requirements (outcomes):
-    - Each retrieval result is evaluated for sufficiency.
-    - Insufficient result triggers at least one follow-up action.
-    - Loop terminates deterministically by sufficiency or explicit stopping condition.
-    - Validation status/result is exposed for synthesis and streaming.
+  - Gap confirmation: no sufficiency evaluator, no retry/deepen loop, no stop policy.
+  - Required verification outcomes:
+    - Each sub-query retrieval result is evaluated for sufficiency.
+    - Insufficient results trigger at least one follow-up action (more retrieval/deeper read).
+    - Loop stops deterministically via sufficiency or explicit stopping condition.
+    - Validation result/status is exposed for synthesis and streaming.
 
 - [ ] P1 - Answer synthesis (`specs/answer-synthesis.md`) (incomplete)
-  - Gap confirmed: no synthesis stage combining validated outputs.
-  - Verification requirements (outcomes):
-    - Original query + validated sub-query results produce one final answer.
-    - Final answer coherently addresses original query (fixture/rubric assertion).
-    - Edge case: synthesis consumes validated outputs only (no direct retrieval in this step).
+  - Gap confirmation: no synthesis component exists.
+  - Required verification outcomes:
+    - Original query plus validated sub-query results produce one final answer.
+    - Final answer coherently addresses the original query (fixture/rubric assertion).
+    - Synthesis consumes validated outputs only (no direct retrieval in synthesis step).
 
 - [ ] P1 - LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`) (incomplete)
-  - Gap confirmed: graph builder is placeholder (`compiled: False`), no runnable pipeline graph.
-  - Verification requirements (outcomes):
-    - End-to-end decomposition->selection->retrieval->validation->synthesis runs as LangGraph.
-    - Intended stage order is preserved, including validation loop behavior.
-    - Deep-agent composition is present in subquery/tool execution path.
+  - Gap confirmation: `LangGraphAgentScaffold.build()` returns placeholder with `compiled=False`; no executable graph pipeline.
+  - Required verification outcomes:
+    - End-to-end decomposition -> selection -> retrieval -> validation -> synthesis runs as a LangGraph graph.
+    - Logical stage order is preserved, including validation loop behavior.
+    - Deep-agent composition exists in subquery/tool execution path.
     - Graph state/projection is consumable by streaming layer.
 
 - [ ] P2 - Streaming heartbeat service (`specs/streaming-agent-heartbeat.md`) (incomplete)
-  - Gap confirmed: no streaming endpoint/protocol/event bridge exists.
-  - Verification requirements (outcomes):
-    - Query run emits stream updates including generated sub-queries.
-    - Stream includes enough progress events for live UI heartbeat and completion.
-    - Edge case: event ordering remains coherent through terminal completion/final payload.
+  - Gap confirmation: no streaming endpoint/protocol/event bridge exists.
+  - Required verification outcomes:
+    - Running a query emits stream updates including generated sub-queries.
+    - Stream provides enough progress events for live heartbeat and completion.
+    - Event ordering remains coherent through final completion payload.
 
 - [ ] P2 - Demo UI TypeScript flow (`specs/demo-ui-typescript.md`) (incomplete)
-  - Gap confirmed: frontend lacks load trigger, run flow, stream consumption, progress timeline, final answer rendering.
-  - Verification requirements (outcomes):
-    - UI can trigger load/vectorize and shows loading then success/error outcome.
-    - Running a query shows streamed sub-queries in real time/near-real time.
-    - UI renders heartbeat progress and final answer from stream.
-    - Frontend tests, typecheck, and build checks pass.
+  - Gap confirmation: no load trigger, run flow, stream consumption, progress timeline, or final answer view.
+  - Required verification outcomes:
+    - User can trigger load/vectorize from UI and sees clear loading/success/error outcomes.
+    - Running query shows streamed sub-queries in real time or near real time.
+    - UI shows heartbeat progress and final answer from stream.
+    - Frontend render/interaction tests pass, plus typecheck and build checks pass.
 
 - [ ] P2 - MCP exposure (`specs/mcp-exposure.md`) (incomplete)
-  - Gap confirmed: no MCP server/wrapper/invocation contract in repository.
-  - Verification requirements (outcomes):
-    - MCP client can submit query and receive final synthesized answer.
-    - MCP path delegates to same LangGraph pipeline as HTTP run path.
-    - Edge case: repeated MCP invocations preserve response contract stability.
+  - Gap confirmation: no MCP server/wrapper/invocation contract in repo.
+  - Required verification outcomes:
+    - MCP client can submit a query and receive final synthesized answer.
+    - MCP path delegates to the same LangGraph pipeline used by HTTP runtime path.
+    - Repeated MCP calls preserve a stable response contract.
 
-## Cross-Cutting Quality Gates (Still Incomplete)
-- [ ] For each newly introduced backend behavior, add deterministic smoke/integration tests first.
-- [ ] For each newly introduced frontend behavior, add deterministic render/interaction tests first.
-- [ ] Tests assert externally observable outcomes rather than implementation internals.
-- [ ] CI test suite avoids hidden external-network dependencies (use fakes/mocks).
-- [ ] Every backend schema mutation ships with an Alembic migration in `src/backend/alembic/versions/`.
-- [ ] Observability vendor wiring remains isolated to startup/services (`src/backend/observability/*`), not routers.
+## Cross-Cutting Quality Gates (All Incomplete)
+- [ ] For each new backend behavior, add deterministic smoke/integration tests first.
+- [ ] For each new frontend behavior, add deterministic render/interaction tests first.
+- [ ] Tests verify externally observable outcomes (not internal implementation details).
+- [ ] CI test plan avoids hidden external-network dependencies (use fakes/mocks).
+- [ ] Every DB schema change ships with Alembic migration in `src/backend/alembic/versions/`.
+- [ ] Observability vendor wiring stays isolated in startup/services (`src/backend/observability/*`), not routers.
