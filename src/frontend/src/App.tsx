@@ -114,10 +114,17 @@ export default function App() {
               className="action-button neon-action"
               onClick={handleLoad}
               disabled={loadState === "loading"}
+              aria-busy={loadState === "loading"}
             >
               {loadState === "loading" ? "Loading..." : "Load Data"}
             </button>
-            <StatusBanner state={loadState} message={loadMessage} label="Load Status" testId="load-status-region" />
+            <StatusBanner
+              state={loadState}
+              message={loadMessage}
+              label="Load Status"
+              testId="load-status-region"
+              busy={loadState === "loading"}
+            />
           </div>
 
           <div className="control-block">
@@ -137,7 +144,13 @@ export default function App() {
             <h2>System Progress</h2>
             <span className="panel-kicker">READOUT</span>
           </div>
-          <StatusBanner state={runState} message={runMessage} label="Run Status" testId="progress-region" />
+          <StatusBanner
+            state={runState}
+            message={runMessage}
+            label="Run Status"
+            testId="progress-region"
+            busy={runState === "loading"}
+          />
           <ProgressHistory runDetails={runDetails} />
         </section>
 

@@ -150,6 +150,23 @@
     - `docker compose exec frontend npm run test` -> `28 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
+- [x] P1 - Harden cyberpunk UI accessibility semantics and reduced-motion/focus behavior (`specs/accessibility-within-aesthetic.md`).
+  - Tasks:
+  - Added explicit async accessibility semantics by exposing `aria-busy` on load/run status regions (`StatusBanner`) and wiring busy state from `App` during in-flight load/run actions.
+  - Added explicit keyboard focus-visible styling for core interactive controls (`button`, `textarea`) to keep focus indication clear within the neon theme.
+  - Added `prefers-reduced-motion: reduce` CSS guard to suppress non-essential animation/transition timing while preserving textual status feedback.
+  - Added deterministic frontend interaction test that verifies `aria-busy` toggles correctly for load and run in-flight states.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -v --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `36 passed`
+    - `docker compose exec frontend npm run test` -> `29 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 ## Completed Baseline (Scoped)
 
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.

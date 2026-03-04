@@ -379,6 +379,47 @@ describe("App", () => {
     });
   });
 
+  it("marks load and run status regions as busy only while requests are in flight", async () => {
+    const loadDeferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
+    mockedLoadInternalData.mockImplementation(() => loadDeferred.promise);
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+    expect(screen.getByTestId("load-status-region")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("progress-region")).toHaveAttribute("aria-busy", "false");
+
+    loadDeferred.resolve({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "inline",
+        documents_loaded: 2,
+        chunks_created: 8,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("load-status-region")).toHaveAttribute("aria-busy", "false");
+    });
+
+    const runDeferred = createDeferred<Awaited<ReturnType<typeof runAgentStream>>>();
+    mockedRunAgentStream.mockImplementation(() => runDeferred.promise);
+
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Busy semantics" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+    expect(screen.getByTestId("progress-region")).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByTestId("load-status-region")).toHaveAttribute("aria-busy", "false");
+
+    runDeferred.resolve({
+      ok: true,
+      data: successRunResponse(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("progress-region")).toHaveAttribute("aria-busy", "false");
+    });
+  });
+
   it("prevents duplicate in-flight load requests from rapid repeated clicks", async () => {
     const deferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
     mockedLoadInternalData.mockImplementation(() => deferred.promise);
