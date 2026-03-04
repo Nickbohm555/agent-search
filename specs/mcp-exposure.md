@@ -17,7 +17,7 @@ This spec covers: exposing the RAG pipeline (query in → final answer out, and 
 
 ### MCP wrapper
 - The pipeline is callable via MCP (e.g. as a tool or set of tools).
-- User intends to use FAS MCP as the client; the wrapper must be compatible with how FAS MCP invokes MCP servers/tools.
+- User intends to use FASTMCP as the client; the wrapper must be compatible with how FAST MCP invokes MCP servers/tools. Use FastMCP and https streaming attatched to a docker container.
 
 ### Invocation
 - At minimum: client can send a query and receive a final answer (sync or async).
