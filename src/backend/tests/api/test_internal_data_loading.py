@@ -98,3 +98,45 @@ def test_internal_retrieval_returns_loaded_content(internal_data_client: TestCli
     assert len(data["results"]) >= 1
     assert all(result["source_type"] == "inline" for result in data["results"])
     assert any("deployment" in result["content"].lower() for result in data["results"])
+
+
+@pytest.mark.smoke
+def test_internal_retrieval_handles_empty_corpus(internal_data_client: TestClient):
+    response = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "anything", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_chunks_considered"] == 0
+    assert data["results"] == []
+
+
+@pytest.mark.smoke
+def test_internal_retrieval_returns_low_signal_for_unrelated_query(internal_data_client: TestClient):
+    load_response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "inline",
+            "documents": [
+                {
+                    "title": "Engineering Notes",
+                    "content": "Service owners rotate weekly and review API latency dashboards every morning.",
+                    "source_ref": "internal://eng-notes",
+                }
+            ],
+        },
+    )
+    assert load_response.status_code == 200
+
+    response = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "orchid greenhouse watering schedule", "limit": 3},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_chunks_considered"] >= 1
+    assert len(data["results"]) >= 1
+    assert data["results"][0]["score"] < 0.6

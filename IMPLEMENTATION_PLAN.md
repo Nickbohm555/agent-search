@@ -58,17 +58,41 @@
     - `docker compose exec frontend npm run test` -> `25 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
-- [ ] P1 - Migrate internal vectorization/retrieval to pgvector-native storage and similarity querying (`specs/data-loading-vectorization.md`, `specs/per-subquery-retrieval.md`).
+- [x] P1 - Migrate internal vectorization/retrieval to pgvector-native storage and similarity querying (`specs/data-loading-vectorization.md`, `specs/per-subquery-retrieval.md`).
   - Tasks:
-  - Add Alembic migration for vector column/index changes in `src/backend/alembic/versions/`.
-  - Persist embeddings as pgvector-compatible values at load time.
-  - Move similarity ranking from Python JSON cosine loop to DB query path.
-  - Keep deterministic embedding mode for CI tests.
+  - Added Alembic migration `0003_pgvector_embed` to enable `vector` extension, add `embedding_vector vector(16)`, backfill from legacy JSON, create ivfflat cosine index, and remove `embedding_json`.
+  - Updated ORM model to store chunk embeddings in pgvector-compatible `embedding_vector` (with SQLite JSON variant for deterministic smoke tests).
+  - Updated load path to persist embeddings to `embedding_vector`.
+  - Updated retrieval path to use DB-side cosine similarity ordering when running on PostgreSQL and preserved deterministic SQLite fallback scoring for test determinism.
+  - Added smoke coverage for empty corpus retrieval and unrelated-query low-signal behavior.
   - Verification (outcomes):
-  - Load API reports observable success/failure with doc/chunk counts and writes retrievable vectors.
-  - Internal retrieval returns relevant chunks from loaded corpus through DB-backed vector similarity.
-  - Empty/unrelated corpus yields deterministic empty/low-signal results without crashes.
-  - `alembic upgrade head` creates expected structures and retrieval still works post-migration.
+  - Fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Health + required tests passed:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `34 passed`
+    - `docker compose exec frontend npm run test` -> `25 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+  - Postgres structures verified:
+    - `docker compose exec db psql -U agent_user -d agent_search -c "\\dx"` shows `vector` extension installed.
+    - `docker compose exec db psql -U agent_user -d agent_search -c "\\d internal_document_chunks"` shows `embedding_vector vector(16)` + ivfflat index `ix_internal_document_chunks_embedding_vector_ivfflat`.
+    - `docker compose exec backend uv run alembic current` -> `0003_pgvector_embed (head)`.
+  - Live API retrieval verified against Postgres-backed store after load (`/api/internal-data/load` then `/api/internal-data/retrieve`) with retrievable vector-scored results.
+
+## Build Tradeoffs
+
+- Chosen + why:
+  - Kept a deterministic SQLite fallback scoring path in `retrieve_internal_data` while moving PostgreSQL retrieval to DB-side pgvector cosine ordering. This preserves fast, isolated smoke tests without requiring Postgres for every test fixture.
+- Alternatives considered:
+  - Migrate all tests to Postgres-backed fixtures only (higher fidelity, slower and heavier test setup).
+  - Force Postgres-only retrieval path and drop SQLite fixture support (would break existing deterministic in-memory test flow).
+- References for the human:
+  - Code locations: `src/backend/services/internal_data_service.py`, `src/backend/models.py`, `src/backend/alembic/versions/0003_pgvector_internal_embeddings.py`, `src/backend/tests/api/test_internal_data_loading.py`.
+- HUMAN-ONLY NOTES:
+  - Loop run commit message should reference pgvector migration and retrieval path update.
+  - Key symbols: `InternalDocumentChunk.embedding_vector`, `retrieve_internal_data`, Alembic revision `0003_pgvector_embed`.
 
 - [ ] P1 - Improve subquestion decomposition robustness for agentic routing (`specs/query-decomposition.md`, `specs/tool-selection-per-subquery.md`).
   - Tasks:
