@@ -12,7 +12,7 @@
   - Alembic baseline exists with no domain tables.
   - Frontend renders static scaffold shell only.
 - Existing tests confirmed:
-  - Backend: `src/backend/tests/api/test_health.py` only.
+  - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 
 ## Completed
@@ -21,16 +21,10 @@
 - [x] Scaffold observability config loader and startup wiring for Langfuse handle.
 - [x] Scaffold React/TypeScript/Vite frontend shell with API base config helper.
 - [x] Scaffold Docker Compose + Postgres + Alembic + pgvector infrastructure.
+- [x] P0 - Add smoke coverage for existing scaffold endpoints
+  - Added outcome-focused smoke tests for `GET /api/search-skeleton`, `GET /api/agents/runtime`, `POST /api/agents/run`, and empty-query validation behavior.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P0 - Add smoke coverage for existing scaffold endpoints
-  - Scope gap confirmed in code search: only `/api/health` has tests.
-  - Verification requirements (outcome-focused):
-    - `GET /api/search-skeleton` returns `200` with `status="scaffold"` and non-empty `message`.
-    - `GET /api/agents/runtime` returns `200` with non-empty `name` and `version`.
-    - `POST /api/agents/run` with valid payload returns `200` with non-empty `agent_name` and `output`.
-    - `POST /api/agents/run` rejects empty `query` with request-validation 4xx.
 
 - [ ] P0 - Implement Langfuse SDK initialization (`specs/langfuse-sdk-setup.md`)
   - Scope gap confirmed: no Langfuse SDK dependency; initializer returns placeholder handle only.
@@ -137,3 +131,28 @@
 - [ ] Deliver Alembic migration in same change for every schema change.
 - [ ] Keep observability vendor integration isolated to startup/services, not routers.
 - [ ] Before commit for implementation runs: pass health check + backend tests + frontend tests + frontend typecheck.
+
+## BLOCKED (2026-03-04)
+- Blocker: Missing Docker daemon access in this execution environment (cannot connect to `/Users/nickbohm/.docker/run/docker.sock`), which prevents running required compose-based checks.
+  - Failed commands:
+    - `docker compose up -d` -> `permission denied while trying to connect to the Docker daemon socket ... connect: operation not permitted`
+    - `docker compose ps` -> same daemon socket permission error.
+- Secondary local-environment blockers when attempting non-Docker fallback:
+  - Failed commands:
+    - `(src/backend) uv run pytest` -> `failed to open file /Users/nickbohm/.cache/uv/sdists-v9/.git: Operation not permitted`
+    - `(src/frontend) npm test -- --run` -> `sh: vitest: command not found`
+    - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
+- Repository write blocker in this sandbox:
+  - Failed commands:
+    - `git add -A && git commit -m "blocked: add scaffold endpoint smoke tests"` -> `fatal: Unable to create '.git/index.lock': Operation not permitted`
+- Next action:
+  - Run checks on a host with Docker daemon access and installed project dependencies, then re-run:
+    - `docker compose up -d`
+    - `docker compose exec backend uv run pytest`
+    - `docker compose exec frontend npm run test`
+    - `docker compose exec frontend npm run typecheck`
+    - Health check: `curl http://localhost:8000/api/health`
+  - Commit and push from a shell that can write to `.git/`:
+    - `git add -A`
+    - `git commit -m "blocked: add scaffold endpoint smoke tests"`
+    - `git push`
