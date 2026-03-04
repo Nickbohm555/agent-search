@@ -1,21 +1,9 @@
-**Orchestration stack: DeepAgent library only.** No LangGraph or StateGraph — all graph/orchestration is provided by DeepAgent.
-
-- [ ] P0 — Replace scaffolded orchestration with a real DeepAgent runtime for `/api/agents/run` (spec: `specs/orchestration-langgraph.md`).
-  Verification requirements:
-  - Add/update backend smoke tests that prove the run path executes through the DeepAgent library (not a static projection) from decomposition to synthesis.
-  - Validate that one request still returns a single final answer payload and preserves the existing response schema contract in `src/backend/schemas/agent.py`.
-  - Validate that execution metadata/state in the response reflects the actual run (step progression and completion), not hardcoded placeholders.
-
-- [ ] P0 — Implement true DeepAgent-based per-subquery execution inside the flow (spec: `specs/orchestration-langgraph.md`).
-  Verification requirements:
-  - Add/update backend smoke tests that prove each produced subquery is executed via the DeepAgent library (subgraph/agent unit), not a plain loop helper.
-  - Validate that each subquery follows exactly one tool path (`internal` or `web`) and that retrieval+validation complete before synthesis consumes that subquery result.
-  - Validate that the validation loop per subquery terminates deterministically with either `validated` or `stopped_insufficient`.
-
-- [ ] P1 — Align state projection for downstream consumers with real DeepAgent execution state (spec: `specs/orchestration-langgraph.md`).
-  Verification requirements:
-  - Add/update backend smoke tests that prove returned `graph_state` can represent per-step progress for decomposition, tool selection, subquery retrieval/validation, and synthesis from real execution.
-  - Validate that repeated runs produce independent state timelines (no state leakage across runs).
-  - Validate that per-subquery deep-agent progress is observable in state/timeline fields needed by future streaming consumers.
-
-- [x] Completed baseline relevant to this scope — Scaffold pipeline behavior exists and is deterministically covered (decomposition, tool assignment, retrieval, validation, synthesis, and graph-shaped response fields), but runtime execution is still scaffolded rather than true DeepAgent execution.
+- [ ] P0 - Implement run-config API contract for DeepAgent persistence: extend `RuntimeAgentRunRequest`/`RuntimeAgentRunResponse` with optional `thread_id`, `user_id`, `checkpoint_id`; when `thread_id` is omitted, generate one and return it; propagate these fields through router/service/agent invocation config. Verification: API accepts requests both with and without config fields; response always includes usable `thread_id`; provided `thread_id` is echoed/preserved; optional `checkpoint_id` round-trips when provided; existing clients that send only `query` still succeed.
+- [ ] P0 - Compile and invoke DeepAgent with checkpointer + store wiring: add checkpointer setup (dev in-memory, production from `DATABASE_URL`) and store setup, then invoke `ainvoke`/`astream` with `configurable.thread_id` and optional `checkpoint_id`. Verification: repeated runs with same `thread_id` expose persisted graph state via `graph.get_state(config)`; runs with different `thread_id` do not share thread state; replay/fork from a valid `checkpoint_id` succeeds without crashing; runs without persistence config still execute.
+- [ ] P0 - Add user-scoped memory routing with explicit read/write points: namespace store keys by `(user_id, "memories")`, read memories at run start, and perform defined write behavior after synthesis. Verification: memory written for `user_id=A` is retrievable in later runs for `user_id=A`; `user_id=B` cannot read `user_id=A` memories; read path is observable in run metadata/timeline; write path records deterministic memory payload shape.
+- [ ] P1 - Define and wire at least one specialized DeepAgent subagent with delegated tools: provide `name`, `description`, `system_prompt`, `tools`, and delegate from main agent via task tool for subquery execution/research. Verification: run metadata/timeline shows delegation to the named subagent; delegated subagent executes retrieval/validation tools and returns a single summarized result; subagent definition contract is validated in tests (required keys present).
+- [ ] P1 - Restore full orchestration outputs through the DeepAgent runtime path: ensure decomposition, one-tool-per-subquery assignment, per-subquery retrieval, validation loop, and synthesis all populate `sub_queries`, `tool_assignments`, `retrieval_results`, `validation_results`, `output`, and ordered timeline steps. Verification: timeline order is decomposition -> tool_selection -> retrieval/validation per subquery -> synthesis; each subquery has exactly one tool assignment; insufficient retrieval triggers at least one follow-up action then stop; synthesis contains only validated evidence and reports insufficient evidence where validation fails.
+- [ ] P2 - Align tracing with persisted DeepAgent runs: include thread/checkpoint/user context in span metadata while preserving no-op behavior when tracing disabled. Verification: enabled tracing creates one span per run including query, agent identity, output, and persistence identifiers; disabled tracing creates no spans and does not alter run response.
+- [ ] P2 - Update frontend API types and request plumbing for resumable runs: add optional request fields and response handling for `thread_id`/`checkpoint_id` so UI can reuse run context in future deepAgent UX work. Verification: frontend typecheck passes with new contract; API client accepts optional fields without malformed-response errors; existing run flow without extra fields remains unchanged.
+- [x] Complete (scaffold baseline) - DeepAgent dependency and runtime bootstrap exist: backend includes `deepagents` dependency and `LangGraphAgentScaffold` initializes via `create_deep_agent(...)`.
+- [x] Complete (scaffold baseline) - Agent run endpoint integration exists: `/api/agents/run` is wired through router/service/factory to the DeepAgent runtime wrapper and returns a `graph_state` envelope.

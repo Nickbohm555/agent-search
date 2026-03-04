@@ -38,14 +38,24 @@ This spec covers: implementing the end-to-end flow (decomposition → tool selec
 - Execution state (or a projection of it) can be used by the streaming service for UI heartbeat.
 </acceptance_criteria>
 
+<implementation>
+## Implementation details
+
+- **Initialization:** For each run (or lazily), initialize the DeepAgent with: (1) **config** from env (e.g. `AGENT_MODEL_NAME`, `AGENT_MODEL_PROVIDER`), (2) **backend** (optional, e.g. virtual filesystem), (3) **postgresStore** (Postgres checkpointer/store from `DATABASE_URL`). Use the same store for persistence across runs when supported.
+- **Execution:** After init, call **ainvoke** and/or **astream** on the compiled agent. Use **astream** to collect all events for the timeline; use **ainvoke** for final state when needed. Map stream events to `RuntimeAgentGraphStep` (step name, status, details) for the response `graph_state.timeline`.
+- **Response:** Preserve the existing response schema (`sub_queries`, `tool_assignments`, `retrieval_results`, `validation_results`, `output`, `graph_state`). When DeepAgent does not yet fill that shape, the pipeline can still run decomposition → tool selection → subquery execution → synthesis and use the DeepAgent stream only for timeline when available.
+</implementation>
+
 <boundaries>
 ## Out of Scope (Other Specs)
 
 - Behavior of decomposition, tool selection, retrieval, validation, synthesis → their respective specs.
 - Pushing state to UI → streaming-agent-heartbeat.md
 - Exposing the pipeline via MCP → mcp-exposure.md
+- Memory (store + routing), subagents with tools, checkpointing and config → **deepagents-memory-subagents-checkpointing.md**
 </boundaries>
 
 ---
 *Topic: orchestration-langgraph*
 *Spec created: 2025-03-03*
+*Extended by: specs/deepagents-memory-subagents-checkpointing.md (memory, subagents, checkpointing)*
