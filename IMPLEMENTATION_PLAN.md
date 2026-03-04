@@ -6,6 +6,14 @@
 - Iteration mode: complete one highest-priority frontend item per run with tests.
 - Note: `src/lib/*` does not exist in this repo; shared frontend library code is in `src/frontend/src/lib/*`.
 
+## Completed Frontend Tasks (Merged to `main`)
+- [x] Typed frontend API layer for load/run flows with deterministic error mapping.
+- [x] Demo UI workflow closure for load -> run -> final-answer path (non-stream baseline).
+- [x] Non-stream progress timeline/readout fallback rendering.
+- [x] Request lifecycle protections: in-flight duplicate prevention and retry handling.
+- [x] Cyberpunk visual-theme baseline implementation.
+- [x] Deck layout/chrome framing for controls, progress, and result panels.
+
 ## Current Frontend Coverage (2026-03-04)
 - [x] TypeScript React/Vite demo shell with load/run controls is present.
 - [x] Frontend API client supports `POST /api/internal-data/load` and `POST /api/agents/run` with deterministic error handling.
