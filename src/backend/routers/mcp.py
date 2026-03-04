@@ -2,8 +2,14 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from db import get_db
-from schemas import McpToolInvokeRequest, McpToolInvokeResponse, McpToolsListResponse
-from services.mcp_service import invoke_mcp_tool, list_mcp_tools
+from schemas import (
+    McpRpcRequest,
+    McpRpcResponse,
+    McpToolInvokeRequest,
+    McpToolInvokeResponse,
+    McpToolsListResponse,
+)
+from services.mcp_service import handle_mcp_rpc, invoke_mcp_tool, list_mcp_tools
 
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
 
@@ -22,3 +28,13 @@ def invoke_mcp(
 ) -> McpToolInvokeResponse:
     """Invoke MCP tool calls by delegating to application runtime services."""
     return invoke_mcp_tool(payload, db=db, tracing_handle=request.app.state.langfuse)
+
+
+@router.post("/rpc", response_model=McpRpcResponse)
+def invoke_mcp_rpc(
+    payload: McpRpcRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> McpRpcResponse:
+    """Handle MCP-compatible JSON-RPC methods for tool discovery and execution."""
+    return handle_mcp_rpc(payload, db=db, tracing_handle=request.app.state.langfuse)

@@ -22,6 +22,8 @@ from .internal_data import (
     WikiLoadInput,
 )
 from .mcp import (
+    McpRpcRequest,
+    McpRpcResponse,
     McpToolDefinition,
     McpToolInvokeRequest,
     McpToolInvokeResponse,
@@ -68,4 +70,6 @@ __all__ = [
     "McpToolsListResponse",
     "McpToolInvokeRequest",
     "McpToolInvokeResponse",
+    "McpRpcRequest",
+    "McpRpcResponse",
 ]
