@@ -1,151 +1,81 @@
 # IMPLEMENTATION_PLAN
 
+## Scope
+- Frontend-only planning for "all frontend work" against `specs/*` and current code in `src/frontend/*`.
+- Planning mode only: no implementation in this run.
+
 ## Status Snapshot (2026-03-04)
-- Repository state is early implementation (no longer scaffold-only) after comparing `specs/*` with `src/*`.
-- `src/lib/*` does not exist (confirmed via `rg --files src/lib`).
-- Existing working scaffold behavior confirmed:
-  - `GET /api/health` returns `{"status":"ok"}`.
-  - `GET /api/search-skeleton` returns scaffold status/message.
-  - `GET /api/agents/runtime` returns scaffold agent identity.
-  - `POST /api/agents/run` returns synthesized final answer output plus pipeline artifacts.
-  - `POST /api/internal-data/load` persists inline internal documents and chunk embeddings.
-  - `POST /api/internal-data/retrieve` returns ranked chunks from loaded internal documents.
-  - `POST /api/web/search` returns web links/snippet metadata for a query.
-  - `POST /api/web/open-url` returns full page content for a selected URL.
-  - Startup sets `app.state.langfuse` via credential-aware Langfuse initializer.
-  - Alembic now includes internal corpus domain tables.
-  - Frontend renders static scaffold shell only.
-- Existing tests confirmed:
-  - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
-  - Backend: smoke tests now also cover internal data load observability and retrieval from loaded corpus content.
-  - Backend: smoke tests now also cover web tool search/open contracts and web-assigned agent sub-query execution.
-  - Frontend: `src/frontend/src/App.test.tsx` heading render only.
-- Newly implemented this iteration:
-  - Implemented LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`):
-    - Replaced placeholder graph scaffold with compiled graph projection and explicit node/edge topology for decomposition -> tool selection -> retrieval -> validation -> synthesis.
-    - Added deep-agent execution component (`SubQueryExecutionAgent`) to encapsulate per-subquery retrieval + validation behavior.
-    - Updated runtime agent run flow so `/api/agents/run` executes through the orchestration graph and returns graph-state projection (`graph_state.timeline`, `graph_state.graph`) for streaming consumption.
-  - Added backend smoke coverage for:
-    - compiled LangGraph projection exposure on runtime agent runs,
-    - deterministic pipeline ordering with per-subquery retrieval/validation execution and validation loop observability.
+- Confirmed frontend is scaffold-only today:
+  - `src/frontend/src/App.tsx` renders static scaffold text only.
+  - `src/frontend/src/App.test.tsx` has one heading-render test only.
+- Confirmed no `src/lib/*` exists in repo (searched with `rg --files src/lib`), so shared frontend utilities currently live in `src/frontend/src/utils/*`.
+- Confirmed backend has non-streaming endpoints needed by UI (`/api/internal-data/load`, `/api/agents/run`) and does not yet expose a streaming endpoint/protocol for heartbeat delivery.
 
-## Completed
-- [x] Scaffold FastAPI app with baseline routers, services, and schemas.
-- [x] Scaffold runtime agent factory/wrapper and placeholder LangGraph agent object.
-- [x] Scaffold observability config loader and startup wiring for Langfuse handle.
-- [x] Scaffold React/TypeScript/Vite frontend shell with API base config helper.
-- [x] Scaffold Docker Compose + Postgres + Alembic + pgvector infrastructure.
-- [x] P0 - Add smoke coverage for existing scaffold endpoints
-  - Added outcome-focused smoke tests for `GET /api/search-skeleton`, `GET /api/agents/runtime`, `POST /api/agents/run`, and empty-query validation behavior.
-- [x] P0 - Implement Langfuse SDK initialization (`specs/langfuse-sdk-setup.md`)
-  - Added `langfuse==2.60.1` to backend dependencies.
-  - Replaced placeholder initializer with environment/credential-aware Langfuse client setup.
-  - Startup remains resilient when disabled or misconfigured by returning a no-op tracing handle.
-  - Added smoke tests covering enabled startup wiring and disabled graceful behavior.
-- [x] P0 - Instrument agent-run tracing (`specs/agent-run-tracing.md`)
-  - Added tracing instrumentation in `run_runtime_agent()` so all runtime-agent executions pass through a single trace boundary.
-  - Trace/span payload now includes query input, agent name metadata, and output response for each run when tracing is enabled.
-  - Added smoke coverage to verify enabled tracing payload, disabled graceful behavior, and distinct spans across consecutive runs.
-- [x] P0 - Implement query decomposition (`specs/query-decomposition.md`)
-  - Added `utils.query_decomposition.decompose_query()` with deterministic clause/domain-aware splitting and non-empty fallback behavior.
-  - Updated runtime agent run response schema and service output to include ordered `sub_queries`.
-  - Added smoke coverage verifying basic sub-query exposure and complex-query decomposition into non-mixed-domain sub-queries.
-- [x] P0 - Implement per-subquery tool selection (`specs/tool-selection-per-subquery.md`)
-  - Added `utils.tool_selection` with deterministic, exclusive subquery assignment to exactly one tool (`internal` or `web`) plus a stable fallback.
-  - Updated runtime agent run response schema/service to expose ordered `tool_assignments` alongside `sub_queries`.
-  - Added smoke coverage verifying one assignment per sub-query, exclusive tool membership, and expected internal/web routing for mixed-domain prompts.
-- [x] P0 - Implement internal data loading/vectorization (`specs/data-loading-vectorization.md`)
-  - Added API-triggered inline internal-data loading that chunks documents, generates deterministic embeddings, and persists both docs/chunks.
-  - Added internal retrieval API that ranks only loaded internal chunks for query relevance.
-  - Added observable load response fields (`status`, `documents_loaded`, `chunks_created`) for UI/backend status display.
-  - Added Alembic migration `0002_internal_data_tables` for corpus tables in the same change.
-  - Added smoke tests for load/vectorize success outcomes and internal retrieval behavior against loaded documents.
-- [x] P0 - Implement web tool pair (`specs/web-search-onyx-style.md`)
-  - Added web search endpoint returning link/snippet metadata only (no full page body).
-  - Added web open-url endpoint returning full page content for selected URL.
-  - Added observable search-then-open execution data (`web_tool_runs`, `opened_urls`) to runtime agent runs.
-  - Added smoke tests verifying web-assigned sub-queries execute via search then open-url.
-- [x] P1 - Implement per-subquery retrieval executor (`specs/per-subquery-retrieval.md`)
-  - Added dedicated retrieval executor consuming `(sub_query, assigned_tool)` and executing the matching retrieval path.
-  - Added ordered `retrieval_results` contract to `/api/agents/run` output/tracing metadata for downstream validation/synthesis.
-  - Internal retrieval path now returns chunk content sourced from loaded/vectorized internal corpus entries.
-  - Web retrieval path follows search+open_url and returns retrievable page content.
-  - Added smoke tests verifying internal and web retrieval execution outcomes through runtime-agent API.
-- [x] P1 - Implement retrieval validation loop (`specs/retrieval-validation.md`)
-  - Added deterministic sufficiency evaluation for each subquery retrieval result (`internal`/`web`).
-  - Added follow-up loop behavior for insufficient retrievals with explicit action recording (`follow_up_actions`).
-  - Added deterministic stop policy after bounded attempts with observable status (`validated` vs `stopped_insufficient`).
-  - Updated `/api/agents/run` and tracing metadata contracts to include ordered `validation_results`.
-  - Added smoke tests for sufficient validation and retry-then-stop behavior.
-- [x] P1 - Implement answer synthesis (`specs/answer-synthesis.md`)
-  - Added synthesis service producing one final answer from ordered validated per-subquery outputs.
-  - Runtime-agent `output` now comes from the synthesis stage rather than scaffold placeholder output.
-  - Synthesis consumes validated outputs only and performs no direct retrieval.
-  - Added smoke tests for validated-answer generation and insufficient-evidence handling.
-- [x] P1 - Implement LangGraph orchestration with deep agents (`specs/orchestration-langgraph.md`)
-  - Added runtime graph orchestration structure with explicit decomposition, selection, retrieval, validation, and synthesis nodes.
-  - Added deep subquery agent composition for retrieval/validation execution per assigned tool.
-  - Updated runtime response to expose graph-state projection consumable by streaming layers.
-  - Added smoke tests validating graph projection, node ordering, and per-subquery validation loop outcomes.
+## Completed (Frontend Scope)
+- [x] Scaffold React + TypeScript + Vite frontend shell exists.
+- [x] Basic frontend test harness exists (Vitest + Testing Library + jsdom).
+- [x] Shared API base URL helper exists in `src/frontend/src/utils/config.ts`.
 
-## Remaining Work (Prioritized)
-
-- [ ] P2 - Implement streaming heartbeat backend (`specs/streaming-agent-heartbeat.md`)
-  - Scope gap confirmed: no streaming endpoint/protocol/event bridge.
+## Remaining Work (Highest Priority First)
+- [ ] P0 - Build typed frontend API layer for existing endpoints
+  - Scope:
+    - Add frontend request/response types and API helpers for `/api/internal-data/load` and `/api/agents/run`.
+    - Centralize fetch error handling and request-state normalization for deterministic UI behavior.
   - Verification requirements (outcome-focused):
-    - Query runs emit stream updates including generated sub-queries.
-    - Stream events are sufficient for live progress/heartbeat and completion display.
-    - Event ordering remains coherent through final payload.
+    - Unit tests verify successful parsing of load and run responses into UI-consumable shapes.
+    - Unit tests verify non-2xx responses surface user-visible error state payloads (not silent failures).
+    - Unit tests verify invalid/missing response fields are handled as failures with stable error messaging.
 
-- [ ] P2 - Implement demo UI flow in TypeScript (`specs/demo-ui-typescript.md`)
-  - Scope gap confirmed: UI lacks load trigger/status, query run flow, streaming subscription, progress timeline, final answer rendering.
+- [ ] P0 - Implement demo UI core flow in TypeScript (`specs/demo-ui-typescript.md`)
+  - Scope:
+    - Replace scaffold page with: query input, run trigger, load/vectorize trigger area, status panels, sub-query/progress display, and final answer output.
+    - Wire UI actions to typed API layer for load and run flows.
   - Verification requirements (outcome-focused):
-    - UI can trigger load/vectorize and shows clear loading/success/error outcomes.
-    - Query run shows streamed sub-queries in real-time or near real-time.
-    - UI shows heartbeat progress and final synthesized answer.
-    - TypeScript render/interaction tests cover these user-visible outcomes.
+    - Render test verifies the app shows query input, run action, load action, and output regions.
+    - Interaction test verifies load action shows a loading state then explicit success outcome when API succeeds.
+    - Interaction test verifies load action shows explicit error outcome when API fails.
+    - Interaction test verifies run action shows final synthesized answer from API response.
 
-- [ ] P2 - Implement MCP exposure (`specs/mcp-exposure.md`)
-  - Scope gap confirmed: no MCP server/tool wrapper/transport contract present.
+- [ ] P0 - Implement heartbeat/progress presentation contract for streamed updates (`specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`)
+  - Scope:
+    - Add frontend event-consumption layer for heartbeat messages (sub-queries + progress states + completion).
+    - Until backend streaming endpoint exists, support a deterministic fallback path from final `/api/agents/run` payload (`sub_queries`, `tool_assignments`, `validation_results`, `graph_state.timeline`) so UI can still present progress structure.
   - Verification requirements (outcome-focused):
-    - MCP client can submit query and receive final synthesized answer.
-    - MCP path delegates to same orchestration pipeline used by runtime API.
-    - Repeated MCP calls preserve stable invocation/response contract.
+    - Unit tests verify incoming heartbeat events append/update visible sub-query/progress state in order.
+    - Unit tests verify duplicate/out-of-order event sequences do not corrupt displayed progress state.
+    - Interaction test verifies completion event (or fallback completed payload) renders final answer and terminal status.
 
-## Cross-Cutting Quality Gates (Apply to every new task)
-- [ ] Add backend smoke/integration coverage for each new externally visible behavior.
-- [ ] Add frontend render/interaction coverage for each new UI behavior.
-- [ ] Keep tests deterministic and outcome-based; avoid assertions on internal implementation details.
-- [ ] Avoid hidden network dependencies in CI test paths (use controlled fakes/mocks where needed).
-- [ ] Deliver Alembic migration in same change for every schema change.
-- [ ] Keep observability vendor integration isolated to startup/services, not routers.
-- [ ] Before commit for implementation runs: pass health check + backend tests + frontend tests + frontend typecheck.
+- [ ] P1 - Add explicit UI states for run lifecycle and resilience
+  - Scope:
+    - Add idle/running/completed/error states for both load and run actions.
+    - Prevent duplicate submits while a run or load is active.
+    - Provide retry affordance after failures.
+  - Verification requirements (outcome-focused):
+    - Interaction test verifies run button is disabled during active run and re-enabled after completion/error.
+    - Interaction test verifies repeated quick clicks trigger only one in-flight request.
+    - Interaction test verifies error state is visible and retry can successfully complete a later request.
 
-## BLOCKED (2026-03-04)
-- Blocker: Missing Docker daemon access in this execution environment (cannot connect to `/Users/nickbohm/.docker/run/docker.sock`), which prevents required compose-based verification commands.
-  - Failed commands:
-    - `docker compose ps` -> daemon socket permission error (`operation not permitted`).
-    - `docker compose exec backend uv run pytest` -> same daemon socket permission error.
-    - `docker compose exec frontend npm run test` -> same daemon socket permission error.
-    - `docker compose exec frontend npm run typecheck` -> same daemon socket permission error.
-    - `curl -sS http://localhost:8000/api/health` -> `curl: (7) Couldn't connect to server` (services are not running without Docker access).
-- Secondary local-environment blockers when attempting non-Docker frontend fallback:
-  - Failed commands:
-    - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found` (frontend dependencies are not installed in this sandbox).
-    - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found` (frontend dependencies are not installed in this sandbox).
-- Repository/git transport blockers in this sandbox:
-  - Failed commands:
-    - `git add -A && git commit -m "blocked: ralph loop 8 (build): implement LangGraph orchestration with deep agents and smoke tests"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`.
-    - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`.
-- Next action:
-  - Run checks on a host with Docker daemon access and installed frontend dependencies, then re-run required gates:
-    - `docker compose exec backend uv run pytest`
-    - `docker compose exec frontend npm run test`
-    - `docker compose exec frontend npm run typecheck`
-    - Health check: `curl http://localhost:8000/api/health`
-  - If frontend dependencies are not present, install them first:
-    - `(src/frontend) npm install`
-  - Complete commit/push on a host with git write/network access if sandbox blocks push:
-    - `git add -A`
-    - `git commit -m "blocked: ralph loop 8 (build): implement LangGraph orchestration with deep agents and smoke tests"`
-    - `git push`
+- [ ] P1 - Add frontend utility consolidation for shared presentation logic
+  - Scope:
+    - Create/extend `src/frontend/src/utils/*` helpers for transforming run payloads and heartbeat events into normalized view models.
+    - Keep rendering components thin and deterministic.
+  - Verification requirements (outcome-focused):
+    - Unit tests verify deterministic mapping from API/stream payloads to rendered list items and status labels.
+    - Unit tests verify empty-results edge cases produce valid empty UI states (not crashes).
+
+- [ ] P2 - Visual polish pass to satisfy "simple and sleek" requirement (`specs/demo-ui-typescript.md`)
+  - Scope:
+    - Upgrade layout/typography/states from scaffold card to intentional, production-demo-ready styling.
+    - Ensure responsive behavior for desktop and mobile widths.
+  - Verification requirements (outcome-focused):
+    - Render tests verify key regions remain visible/accessible at narrow viewport widths.
+    - Manual verification checklist confirms readable hierarchy, clear progress emphasis, and clear success/error contrast.
+
+## Dependency / Sequencing Notes
+- Streaming-backed real-time UI acceptance cannot be fully validated until backend streaming service is implemented (`specs/streaming-agent-heartbeat.md`).
+- Frontend tasks above are sequenced to deliver value with existing APIs first, then adopt live streaming with minimal refactor.
+
+## Frontend Quality Gates
+- [ ] For each new UI behavior, add at least one render/interaction test first or in same change.
+- [ ] Keep frontend tests deterministic and independent from hidden network dependencies.
+- [ ] Before implementation commits: run `docker compose exec frontend npm run test`, `docker compose exec frontend npm run typecheck`, and `docker compose exec frontend npm run build`.

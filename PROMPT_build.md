@@ -1,6 +1,7 @@
 0a. Study `specs/*` to learn the application specifications.
 0b. Study @IMPLEMENTATION_PLAN.md.
 0c. For reference, the application source code is in `src/*`.
+0d. Start fresh for every build; @AGENTS.md has the command (remove services, volumes, and images; then build and start).
 
 997. Iteration scope: aim to complete ONE highest-priority implementation-plan item per run, then stop for the next loop.
 998. Special case - Blocked external dependency (missing env/API key/service access): if required tests cannot run or pass only because external configuration is missing, do not claim full success. Complete what is possible, then record a blocker.

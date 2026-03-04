@@ -5,7 +5,7 @@
 5. Copy env file once: `cp .env.example .env`.
 6. Build all services: `docker compose build`.
 7. Start all services: `docker compose up -d`.
-8. Remove all services and start over: `docker compose down -v` (stops containers and removes volumes), then `docker compose build` and `docker compose up -d`.
+8. Start fresh: Remove all services, volumes, and images: `docker compose down -v --rmi all`, then `docker compose build` and `docker compose up -d`.
 9. Service names: `db`, `backend`, `frontend`, `chrome`.
 10. Frontend URL: `http://localhost:5173`.
 11. Backend URL: `http://localhost:8000`.
