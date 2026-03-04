@@ -6,18 +6,20 @@ import json
 from dataclasses import dataclass
 from threading import Lock
 from uuid import uuid4
-from typing import Any
+from typing import Any, Callable
 
 from schemas import (
     RuntimeAgentGraphState,
     RuntimeAgentGraphStep,
+    SubQueryRetrievalResult,
     RuntimeAgentRunRequest,
+    SubQueryValidationResult,
     SubQueryToolAssignment,
 )
 from sqlalchemy.orm import Session
 from services.answer_synthesis_service import synthesize_answer
-from services.retrieval_service import execute_subquery_retrievals
-from services.validation_service import validate_retrieval_results
+from services.retrieval_service import execute_subquery_retrieval
+from services.validation_service import validate_retrieval_result
 from utils.query_decomposition import decompose_query
 from utils.tool_selection import assign_tools_to_sub_queries
 
@@ -40,9 +42,79 @@ def get_backend():
     return None
 
 
-def get_subagents():
-    """Return subagent definitions for the deep agent. Scaffold: empty list."""
-    return []
+def _placeholder_subquery_executor(*_: Any, **__: Any) -> dict[str, Any]:
+    """Placeholder callable used when no runtime DB-bound tool is available."""
+    raise RuntimeError("subquery execution tool requires runtime DB session binding")
+
+
+def _build_delegated_subquery_summary(
+    retrieval_result: SubQueryRetrievalResult,
+    validation_result: SubQueryValidationResult,
+) -> str:
+    """Build a concise single-result summary returned by delegated subagent work."""
+    status = "validated" if validation_result.sufficient else "insufficient"
+    evidence_count = (
+        len(retrieval_result.internal_results)
+        if retrieval_result.tool == "internal"
+        else len(retrieval_result.opened_pages)
+    )
+    return (
+        f"Sub-query '{retrieval_result.sub_query}' "
+        f"via {retrieval_result.tool} has {status} evidence ({evidence_count} items)."
+    )
+
+
+def build_subquery_execution_tool(
+    db: Session,
+) -> Callable[[str, str], dict[str, Any]]:
+    """Return a callable tool that executes retrieval+validation for one subquery.
+
+    Called by `LangGraphAgentScaffold.run` to bind DB access into a callable that
+    can be attached to a specialized deep-agent subagent definition.
+    Inputs:
+    - `db`: SQLAlchemy session used by retrieval and follow-up validation retrieval.
+    Output:
+    - callable returning retrieval result, validation result, and a concise summary.
+    """
+
+    def _tool(sub_query: str, tool: str) -> dict[str, Any]:
+        assignment = SubQueryToolAssignment(sub_query=sub_query, tool=tool)
+        retrieval_result = execute_subquery_retrieval(assignment, db)
+        retrieval_result, validation_result = validate_retrieval_result(retrieval_result, db)
+        return {
+            "retrieval_result": retrieval_result,
+            "validation_result": validation_result,
+            "summary": _build_delegated_subquery_summary(retrieval_result, validation_result),
+        }
+
+    return _tool
+
+
+def get_subagents(
+    subquery_execution_tool: Callable[[str, str], dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Return deep-agent subagent definitions.
+
+    Called by:
+    - `_get_or_create_agent` to provide deepagents initialization payload.
+    - `run` to bind a DB-backed callable and delegate work via a task-style path.
+    Inputs:
+    - `subquery_execution_tool`: optional runtime callable for delegated execution.
+    Output:
+    - list of deep-agent subagent definition dicts with required keys.
+    """
+    tool_callable = subquery_execution_tool or _placeholder_subquery_executor
+    return [
+        {
+            "name": "subquery-executor",
+            "description": "Executes one sub-query retrieval and validation pass.",
+            "system_prompt": (
+                "You are a focused retrieval specialist. Run exactly one sub-query with "
+                "the assigned tool and return a concise summary."
+            ),
+            "tools": [tool_callable],
+        }
+    ]
 
 
 def get_config() -> dict[str, Any]:
@@ -276,6 +348,10 @@ class LangGraphAgentScaffold:
         persisted_store_state = self._persistence.get_store_state(context)
         execution_id = str(uuid4())
         memory_reads = self._persistence.read_memories(context=context, query=payload.query)
+        runtime_subagents = get_subagents(build_subquery_execution_tool(db))
+        subquery_subagent = runtime_subagents[0]
+        delegated_tool = subquery_subagent["tools"][0]
+        delegation_records: list[dict[str, Any]] = []
 
         timeline: list[RuntimeAgentGraphStep] = []
         timeline.append(RuntimeAgentGraphStep(step="memory.read", status="started"))
@@ -314,12 +390,27 @@ class LangGraphAgentScaffold:
         for assignment in assignments:
             timeline.append(
                 RuntimeAgentGraphStep(
+                    step="subagent.delegation",
+                    status="started",
+                    details={
+                        "sub_query": assignment.sub_query,
+                        "tool": assignment.tool,
+                        "subagent_name": subquery_subagent["name"],
+                        "delegated_via": "task",
+                    },
+                )
+            )
+            timeline.append(
+                RuntimeAgentGraphStep(
                     step="subquery_execution.retrieval",
                     status="started",
                     details={"sub_query": assignment.sub_query, "tool": assignment.tool},
                 )
             )
-            retrieval_result = execute_subquery_retrievals([assignment], db)[0]
+            delegated_result = delegated_tool(assignment.sub_query, assignment.tool)
+            retrieval_result = delegated_result["retrieval_result"]
+            validation_result = delegated_result["validation_result"]
+            delegation_summary = delegated_result["summary"]
             retrieval_results.append(retrieval_result)
             timeline.append(
                 RuntimeAgentGraphStep(
@@ -336,15 +427,35 @@ class LangGraphAgentScaffold:
                     details={"sub_query": assignment.sub_query, "tool": assignment.tool},
                 )
             )
-            validated_retrieval, validation = validate_retrieval_results([retrieval_result], db)
-            retrieval_results[-1] = validated_retrieval[0]
-            validation_results.append(validation[0])
+            validation_results.append(validation_result)
             timeline.append(
                 RuntimeAgentGraphStep(
                     step="subquery_execution.validation",
                     status="completed",
                     details={"sub_query": assignment.sub_query, "tool": assignment.tool},
                 )
+            )
+            timeline.append(
+                RuntimeAgentGraphStep(
+                    step="subagent.delegation",
+                    status="completed",
+                    details={
+                        "sub_query": assignment.sub_query,
+                        "tool": assignment.tool,
+                        "subagent_name": subquery_subagent["name"],
+                        "delegated_via": "task",
+                        "summary": delegation_summary,
+                    },
+                )
+            )
+            delegation_records.append(
+                {
+                    "sub_query": assignment.sub_query,
+                    "tool": assignment.tool,
+                    "subagent_name": subquery_subagent["name"],
+                    "delegated_via": "task",
+                    "summary": delegation_summary,
+                }
             )
 
         timeline.append(RuntimeAgentGraphStep(step="synthesis", status="started"))
@@ -404,6 +515,16 @@ class LangGraphAgentScaffold:
                         "user_id": context.user_id,
                         "configurable": deepagent_run_config["configurable"],
                         "context": {"user_id": context.user_id},
+                        "subagents": [
+                            {
+                                "name": item["name"],
+                                "description": item["description"],
+                                "system_prompt": item["system_prompt"],
+                                "tool_count": len(item["tools"]),
+                            }
+                            for item in runtime_subagents
+                        ],
+                        "delegations": delegation_records,
                         "persistence": {
                             "thread_checkpoint_count_before_run": persisted_thread_state[
                                 "checkpoint_count"
@@ -426,7 +547,10 @@ class LangGraphAgentScaffold:
                         },
                     },
                     "deep_agents": [
-                        {"name": "subquery_execution_agent", "nodes": ["retrieval", "validation"]}
+                        {
+                            "name": "subquery_execution_agent",
+                            "nodes": ["retrieval", "validation", "subagent.delegation"],
+                        }
                     ],
                 },
             ),

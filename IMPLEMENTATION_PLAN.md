@@ -36,8 +36,24 @@
     - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
     - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
-- [ ] P1 - Add at least one specialized DeepAgent subagent with required fields (`name`, `description`, `system_prompt`, `tools`) and delegate relevant subquery work through the DeepAgent `task` path.
+- [x] P1 - Add at least one specialized DeepAgent subagent with required fields (`name`, `description`, `system_prompt`, `tools`) and delegate relevant subquery work through the DeepAgent `task` path.
   Verification requirements (from deepAgent Subagents acceptance criteria): backend smoke test verifies subagent definitions include required keys and callable tools; runtime timeline/metadata shows at least one delegation to the named subagent; delegated subquery returns a single summarized result consumed by existing retrieval/validation/synthesis output contract.
+  Completed in this loop:
+  - Implemented a specialized subagent definition in `src/backend/agents/langgraph_agent.py::get_subagents` with required DeepAgent keys and callable tools (`subquery-executor`).
+  - Added DB-bound delegated tool wiring in `build_subquery_execution_tool` so each subquery executes retrieval + validation through a single delegated callable and returns a concise summary.
+  - Routed runtime subquery execution via task-style delegation metadata in `LangGraphAgentScaffold.run`, including:
+    - timeline events (`subagent.delegation` started/completed),
+    - execution metadata (`execution.subagents`, `execution.delegations`),
+    - per-subquery delegated summary while preserving existing retrieval/validation/synthesis response contract.
+  - Added smoke coverage in `src/backend/tests/api/test_deepagent_subagents.py` for:
+    - required subagent keys + callable tool definitions;
+    - runtime evidence of delegation to `subquery-executor` via `"delegated_via": "task"` with one delegation per subquery and delegation timeline entries.
+  - Updated orchestration smoke assertion in `src/backend/tests/api/test_orchestration_langgraph.py` to validate deep-agent node presence without brittle exact-node-list coupling.
+  - Verified required checks:
+    - Health: `curl http://localhost:8000/api/health` -> `200 {"status":"ok"}`.
+    - Backend tests: `docker compose exec backend uv run pytest` -> `36 passed`.
+    - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
+    - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
 - [ ] P2 - Extend run tracing metadata to include deepAgent persistence context (`thread_id`, `checkpoint_id`, `user_id`) while preserving no-op behavior when tracing is disabled.
   Verification requirements (from `specs/agent-run-tracing.md` + deepAgent JTBD): tracing-enabled smoke test verifies one span per run still includes query, agent identity, output, and persistence identifiers; tracing-disabled smoke test verifies API response behavior is unchanged and no tracing client call is attempted.

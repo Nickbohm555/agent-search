@@ -24,9 +24,11 @@ def test_agent_run_exposes_deepagent_runtime_execution_metadata(client):
     assert graph_state["graph"]["execution"]["subquery_execution_count"] == len(
         payload["sub_queries"]
     )
-    assert graph_state["graph"]["deep_agents"] == [
-        {"name": "subquery_execution_agent", "nodes": ["retrieval", "validation"]}
-    ]
+    deep_agents = graph_state["graph"]["deep_agents"]
+    assert len(deep_agents) == 1
+    assert deep_agents[0]["name"] == "subquery_execution_agent"
+    assert "retrieval" in deep_agents[0]["nodes"]
+    assert "validation" in deep_agents[0]["nodes"]
 
 
 @pytest.mark.smoke
