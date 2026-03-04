@@ -1,3 +1,10 @@
+- [x] P0 - Enforce Langfuse tracing coverage across delegated runtime entrypoints (`/api/agents/run/stream` and MCP invoke) so all `agent.run` executions remain traced when enabled.
+  Verification requirements (from `specs/agent-run-tracing.md`, `specs/streaming-agent-heartbeat.md`, `specs/mcp-exposure.md`): add backend smoke test that streamed run endpoint produces a trace span with request query input and completion metadata linkage; add backend smoke test that MCP `agent.run` invocation also emits one trace span with persisted thread/user context.
+  Completed in this run:
+  - Extended `src/backend/tests/api/test_agent_run_tracing.py` with `test_agent_run_stream_delegates_to_traced_runtime_execution_when_enabled` to verify `/api/agents/run/stream` still emits an `agent.run` span while returning streamed completion payload.
+  - Extended `src/backend/tests/api/test_agent_run_tracing.py` with `test_mcp_invoke_delegates_to_traced_runtime_execution_when_enabled` to verify `/api/mcp/invoke` delegated runs emit one `agent.run` span with expected persistence context.
+  - Confirmed checkpoint assertion against resolved runtime checkpoint metadata to match existing persistence semantics.
+
 - [x] P0 - Expose the runtime pipeline through an MCP-style wrapper contract so clients can discover and invoke the `agent.run` tool.
   Verification requirements (from `specs/mcp-exposure.md`): add backend smoke test that lists MCP tools and verifies `agent.run` metadata is present with stable input schema; add backend smoke test that invokes MCP `agent.run` with a deterministic query and verifies final answer content plus delegated runtime payload (`thread_id`, `sub_queries`, `tool_assignments`).
   Completed in this run:

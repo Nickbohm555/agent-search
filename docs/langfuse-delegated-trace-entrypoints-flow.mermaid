@@ -1,0 +1,19 @@
+flowchart TD
+  A["POST /api/agents/run/stream\nrouter: src/backend/routers/agent.py::runtime_agent_run_stream"] -->|"trigger: request to stream run\ndata: RuntimeAgentRunRequest(query, optional thread/user/checkpoint)\nwhy: deliver heartbeat SSE while preserving run contract"| B["service: src/backend/services/agent_service.py::stream_runtime_agent"]
+
+  B -->|"trigger: completion phase in stream_runtime_agent\ndata: payload/db/tracing_handle forwarded\nwhy: final response parity and shared tracing boundary"| C["runtime invoke: src/backend/services/agent_service.py::run_runtime_agent"]
+
+  D["POST /api/mcp/invoke\nrouter: src/backend/routers/mcp.py::invoke_tool"] -->|"trigger: MCP tool invocation tool_name=agent.run\ndata: McpToolInvokeRequest.arguments\nwhy: expose same runtime pipeline to MCP clients"| E["service: src/backend/services/mcp_service.py::invoke_mcp_tool"]
+
+  E -->|"trigger: delegated tool execution\ndata: arguments mapped to RuntimeAgentRunRequest\nwhy: single execution path for MCP and HTTP callers"| C
+
+  C -->|"trigger: run starts\ndata: query only into span input\nwhy: canonical trace identity"| F["span start: _start_agent_span(name=agent.run)\nfile: src/backend/services/agent_service.py"]
+
+  C -->|"trigger: run completes\ndata: output + sub_queries + assignments + retrieval/validation + persistence_context\nwhy: keep trace payload useful for debugging delegated paths"| G["span.update(...) in run_runtime_agent"]
+
+  C -->|"data out: RuntimeAgentRunResponse"| H["stream completed SSE payload OR MCP run payload"]
+
+  N["Decision note\ncheckpoint in trace uses resolved runtime checkpoint metadata\nnot only request checkpoint_id, to reflect actual persisted execution state"]:::note
+  G -.-> N
+
+  classDef note fill:#0f1a30,stroke:#3aaed8,color:#d9f4ff;

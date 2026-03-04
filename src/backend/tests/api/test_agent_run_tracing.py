@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 
@@ -40,6 +42,17 @@ class _DisabledTracingHandle:
     def start_as_current_span(self, name: str, **kwargs):
         self.calls += 1
         raise AssertionError("Disabled tracing handle should not be used.")
+
+
+def _extract_completed_event(raw_body: str) -> dict:
+    """Return the `completed` SSE event payload from one streamed run response body."""
+    for line in raw_body.splitlines():
+        if not line.startswith("data: "):
+            continue
+        payload = json.loads(line[len("data: ") :])
+        if payload.get("event") == "completed":
+            return payload
+    raise AssertionError("Expected one completed event in stream body.")
 
 
 @pytest.mark.smoke
@@ -152,3 +165,62 @@ def test_consecutive_agent_runs_create_distinct_spans_when_enabled(client):
     assert first_span is not second_span
     assert tracing_handle.span_records[0]["kwargs"]["input"] == {"query": "first"}
     assert tracing_handle.span_records[1]["kwargs"]["input"] == {"query": "second"}
+
+
+@pytest.mark.smoke
+def test_agent_run_stream_delegates_to_traced_runtime_execution_when_enabled(client):
+    tracing_handle = _EnabledTracingHandle()
+    client.app.state.langfuse = tracing_handle
+
+    response = client.post("/api/agents/run/stream", json={"query": "trace streamed run"})
+
+    assert response.status_code == 200
+    completed_event = _extract_completed_event(response.text)
+
+    assert len(tracing_handle.span_records) == 1
+    span_record = tracing_handle.span_records[0]
+    assert span_record["name"] == "agent.run"
+    assert span_record["kwargs"]["input"] == {"query": "trace streamed run"}
+
+    metadata = span_record["span"].updates[0]["metadata"]
+    assert metadata["agent_name"] == completed_event["data"]["agent_name"]
+    assert metadata["sub_queries"] == completed_event["data"]["sub_queries"]
+    assert metadata["persistence_context"]["thread_id"] == completed_event["data"]["thread_id"]
+
+
+@pytest.mark.smoke
+def test_mcp_invoke_delegates_to_traced_runtime_execution_when_enabled(client):
+    tracing_handle = _EnabledTracingHandle()
+    client.app.state.langfuse = tracing_handle
+
+    response = client.post(
+        "/api/mcp/invoke",
+        json={
+            "tool_name": "agent.run",
+            "arguments": {
+                "query": "trace mcp delegated run",
+                "thread_id": "mcp-trace-thread",
+                "user_id": "mcp-trace-user",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert len(tracing_handle.span_records) == 1
+    span_record = tracing_handle.span_records[0]
+    assert span_record["name"] == "agent.run"
+    assert span_record["kwargs"]["input"] == {"query": "trace mcp delegated run"}
+
+    metadata = span_record["span"].updates[0]["metadata"]
+    assert metadata["agent_name"] == payload["run"]["agent_name"]
+    assert metadata["sub_queries"] == payload["run"]["sub_queries"]
+    resolved_checkpoint_id = payload["run"]["graph_state"]["graph"]["execution"]["persistence"][
+        "resolved_checkpoint_id"
+    ]
+    assert metadata["persistence_context"] == {
+        "thread_id": "mcp-trace-thread",
+        "checkpoint_id": resolved_checkpoint_id,
+        "user_id": "mcp-trace-user",
+    }
