@@ -14,6 +14,14 @@ from .internal_data import (
     InternalRetrievedChunk,
 )
 from .search import SearchSkeletonResponse
+from .web import (
+    WebOpenUrlRequest,
+    WebOpenUrlResponse,
+    WebSearchRequest,
+    WebSearchResponse,
+    WebSearchResult,
+    WebToolRun,
+)
 
 __all__ = [
     "HealthResponse",
@@ -28,4 +36,10 @@ __all__ = [
     "InternalDataRetrieveRequest",
     "InternalDataRetrieveResponse",
     "InternalRetrievedChunk",
+    "WebSearchRequest",
+    "WebSearchResult",
+    "WebSearchResponse",
+    "WebOpenUrlRequest",
+    "WebOpenUrlResponse",
+    "WebToolRun",
 ]

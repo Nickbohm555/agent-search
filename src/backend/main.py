@@ -6,6 +6,7 @@ from routers.agent import router as agent_router
 from routers.health import router as health_router
 from routers.internal_data import router as internal_data_router
 from routers.search import router as search_router
+from routers.web import router as web_router
 
 app = FastAPI(title="agent-search", version="0.1.0")
 
@@ -21,6 +22,7 @@ app.include_router(health_router)
 app.include_router(search_router)
 app.include_router(agent_router)
 app.include_router(internal_data_router)
+app.include_router(web_router)
 
 
 @app.on_event("startup")

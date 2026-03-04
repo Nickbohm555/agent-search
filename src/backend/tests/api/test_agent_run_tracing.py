@@ -70,6 +70,7 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
                 "agent_name": payload["agent_name"],
                 "sub_queries": payload["sub_queries"],
                 "tool_assignments": payload["tool_assignments"],
+                "web_tool_runs": payload["web_tool_runs"],
             },
         }
     ]

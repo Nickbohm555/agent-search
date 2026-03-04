@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .web import WebToolRun
+
 
 class RuntimeAgentInfo(BaseModel):
     name: str
@@ -22,3 +24,4 @@ class RuntimeAgentRunResponse(BaseModel):
     output: str
     sub_queries: list[str]
     tool_assignments: list[SubQueryToolAssignment]
+    web_tool_runs: list[WebToolRun] = Field(default_factory=list)

@@ -7,7 +7,9 @@ from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
     SubQueryToolAssignment,
+    WebToolRun,
 )
+from services.web_service import run_web_search_then_open
 from utils.query_decomposition import decompose_query
 from utils.tool_selection import assign_tools_to_sub_queries
 
@@ -45,6 +47,12 @@ def run_runtime_agent(
         SubQueryToolAssignment(sub_query=sub_query, tool=tool)
         for sub_query, tool in assign_tools_to_sub_queries(sub_queries)
     ]
+    web_tool_runs: list[WebToolRun] = []
+    for assignment in tool_assignments:
+        if assignment.tool != "web":
+            continue
+        web_tool_runs.append(run_web_search_then_open(assignment.sub_query))
+
     with _start_agent_span(tracing_handle, payload.query) as span:
         output = agent.run(payload.query)
         span.update(
@@ -56,6 +64,7 @@ def run_runtime_agent(
                 "tool_assignments": [
                     assignment.model_dump() for assignment in tool_assignments
                 ],
+                "web_tool_runs": [run.model_dump() for run in web_tool_runs],
             },
         )
     return RuntimeAgentRunResponse(
@@ -63,4 +72,5 @@ def run_runtime_agent(
         output=output,
         sub_queries=sub_queries,
         tool_assignments=tool_assignments,
+        web_tool_runs=web_tool_runs,
     )
