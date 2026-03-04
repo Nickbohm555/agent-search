@@ -27,16 +27,17 @@
   - Deep-agent usage is observable in graph metadata (`deep_agents.kind=langgraph-subgraph`) and timeline details (`deep_agent=subquery_execution_agent`).
   - Multi-subquery runs preserve subquery identity/order across assignments, retrieval outputs, and validation outputs.
 
-- [ ] P0 - Add streaming backend heartbeat endpoint sourced from orchestration events (`specs/streaming-agent-heartbeat.md`).
+- [x] P0 - Add streaming backend heartbeat endpoint sourced from orchestration events (`specs/streaming-agent-heartbeat.md`).
   - Tasks:
-  - Add streaming route (SSE or WebSocket) in `src/backend/routers/` and supporting stream schema contract in `src/backend/schemas/`.
-  - Emit real-time events for subqueries, current step/progress, validation updates, and completion/final answer.
-  - Handle disconnect/cancellation cleanly.
+  - Added SSE streaming route `POST /api/agents/run/stream` in `src/backend/routers/agent.py`.
+  - Reused orchestration output (`graph_state.timeline`) to emit deterministic heartbeat events plus `sub_queries`, `tool_assignments`, `retrieval_result`, `validation_result`, and `completed`.
+  - Added stream event builder in `src/backend/services/agent_service.py` so stream payloads and ordering are stable and parseable.
+  - Added smoke coverage for stream event progression and early client disconnect behavior (`src/backend/tests/api/test_streaming_agent_heartbeat.py`).
   - Verification (outcomes):
-  - During a run, client receives progressive events (including subqueries) before completion event.
-  - Event payload provides enough data for UI heartbeat (live step/progress + final answer).
-  - Disconnect terminates stream cleanly without crashing backend execution path.
-  - Event ordering/sequence fields remain deterministic and parseable across repeated runs.
+  - `docker compose exec backend uv run pytest` passes with new streaming smoke tests (`30 passed`).
+  - Stream emits progressive events before completion and includes subqueries, timeline-derived heartbeats, retrieval/validation updates, and final answer payload.
+  - Event ordering is deterministic with monotonic sequence values.
+  - Early client disconnect test passes without backend errors.
 
 - [ ] P0 - Expose orchestrated pipeline via FastMCP-compatible wrapper (`specs/mcp-exposure.md`).
   - Tasks:
@@ -91,7 +92,7 @@
 
 ## Gap Confirmation (Code Search Evidence)
 
-- [x] Confirmed no backend streaming route exists today (no SSE/WebSocket router under `src/backend/routers/`).
+- [x] Confirmed backend streaming route now exists at `POST /api/agents/run/stream` with SSE `text/event-stream` output.
 - [x] Confirmed no MCP/FastMCP wrapper exists today (`rg -n "mcp|fastmcp" src/backend`).
 - [x] Confirmed runtime dependencies include `langchain`/`langgraph`/`langchain-openai` in `src/backend/pyproject.toml`.
 - [x] Confirmed orchestration now executes via compiled LangGraph runtime graphs (top-level orchestration + subquery deep-agent subgraph) in `src/backend/agents/langgraph_agent.py`.

@@ -6,6 +6,7 @@ from schemas import (
     RuntimeAgentInfo,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
+    RuntimeAgentStreamEvent,
     WebToolRun,
 )
 from sqlalchemy.orm import Session
@@ -86,3 +87,47 @@ def run_runtime_agent(
         web_tool_runs=web_tool_runs,
         graph_state=graph_state,
     )
+
+
+def build_runtime_agent_stream_events(
+    response: RuntimeAgentRunResponse,
+) -> list[RuntimeAgentStreamEvent]:
+    events: list[RuntimeAgentStreamEvent] = []
+    sequence = 1
+
+    def append_event(event: str, data: dict[str, Any]) -> None:
+        nonlocal sequence
+        events.append(RuntimeAgentStreamEvent(sequence=sequence, event=event, data=data))
+        sequence += 1
+
+    if response.graph_state is not None:
+        for item in response.graph_state.timeline:
+            append_event(
+                "heartbeat",
+                {
+                    "step": item.step,
+                    "status": item.status,
+                    "details": item.details,
+                },
+            )
+
+    append_event("sub_queries", {"sub_queries": response.sub_queries})
+    append_event(
+        "tool_assignments",
+        {"tool_assignments": [item.model_dump() for item in response.tool_assignments]},
+    )
+    for item in response.retrieval_results:
+        append_event("retrieval_result", item.model_dump())
+    for item in response.validation_results:
+        append_event("validation_result", item.model_dump())
+    append_event(
+        "completed",
+        {
+            "agent_name": response.agent_name,
+            "output": response.output,
+            "graph_state": response.graph_state.model_dump()
+            if response.graph_state is not None
+            else None,
+        },
+    )
+    return events
