@@ -26,7 +26,7 @@ function eventStreamResponse(frames: string[], status = 200): Response {
 }
 
 describe("frontend streaming api client", () => {
-  it("parses supported heartbeat/progress/sub_queries/completed events in order", async () => {
+  it("parses supported heartbeat/progress/sub_queries/tool_assignments/completed events in order", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       eventStreamResponse([
         sseFrame({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } }),
@@ -34,6 +34,11 @@ describe("frontend streaming api client", () => {
         sseFrame({ sequence: 3, event: "sub_queries", data: { sub_queries: ["q1"], count: 1 } }),
         sseFrame({
           sequence: 4,
+          event: "tool_assignments",
+          data: { tool_assignments: [{ sub_query: "q1", tool: "internal" }], count: 1 },
+        }),
+        sseFrame({
+          sequence: 5,
           event: "completed",
           data: {
             agent_name: "langgraph-scaffold",
@@ -61,8 +66,14 @@ describe("frontend streaming api client", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.completed.output).toBe("Final");
-      expect(result.data.events).toHaveLength(4);
-      expect(received).toEqual(["heartbeat", "progress", "sub_queries", "completed"]);
+      expect(result.data.events).toHaveLength(5);
+      expect(received).toEqual([
+        "heartbeat",
+        "progress",
+        "sub_queries",
+        "tool_assignments",
+        "completed",
+      ]);
     }
   });
 
@@ -95,6 +106,34 @@ describe("frontend streaming api client", () => {
         sseFrame({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } }),
         sseFrame({
           sequence: 2,
+          event: "tool_assignments",
+          data: { tool_assignments: [{ sub_query: "q1", tool: "internal" }], count: 1 },
+        }),
+      ]),
+    );
+
+    const result = await streamAgentRun(
+      { query: "Hello" },
+      { fetchImpl: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "malformed_response",
+        message: "tool_assignments event arrived before sub_queries.",
+        retryable: false,
+      },
+    });
+  });
+
+  it("returns deterministic malformed error when completed arrives before tool_assignments", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      eventStreamResponse([
+        sseFrame({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } }),
+        sseFrame({ sequence: 2, event: "sub_queries", data: { sub_queries: ["q1"], count: 1 } }),
+        sseFrame({
+          sequence: 3,
           event: "completed",
           data: {
             agent_name: "langgraph-scaffold",
@@ -117,7 +156,7 @@ describe("frontend streaming api client", () => {
       ok: false,
       error: {
         type: "malformed_response",
-        message: "Completed event arrived before sub_queries.",
+        message: "Completed event arrived before tool_assignments.",
         retryable: false,
       },
     });
@@ -128,6 +167,11 @@ describe("frontend streaming api client", () => {
       eventStreamResponse([
         sseFrame({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } }),
         sseFrame({ sequence: 2, event: "sub_queries", data: { sub_queries: ["q1"], count: 1 } }),
+        sseFrame({
+          sequence: 3,
+          event: "tool_assignments",
+          data: { tool_assignments: [{ sub_query: "q1", tool: "internal" }], count: 1 },
+        }),
       ]),
     );
 

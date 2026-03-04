@@ -1,3 +1,13 @@
+- [x] P1 - Stream `tool_assignments` before completion so UI can show subquery tool routing during in-flight runs.
+  Verification requirements (from `specs/streaming-agent-heartbeat.md`, `specs/demo-ui-typescript.md`, `specs/tool-selection-per-subquery.md`): add backend smoke test that stream responses include ordered `tool_assignments` event after `sub_queries` and before `completed`; add frontend parser tests that enforce `tool_assignments` ordering and schema; add frontend interaction test proving assignment labels render before final completion.
+  Completed in this run:
+  - Updated `src/backend/services/agent_service.py::stream_runtime_agent` to emit `tool_assignments` SSE events with deterministic payload (`tool_assignments`, `count`) before `completed`.
+  - Extended backend smoke coverage in `src/backend/tests/api/test_streaming_compile_invoke_dummy.py` and `src/backend/tests/api/test_streaming_agent_heartbeat.py` for event ordering and payload count parity.
+  - Added first-class frontend stream typing/validation for `tool_assignments` in `src/frontend/src/lib/stream-events.ts` and ordering enforcement in `src/frontend/src/utils/stream.ts`.
+  - Added frontend parser tests in `src/frontend/src/utils/stream.test.ts` for valid `tool_assignments` sequences and malformed ordering failures.
+  - Updated in-flight UI state in `src/frontend/src/App.tsx` and `src/frontend/src/lib/components/ProgressHistory.tsx` to render streamed tool assignments before stream completion.
+  - Added frontend interaction coverage in `src/frontend/src/App.test.tsx::shows_streamed_tool_assignments_before_completion_when_event_arrives`.
+
 - [x] P0 - Enforce Langfuse tracing coverage across delegated runtime entrypoints (`/api/agents/run/stream` and MCP invoke) so all `agent.run` executions remain traced when enabled.
   Verification requirements (from `specs/agent-run-tracing.md`, `specs/streaming-agent-heartbeat.md`, `specs/mcp-exposure.md`): add backend smoke test that streamed run endpoint produces a trace span with request query input and completion metadata linkage; add backend smoke test that MCP `agent.run` invocation also emits one trace span with persisted thread/user context.
   Completed in this run:

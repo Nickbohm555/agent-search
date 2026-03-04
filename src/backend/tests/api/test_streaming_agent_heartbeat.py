@@ -13,7 +13,9 @@ def _extract_stream_events(raw_body: str) -> list[dict]:
 
 
 @pytest.mark.smoke
-def test_runtime_agent_stream_endpoint_emits_ordered_heartbeat_subqueries_and_completion(client):
+def test_runtime_agent_stream_endpoint_emits_ordered_heartbeat_subqueries_assignments_and_completion(
+    client,
+):
     response = client.post("/api/agents/run/stream", json={"query": "stream deterministic run"})
 
     assert response.status_code == 200
@@ -29,7 +31,15 @@ def test_runtime_agent_stream_endpoint_emits_ordered_heartbeat_subqueries_and_co
     event_names = [item["event"] for item in events]
     assert "heartbeat" in event_names
     assert "sub_queries" in event_names
+    assert "tool_assignments" in event_names
     assert "completed" in event_names
+
+    sub_queries_event = next(item for item in events if item["event"] == "sub_queries")
+    tool_assignments_event = next(item for item in events if item["event"] == "tool_assignments")
+    assert tool_assignments_event["sequence"] > sub_queries_event["sequence"]
+    assert tool_assignments_event["data"]["count"] == len(
+        tool_assignments_event["data"]["tool_assignments"]
+    )
 
     completed_event = next(item for item in events if item["event"] == "completed")
     assert completed_event["data"]["agent_name"] != ""

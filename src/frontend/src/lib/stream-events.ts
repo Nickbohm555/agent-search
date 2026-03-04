@@ -11,7 +11,7 @@ export type RuntimeAgentStreamEventName =
 
 type RuntimeAgentStreamOtherEventName = Exclude<
   RuntimeAgentStreamEventName,
-  "heartbeat" | "progress" | "sub_queries" | "completed"
+  "heartbeat" | "progress" | "sub_queries" | "tool_assignments" | "completed"
 >;
 
 export interface RuntimeAgentStreamEventBase {
@@ -44,6 +44,14 @@ export interface RuntimeAgentStreamSubQueriesEvent extends RuntimeAgentStreamEve
   };
 }
 
+export interface RuntimeAgentStreamToolAssignmentsEvent extends RuntimeAgentStreamEventBase {
+  event: "tool_assignments";
+  data: {
+    tool_assignments: SubQueryToolAssignment[];
+    count: number;
+  };
+}
+
 export interface RuntimeAgentStreamCompletedData {
   agent_name: string;
   output: string;
@@ -67,6 +75,7 @@ export type RuntimeAgentStreamEvent =
   | RuntimeAgentStreamHeartbeatEvent
   | RuntimeAgentStreamProgressEvent
   | RuntimeAgentStreamSubQueriesEvent
+  | RuntimeAgentStreamToolAssignmentsEvent
   | RuntimeAgentStreamCompletedEvent
   | RuntimeAgentStreamOtherEvent;
 
@@ -148,6 +157,14 @@ export function isRuntimeAgentStreamEvent(value: unknown): value is RuntimeAgent
 
   if (value.event === "sub_queries") {
     return isStringArray(value.data.sub_queries) && typeof value.data.count === "number";
+  }
+
+  if (value.event === "tool_assignments") {
+    return (
+      Array.isArray(value.data.tool_assignments) &&
+      value.data.tool_assignments.every(isToolAssignment) &&
+      typeof value.data.count === "number"
+    );
   }
 
   if (value.event === "completed") {

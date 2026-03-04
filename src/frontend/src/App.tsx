@@ -20,6 +20,9 @@ export default function App() {
   const [runDetails, setRunDetails] = useState<RuntimeAgentRunResponse | null>(null);
   const [streamedProgress, setStreamedProgress] = useState<RuntimeAgentGraphStep[]>([]);
   const [streamedSubQueries, setStreamedSubQueries] = useState<string[]>([]);
+  const [streamedToolAssignments, setStreamedToolAssignments] = useState<RuntimeAgentRunResponse["tool_assignments"]>(
+    [],
+  );
   const loadInFlightRef = useRef(false);
   const runInFlightRef = useRef(false);
 
@@ -56,9 +59,12 @@ export default function App() {
     event: RuntimeAgentStreamEvent,
     progress: RuntimeAgentGraphStep[],
     subQueries: string[],
+    toolAssignments: RuntimeAgentRunResponse["tool_assignments"],
   ): void {
     // Called by `handleRun` for each streamed event so the UI can update readouts
     // before completion without waiting for the entire stream response.
+    // Side effects: updates in-flight progress, sub-query, and tool-assignment
+    // state buffers that `ProgressHistory` renders during stream execution.
     if (event.event === "heartbeat") {
       setRunMessage(`Heartbeat: ${event.data.status}`);
       return;
@@ -80,6 +86,13 @@ export default function App() {
       subQueries.splice(0, subQueries.length, ...event.data.sub_queries);
       setStreamedSubQueries([...subQueries]);
       setRunMessage(`Generated ${event.data.count} sub-queries.`);
+      return;
+    }
+
+    if (event.event === "tool_assignments") {
+      toolAssignments.splice(0, toolAssignments.length, ...event.data.tool_assignments);
+      setStreamedToolAssignments([...toolAssignments]);
+      setRunMessage(`Assigned tools for ${event.data.count} sub-queries.`);
     }
   }
 
@@ -93,6 +106,7 @@ export default function App() {
     const trimmedQuery = query.trim();
     const streamProgressBuffer: RuntimeAgentGraphStep[] = [];
     const streamSubQueryBuffer: string[] = [];
+    const streamToolAssignmentsBuffer: RuntimeAgentRunResponse["tool_assignments"] = [];
 
     setRunState("loading");
     setRunMessage("Running agent stream...");
@@ -100,6 +114,7 @@ export default function App() {
     setRunDetails(null);
     setStreamedProgress([]);
     setStreamedSubQueries([]);
+    setStreamedToolAssignments([]);
     setSubmittedQuery(trimmedQuery);
 
     try {
@@ -107,7 +122,12 @@ export default function App() {
         { query: trimmedQuery },
         {
           onEvent: (streamEvent) => {
-            applyStreamEvent(streamEvent, streamProgressBuffer, streamSubQueryBuffer);
+            applyStreamEvent(
+              streamEvent,
+              streamProgressBuffer,
+              streamSubQueryBuffer,
+              streamToolAssignmentsBuffer,
+            );
           },
         },
       );
@@ -115,6 +135,7 @@ export default function App() {
       if (result.ok) {
         setStreamedProgress([...streamProgressBuffer]);
         setStreamedSubQueries([...result.data.completed.sub_queries]);
+        setStreamedToolAssignments([...result.data.completed.tool_assignments]);
         setRunState("success");
         setRunMessage(formatRunSuccessMessage(result.data.completed.sub_queries.length));
         setAnswer(result.data.completed.output);
@@ -197,6 +218,7 @@ export default function App() {
             runDetails={runDetails}
             streamedProgress={streamedProgress}
             streamedSubQueries={streamedSubQueries}
+            streamedToolAssignments={streamedToolAssignments}
           />
         </section>
 

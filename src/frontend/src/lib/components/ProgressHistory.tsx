@@ -4,12 +4,21 @@ interface ProgressHistoryProps {
   runDetails: RuntimeAgentRunResponse | null;
   streamedProgress: RuntimeAgentGraphStep[];
   streamedSubQueries: string[];
+  streamedToolAssignments: RuntimeAgentRunResponse["tool_assignments"];
 }
 
-export function ProgressHistory({ runDetails, streamedProgress, streamedSubQueries }: ProgressHistoryProps) {
+export function ProgressHistory({
+  runDetails,
+  streamedProgress,
+  streamedSubQueries,
+  streamedToolAssignments,
+}: ProgressHistoryProps) {
+  // Called by `App` to render either in-flight stream readouts or final run
+  // payload details; prefers streamed values to keep the UI responsive pre-completion.
   const timeline = streamedProgress.length > 0 ? streamedProgress : runDetails?.graph_state?.timeline ?? [];
   const subQueries = streamedSubQueries.length > 0 ? streamedSubQueries : runDetails?.sub_queries ?? [];
-  const toolAssignments = runDetails?.tool_assignments ?? [];
+  const toolAssignments =
+    streamedToolAssignments.length > 0 ? streamedToolAssignments : runDetails?.tool_assignments ?? [];
   const validationResults = runDetails?.validation_results ?? [];
 
   return (

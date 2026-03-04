@@ -62,6 +62,7 @@ export async function streamAgentRun(
     let lastSequence = 0;
     let sawHeartbeat = false;
     let sawSubQueries = false;
+    let sawToolAssignments = false;
     let completed: RuntimeAgentStreamCompletedData | null = null;
     const events: RuntimeAgentStreamEvent[] = [];
 
@@ -102,9 +103,19 @@ export async function streamAgentRun(
           sawSubQueries = true;
         }
 
+        if (event.event === "tool_assignments") {
+          if (!sawSubQueries) {
+            return malformedResponse("tool_assignments event arrived before sub_queries.");
+          }
+          sawToolAssignments = true;
+        }
+
         if (event.event === "completed") {
           if (!sawSubQueries) {
             return malformedResponse("Completed event arrived before sub_queries.");
+          }
+          if (!sawToolAssignments) {
+            return malformedResponse("Completed event arrived before tool_assignments.");
           }
           if (completed !== null) {
             return malformedResponse("Stream included multiple completed events.");

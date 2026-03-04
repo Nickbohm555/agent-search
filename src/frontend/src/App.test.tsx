@@ -31,6 +31,17 @@ function successStreamResponse(overrides?: Partial<RuntimeAgentStreamResponse>):
       { sequence: 3, event: "sub_queries", data: { sub_queries: ["subquery-a", "subquery-b"], count: 2 } },
       {
         sequence: 4,
+        event: "tool_assignments",
+        data: {
+          tool_assignments: [
+            { sub_query: "subquery-a", tool: "internal" },
+            { sub_query: "subquery-b", tool: "web" },
+          ],
+          count: 2,
+        },
+      },
+      {
+        sequence: 5,
         event: "completed",
         data: {
           agent_name: "langgraph-scaffold",
@@ -178,6 +189,37 @@ describe("App", () => {
       expect(screen.getByText("Run complete. 2 sub-queries processed.")).toBeInTheDocument();
       expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
       expect(screen.getByText("subquery-b (web)")).toBeInTheDocument();
+    });
+  });
+
+  it("shows streamed tool assignments before completion when event arrives", async () => {
+    const deferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();
+
+    mockedStreamAgentRun.mockImplementation(async (_payload, options) => {
+      options?.onEvent?.({ sequence: 1, event: "heartbeat", data: { status: "started", query: "q" } });
+      options?.onEvent?.({ sequence: 2, event: "sub_queries", data: { sub_queries: ["subquery-a"], count: 1 } });
+      options?.onEvent?.({
+        sequence: 3,
+        event: "tool_assignments",
+        data: { tool_assignments: [{ sub_query: "subquery-a", tool: "internal" }], count: 1 },
+      });
+      return deferred.promise;
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Show in-flight assignment" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Assigned tools for 1 sub-queries.")).toBeInTheDocument();
+      expect(screen.getByText("subquery-a (internal)")).toBeInTheDocument();
+      expect(screen.getByText("No answer yet.")).toBeInTheDocument();
+    });
+
+    deferred.resolve({ ok: true, data: successStreamResponse() });
+
+    await waitFor(() => {
+      expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
     });
   });
 

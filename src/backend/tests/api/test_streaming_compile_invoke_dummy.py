@@ -68,9 +68,21 @@ def test_runtime_stream_calls_astream_and_ainvoke_with_deterministic_fallback_ev
     assert response.status_code == 200
     events = _extract_stream_events(response.text)
     event_names = [item["event"] for item in events]
-    assert event_names[:4] == ["heartbeat", "progress", "sub_queries", "completed"]
+    assert event_names[:5] == [
+        "heartbeat",
+        "progress",
+        "sub_queries",
+        "tool_assignments",
+        "completed",
+    ]
     assert fake_runtime.astream_calls == 1
     assert fake_runtime.ainvoke_calls == 1
+
+    tool_assignments_event = next(item for item in events if item["event"] == "tool_assignments")
+    assert tool_assignments_event["data"]["count"] == len(
+        tool_assignments_event["data"]["tool_assignments"]
+    )
+    assert tool_assignments_event["data"]["count"] >= 1
 
     completed_event = next(item for item in events if item["event"] == "completed")
     assert completed_event["data"]["agent_name"] != ""
