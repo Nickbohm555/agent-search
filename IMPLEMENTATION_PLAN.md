@@ -1,4 +1,4 @@
-- [ ] P0 - Add backend streaming run endpoint `POST /api/agents/run/stream` that returns SSE (`text/event-stream`) with ordered scaffold events for a single run.
+- [x] P0 - Add backend streaming run endpoint `POST /api/agents/run/stream` that returns SSE (`text/event-stream`) with ordered scaffold events for a single run.
   Verification requirements (from `specs/compile-invoke-streaming-dummy.md`, `specs/streaming-agent-heartbeat.md`): add backend smoke test that posts a deterministic query and verifies response media type is SSE; verifies at least 3 streamed events arrive before close (not only one final payload); verifies strictly increasing `sequence`; verifies event set includes `heartbeat`, `sub_queries`, and `completed`; verifies `completed.data` contains non-empty `agent_name`, non-empty `output`, and non-empty `thread_id`.
 
 - [ ] P0 - Implement runtime compile/invoke path for streaming with per-process cache and deterministic dummy fallback events when runtime stream events are unavailable.

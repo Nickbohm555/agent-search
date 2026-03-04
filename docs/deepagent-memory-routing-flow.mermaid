@@ -1,13 +1,13 @@
 flowchart TD
-    A["src/backend/routers/agent.py::runtime_agent_run\nTrigger: POST /api/agents/run\nData: RuntimeAgentRunRequest {query, thread_id?, user_id?, checkpoint_id?}\nWhy: accept runtime memory/checkpoint context"] --> B["src/backend/services/agent_service.py::run_runtime_agent\nTrigger: router call\nData: validated payload + DB session\nWhy: keep API response contract stable while delegating execution"]
+    A["src/backend/routers/agent.py::runtime_agent_run\nTrigger: POST /api/agents/run\nData: RuntimeAgentRunRequest (query, thread_id?, user_id?, checkpoint_id?)\nWhy: accept runtime memory/checkpoint context"] --> B["src/backend/services/agent_service.py::run_runtime_agent\nTrigger: router call\nData: validated payload + DB session\nWhy: keep API response contract stable while delegating execution"]
 
     B --> C["src/backend/agents/langgraph_agent.py::LangGraphAgentScaffold.run\nTrigger: service invokes runtime scaffold\nData: payload + SQLAlchemy session\nWhy: orchestrate decomposition/retrieval/validation/synthesis + persistence"]
 
-    C --> D["DeepAgentPersistenceStore.read_memories\nTrigger: run() pre-execution memory routing\nData: namespace=(user_id, \"memories\"), query, limit\nWhy: inject prior user-scoped memory context before synthesis"]
+    C --> D["DeepAgentPersistenceStore.read_memories\nTrigger: run() pre-execution memory routing\nData: namespace=(user_id, 'memories'), query, limit\nWhy: inject prior user-scoped memory context before synthesis"]
 
     C --> E["Pipeline steps\nFunctions: decompose_query -> assign_tools_to_sub_queries -> execute_subquery_retrievals -> validate_retrieval_results -> synthesize_answer\nData: sub_queries, assignments, retrievals, validations, output\nWhy: deterministic scaffold orchestration"]
 
-    E --> F["DeepAgentPersistenceStore.write_memory\nTrigger: run() after synthesis\nData: deterministic value {kind, query, summary}\nWhy: persist reusable cross-thread memory for same user namespace"]
+    E --> F["DeepAgentPersistenceStore.write_memory\nTrigger: run() after synthesis\nData: deterministic value (kind, query, summary)\nWhy: persist reusable cross-thread memory for same user namespace"]
 
     E --> G["DeepAgentPersistenceStore.persist_thread_checkpoint\nTrigger: run() after synthesis\nData: thread_id + checkpoint_id? + query/output\nWhy: preserve per-thread replay/time-travel history"]
 

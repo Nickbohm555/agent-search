@@ -5,7 +5,7 @@ flowchart TD
 
     C --> D["src/backend/agents/langgraph_agent.py::build_subquery_execution_tool\nTrigger: run() binds DB-backed tool\nData: SQLAlchemy Session\nWhy: expose retrieval+validation as callable subagent tool"]
 
-    C --> E["src/backend/agents/langgraph_agent.py::get_subagents\nTrigger: run() requests runtime subagent defs\nData: required DeepAgent keys {name, description, system_prompt, tools}\nWhy: provide specialized 'subquery-executor' subagent"]
+    C --> E["src/backend/agents/langgraph_agent.py::get_subagents\nTrigger: run() requests runtime subagent defs\nData: required DeepAgent keys (name, description, system_prompt, tools)\nWhy: provide specialized subquery-executor subagent"]
 
     D --> E
 

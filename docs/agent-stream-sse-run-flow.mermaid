@@ -1,0 +1,21 @@
+flowchart TD
+    A["POST /api/agents/run/stream
+src/backend/routers/agent.py::runtime_agent_run_stream"] -->|"Trigger: client submits RuntimeAgentRunRequest"| B["services.agent_service::stream_runtime_agent"]
+
+    B -->|"sequence=1 event=heartbeat
+data: status=started, query
+Reason: immediate liveness signal before pipeline finishes"| C["SSE frame -> client"]
+    B -->|"Calls services.agent_service::run_runtime_agent
+Data: payload + db + tracing handle
+Reason: reuse existing deterministic sync contract"| D["run_runtime_agent"]
+
+    D -->|"Uses AgentFactory.create_langgraph_agent()
+then LangGraphAgentScaffold.run()"| E["Deterministic pipeline result"]
+    E -->|"sub_queries array"| F["sequence=2 event=sub_queries"]
+    E -->|"agent_name, output, thread_id, checkpoint_id, sub_queries, tool_assignments"| G["sequence=3 event=completed"]
+
+    F -->|"Serialized by _to_sse_payload() to text/event-stream"| C
+    G -->|"Serialized by _to_sse_payload() to text/event-stream"| C
+
+    H["Decision: emit minimal scaffold event set only (heartbeat, sub_queries, completed)"] -.-> B
+    I["Tradeoff: stream is contract-stable now but not yet mapped from runtime astream events"] -.-> D

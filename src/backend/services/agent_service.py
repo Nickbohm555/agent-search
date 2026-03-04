@@ -1,11 +1,12 @@
 from contextlib import nullcontext
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from agents.factory import AgentFactory, build_default_agent
 from schemas import (
     RuntimeAgentInfo,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
+    RuntimeAgentStreamEvent,
     WebToolRun,
 )
 from sqlalchemy.orm import Session
@@ -121,4 +122,60 @@ def run_runtime_agent(
         validation_results=validation_results,
         web_tool_runs=web_tool_runs,
         graph_state=graph_state,
+    )
+
+
+def _to_sse_payload(event: RuntimeAgentStreamEvent) -> str:
+    """Serialize one runtime stream event as an SSE data frame."""
+    return f"data: {event.model_dump_json()}\n\n"
+
+
+def stream_runtime_agent(
+    payload: RuntimeAgentRunRequest,
+    db: Session,
+    tracing_handle: Optional[Any] = None,
+) -> Iterator[str]:
+    """Stream deterministic run progress events as SSE frames.
+
+    Called by `routers/agent.py::runtime_agent_run_stream`.
+    Emits a heartbeat immediately, then deterministic progress/completion data
+    derived from `run_runtime_agent`.
+    """
+    sequence = 1
+    yield _to_sse_payload(
+        RuntimeAgentStreamEvent(
+            sequence=sequence,
+            event="heartbeat",
+            data={"status": "started", "query": payload.query},
+        )
+    )
+
+    run_response = run_runtime_agent(payload, db=db, tracing_handle=tracing_handle)
+    sequence += 1
+    yield _to_sse_payload(
+        RuntimeAgentStreamEvent(
+            sequence=sequence,
+            event="sub_queries",
+            data={
+                "sub_queries": run_response.sub_queries,
+                "count": len(run_response.sub_queries),
+            },
+        )
+    )
+
+    sequence += 1
+    completed_data = {
+        "agent_name": run_response.agent_name,
+        "output": run_response.output,
+        "thread_id": run_response.thread_id,
+        "checkpoint_id": run_response.checkpoint_id,
+        "sub_queries": run_response.sub_queries,
+        "tool_assignments": [item.model_dump() for item in run_response.tool_assignments],
+    }
+    yield _to_sse_payload(
+        RuntimeAgentStreamEvent(
+            sequence=sequence,
+            event="completed",
+            data=completed_data,
+        )
     )

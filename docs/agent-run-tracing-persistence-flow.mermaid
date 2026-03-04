@@ -12,9 +12,9 @@ flowchart TD
     E -->|When tracing disabled\nTrigger: LangfuseTracingHandle.start_as_current_span returns no-op context\nWhy: preserve existing API behavior with zero tracing side effects| F[No external tracing calls]
 
     N1[Tradeoff: checkpoint_id in span metadata prefers\nexecution.persistence.resolved_checkpoint_id over request echo\nfor fidelity to effective checkpoint state.]:::note
-    D -. decision .-> N1
+    D -.->|decision| N1
 
-    N2[Tradeoff: user_id falls back to "anonymous" when omitted\nso persistence context stays explicit and deterministic in traces.]:::note
-    D -. decision .-> N2
+    N2[Tradeoff: user_id falls back to anonymous when omitted\nso persistence context stays explicit and deterministic in traces.]:::note
+    D -.->|decision| N2
 
     classDef note fill:#f7f7e8,stroke:#8a8a6a,color:#222;

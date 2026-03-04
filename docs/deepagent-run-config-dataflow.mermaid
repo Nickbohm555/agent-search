@@ -30,5 +30,4 @@ src/backend/services/answer_synthesis_service.py"| I["Final output string"]
 thread_id + optional checkpoint_id + existing fields
 Why: return resumable identifiers to clients"| J["API response"]
 
-    D -. "Tradeoff: keep tracing metadata unchanged in this loop
-to avoid cross-item scope creep; persistence IDs live in response + graph execution metadata for now." .-> J
+    D -.->|Tradeoff: keep tracing metadata unchanged in this loop; persistence IDs live in response + graph execution metadata| J
