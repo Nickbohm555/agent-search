@@ -38,8 +38,9 @@ def run_runtime_agent(
     payload: RuntimeAgentRunRequest,
     db: Session,
     tracing_handle: Optional[Any] = None,
+    runtime_handle: Optional[Any] = None,
 ) -> RuntimeAgentRunResponse:
-    factory = AgentFactory()
+    factory = AgentFactory(runtime_handle=runtime_handle)
     agent = build_default_agent()
     graph_agent = factory.create_langgraph_agent()
     graph_result = graph_agent.run(payload.query, db)

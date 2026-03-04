@@ -37,7 +37,37 @@ class LangGraphAgentScaffold:
 
     name: str
     model: str
+    runtime_handle: Any | None = None
     subquery_agent: SubQueryExecutionAgent = field(default_factory=SubQueryExecutionAgent)
+
+    @staticmethod
+    def _build_validated_evidence(
+        retrieval_results: list[SubQueryRetrievalResult],
+        validation_results: list[SubQueryValidationResult],
+    ) -> str:
+        validation_by_sub_query = {result.sub_query: result for result in validation_results}
+        lines: list[str] = []
+        for retrieval in retrieval_results:
+            validation = validation_by_sub_query.get(retrieval.sub_query)
+            if validation is None or validation.status != "validated" or not validation.sufficient:
+                continue
+
+            if retrieval.tool == "internal":
+                chunk_text = " ".join(chunk.content for chunk in retrieval.internal_results[:2]).strip()
+                if chunk_text:
+                    lines.append(f"{retrieval.sub_query}: {chunk_text}")
+                continue
+
+            page_text = " ".join(page.content for page in retrieval.opened_pages[:2]).strip()
+            if page_text:
+                lines.append(f"{retrieval.sub_query}: {page_text}")
+                continue
+
+            snippet_text = " ".join(item.snippet for item in retrieval.web_search_results[:2]).strip()
+            if snippet_text:
+                lines.append(f"{retrieval.sub_query}: {snippet_text}")
+
+        return "\n".join(lines).strip()
 
     def build(self) -> dict[str, Any]:
         # Shape mirrors a compiled LangGraph topology projection for observability/streaming.
@@ -130,11 +160,24 @@ class LangGraphAgentScaffold:
             validation_results.append(validation)
 
         timeline.append(RuntimeAgentGraphStep(step="synthesis", status="started"))
-        output = synthesize_answer(
+        fallback_output = synthesize_answer(
             query=query,
             retrieval_results=retrieval_results,
             validation_results=validation_results,
         )
+        evidence = self._build_validated_evidence(
+            retrieval_results=retrieval_results,
+            validation_results=validation_results,
+        )
+        runtime_output = fallback_output
+        runtime_mode = "disabled"
+        if self.runtime_handle is not None and hasattr(self.runtime_handle, "synthesize"):
+            runtime_output = self.runtime_handle.synthesize(
+                query=query,
+                evidence=evidence,
+                fallback_output=fallback_output,
+            )
+            runtime_mode = getattr(self.runtime_handle, "status", "unknown")
         timeline.append(RuntimeAgentGraphStep(step="synthesis", status="completed"))
 
         return {
@@ -142,10 +185,10 @@ class LangGraphAgentScaffold:
             "tool_assignments": tool_assignments,
             "retrieval_results": retrieval_results,
             "validation_results": validation_results,
-            "output": output,
+            "output": runtime_output,
             "graph_state": RuntimeAgentGraphState(
                 current_step="completed",
                 timeline=timeline,
-                graph=self.build(),
+                graph={**self.build(), "runtime_mode": runtime_mode},
             ),
         }

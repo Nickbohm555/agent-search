@@ -6,15 +6,15 @@
 
 ## Highest Priority Remaining (Scoped)
 
-- [ ] P0 - Implement LangChain runtime boundary with graceful enabled/disabled behavior (`specs/langchain-runtime-setup.md`).
+- [x] P0 - Implement LangChain runtime boundary with graceful enabled/disabled behavior (`specs/langchain-runtime-setup.md`).
   - Tasks:
-  - Add missing runtime dependencies (`langchain`, `langgraph`, provider adapter) in backend project config and lockfile.
-  - Add a single runtime integration boundary (service/app state) consumed by orchestration; keep routers provider-SDK agnostic.
-  - Add env-driven runtime mode with deterministic local stub mode for CI.
+  - Added runtime dependencies (`langchain`, `langgraph`, `langchain-openai`) in backend project config and lockfile.
+  - Added a single runtime integration boundary (`services/runtime_service.py`) initialized on app startup and consumed by orchestration through factory injection; routers remain provider-SDK agnostic.
+  - Added env-driven runtime modes with deterministic local `stub` mode for CI and graceful disabled/misconfigured fallback behavior.
   - Verification (outcomes):
-  - Startup succeeds with runtime enabled configuration and `/api/agents/run` executes through runtime path without wiring/import errors.
-  - Startup still succeeds when runtime credentials/config are absent/disabled and run path returns deterministic non-crashing behavior (or explicit controlled error contract).
-  - Tests cover enabled and disabled modes using deterministic stubs/mocks only (no hidden network/model dependency).
+  - Startup succeeds with runtime enabled stub configuration and `/api/agents/run` executes through runtime path without wiring/import errors.
+  - Startup succeeds when provider credentials/config are absent and run path deterministically falls back without crashing.
+  - Added deterministic smoke tests for enabled (`stub`) and misconfigured (`langchain_openai` without key) modes; no external model calls in CI.
 
 - [ ] P0 - Replace projection scaffold with executable LangGraph orchestration using deep-agent pattern (`specs/orchestration-langgraph.md`).
   - Tasks:
@@ -87,6 +87,7 @@
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.
 - [x] Internal data load/retrieve endpoints exist with observable load counts and deterministic retrieval behavior.
 - [x] Langfuse SDK scaffold and agent-run tracing baseline exist with enabled/disabled smoke coverage.
+- [x] LangChain runtime boundary is wired through startup/app state and orchestration with deterministic enabled/disabled smoke coverage.
 
 ## Gap Confirmation (Code Search Evidence)
 

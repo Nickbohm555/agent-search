@@ -19,4 +19,9 @@ def runtime_agent_run(
     request: Request,
     db: Session = Depends(get_db),
 ) -> RuntimeAgentRunResponse:
-    return run_runtime_agent(payload, db=db, tracing_handle=request.app.state.langfuse)
+    return run_runtime_agent(
+        payload,
+        db=db,
+        tracing_handle=request.app.state.langfuse,
+        runtime_handle=request.app.state.runtime_model,
+    )

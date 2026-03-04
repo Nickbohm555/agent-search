@@ -16,14 +16,20 @@ class AgentFactoryConfig:
 class AgentFactory:
     """Scaffold factory responsible for building runtime agents."""
 
-    def __init__(self, config: Optional[AgentFactoryConfig] = None) -> None:
+    def __init__(
+        self,
+        config: Optional[AgentFactoryConfig] = None,
+        runtime_handle: Optional[object] = None,
+    ) -> None:
         self.config = config or AgentFactoryConfig()
+        self.runtime_handle = runtime_handle
 
     def create_langgraph_agent(self) -> LangGraphAgentScaffold:
         """Return a runtime LangGraph agent instance."""
         return LangGraphAgentScaffold(
             name=self.config.agent_name,
             model=self.config.model_name,
+            runtime_handle=self.runtime_handle,
         )
 
     def create_runtime_agent(self) -> RuntimeAgent:

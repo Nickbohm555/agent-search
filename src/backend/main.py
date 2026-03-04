@@ -7,6 +7,7 @@ from routers.health import router as health_router
 from routers.internal_data import router as internal_data_router
 from routers.search import router as search_router
 from routers.web import router as web_router
+from services.runtime_service import initialize_runtime_handle
 
 app = FastAPI(title="agent-search", version="0.1.0")
 
@@ -29,3 +30,4 @@ app.include_router(web_router)
 def startup_observability() -> None:
     # Scaffold-only: stores an inert handle until Langfuse SDK wiring is implemented.
     app.state.langfuse = initialize_langfuse_tracing()
+    app.state.runtime_model = initialize_runtime_handle()
