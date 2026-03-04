@@ -22,6 +22,24 @@ export function ProgressHistory({
   const retrievalResults = runDetails?.retrieval_results ?? [];
   const validationResults = runDetails?.validation_results ?? [];
 
+  function formatRetrievalReadout(retrieval: RuntimeAgentRunResponse["retrieval_results"][number]): string {
+    // Called while rendering retrieval list items to keep internal/web readout
+    // formatting consistent and include optional chunk attribution metadata.
+    if (retrieval.tool === "web") {
+      return `${retrieval.sub_query}: opened ${retrieval.opened_urls.length} web pages`;
+    }
+
+    const attributedChunk = retrieval.internal_results.find((chunk) => chunk.chunk_metadata);
+    if (attributedChunk?.chunk_metadata) {
+      return (
+        `${retrieval.sub_query}: internal results ${retrieval.internal_results.length} ` +
+        `(topic: ${attributedChunk.chunk_metadata.topic}, source: ${attributedChunk.chunk_metadata.source})`
+      );
+    }
+
+    return `${retrieval.sub_query}: internal results ${retrieval.internal_results.length}`;
+  }
+
   return (
     <div className="progress-history" data-testid="progress-history-region">
       <h3>Progress History</h3>
@@ -67,9 +85,7 @@ export function ProgressHistory({
               <ol data-testid="retrieval-list">
                 {retrievalResults.map((retrieval) => (
                   <li key={`${retrieval.sub_query}-${retrieval.tool}`}>
-                    {retrieval.tool === "internal"
-                      ? `${retrieval.sub_query}: internal results ${retrieval.internal_results.length}`
-                      : `${retrieval.sub_query}: opened ${retrieval.opened_urls.length} web pages`}
+                    {formatRetrievalReadout(retrieval)}
                   </li>
                 ))}
               </ol>

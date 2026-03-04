@@ -53,3 +53,19 @@
   - `docker compose exec backend uv run pytest` (58 passed)
   - `docker compose exec frontend npm run test -- --run` (32 passed)
   - `docker compose exec frontend npm run typecheck` (pass)
+
+## Loop Update (2026-03-04, retrieval attribution readout)
+
+- **Completed highest-priority item this run:** surfaced chunk attribution metadata (`topic`, `source`) in frontend retrieval readouts for internal sub-query results.
+- **Implementation details:**
+  - Added frontend runtime type support for `InternalRetrievedChunk.chunk_metadata`.
+  - Strengthened `runAgent` response validation to verify `retrieval_results` nested payload shapes (internal chunks, web results, opened pages) and reject malformed metadata.
+  - Updated progress-history retrieval rendering to include attribution when metadata is present.
+- **Tests added/updated for this item:**
+  - `src/frontend/src/App.test.tsx`: retrieval/validation readout test now asserts internal retrieval attribution text includes topic/source.
+  - `src/frontend/src/utils/api.test.ts`: added success-path test for run payloads with valid `chunk_metadata`; added malformed-path test that rejects invalid `chunk_metadata`.
+- **Validation performed:**
+  - `curl -sf http://localhost:8000/api/health`
+  - `docker compose exec backend uv run pytest` (58 passed)
+  - `docker compose exec frontend npm run test -- --run` (34 passed)
+  - `docker compose exec frontend npm run typecheck` (pass)

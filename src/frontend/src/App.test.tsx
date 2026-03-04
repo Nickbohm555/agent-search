@@ -119,6 +119,10 @@ function successStreamResponseWithExecutionEvents(): RuntimeAgentStreamResponse 
               source_ref: "wiki://a",
               content: "Internal evidence",
               score: 0.9,
+              chunk_metadata: {
+                topic: "Strait of Hormuz",
+                source: "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+              },
             },
           ],
           web_search_results: [],
@@ -554,7 +558,11 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
 
     await waitFor(() => {
-      expect(screen.getByText("subquery-a: internal results 1")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "subquery-a: internal results 1 (topic: Strait of Hormuz, source: https://en.wikipedia.org/wiki/Strait_of_Hormuz)",
+        ),
+      ).toBeInTheDocument();
       expect(screen.getByText("subquery-b: opened 1 web pages")).toBeInTheDocument();
       expect(screen.getByText("subquery-a: validated")).toBeInTheDocument();
       expect(screen.getByText("subquery-b: validated")).toBeInTheDocument();

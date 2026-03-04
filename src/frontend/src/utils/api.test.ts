@@ -149,6 +149,53 @@ describe("frontend api client", () => {
     }
   });
 
+  it("accepts run payloads with internal retrieval chunk metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        agent_name: "langgraph-scaffold",
+        output: "Final answer",
+        thread_id: "thread-123",
+        checkpoint_id: null,
+        sub_queries: ["q1"],
+        tool_assignments: [{ sub_query: "q1", tool: "internal" }],
+        retrieval_results: [
+          {
+            sub_query: "q1",
+            tool: "internal",
+            internal_results: [
+              {
+                chunk_id: 1,
+                document_id: 2,
+                document_title: "Strait of Hormuz",
+                source_type: "wiki",
+                source_ref: "strait_of_hormuz",
+                content: "evidence",
+                score: 0.88,
+                chunk_metadata: {
+                  source: "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+                  topic: "Strait of Hormuz",
+                },
+              },
+            ],
+            web_search_results: [],
+            opened_urls: [],
+            opened_pages: [],
+          },
+        ],
+        validation_results: [],
+        web_tool_runs: [],
+        graph_state: null,
+      }),
+    );
+
+    const result = await runAgent(
+      { query: "metadata check" },
+      { fetchImpl: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts optional persistence fields in runAgent request payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, {
@@ -292,6 +339,59 @@ describe("frontend api client", () => {
 
     const result = await runAgent(
       { query: "Hello" },
+      { fetchImpl: fetchMock as unknown as typeof fetch },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        type: "malformed_response",
+        message: "Backend response did not match expected shape.",
+        retryable: false,
+      },
+    });
+  });
+
+  it("rejects run payloads with malformed chunk metadata", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        agent_name: "langgraph-scaffold",
+        output: "Final answer",
+        thread_id: "thread-123",
+        checkpoint_id: null,
+        sub_queries: ["q1"],
+        tool_assignments: [{ sub_query: "q1", tool: "internal" }],
+        retrieval_results: [
+          {
+            sub_query: "q1",
+            tool: "internal",
+            internal_results: [
+              {
+                chunk_id: 1,
+                document_id: 2,
+                document_title: "Strait of Hormuz",
+                source_type: "wiki",
+                source_ref: "strait_of_hormuz",
+                content: "evidence",
+                score: 0.88,
+                chunk_metadata: {
+                  source: "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+                },
+              },
+            ],
+            web_search_results: [],
+            opened_urls: [],
+            opened_pages: [],
+          },
+        ],
+        validation_results: [],
+        web_tool_runs: [],
+        graph_state: null,
+      }),
+    );
+
+    const result = await runAgent(
+      { query: "metadata check" },
       { fetchImpl: fetchMock as unknown as typeof fetch },
     );
 

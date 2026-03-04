@@ -75,6 +75,10 @@ export interface InternalRetrievedChunk {
   source_ref?: string | null;
   content: string;
   score: number;
+  chunk_metadata?: {
+    source: string;
+    topic: string;
+  } | null;
 }
 
 export interface WebSearchResult {
@@ -309,6 +313,68 @@ function isToolKind(value: unknown): value is "internal" | "web" {
   return value === "internal" || value === "web";
 }
 
+function isChunkMetadata(value: unknown): value is { source: string; topic: string } {
+  if (!isObject(value)) {
+    return false;
+  }
+
+  return typeof value.source === "string" && typeof value.topic === "string";
+}
+
+function isInternalRetrievedChunk(value: unknown): value is InternalRetrievedChunk {
+  // Called by runtime response validation to keep internal retrieval readouts
+  // type-safe when chunk attribution metadata is included.
+  if (!isObject(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.chunk_id === "number" &&
+    typeof value.document_id === "number" &&
+    typeof value.document_title === "string" &&
+    typeof value.source_type === "string" &&
+    (value.source_ref === undefined || value.source_ref === null || typeof value.source_ref === "string") &&
+    typeof value.content === "string" &&
+    typeof value.score === "number" &&
+    (value.chunk_metadata === undefined || value.chunk_metadata === null || isChunkMetadata(value.chunk_metadata))
+  );
+}
+
+function isWebSearchResult(value: unknown): value is WebSearchResult {
+  return (
+    isObject(value) &&
+    typeof value.title === "string" &&
+    typeof value.url === "string" &&
+    typeof value.snippet === "string"
+  );
+}
+
+function isWebOpenUrlResponse(value: unknown): value is WebOpenUrlResponse {
+  return (
+    isObject(value) &&
+    typeof value.url === "string" &&
+    (value.title === undefined || typeof value.title === "string") &&
+    typeof value.content === "string"
+  );
+}
+
+function isSubQueryRetrievalResult(value: unknown): value is SubQueryRetrievalResult {
+  // Validates retrieval payload blocks so malformed nested arrays do not enter
+  // frontend state during `/api/agents/run` response handling.
+  return (
+    isObject(value) &&
+    typeof value.sub_query === "string" &&
+    isToolKind(value.tool) &&
+    Array.isArray(value.internal_results) &&
+    value.internal_results.every(isInternalRetrievedChunk) &&
+    Array.isArray(value.web_search_results) &&
+    value.web_search_results.every(isWebSearchResult) &&
+    isStringArray(value.opened_urls) &&
+    Array.isArray(value.opened_pages) &&
+    value.opened_pages.every(isWebOpenUrlResponse)
+  );
+}
+
 function isRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResponse {
   // Used by `requestJson` in `runAgent` so UI state only receives shape-safe payloads.
   // Side effect free: validates runtime payload structure, including persistence IDs.
@@ -359,6 +425,14 @@ function isRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResp
   });
 
   if (!validValidationResults) {
+    return false;
+  }
+
+  const validRetrievalResults = value.retrieval_results.every((result) => {
+    return isSubQueryRetrievalResult(result);
+  });
+
+  if (!validRetrievalResults) {
     return false;
   }
 

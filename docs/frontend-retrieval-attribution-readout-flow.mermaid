@@ -1,0 +1,9 @@
+flowchart TD
+    A[User submits query\ntrigger: src/frontend/src/App.tsx handleRun] -->|POST /api/agents/run/stream payload {query}| B[streamAgentRun\nfile: src/frontend/src/utils/stream.ts]
+    B -->|SSE retrieval_result + completed events| C[App derives run details\ntrigger: deriveRunDetailsFromStream in src/frontend/src/App.tsx]
+    C -->|runtime payload includes internal_results[].chunk_metadata| D[runAgent schema guards\ntrigger: isRuntimeAgentRunResponse + isSubQueryRetrievalResult in src/frontend/src/utils/api.ts]
+    D -->|valid nested metadata only| E[ProgressHistory render\ntrigger: formatRetrievalReadout in src/frontend/src/lib/components/ProgressHistory.tsx]
+    E -->|text readout: topic/source attribution| F[UI retrieval list item\n"subquery: internal results N (topic, source)"]
+
+    D -.tradeoff.-> G[Decision: strict client validation rejects malformed chunk_metadata\nWhy: prevents silent UI corruption from partial backend regressions\nCost: malformed payloads surface as deterministic malformed_response]
+    E -.tradeoff.-> H[Decision: show first attributed internal chunk only\nWhy: keep readout concise in scaffold UI\nCost: not all chunk attributions are displayed]
