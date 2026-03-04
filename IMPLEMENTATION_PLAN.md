@@ -184,6 +184,25 @@
     - `docker compose exec frontend npm run test` -> `30 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
+- [x] P1 - Surface live heartbeat step updates in demo UI run status (`specs/demo-ui-typescript.md`, `specs/streaming-agent-heartbeat.md`).
+  - Tasks:
+  - Added heartbeat status message formatting helper (`formatHeartbeatMessage`) for deterministic, user-readable step updates.
+  - Updated run stream event handling in `App` so `heartbeat` events immediately update run status message from the latest timeline entry.
+  - Preserved existing sub-query streaming readout behavior while adding explicit step-level progress messaging.
+  - Added deterministic frontend interaction test verifying heartbeat status appears before completion.
+  - Verification (outcomes):
+  - During streamed runs, the progress status region now shows step messages such as `Step update: decomposition in progress.` before final completion text.
+  - Existing stream behavior remains intact (`sub_queries` message updates and final run completion state).
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -v --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `36 passed`
+    - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 ## Completed Baseline (Scoped)
 
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.

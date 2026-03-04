@@ -5,7 +5,7 @@ import { ProgressHistory } from "./lib/components/ProgressHistory";
 import { QueryForm } from "./lib/components/QueryForm";
 import { StatusBanner } from "./lib/components/StatusBanner";
 import { RequestState } from "./lib/types";
-import { formatLoadSuccessMessage, formatRunSuccessMessage } from "./lib/utils/messages";
+import { formatHeartbeatMessage, formatLoadSuccessMessage, formatRunSuccessMessage } from "./lib/utils/messages";
 
 export default function App() {
   const [loadState, setLoadState] = useState<RequestState>("idle");
@@ -70,6 +70,14 @@ export default function App() {
             setRunDetails(snapshot);
             if (snapshot.output) {
               setAnswer(snapshot.output);
+            }
+            if (event.event === "heartbeat") {
+              const timeline = snapshot.graph_state?.timeline;
+              const latestEntry = timeline && timeline.length > 0 ? timeline[timeline.length - 1] : null;
+              if (latestEntry) {
+                setRunMessage(formatHeartbeatMessage(latestEntry.step, latestEntry.status));
+              }
+              return;
             }
             if (event.event === "sub_queries" && snapshot.sub_queries.length > 0) {
               setRunMessage(`Streaming progress. ${snapshot.sub_queries.length} sub-queries received.`);

@@ -595,4 +595,40 @@ describe("App", () => {
       expect(screen.getByText("This is the synthesized answer.")).toBeInTheDocument();
     });
   });
+
+  it("shows heartbeat step updates before completion", async () => {
+    mockedRunAgentStream.mockImplementation(async (_payload, handlers) => {
+      handlers?.onEvent?.(
+        {
+          sequence: 1,
+          event: "heartbeat",
+          data: { step: "decomposition", status: "started", details: {} },
+        },
+        successRunResponse({
+          output: "",
+          sub_queries: [],
+          tool_assignments: [],
+          validation_results: [],
+          graph_state: {
+            current_step: "decomposition",
+            timeline: [{ step: "decomposition", status: "started", details: {} }],
+            graph: {},
+          },
+        }),
+      );
+      return { ok: true, data: successRunResponse({ sub_queries: ["subquery-a"] }) };
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Query"), { target: { value: "Heartbeat status query" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Step update: decomposition in progress.")).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run complete. 1 sub-queries processed.")).toBeInTheDocument();
+    });
+  });
 });
