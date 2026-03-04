@@ -15,8 +15,9 @@
   - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Langfuse SDK initialization now loads env config, creates a real client when enabled + credentialed, and returns a safe no-op tracing handle otherwise.
-  - Added backend smoke tests for enabled startup initialization and disabled/missing-credential no-op behavior.
+  - Added agent-run tracing at the execution boundary so enabled Langfuse handles receive `agent.run` span creation with query input, agent identity metadata, and run output.
+  - Routed `request.app.state.langfuse` into the agent service to keep instrumentation centralized in service execution rather than router logic.
+  - Added backend smoke tests for enabled trace creation, disabled no-trace behavior, and distinct spans for consecutive runs.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -31,15 +32,12 @@
   - Replaced placeholder initializer with environment/credential-aware Langfuse client setup.
   - Startup remains resilient when disabled or misconfigured by returning a no-op tracing handle.
   - Added smoke tests covering enabled startup wiring and disabled graceful behavior.
+- [x] P0 - Instrument agent-run tracing (`specs/agent-run-tracing.md`)
+  - Added tracing instrumentation in `run_runtime_agent()` so all runtime-agent executions pass through a single trace boundary.
+  - Trace/span payload now includes query input, agent name metadata, and output response for each run when tracing is enabled.
+  - Added smoke coverage to verify enabled tracing payload, disabled graceful behavior, and distinct spans across consecutive runs.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P0 - Instrument agent-run tracing (`specs/agent-run-tracing.md`)
-  - Scope gap confirmed: `run_runtime_agent()` executes with no trace/span creation.
-  - Verification requirements (outcome-focused):
-    - With tracing enabled, each `POST /api/agents/run` creates a trace/span containing query input, agent identity, and output.
-    - With tracing disabled, endpoint response contract remains unchanged and successful.
-    - Consecutive agent runs create distinct traces/spans.
 
 - [ ] P0 - Implement query decomposition (`specs/query-decomposition.md`)
   - Scope gap confirmed: no decomposition component/state in backend.
@@ -144,29 +142,27 @@
     - `curl -sS http://localhost:8000/api/health` -> `curl: (7) Couldn't connect to server`.
 - Secondary local-environment blockers when attempting non-Docker fallback:
   - Failed commands:
-    - `(src/backend) uv run pytest tests/api/test_langfuse_observability.py` -> `failed to open file /Users/nickbohm/.cache/uv/sdists-v9/.git: Operation not permitted`
-    - `(src/backend) uv run pytest` -> same `uv` cache permission error.
-    - `(src/backend) uv lock` -> same `uv` cache permission error.
+    - `(repo root) python3 -m pytest src/backend/tests/api/test_agent_run_tracing.py` initially failed due runtime annotation compatibility (`Any | None`) under local Python 3.9.
     - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
   - Supplemental successful fallback checks (non-authoritative for compose gate):
-    - `(src/backend) python3 -m pytest tests/api/test_langfuse_observability.py` -> `3 passed`
-    - `(src/backend) python3 -m pytest` -> `8 passed`
-- Repository write blocker in this sandbox:
+    - `(repo root) python3 -m pytest src/backend/tests/api/test_agent_run_tracing.py` -> `3 passed` (after annotation compatibility fix).
+    - `(repo root) python3 -m pytest src/backend/tests` -> `11 passed`.
+- Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: implement langfuse sdk initialization"` -> `fatal: Unable to create '.git/index.lock': Operation not permitted`
+    - `git add -A && git commit -m "blocked: instrument agent run tracing with smoke tests"` -> `fatal: Unable to create '.git/index.lock': Operation not permitted`
+    - `git push` -> `Could not resolve host: github.com`
 - Next action:
-  - Run checks on a host with Docker daemon access and installed project dependencies, then re-run:
+  - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
     - `docker compose up -d`
     - `docker compose ps`
     - `docker compose exec backend uv run pytest`
     - `docker compose exec frontend npm run test`
     - `docker compose exec frontend npm run typecheck`
     - Health check: `curl http://localhost:8000/api/health`
-  - Install backend/frontend dependencies in an environment where package tooling has cache access:
-    - `(src/backend) uv sync`
+  - Install frontend dependencies before local frontend checks:
     - `(src/frontend) npm ci`
-  - Commit and push:
+  - Complete commit/push on a host with git write/network access:
     - `git add -A`
-    - `git commit -m "blocked: implement langfuse sdk initialization with smoke tests"`
+    - `git commit -m "blocked: instrument agent run tracing with smoke tests"`
     - `git push`
