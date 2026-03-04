@@ -21,6 +21,29 @@ class _NoOpSpan:
         return None
 
 
+def _extract_persistence_context(
+    payload: RuntimeAgentRunRequest,
+    graph_result: dict[str, Any],
+) -> dict[str, Optional[str]]:
+    """Return trace-safe persistence identifiers for one runtime agent run.
+
+    Called by `run_runtime_agent` when creating Langfuse span metadata so
+    tracing captures deepAgent persistence context even if portions of
+    graph metadata are absent.
+    """
+    graph_state = graph_result.get("graph_state")
+    graph_payload = getattr(graph_state, "graph", {}) if graph_state else {}
+    execution = graph_payload.get("execution", {})
+    persistence = execution.get("persistence", {})
+    resolved_checkpoint_id = persistence.get("resolved_checkpoint_id")
+
+    return {
+        "thread_id": graph_result.get("thread_id") or payload.thread_id,
+        "checkpoint_id": resolved_checkpoint_id or graph_result.get("checkpoint_id"),
+        "user_id": execution.get("user_id") or payload.user_id or "anonymous",
+    }
+
+
 def _start_agent_span(tracing_handle: Any, query: str) -> Any:
     if not getattr(tracing_handle, "enabled", False):
         return nullcontext(_NoOpSpan())
@@ -68,6 +91,7 @@ def run_runtime_agent(
         for result in retrieval_results
         if result.tool == "web"
     ]
+    persistence_context = _extract_persistence_context(payload, graph_result)
 
     # this will be using langfuse tracing....
     with _start_agent_span(tracing_handle, payload.query) as span:
@@ -83,6 +107,7 @@ def run_runtime_agent(
                 "retrieval_results": [result.model_dump() for result in retrieval_results],
                 "validation_results": [result.model_dump() for result in validation_results],
                 "web_tool_runs": [run.model_dump() for run in web_tool_runs],
+                "persistence_context": persistence_context,
             },
         )
     return RuntimeAgentRunResponse(

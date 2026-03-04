@@ -66,20 +66,54 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
     span_record = tracing_handle.span_records[0]
     assert span_record["name"] == "agent.run"
     assert span_record["kwargs"]["input"] == {"query": "trace this run"}
-    assert span_record["span"].updates == [
-        {
-            "input": {"query": "trace this run"},
-            "output": {"response": payload["output"]},
-            "metadata": {
-                "agent_name": payload["agent_name"],
-                "sub_queries": payload["sub_queries"],
-                "tool_assignments": payload["tool_assignments"],
-                "retrieval_results": payload["retrieval_results"],
-                "validation_results": payload["validation_results"],
-                "web_tool_runs": payload["web_tool_runs"],
+    assert span_record["span"].updates == [{
+        "input": {"query": "trace this run"},
+        "output": {"response": payload["output"]},
+        "metadata": {
+            "agent_name": payload["agent_name"],
+            "sub_queries": payload["sub_queries"],
+            "tool_assignments": payload["tool_assignments"],
+            "retrieval_results": payload["retrieval_results"],
+            "validation_results": payload["validation_results"],
+            "web_tool_runs": payload["web_tool_runs"],
+            "persistence_context": {
+                "thread_id": payload["thread_id"],
+                "checkpoint_id": payload["graph_state"]["graph"]["execution"]["persistence"][
+                    "resolved_checkpoint_id"
+                ],
+                "user_id": "anonymous",
             },
-        }
-    ]
+        },
+    }]
+
+
+@pytest.mark.smoke
+def test_agent_run_trace_metadata_includes_explicit_persistence_fields(client):
+    tracing_handle = _EnabledTracingHandle()
+    client.app.state.langfuse = tracing_handle
+
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": "trace explicit persistence",
+            "thread_id": "thread-tracing-1",
+            "user_id": "trace-user-1",
+            "checkpoint_id": "checkpoint-tracing-1",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["thread_id"] == "thread-tracing-1"
+    assert payload["checkpoint_id"] == "checkpoint-tracing-1"
+
+    assert len(tracing_handle.span_records) == 1
+    metadata = tracing_handle.span_records[0]["span"].updates[0]["metadata"]
+    assert metadata["persistence_context"] == {
+        "thread_id": "thread-tracing-1",
+        "checkpoint_id": "checkpoint-tracing-1",
+        "user_id": "trace-user-1",
+    }
 
 
 @pytest.mark.smoke

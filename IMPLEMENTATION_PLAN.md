@@ -55,8 +55,23 @@
     - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
     - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
-- [ ] P2 - Extend run tracing metadata to include deepAgent persistence context (`thread_id`, `checkpoint_id`, `user_id`) while preserving no-op behavior when tracing is disabled.
+- [x] P2 - Extend run tracing metadata to include deepAgent persistence context (`thread_id`, `checkpoint_id`, `user_id`) while preserving no-op behavior when tracing is disabled.
   Verification requirements (from `specs/agent-run-tracing.md` + deepAgent JTBD): tracing-enabled smoke test verifies one span per run still includes query, agent identity, output, and persistence identifiers; tracing-disabled smoke test verifies API response behavior is unchanged and no tracing client call is attempted.
+  Completed in this loop:
+  - Added `services/agent_service.py::_extract_persistence_context` so trace metadata records runtime persistence identifiers with safe fallbacks:
+    - `thread_id` from runtime graph result,
+    - `checkpoint_id` preferring resolved checkpoint from graph execution persistence metadata,
+    - `user_id` from runtime execution context (fallback `"anonymous"`).
+  - Extended span metadata in `run_runtime_agent` with `metadata.persistence_context` while preserving existing query/agent/output tracing fields.
+  - Expanded smoke coverage in `src/backend/tests/api/test_agent_run_tracing.py`:
+    - query-only enabled tracing run asserts presence of persistence context in span update payload;
+    - explicit `thread_id`/`user_id`/`checkpoint_id` request asserts those identifiers are captured in span metadata;
+    - disabled tracing behavior remains verified with no tracing handle calls.
+  - Verified required checks:
+    - Health: `curl -i http://localhost:8000/api/health` -> `200 {"status":"ok"}`.
+    - Backend tests: `docker compose exec backend uv run pytest` -> `37 passed`.
+    - Frontend tests: `docker compose exec frontend npm run test` -> `25 passed`.
+    - Frontend typecheck: `docker compose exec frontend npm run typecheck` -> pass (exit 0).
 
 - [ ] P2 - Update frontend API request/response types and guards for optional deepAgent persistence fields without breaking current query-only runs.
   Verification requirements (supports deepAgent Config acceptance criteria): frontend unit test verifies `runAgent` accepts optional `thread_id`/`user_id`/`checkpoint_id`; response validator accepts `thread_id`/optional `checkpoint_id`; malformed payloads are still rejected; existing query-only tests continue to pass.
