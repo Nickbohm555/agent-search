@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from db import Base, get_db
 from main import app
+from utils.google_docs import GoogleDocContent
 
 
 @pytest.fixture()
@@ -140,3 +141,67 @@ def test_internal_retrieval_returns_low_signal_for_unrelated_query(internal_data
     assert data["total_chunks_considered"] >= 1
     assert len(data["results"]) >= 1
     assert data["results"][0]["score"] < 0.6
+
+
+@pytest.mark.smoke
+def test_google_docs_load_returns_observable_counts(
+    internal_data_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def fake_fetch_google_docs(document_ids: list[str]) -> list[GoogleDocContent]:
+        return [
+            GoogleDocContent(
+                document_id=document_id,
+                title=f"Google Doc {index + 1}",
+                content=f"Deployment details for doc {index + 1}.",
+            )
+            for index, document_id in enumerate(document_ids)
+        ]
+
+    monkeypatch.setattr(
+        "services.internal_data_service.fetch_google_docs",
+        fake_fetch_google_docs,
+    )
+
+    response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "google_docs",
+            "document_ids": ["doc-alpha", "doc-beta"],
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["source_type"] == "google_docs"
+    assert data["documents_loaded"] == 2
+    assert data["chunks_created"] >= 2
+
+    retrieve_response = internal_data_client.post(
+        "/api/internal-data/retrieve",
+        json={"query": "deployment details", "limit": 3},
+    )
+    assert retrieve_response.status_code == 200
+    retrieve_data = retrieve_response.json()
+    assert any(result["source_type"] == "google_docs" for result in retrieve_data["results"])
+    assert any(result["source_ref"].startswith("gdoc://") for result in retrieve_data["results"])
+
+
+@pytest.mark.smoke
+def test_google_docs_load_returns_controlled_error_when_token_missing(
+    internal_data_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.delenv("GOOGLE_DOCS_ACCESS_TOKEN", raising=False)
+
+    response = internal_data_client.post(
+        "/api/internal-data/load",
+        json={
+            "source_type": "google_docs",
+            "document_ids": ["doc-without-token"],
+        },
+    )
+
+    assert response.status_code == 503
+    assert "GOOGLE_DOCS_ACCESS_TOKEN" in response.json()["detail"]

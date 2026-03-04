@@ -1,34 +1,47 @@
+from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from models import InternalDocument, InternalDocumentChunk
 from schemas import (
+    GoogleDocsInternalDataLoadRequest,
     InternalDataLoadRequest,
     InternalDataLoadResponse,
     InternalDataRetrieveRequest,
     InternalDataRetrieveResponse,
     InternalRetrievedChunk,
+    InlineInternalDataLoadRequest,
 )
 from utils.embeddings import chunk_text, cosine_similarity, embed_text
+from utils.google_docs import (
+    GoogleDocsConfigurationError,
+    GoogleDocsFetchError,
+    fetch_google_docs,
+)
 
 
-def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> InternalDataLoadResponse:
+def _persist_documents(
+    *,
+    source_type: str,
+    documents: list[tuple[str, str, str | None]],
+    db: Session,
+) -> tuple[int, int]:
     documents_loaded = 0
     chunks_created = 0
 
-    for document_input in payload.documents:
+    for title, content, source_ref in documents:
         document = InternalDocument(
-            source_type=payload.source_type,
-            source_ref=document_input.source_ref,
-            title=document_input.title,
-            content=document_input.content,
+            source_type=source_type,
+            source_ref=source_ref,
+            title=title,
+            content=content,
         )
         db.add(document)
         db.flush()
 
-        chunks = chunk_text(document_input.content)
+        chunks = chunk_text(content)
         if not chunks:
-            chunks = [document_input.content.strip()]
+            chunks = [content.strip()]
 
         for index, chunk_content in enumerate(chunks):
             embedding = embed_text(chunk_content)
@@ -44,10 +57,44 @@ def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> Interna
         documents_loaded += 1
 
     db.commit()
+    return documents_loaded, chunks_created
+
+
+def load_internal_data(payload: InternalDataLoadRequest, db: Session) -> InternalDataLoadResponse:
+    if isinstance(payload, GoogleDocsInternalDataLoadRequest):
+        try:
+            docs = fetch_google_docs(payload.document_ids)
+        except GoogleDocsConfigurationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except GoogleDocsFetchError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        documents_loaded, chunks_created = _persist_documents(
+            source_type="google_docs",
+            documents=[(doc.title, doc.content, f"gdoc://{doc.document_id}") for doc in docs],
+            db=db,
+        )
+        return InternalDataLoadResponse(
+            status="success",
+            source_type="google_docs",
+            documents_loaded=documents_loaded,
+            chunks_created=chunks_created,
+        )
+
+    if not isinstance(payload, InlineInternalDataLoadRequest):
+        raise HTTPException(status_code=400, detail="Unsupported source_type.")
+    documents_loaded, chunks_created = _persist_documents(
+        source_type="inline",
+        documents=[
+            (document_input.title, document_input.content, document_input.source_ref)
+            for document_input in payload.documents
+        ],
+        db=db,
+    )
 
     return InternalDataLoadResponse(
         status="success",
-        source_type=payload.source_type,
+        source_type="inline",
         documents_loaded=documents_loaded,
         chunks_created=chunks_created,
     )

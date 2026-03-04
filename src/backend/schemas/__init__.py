@@ -13,11 +13,13 @@ from .agent import (
 )
 from .health import HealthResponse
 from .internal_data import (
+    GoogleDocsInternalDataLoadRequest,
     InternalDataLoadRequest,
     InternalDataLoadResponse,
     InternalDataRetrieveRequest,
     InternalDataRetrieveResponse,
     InternalDocumentInput,
+    InlineInternalDataLoadRequest,
     InternalRetrievedChunk,
 )
 from .mcp import MCPJsonRpcRequest
@@ -46,6 +48,8 @@ __all__ = [
     "SubQueryValidationResult",
     "SubQueryToolAssignment",
     "InternalDocumentInput",
+    "InlineInternalDataLoadRequest",
+    "GoogleDocsInternalDataLoadRequest",
     "InternalDataLoadRequest",
     "InternalDataLoadResponse",
     "InternalDataRetrieveRequest",

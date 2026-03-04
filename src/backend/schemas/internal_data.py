@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -9,9 +9,20 @@ class InternalDocumentInput(BaseModel):
     source_ref: Optional[str] = None
 
 
-class InternalDataLoadRequest(BaseModel):
+class InlineInternalDataLoadRequest(BaseModel):
     source_type: Literal["inline"] = "inline"
     documents: list[InternalDocumentInput] = Field(min_length=1)
+
+
+class GoogleDocsInternalDataLoadRequest(BaseModel):
+    source_type: Literal["google_docs"] = "google_docs"
+    document_ids: list[str] = Field(min_length=1)
+
+
+InternalDataLoadRequest = Annotated[
+    Union[InlineInternalDataLoadRequest, GoogleDocsInternalDataLoadRequest],
+    Field(discriminator="source_type"),
+]
 
 
 class InternalDataLoadResponse(BaseModel):

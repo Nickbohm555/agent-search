@@ -6,6 +6,25 @@
 
 ## Highest Priority Remaining (Scoped)
 
+- [x] P1 - Add Google Docs internal-data load path with deterministic test coverage (`specs/data-loading-vectorization.md`, `specs/demo-ui-typescript.md`).
+  - Tasks:
+  - Extended internal-data load contract to support discriminated source types: `inline` and `google_docs`.
+  - Added Google Docs fetch helper (`utils/google_docs.py`) that reads docs via Google Docs API using `GOOGLE_DOCS_ACCESS_TOKEN`, with explicit configuration and fetch error classes.
+  - Wired backend load service to ingest Google Docs content into existing chunking/embedding pipeline while preserving `source_type=google_docs` and `source_ref=gdoc://<id>`.
+  - Added smoke tests for Google Docs load success (mocked fetch) and controlled missing-token failure (`503`) in `src/backend/tests/api/test_internal_data_loading.py`.
+  - Added `GOOGLE_DOCS_ACCESS_TOKEN` placeholder in `.env.example`.
+  - Verification (outcomes):
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -sS --retry 30 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `41 passed`
+    - `docker compose exec frontend npm run test` -> `32 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+    - `docker compose exec frontend npm run build` -> pass
+
 - [x] P1 - Improve keyboard-only accessibility flow by moving focus to status readouts after action completion (`specs/accessibility-within-aesthetic.md`, `specs/content-and-readouts.md`).
   - Tasks:
   - Updated `StatusBanner` to support programmatic focus (`forwardRef` + `tabIndex=-1`) while preserving existing live-region semantics.
