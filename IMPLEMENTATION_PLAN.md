@@ -203,6 +203,24 @@
     - `docker compose exec frontend npm run test` -> `31 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
+- [x] P1 - Add deterministic URL-selection behavior for web search runs so web subqueries can choose what to read (`specs/web-search-onyx-style.md`).
+  - Tasks:
+  - Added deterministic URL selection in web retrieval (`services/web_service.py`) that ranks candidate URLs using query-to-snippet/title match and recency cues before calling `open_url`.
+  - Added compare-style query behavior to open at least two pages when available, making “search then selectively read” observable in `web_tool_runs.opened_urls`.
+  - Added backend smoke test coverage for compare-style web runs opening multiple pages and maintaining URL/page alignment.
+  - Verification (outcomes):
+  - Compare-style web queries now open multiple URLs in a single web run (when search results are available), instead of always opening only the first ranked URL.
+  - Existing web tool contract remains intact: search returns link metadata only and open_url returns full page content.
+  - Required fresh reset/build/start completed:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Required verification commands passed:
+    - `curl -v --retry 10 --retry-delay 1 --retry-connrefused http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `37 passed`
+    - `docker compose exec frontend npm run test` -> `31 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
+
 ## Completed Baseline (Scoped)
 
 - [x] Scaffold decomposition, one-tool-per-subquery assignment, retrieval, validation loop, and synthesis are implemented and smoke-tested.

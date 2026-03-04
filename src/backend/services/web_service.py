@@ -48,11 +48,55 @@ _WEB_DOCUMENTS: tuple[_WebDocument, ...] = (
     ),
 )
 
+_COMPARE_CUES = ("compare", "comparison", "vs", "versus", "against", "difference")
+_RECENCY_CUES = ("latest", "recent", "new", "today", "current")
+
 
 def _score_document(query: str, doc: _WebDocument) -> int:
     query_terms = {term for term in query.lower().split() if term}
     haystack = f"{doc.title} {doc.snippet} {doc.content}".lower()
     return sum(1 for term in query_terms if term in haystack)
+
+
+def _score_result_match(query: str, result: WebSearchResult) -> int:
+    query_terms = {term for term in query.lower().split() if term}
+    haystack = f"{result.title} {result.snippet}".lower()
+    return sum(1 for term in query_terms if term in haystack)
+
+
+def _result_published_at(url: str) -> str:
+    for doc in _WEB_DOCUMENTS:
+        if doc.url == url:
+            return doc.published_at or ""
+    return ""
+
+
+def _select_urls_to_open(
+    sub_query: str,
+    search_results: list[WebSearchResult],
+    open_limit: int,
+) -> list[str]:
+    if not search_results:
+        return []
+
+    lowered_query = sub_query.lower()
+    has_compare_cue = any(cue in lowered_query for cue in _COMPARE_CUES)
+    has_recency_cue = any(cue in lowered_query for cue in _RECENCY_CUES)
+    effective_open_limit = open_limit
+    if has_compare_cue:
+        # Compare-style prompts should read at least two pages when possible.
+        effective_open_limit = max(effective_open_limit, 2)
+
+    ranked_results = sorted(
+        search_results,
+        key=lambda item: (
+            _score_result_match(sub_query, item),
+            _result_published_at(item.url) if has_recency_cue else "",
+            item.url,
+        ),
+        reverse=True,
+    )
+    return [result.url for result in ranked_results[:effective_open_limit]]
 
 
 def web_search(query: str, limit: int = 5) -> WebSearchResponse:
@@ -87,7 +131,7 @@ def run_web_search_then_open(
     open_limit: int = 1,
 ) -> WebToolRun:
     search_response = web_search(sub_query, limit=search_limit)
-    urls_to_open = [result.url for result in search_response.results[:open_limit]]
+    urls_to_open = _select_urls_to_open(sub_query, search_response.results, open_limit)
     opened_pages = [web_open_url(url) for url in urls_to_open]
 
     return WebToolRun(

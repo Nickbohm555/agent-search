@@ -61,3 +61,21 @@ def test_agent_run_executes_search_then_open_for_web_subquery(client):
     assert len(web_run["opened_urls"]) >= 1
     assert web_run["opened_urls"][0] == web_run["opened_pages"][0]["url"]
     assert len(web_run["opened_pages"][0]["content"].strip()) > 40
+
+
+@pytest.mark.smoke
+def test_agent_run_opens_multiple_pages_for_compare_style_web_query(client):
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": "Compare web updates on competitor launch versus agent tooling updates.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    web_runs = [item for item in payload["web_tool_runs"] if item["sub_query"].strip()]
+    assert web_runs
+    assert any(len(run["opened_urls"]) >= 2 for run in web_runs)
+    for run in web_runs:
+        assert len(run["opened_urls"]) == len(run["opened_pages"])
