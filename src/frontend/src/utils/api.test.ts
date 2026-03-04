@@ -45,6 +45,35 @@ describe("frontend api client", () => {
     }
   });
 
+  it("sends wiki load payload to the load endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        status: "success",
+        source_type: "wiki",
+        documents_loaded: 1,
+        chunks_created: 5,
+      }),
+    );
+
+    const payload = {
+      source_type: "wiki" as const,
+      wiki: {
+        topic: "Strait of Hormuz",
+      },
+    };
+    const result = await loadInternalData(payload, { fetchImpl: fetchMock as unknown as typeof fetch });
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/internal-data/load",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    );
+  });
+
   it("returns run success with final answer and progress payload", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse(200, {

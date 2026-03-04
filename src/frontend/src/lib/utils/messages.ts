@@ -1,4 +1,8 @@
-export function formatLoadSuccessMessage(documentsLoaded: number, chunksCreated: number): string {
+export function formatLoadSuccessMessage(sourceType: string, documentsLoaded: number, chunksCreated: number): string {
+  if (sourceType === "wiki") {
+    return `Wiki load complete. Loaded ${documentsLoaded} documents and created ${chunksCreated} chunks.`;
+  }
+
   return `Loaded ${documentsLoaded} documents and created ${chunksCreated} chunks.`;
 }
 

@@ -1,0 +1,17 @@
+flowchart TD
+    U[User clicks Load Data] -->|trigger: src/frontend/src/App.tsx handleLoad| B{Load source mode?}
+
+    B -->|inline| I[src/frontend/src/App.tsx buildLoadPayload\nData: source_type=inline + SAMPLE_INTERNAL_DOCUMENTS\nWhy: preserve scaffold default]
+    B -->|wiki| W[src/frontend/src/App.tsx buildLoadPayload\nData: source_type=wiki + wiki.topic\nWhy: enable wiki-triggered ingestion]
+
+    I --> C[src/frontend/src/utils/api.ts loadInternalData\nPOST /api/internal-data/load\nJSON payload validated by request type union]
+    W --> C
+
+    C --> R[src/backend/routers/internal_data.py load_data]
+    R --> S[src/backend/services/internal_data_service.py load_internal_data\nPersists docs/chunks + embeddings]
+    S --> O[src/frontend/src/App.tsx handleLoad success/error branch\nData: source_type + documents_loaded + chunks_created]
+    O --> M[src/frontend/src/lib/utils/messages.ts formatLoadSuccessMessage\nWhy: source-aware user readout]
+    M --> V[src/frontend/src/lib/components/StatusBanner.tsx\nLoad status readout visible to user]
+
+    N[Decision note: one Load control supports inline + wiki] -.tradeoff.-> B
+    N2[Tradeoff: keeps UX simple and avoids duplicate buttons\nbut requires discriminated payload typing in api.ts] -.implication.-> C

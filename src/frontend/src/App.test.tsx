@@ -118,6 +118,52 @@ describe("App", () => {
     });
   });
 
+  it("sends wiki payload and shows wiki success readout when wiki load is selected", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: true,
+      data: {
+        status: "success",
+        source_type: "wiki",
+        documents_loaded: 1,
+        chunks_created: 5,
+      },
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "wiki" } });
+    fireEvent.change(screen.getByLabelText("Wiki Topic"), { target: { value: "Strait of Hormuz" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() => {
+      expect(mockedLoadInternalData).toHaveBeenCalledWith({
+        source_type: "wiki",
+        wiki: { topic: "Strait of Hormuz" },
+      });
+      expect(screen.getByText("Wiki load complete. Loaded 1 documents and created 5 chunks.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows clear load error state for wiki load failures", async () => {
+    mockedLoadInternalData.mockResolvedValue({
+      ok: false,
+      error: {
+        type: "http",
+        message: "Request failed with status 400",
+        retryable: false,
+        statusCode: 400,
+      },
+    });
+
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Load Source"), { target: { value: "wiki" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("load-status-region")).toHaveTextContent("ERROR");
+      expect(screen.getByText("Request failed with status 400")).toBeInTheDocument();
+    });
+  });
+
   it("shows processing readout indicators while load and run are in flight", async () => {
     const loadDeferred = createDeferred<Awaited<ReturnType<typeof loadInternalData>>>();
     const runDeferred = createDeferred<Awaited<ReturnType<typeof streamAgentRun>>>();

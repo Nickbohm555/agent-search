@@ -52,7 +52,7 @@
       - `src/backend/tests/api/test_internal_data_loading.py::test_internal_retrieval_ranks_relevant_chunk_above_unrelated` validates relevance ordering.
       - `src/backend/tests/api/test_per_subquery_retrieval.py::test_agent_run_executes_internal_retrieval_from_loaded_store` now asserts metadata preservation (`document_title`, `source_ref`).
 
-- [ ] P1: Update UI `Load Data` flow to support wiki-triggered loads and clear status readout.
+- [x] P1: Update UI `Load Data` flow to support wiki-triggered loads and clear status readout.
   - Implementation scope:
     - Add a minimal wiki source control in the existing load panel (reuse shared `src/frontend/src/lib/*` patterns/components where practical).
     - Extend frontend API request typing/client payload to send wiki load requests while preserving inline compatibility.
@@ -61,6 +61,20 @@
     - Frontend interaction test: wiki mode + click `Load Data` sends `/api/internal-data/load` with wiki payload.
     - Frontend interaction test: successful wiki load renders clear success message with counts.
     - Frontend interaction test: failed wiki load renders clear error state in load status region.
+  - Completed in this loop:
+    - Added wiki source controls to `src/frontend/src/App.tsx` (`Load Source` select + `Wiki Topic` input) while keeping inline load behavior as default.
+    - Added `buildLoadPayload` in `App` so `handleLoad` emits deterministic inline or wiki payloads through `loadInternalData`.
+    - Extended frontend API types in `src/frontend/src/utils/api.ts` with a discriminated `InternalDataLoadRequest` union supporting both inline documents and wiki payloads.
+    - Updated load success readout in `src/frontend/src/lib/utils/messages.ts` to provide a wiki-specific success message while preserving inline wording.
+    - Added frontend interaction/API coverage:
+      - `src/frontend/src/App.test.tsx::sends wiki payload and shows wiki success readout when wiki load is selected`
+      - `src/frontend/src/App.test.tsx::shows clear load error state for wiki load failures`
+      - `src/frontend/src/utils/api.test.ts::sends wiki load payload to the load endpoint`
+  - Verification run results:
+    - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `51 passed`
+    - `docker compose exec frontend npm run test` -> `26 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
 
 - [ ] P1: Add one scoped deterministic smoke path for “click load data -> wiki vectorized in pgvector -> retrievable”.
   - Implementation scope:

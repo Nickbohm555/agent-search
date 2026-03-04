@@ -21,10 +21,22 @@ export interface InternalDocumentInput {
   source_ref?: string;
 }
 
-export interface InternalDataLoadRequest {
-  source_type?: "inline";
-  documents: InternalDocumentInput[];
+export interface WikiLoadInput {
+  topic?: string;
+  url?: string;
 }
+
+export type InternalDataLoadRequest =
+  | {
+      source_type?: "inline";
+      documents: InternalDocumentInput[];
+      wiki?: never;
+    }
+  | {
+      source_type: "wiki";
+      wiki: WikiLoadInput;
+      documents?: never;
+    };
 
 export interface InternalDataLoadResponse {
   status: "success";

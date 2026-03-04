@@ -12,6 +12,8 @@ import { streamAgentRun } from "./utils/stream";
 export default function App() {
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
+  const [loadSourceType, setLoadSourceType] = useState<"inline" | "wiki">("inline");
+  const [wikiTopic, setWikiTopic] = useState("Strait of Hormuz");
   const [query, setQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
   const [runMessage, setRunMessage] = useState("Waiting for query.");
@@ -27,6 +29,24 @@ export default function App() {
   const runInFlightRef = useRef(false);
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
+  const isWikiLoad = loadSourceType === "wiki";
+
+  function buildLoadPayload() {
+    // Called by `handleLoad` so the load action can preserve inline compatibility
+    // while supporting wiki-triggered ingestion from the same control surface.
+    if (isWikiLoad) {
+      const topic = wikiTopic.trim() || "Strait of Hormuz";
+      return {
+        source_type: "wiki" as const,
+        wiki: { topic },
+      };
+    }
+
+    return {
+      source_type: "inline" as const,
+      documents: SAMPLE_INTERNAL_DOCUMENTS,
+    };
+  }
 
   async function handleLoad(): Promise<void> {
     if (loadInFlightRef.current) {
@@ -37,14 +57,13 @@ export default function App() {
     setLoadMessage("Loading and vectorizing internal docs...");
 
     try {
-      const result = await loadInternalData({
-        source_type: "inline",
-        documents: SAMPLE_INTERNAL_DOCUMENTS,
-      });
+      const result = await loadInternalData(buildLoadPayload());
 
       if (result.ok) {
         setLoadState("success");
-        setLoadMessage(formatLoadSuccessMessage(result.data.documents_loaded, result.data.chunks_created));
+        setLoadMessage(
+          formatLoadSuccessMessage(result.data.source_type, result.data.documents_loaded, result.data.chunks_created),
+        );
         return;
       }
 
@@ -184,7 +203,30 @@ export default function App() {
 
           <div className="control-block">
             <h3>Load / Vectorize</h3>
-            <p>Ingest sample internal docs for retrieval.</p>
+            <p>Load sample docs or a wiki topic for retrieval.</p>
+            <label htmlFor="load-source">Load Source</label>
+            <select
+              id="load-source"
+              value={loadSourceType}
+              onChange={(event) => setLoadSourceType(event.target.value as "inline" | "wiki")}
+              disabled={loadState === "loading"}
+            >
+              <option value="inline">Sample Inline Docs</option>
+              <option value="wiki">Wiki Topic</option>
+            </select>
+            {isWikiLoad ? (
+              <>
+                <label htmlFor="wiki-topic">Wiki Topic</label>
+                <input
+                  id="wiki-topic"
+                  type="text"
+                  value={wikiTopic}
+                  onChange={(event) => setWikiTopic(event.target.value)}
+                  placeholder="e.g. Strait of Hormuz"
+                  disabled={loadState === "loading"}
+                />
+              </>
+            ) : null}
             <button
               type="button"
               className="action-button neon-action"
