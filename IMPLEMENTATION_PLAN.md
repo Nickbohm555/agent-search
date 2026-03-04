@@ -3,7 +3,7 @@
 ## Scope
 - Frontend-only scoped planning for: "all frontend work".
 - Sources reviewed this run: `specs/*`, `src/frontend/*`, `src/backend/routers/*`, `src/backend/schemas/*`, `src/backend/services/agent_service.py`, `IMPLEMENTATION_PLAN.md`.
-- Implementation run completed for one P0 item (demo UI workflow verification + closure).
+- Implementation run completed for one P1 item (request lifecycle protections + verification).
 
 ## Current Status (2026-03-04)
 - [x] Frontend scaffold exists in TypeScript/React/Vite (`src/frontend/src/App.tsx`, `src/frontend/src/main.tsx`).
@@ -15,6 +15,7 @@
 - [x] Demo UI workflow from `specs/demo-ui-typescript.md` is implemented (`src/frontend/src/App.tsx`, `src/frontend/src/App.test.tsx`).
 - [ ] Real-time streaming heartbeat UI integration from `specs/streaming-agent-heartbeat.md` is not implemented (backend stream route still missing).
 - [x] Pre-stream progress history fallback is implemented from run payload (`graph_state.timeline`, sub-query + validation fallback) (`src/frontend/src/App.tsx`, `src/frontend/src/App.test.tsx`).
+- [x] Request lifecycle protections are implemented: per-action in-flight lockout, duplicate-click prevention, and same-session retry (`src/frontend/src/App.tsx`, `src/frontend/src/App.test.tsx`).
 
 ## Frontend Tasks Remaining (Highest Priority First)
 
@@ -79,7 +80,7 @@
   - Added frontend interaction tests for timeline rendering, graph-state missing fallback, and optional-array empty states.
   - Verified required checks in containers: health endpoint, backend tests, frontend tests, frontend typecheck, and frontend build.
 
-- [ ] P1 - Add request lifecycle protections (in-flight lockout + same-session retry)
+- [x] P1 - Add request lifecycle protections (in-flight lockout + same-session retry)
 - Why: Required for reliable UX during demo interactions.
 - Spec alignment:
   - Supports outcome clarity expectations in `specs/demo-ui-typescript.md`.
@@ -92,6 +93,11 @@
   - Interaction test: run control disables only during run request and re-enables afterward.
   - Interaction test: rapid repeated click/submit triggers one in-flight request.
   - Interaction test: failure followed by retry can complete successfully in same session.
+- Completion notes:
+  - Added immediate in-flight guards with `useRef` in `App` for both load and run actions to prevent same-tick duplicate requests before render state updates.
+  - Kept controls independent so loading one action does not disable the other action control.
+  - Added frontend interaction tests for load/run disable lifecycle, rapid repeated interaction lockout, and retry-after-failure success in the same session.
+  - Verified in fresh Docker reset/build/up cycle with required checks: health endpoint `200`, backend tests, frontend tests, frontend typecheck, and frontend build.
 
 - [ ] P1 - Integrate real streaming heartbeat once backend stream contract exists
 - Why: Streaming is explicit acceptance criteria, but currently blocked by missing backend route/protocol.

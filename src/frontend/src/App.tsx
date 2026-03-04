@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import { RuntimeAgentRunResponse, loadInternalData, runAgent } from "./utils/api";
 
 export default function App() {
@@ -9,63 +9,78 @@ export default function App() {
   const [runMessage, setRunMessage] = useState("Waiting for query.");
   const [answer, setAnswer] = useState("");
   const [runDetails, setRunDetails] = useState<RuntimeAgentRunResponse | null>(null);
+  const loadInFlightRef = useRef(false);
+  const runInFlightRef = useRef(false);
 
   const isRunDisabled = useMemo(() => runState === "loading" || query.trim().length === 0, [runState, query]);
 
   async function handleLoad(): Promise<void> {
+    if (loadInFlightRef.current) {
+      return;
+    }
+    loadInFlightRef.current = true;
     setLoadState("loading");
     setLoadMessage("Loading and vectorizing internal docs...");
 
-    const result = await loadInternalData({
-      source_type: "inline",
-      documents: [
-        {
-          title: "Product Notes",
-          content: "Agent Search loads internal data and can retrieve chunked context.",
-          source_ref: "demo://product-notes",
-        },
-        {
-          title: "Roadmap",
-          content: "The orchestration flow decomposes user queries and synthesizes final answers.",
-          source_ref: "demo://roadmap",
-        },
-      ],
-    });
+    try {
+      const result = await loadInternalData({
+        source_type: "inline",
+        documents: [
+          {
+            title: "Product Notes",
+            content: "Agent Search loads internal data and can retrieve chunked context.",
+            source_ref: "demo://product-notes",
+          },
+          {
+            title: "Roadmap",
+            content: "The orchestration flow decomposes user queries and synthesizes final answers.",
+            source_ref: "demo://roadmap",
+          },
+        ],
+      });
 
-    if (result.ok) {
-      setLoadState("success");
-      setLoadMessage(
-        `Loaded ${result.data.documents_loaded} documents and created ${result.data.chunks_created} chunks.`,
-      );
-      return;
+      if (result.ok) {
+        setLoadState("success");
+        setLoadMessage(
+          `Loaded ${result.data.documents_loaded} documents and created ${result.data.chunks_created} chunks.`,
+        );
+        return;
+      }
+
+      setLoadState("error");
+      setLoadMessage(result.error.message);
+    } finally {
+      loadInFlightRef.current = false;
     }
-
-    setLoadState("error");
-    setLoadMessage(result.error.message);
   }
 
   async function handleRun(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (query.trim().length === 0 || runState === "loading") {
+    if (query.trim().length === 0 || runInFlightRef.current) {
       return;
     }
 
+    runInFlightRef.current = true;
     setRunState("loading");
     setRunMessage("Running agent...");
     setAnswer("");
     setRunDetails(null);
 
-    const result = await runAgent({ query: query.trim() });
-    if (result.ok) {
-      setRunState("success");
-      setRunMessage(`Run complete. ${result.data.sub_queries.length} sub-queries processed.`);
-      setAnswer(result.data.output);
-      setRunDetails(result.data);
-      return;
-    }
+    try {
+      const result = await runAgent({ query: query.trim() });
+      if (result.ok) {
+        setRunState("success");
+        setRunMessage(`Run complete. ${result.data.sub_queries.length} sub-queries processed.`);
+        setAnswer(result.data.output);
+        setRunDetails(result.data);
+        return;
+      }
 
-    setRunState("error");
-    setRunMessage(result.error.message);
+      setRunState("error");
+      setRunMessage(result.error.message);
+    } finally {
+      runInFlightRef.current = false;
+    }
   }
 
   return (
