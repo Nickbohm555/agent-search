@@ -8,6 +8,13 @@ def _find_validation_result(results: list[dict], tool: str) -> dict:
     raise AssertionError(f"Expected validation result for tool={tool}")
 
 
+def _find_execution_result(results: list[dict], tool: str) -> dict:
+    for result in results:
+        if result["tool"] == tool:
+            return result
+    raise AssertionError(f"Expected execution result for tool={tool}")
+
+
 @pytest.mark.smoke
 def test_agent_run_marks_internal_retrieval_as_validated_when_results_exist(client):
     marker = "validation-marker-7q"
@@ -31,11 +38,19 @@ def test_agent_run_marks_internal_retrieval_as_validated_when_results_exist(clie
 
     payload = response.json()
     validation = _find_validation_result(payload["validation_results"], "internal")
+    execution = _find_execution_result(payload["subquery_execution_results"], "internal")
     assert validation["sufficient"] is True
     assert validation["status"] == "validated"
     assert validation["attempts"] == 1
     assert validation["follow_up_actions"] == []
+    assert len(validation["attempt_trace"]) == 1
+    assert validation["attempt_trace"][0]["attempt"] == 1
+    assert validation["attempt_trace"][0]["sufficient"] is True
+    assert validation["attempt_trace"][0]["follow_up_action"] is None
     assert validation["stop_reason"] == "sufficient_evidence"
+    assert execution["validation_result"] == validation
+    assert execution["retrieval_result"]["tool"] == "internal"
+    assert len(execution["retrieval_result"]["internal_results"]) >= 1
 
 
 @pytest.mark.smoke
@@ -48,8 +63,13 @@ def test_agent_run_retries_internal_retrieval_then_stops_when_insufficient(clien
 
     payload = response.json()
     validation = _find_validation_result(payload["validation_results"], "internal")
+    execution = _find_execution_result(payload["subquery_execution_results"], "internal")
     assert validation["sufficient"] is False
     assert validation["status"] == "stopped_insufficient"
     assert validation["attempts"] == 2
     assert validation["follow_up_actions"] == ["search_more_internal"]
+    assert [item["attempt"] for item in validation["attempt_trace"]] == [1, 2]
+    assert validation["attempt_trace"][0]["follow_up_action"] == "search_more_internal"
+    assert validation["attempt_trace"][1]["follow_up_action"] is None
     assert validation["stop_reason"] == "max_attempts_reached"
+    assert execution["validation_result"] == validation

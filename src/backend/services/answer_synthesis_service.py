@@ -1,4 +1,4 @@
-from schemas import SubQueryRetrievalResult, SubQueryValidationResult
+from schemas import SubQueryExecutionResult, SubQueryRetrievalResult
 
 _MAX_SNIPPET_LENGTH = 220
 
@@ -27,21 +27,12 @@ def _summarize_validated_result(result: SubQueryRetrievalResult) -> str:
 
 def synthesize_answer(
     query: str,
-    retrieval_results: list[SubQueryRetrievalResult],
-    validation_results: list[SubQueryValidationResult],
+    execution_results: list[SubQueryExecutionResult],
 ) -> str:
-    validation_by_sub_query = {result.sub_query: result for result in validation_results}
-
     lines = [f"Final answer for query: {query}", ""]
-    for retrieval in retrieval_results:
-        validation = validation_by_sub_query.get(retrieval.sub_query)
-        if validation is None:
-            lines.append(
-                f"- Sub-query: {retrieval.sub_query}\n"
-                "  Evidence: Validation result missing; synthesis skipped."
-            )
-            continue
-
+    for execution_result in execution_results:
+        retrieval = execution_result.retrieval_result
+        validation = execution_result.validation_result
         if validation.status != "validated" or not validation.sufficient:
             lines.append(
                 f"- Sub-query: {retrieval.sub_query}\n"

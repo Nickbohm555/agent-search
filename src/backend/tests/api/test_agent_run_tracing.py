@@ -76,6 +76,7 @@ def test_agent_run_creates_trace_with_query_agent_and_output_when_enabled(client
                 "tool_assignments": payload["tool_assignments"],
                 "retrieval_results": payload["retrieval_results"],
                 "validation_results": payload["validation_results"],
+                "subquery_execution_results": payload["subquery_execution_results"],
                 "web_tool_runs": payload["web_tool_runs"],
             },
         }

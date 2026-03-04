@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 from schemas import (
     RuntimeAgentGraphState,
     RuntimeAgentGraphStep,
+    SubQueryExecutionResult,
     SubQueryRetrievalResult,
     SubQueryToolAssignment,
     SubQueryValidationResult,
@@ -92,6 +93,7 @@ class RuntimeOrchestrationState(TypedDict):
     tool_assignments: list[SubQueryToolAssignment]
     retrieval_results: list[SubQueryRetrievalResult]
     validation_results: list[SubQueryValidationResult]
+    subquery_execution_results: list[SubQueryExecutionResult]
     output: str
     runtime_mode: str
     timeline: list[RuntimeAgentGraphStep]
@@ -183,6 +185,7 @@ class LangGraphAgentScaffold:
         timeline = state["timeline"]
         retrieval_results: list[SubQueryRetrievalResult] = []
         validation_results: list[SubQueryValidationResult] = []
+        execution_results: list[SubQueryExecutionResult] = []
 
         for assignment in state["tool_assignments"]:
             timeline = self._append_timeline(
@@ -217,15 +220,25 @@ class LangGraphAgentScaffold:
                     "status": validation.status,
                     "attempts": validation.attempts,
                     "follow_up_actions": validation.follow_up_actions,
+                    "attempt_trace": [attempt.model_dump() for attempt in validation.attempt_trace],
                     "stop_reason": validation.stop_reason,
                     "deep_agent": self.subquery_agent.name,
                 },
             )
             validation_results.append(validation)
+            execution_results.append(
+                SubQueryExecutionResult(
+                    sub_query=assignment.sub_query,
+                    tool=assignment.tool,
+                    retrieval_result=retrieval,
+                    validation_result=validation,
+                )
+            )
 
         return {
             "retrieval_results": retrieval_results,
             "validation_results": validation_results,
+            "subquery_execution_results": execution_results,
             "timeline": timeline,
         }
 
@@ -233,12 +246,10 @@ class LangGraphAgentScaffold:
         timeline = self._append_timeline(state["timeline"], "synthesis", "started")
         fallback_output = synthesize_answer(
             query=state["query"],
-            retrieval_results=state["retrieval_results"],
-            validation_results=state["validation_results"],
+            execution_results=state["subquery_execution_results"],
         )
         evidence = self._build_validated_evidence(
-            retrieval_results=state["retrieval_results"],
-            validation_results=state["validation_results"],
+            execution_results=state["subquery_execution_results"],
         )
         runtime_output = fallback_output
         runtime_mode = "disabled"
@@ -258,14 +269,13 @@ class LangGraphAgentScaffold:
 
     @staticmethod
     def _build_validated_evidence(
-        retrieval_results: list[SubQueryRetrievalResult],
-        validation_results: list[SubQueryValidationResult],
+        execution_results: list[SubQueryExecutionResult],
     ) -> str:
-        validation_by_sub_query = {result.sub_query: result for result in validation_results}
         lines: list[str] = []
-        for retrieval in retrieval_results:
-            validation = validation_by_sub_query.get(retrieval.sub_query)
-            if validation is None or validation.status != "validated" or not validation.sufficient:
+        for execution_result in execution_results:
+            retrieval = execution_result.retrieval_result
+            validation = execution_result.validation_result
+            if validation.status != "validated" or not validation.sufficient:
                 continue
 
             if retrieval.tool == "internal":
@@ -324,6 +334,7 @@ class LangGraphAgentScaffold:
                 "tool_assignments": [],
                 "retrieval_results": [],
                 "validation_results": [],
+                "subquery_execution_results": [],
                 "output": "",
                 "runtime_mode": "disabled",
                 "timeline": [],
@@ -333,6 +344,7 @@ class LangGraphAgentScaffold:
         tool_assignments = final_state["tool_assignments"]
         retrieval_results = final_state["retrieval_results"]
         validation_results = final_state["validation_results"]
+        subquery_execution_results = final_state["subquery_execution_results"]
         runtime_output = final_state["output"]
         timeline = final_state["timeline"]
         runtime_mode = final_state["runtime_mode"]
@@ -342,6 +354,7 @@ class LangGraphAgentScaffold:
             "tool_assignments": tool_assignments,
             "retrieval_results": retrieval_results,
             "validation_results": validation_results,
+            "subquery_execution_results": subquery_execution_results,
             "output": runtime_output,
             "graph_state": RuntimeAgentGraphState(
                 current_step="completed",

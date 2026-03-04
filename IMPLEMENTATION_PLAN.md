@@ -111,16 +111,28 @@
     - `docker compose exec frontend npm run test` -> `25 passed`
     - `docker compose exec frontend npm run typecheck` -> pass
 
-- [ ] P1 - Expand retrieval-validation observability and control-loop outputs (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`, `specs/answer-synthesis.md`).
+- [x] P1 - Expand retrieval-validation observability and control-loop outputs (`specs/per-subquery-retrieval.md`, `specs/retrieval-validation.md`, `specs/answer-synthesis.md`).
   - Tasks:
-  - Preserve strict path fidelity: internal-assigned subqueries use internal store only; web-assigned subqueries use search+open_url flow.
-  - Expose validation attempt/follow-up metadata as explicit per-subquery outputs for stream/MCP/timeline consumers.
-  - Ensure synthesis consumes validated outputs only.
+  - Preserved strict path fidelity by retaining tool-specific retrieval paths in subquery execution (`internal` -> internal store only, `web` -> search + `open_url`).
+  - Added explicit per-subquery execution outputs to runtime response payload as `subquery_execution_results`, each containing paired retrieval + validation artifacts.
+  - Added explicit validation attempt metadata (`attempt_trace`) with per-attempt sufficiency, result counts, and follow-up action labels.
+  - Emitted `subquery_execution_result` stream events and extended timeline validation details to include full attempt traces.
+  - Updated synthesis/evidence assembly to consume `subquery_execution_results` (validated outputs) rather than implicitly correlating separate retrieval/validation lists.
+  - Added/updated smoke tests for retrieval-validation outputs, stream event exposure, MCP structured payload visibility, and tracing metadata.
   - Verification (outcomes):
-  - Internal-assigned subquery retrieval returns internal evidence from loaded store.
-  - Web-assigned subquery executes search -> open_url with opened page evidence.
-  - Insufficient evidence triggers at least one follow-up action and stops with explicit reason.
-  - Final answer reflects validated results only (insufficient subqueries remain flagged as insufficient evidence).
+  - Internal-assigned subquery retrieval returns internal evidence from loaded store only; web-assigned subquery uses search -> open_url flow only.
+  - Insufficient evidence now exposes explicit per-attempt follow-up metadata in `validation_results[*].attempt_trace` and `subquery_execution_results[*].validation_result.attempt_trace`.
+  - Stream includes explicit `subquery_execution_result` events with validation attempt traces for UI consumers.
+  - MCP `tools/call` `structuredContent` includes `subquery_execution_results` with attempt traces, matching `/api/agents/run` output.
+  - Final answer synthesis still excludes insufficient subqueries and includes validated evidence only.
+  - Required verification after fresh reset/build/start succeeded:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+    - `curl -v --retry 5 --retry-delay 1 http://localhost:8000/api/health` -> `{"status":"ok"}`
+    - `docker compose exec backend uv run pytest` -> `36 passed`
+    - `docker compose exec frontend npm run test` -> `25 passed`
+    - `docker compose exec frontend npm run typecheck` -> pass
 
 ## Completed Baseline (Scoped)
 

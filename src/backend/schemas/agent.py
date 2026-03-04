@@ -36,7 +36,23 @@ class SubQueryValidationResult(BaseModel):
     status: Literal["validated", "stopped_insufficient"]
     attempts: int = Field(ge=1)
     follow_up_actions: list[str] = Field(default_factory=list)
+    attempt_trace: list["SubQueryValidationAttempt"] = Field(default_factory=list)
     stop_reason: str
+
+
+class SubQueryValidationAttempt(BaseModel):
+    attempt: int = Field(ge=1)
+    sufficient: bool
+    internal_result_count: int = Field(ge=0)
+    opened_page_count: int = Field(ge=0)
+    follow_up_action: Optional[str] = None
+
+
+class SubQueryExecutionResult(BaseModel):
+    sub_query: str
+    tool: Literal["internal", "web"]
+    retrieval_result: SubQueryRetrievalResult
+    validation_result: SubQueryValidationResult
 
 
 class RuntimeAgentGraphStep(BaseModel):
@@ -59,6 +75,7 @@ class RuntimeAgentStreamEvent(BaseModel):
         "tool_assignments",
         "retrieval_result",
         "validation_result",
+        "subquery_execution_result",
         "completed",
     ]
     data: dict[str, Any] = Field(default_factory=dict)
@@ -71,5 +88,6 @@ class RuntimeAgentRunResponse(BaseModel):
     tool_assignments: list[SubQueryToolAssignment]
     retrieval_results: list[SubQueryRetrievalResult] = Field(default_factory=list)
     validation_results: list[SubQueryValidationResult] = Field(default_factory=list)
+    subquery_execution_results: list[SubQueryExecutionResult] = Field(default_factory=list)
     web_tool_runs: list[WebToolRun] = Field(default_factory=list)
     graph_state: Optional[RuntimeAgentGraphState] = None

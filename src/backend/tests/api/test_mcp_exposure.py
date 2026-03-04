@@ -64,4 +64,5 @@ def test_mcp_tools_call_delegates_to_runtime_agent_orchestration(client):
     assert mcp_payload["result"]["isError"] is False
     assert mcp_payload["result"]["content"] == [{"type": "text", "text": api_payload["output"]}]
     assert mcp_payload["result"]["structuredContent"] == api_payload
-
+    assert isinstance(api_payload["subquery_execution_results"], list)
+    assert "attempt_trace" in api_payload["subquery_execution_results"][0]["validation_result"]

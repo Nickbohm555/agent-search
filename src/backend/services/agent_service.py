@@ -49,6 +49,7 @@ def run_runtime_agent(
     tool_assignments = graph_result["tool_assignments"]
     retrieval_results = graph_result["retrieval_results"]
     validation_results = graph_result["validation_results"]
+    subquery_execution_results = graph_result["subquery_execution_results"]
     output = graph_result["output"]
     graph_state = graph_result["graph_state"]
     web_tool_runs: list[WebToolRun] = [
@@ -74,6 +75,9 @@ def run_runtime_agent(
                 ],
                 "retrieval_results": [result.model_dump() for result in retrieval_results],
                 "validation_results": [result.model_dump() for result in validation_results],
+                "subquery_execution_results": [
+                    result.model_dump() for result in subquery_execution_results
+                ],
                 "web_tool_runs": [run.model_dump() for run in web_tool_runs],
             },
         )
@@ -84,6 +88,7 @@ def run_runtime_agent(
         tool_assignments=tool_assignments,
         retrieval_results=retrieval_results,
         validation_results=validation_results,
+        subquery_execution_results=subquery_execution_results,
         web_tool_runs=web_tool_runs,
         graph_state=graph_state,
     )
@@ -116,6 +121,8 @@ def build_runtime_agent_stream_events(
         "tool_assignments",
         {"tool_assignments": [item.model_dump() for item in response.tool_assignments]},
     )
+    for item in response.subquery_execution_results:
+        append_event("subquery_execution_result", item.model_dump())
     for item in response.retrieval_results:
         append_event("retrieval_result", item.model_dump())
     for item in response.validation_results:

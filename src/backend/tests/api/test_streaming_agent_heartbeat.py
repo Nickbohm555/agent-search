@@ -41,8 +41,12 @@ def test_agent_run_stream_emits_progress_events_before_completion(client):
     assert events[-1]["__sse_event_name"] == "completed"
     assert any(item["event"] == "sub_queries" for item in events[:-1])
     assert any(item["event"] == "heartbeat" for item in events[:-1])
+    assert any(item["event"] == "subquery_execution_result" for item in events[:-1])
     assert any(item["event"] == "retrieval_result" for item in events[:-1])
     assert any(item["event"] == "validation_result" for item in events[:-1])
+    execution_event = next(item for item in events if item["event"] == "subquery_execution_result")
+    assert "validation_result" in execution_event["data"]
+    assert "attempt_trace" in execution_event["data"]["validation_result"]
     assert isinstance(events[-1]["data"]["output"], str)
     assert events[-1]["data"]["output"].strip() != ""
 
