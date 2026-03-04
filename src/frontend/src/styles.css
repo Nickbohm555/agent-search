@@ -42,6 +42,44 @@ body {
   box-shadow: 0 0 0 1px rgba(47, 243, 255, 0.08), 0 24px 48px rgba(0, 0, 0, 0.45);
 }
 
+.deck-shell {
+  position: relative;
+}
+
+.deck-shell::before {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(47, 243, 255, 0.12);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.deck-header {
+  margin-bottom: 20px;
+}
+
+.deck-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  grid-template-areas:
+    "controls progress"
+    "result result";
+  gap: 16px;
+}
+
+.deck-controls {
+  grid-area: controls;
+}
+
+.deck-progress {
+  grid-area: progress;
+}
+
+.deck-result {
+  grid-area: result;
+}
+
 h1,
 h2,
 h3 {
@@ -82,7 +120,40 @@ p {
   border: 1px solid rgba(120, 152, 200, 0.35);
   border-radius: 12px;
   padding: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 0;
+}
+
+.deck-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.deck-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 1px solid rgba(47, 243, 255, 0.2);
+  pointer-events: none;
+}
+
+.panel-titlebar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(120, 152, 200, 0.35);
+}
+
+.panel-kicker {
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  color: var(--accent-neon);
+}
+
+.control-block + .control-block {
+  margin-top: 20px;
 }
 
 form {
@@ -154,11 +225,15 @@ button:disabled {
 
 .answer,
 .progress-history {
-  margin-top: 16px;
+  margin-top: 12px;
   padding: 12px;
   border-radius: 10px;
   border: 1px solid rgba(120, 152, 200, 0.4);
   background: var(--surface);
+}
+
+.answer {
+  min-height: 140px;
 }
 
 ol,
@@ -177,4 +252,25 @@ code {
   background: var(--accent-neon-soft);
   border-radius: 6px;
   padding: 2px 6px;
+}
+
+@media (max-width: 780px) {
+  .container {
+    width: calc(100% - 24px);
+    margin: 20px auto;
+    padding: 16px;
+  }
+
+  .deck-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "controls"
+      "progress"
+      "result";
+  }
+
+  .panel-titlebar {
+    gap: 12px;
+    flex-wrap: wrap;
+  }
 }

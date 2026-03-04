@@ -79,7 +79,60 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Run Agent" })).toHaveClass("neon-action");
     expect(screen.getByTestId("load-status-region")).toHaveClass("status");
     expect(screen.getByTestId("progress-region")).toHaveClass("status");
-    expect(document.querySelectorAll(".card").length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelectorAll(".card").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("separates controls, progress, and result into distinct deck panels", () => {
+    render(<App />);
+
+    const controlsPanel = screen.getByTestId("controls-panel");
+    const progressPanel = screen.getByTestId("progress-panel");
+    const resultPanel = screen.getByTestId("result-panel");
+
+    expect(controlsPanel).toHaveTextContent("Control Deck");
+    expect(progressPanel).toHaveTextContent("System Progress");
+    expect(resultPanel).toHaveTextContent("Final Readout");
+    expect(controlsPanel).toHaveClass("deck-panel");
+    expect(progressPanel).toHaveClass("deck-panel");
+    expect(resultPanel).toHaveClass("deck-panel");
+  });
+
+  it("uses consistent chrome markers across section headers", () => {
+    render(<App />);
+
+    expect(screen.getByText("ACTION")).toHaveClass("panel-kicker");
+    expect(screen.getByText("READOUT")).toHaveClass("panel-kicker");
+    expect(screen.getByText("ANSWER")).toHaveClass("panel-kicker");
+    expect(document.querySelectorAll(".panel-titlebar")).toHaveLength(3);
+  });
+
+  it("keeps action panel before readout panels in DOM order for clear hierarchy", () => {
+    render(<App />);
+
+    const controlsPanel = screen.getByTestId("controls-panel");
+    const progressPanel = screen.getByTestId("progress-panel");
+    const resultPanel = screen.getByTestId("result-panel");
+
+    const panels = Array.from(document.querySelectorAll("[data-testid$='-panel']"));
+    expect(panels.indexOf(controlsPanel)).toBe(0);
+    expect(panels.indexOf(progressPanel)).toBeGreaterThan(0);
+    expect(panels.indexOf(resultPanel)).toBeGreaterThan(panels.indexOf(progressPanel));
+  });
+
+  it("retains all deck sections on narrow viewport widths", () => {
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
+    try {
+      render(<App />);
+
+      expect(screen.getByTestId("controls-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("progress-panel")).toBeInTheDocument();
+      expect(screen.getByTestId("result-panel")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Load Data" })).toBeInTheDocument();
+      expect(screen.getByTestId("final-answer-region")).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+    }
   });
 
   it("shows successful load outcome with counts", async () => {

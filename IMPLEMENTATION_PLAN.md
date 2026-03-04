@@ -13,7 +13,8 @@
 - [x] Frontend tests cover core load/run happy paths, failures, and in-flight duplicate prevention.
 - [ ] Streaming heartbeat consumption in UI is missing (no EventSource/WebSocket client path).
 - [x] Cyberpunk visual-theme baseline is implemented (dark/noir base, neon action/readout accents, panel/surface separation).
-- [ ] Deck chrome framing, readout polish, motion tuning, and accessibility hardening remain.
+- [x] Deck chrome framing with explicit controls/progress/result panel separation is implemented.
+- [ ] Readout polish, motion tuning, and accessibility hardening remain.
 
 ## Prioritized Frontend Tasks (Highest Priority Incomplete First)
 
@@ -28,7 +29,7 @@
   - Test: interrupted stream shows explicit degraded/error status and keeps UI responsive for retry.
   - Test: stream tests use deterministic mocked transport (no live network dependency).
 
-- [ ] P0 - Implement deck layout and chrome framing (`specs/layout-and-chrome.md`)
+- [x] P0 - Implement deck layout and chrome framing (`specs/layout-and-chrome.md`)
 - Verification requirements (outcome-based):
   - Test: controls, progress/status, and result/readout are visually distinct sections.
   - Test: section boundaries/chrome are consistently visible.
@@ -66,7 +67,8 @@
 - [x] Cyberpunk visual-theme baseline (`specs/visual-theme.md`) with deterministic render coverage (`src/frontend/src/App.test.tsx`).
 
 ## Run Notes (2026-03-04)
-- Completed this iteration: P0 visual theme baseline.
+- Completed this iteration: P0 deck layout and chrome framing.
+- Streaming heartbeat remains blocked by backend contract availability (`/api/agents/run` is request/response only; no stream endpoint yet).
 - Verified after fresh rebuild/start: `curl -sSf http://localhost:8000/api/health`, `docker compose exec backend uv run pytest`, `docker compose exec frontend npm run test`, `docker compose exec frontend npm run typecheck`, `docker compose exec frontend npm run build`.
 
 ## Frontend Quality Gates (Per Change)

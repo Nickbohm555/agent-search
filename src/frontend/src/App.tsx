@@ -77,43 +77,65 @@ export default function App() {
   }
 
   return (
-    <main className="container theme-cyberpunk" data-theme="cyberpunk">
-      <h1>Agent Search Demo</h1>
-      <p className="lead">Load internal docs, run a query, and review the synthesized answer.</p>
+    <main className="container theme-cyberpunk deck-shell" data-theme="cyberpunk">
+      <header className="deck-header">
+        <h1>Agent Search Demo</h1>
+        <p className="lead">Load internal docs, run a query, and review the synthesized answer.</p>
+      </header>
 
-      <section className="card">
-        <h2>Load / Vectorize</h2>
-        <p>Ingest sample internal docs for retrieval.</p>
-        <button
-          type="button"
-          className="action-button neon-action"
-          onClick={handleLoad}
-          disabled={loadState === "loading"}
-        >
-          {loadState === "loading" ? "Loading..." : "Load Data"}
-        </button>
-        <StatusBanner state={loadState} message={loadMessage} testId="load-status-region" />
-      </section>
+      <div className="deck-grid">
+        <section className="card deck-panel deck-controls" aria-label="controls" data-testid="controls-panel">
+          <div className="panel-titlebar">
+            <h2>Control Deck</h2>
+            <span className="panel-kicker">ACTION</span>
+          </div>
 
-      <section className="card">
-        <h2>Run Query</h2>
-        <QueryForm
-          query={query}
-          onQueryChange={setQuery}
-          onSubmit={handleRun}
-          isRunDisabled={isRunDisabled}
-          isLoading={runState === "loading"}
-        />
+          <div className="control-block">
+            <h3>Load / Vectorize</h3>
+            <p>Ingest sample internal docs for retrieval.</p>
+            <button
+              type="button"
+              className="action-button neon-action"
+              onClick={handleLoad}
+              disabled={loadState === "loading"}
+            >
+              {loadState === "loading" ? "Loading..." : "Load Data"}
+            </button>
+            <StatusBanner state={loadState} message={loadMessage} testId="load-status-region" />
+          </div>
 
-        <StatusBanner state={runState} message={runMessage} testId="progress-region" />
+          <div className="control-block">
+            <h3>Run Query</h3>
+            <QueryForm
+              query={query}
+              onQueryChange={setQuery}
+              onSubmit={handleRun}
+              isRunDisabled={isRunDisabled}
+              isLoading={runState === "loading"}
+            />
+          </div>
+        </section>
 
-        <div className="answer" aria-live="polite" data-testid="final-answer-region">
-          <h3>Final Answer</h3>
-          {answer ? <p>{answer}</p> : <p>No answer yet.</p>}
-        </div>
+        <section className="card deck-panel deck-progress" aria-label="progress" data-testid="progress-panel">
+          <div className="panel-titlebar">
+            <h2>System Progress</h2>
+            <span className="panel-kicker">READOUT</span>
+          </div>
+          <StatusBanner state={runState} message={runMessage} testId="progress-region" />
+          <ProgressHistory runDetails={runDetails} />
+        </section>
 
-        <ProgressHistory runDetails={runDetails} />
-      </section>
+        <section className="card deck-panel deck-result" aria-label="result" data-testid="result-panel">
+          <div className="panel-titlebar">
+            <h2>Final Readout</h2>
+            <span className="panel-kicker">ANSWER</span>
+          </div>
+          <div className="answer" aria-live="polite" data-testid="final-answer-region">
+            <h3>Final Answer</h3>
+            {answer ? <p>{answer}</p> : <p>No answer yet.</p>}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
