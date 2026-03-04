@@ -1,23 +1,27 @@
 # IMPLEMENTATION_PLAN
 
 ## Status Snapshot (2026-03-04)
-- Repository state remains scaffold-only after comparing `specs/*` with `src/*`.
+- Repository state is early implementation (no longer scaffold-only) after comparing `specs/*` with `src/*`.
 - `src/lib/*` does not exist (confirmed via `rg --files src/lib`).
 - Existing working scaffold behavior confirmed:
   - `GET /api/health` returns `{"status":"ok"}`.
   - `GET /api/search-skeleton` returns scaffold status/message.
   - `GET /api/agents/runtime` returns scaffold agent identity.
   - `POST /api/agents/run` returns scaffold agent output.
+  - `POST /api/internal-data/load` persists inline internal documents and chunk embeddings.
+  - `POST /api/internal-data/retrieve` returns ranked chunks from loaded internal documents.
   - Startup sets `app.state.langfuse` via credential-aware Langfuse initializer.
-  - Alembic baseline exists with no domain tables.
+  - Alembic now includes internal corpus domain tables.
   - Frontend renders static scaffold shell only.
 - Existing tests confirmed:
   - Backend: smoke tests now cover `health`, `search-skeleton`, `agents/runtime`, and `agents/run` (including empty-query validation).
+  - Backend: smoke tests now also cover internal data load observability and retrieval from loaded corpus content.
   - Frontend: `src/frontend/src/App.test.tsx` heading render only.
 - Newly implemented this iteration:
-  - Implemented deterministic per-subquery tool selection in backend utilities with exclusive `internal|web` assignment and deterministic fallback behavior.
-  - Extended `POST /api/agents/run` response payload to expose ordered `tool_assignments` aligned with decomposed `sub_queries` for downstream retrieval/orchestration/streaming consumption.
-  - Extended backend smoke coverage to verify one-tool-per-subquery exclusivity and cue-driven internal vs web assignment behavior.
+  - Implemented internal corpus persistence models (`internal_documents`, `internal_document_chunks`) and matching Alembic migration.
+  - Implemented deterministic local chunking/embedding utilities for scaffold-safe vectorization without external model dependencies.
+  - Added internal data API endpoints for loading/vectorizing inline documents and retrieving ranked internal chunks.
+  - Added smoke coverage for observable load outcomes (`documents_loaded`, `chunks_created`) and retrieval grounded in loaded corpus content.
 
 ## Completed
 - [x] Scaffold FastAPI app with baseline routers, services, and schemas.
@@ -44,16 +48,14 @@
   - Added `utils.tool_selection` with deterministic, exclusive subquery assignment to exactly one tool (`internal` or `web`) plus a stable fallback.
   - Updated runtime agent run response schema/service to expose ordered `tool_assignments` alongside `sub_queries`.
   - Added smoke coverage verifying one assignment per sub-query, exclusive tool membership, and expected internal/web routing for mixed-domain prompts.
+- [x] P0 - Implement internal data loading/vectorization (`specs/data-loading-vectorization.md`)
+  - Added API-triggered inline internal-data loading that chunks documents, generates deterministic embeddings, and persists both docs/chunks.
+  - Added internal retrieval API that ranks only loaded internal chunks for query relevance.
+  - Added observable load response fields (`status`, `documents_loaded`, `chunks_created`) for UI/backend status display.
+  - Added Alembic migration `0002_internal_data_tables` for corpus tables in the same change.
+  - Added smoke tests for load/vectorize success outcomes and internal retrieval behavior against loaded documents.
 
 ## Remaining Work (Prioritized)
-
-- [ ] P0 - Implement internal data loading/vectorization (`specs/data-loading-vectorization.md`)
-  - Scope gap confirmed: no ingestion endpoint/service, no corpus tables, embeddings util still scaffold comment.
-  - Verification requirements (outcome-focused):
-    - At least one supported source can be loaded/vectorized via API/backend trigger.
-    - After successful load, internal retrieval returns results from loaded documents for relevant queries.
-    - Load outcome is observable with success/failure plus document/chunk counts.
-    - Any schema additions ship with matching Alembic migration.
 
 - [ ] P0 - Implement web tool pair (`specs/web-search-onyx-style.md`)
   - Scope gap confirmed: no `web.search` or `web.open_url` tool interfaces/services.
@@ -137,11 +139,11 @@
     - `(src/frontend) npm run test -- --run` -> `sh: vitest: command not found`
     - `(src/frontend) npm run typecheck` -> `sh: tsc: command not found`
   - Supplemental successful fallback checks (non-authoritative for compose gate):
-    - `(repo root) python3 -m pytest src/backend/tests/api/test_scaffold_endpoints.py src/backend/tests/api/test_agent_run_tracing.py` -> `9 passed`.
-    - `(repo root) python3 -m pytest src/backend/tests` -> `13 passed`.
+    - `(repo root) python3 -m pytest src/backend/tests/api/test_internal_data_loading.py` -> `2 passed`.
+    - `(repo root) python3 -m pytest src/backend/tests` -> `15 passed`.
 - Repository/git transport blockers in this sandbox:
   - Failed commands:
-    - `git add -A && git commit -m "blocked: implement per-subquery tool selection with smoke coverage"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
+    - `git add -A && git commit -m "blocked: implement internal data loading/vectorization with smoke coverage"` -> `fatal: Unable to create '/Users/nickbohm/Desktop/tinkering/agent-search/.git/index.lock': Operation not permitted`
     - `git push` -> `fatal: unable to access 'https://github.com/Nickbohm555/agent-search.git/': Could not resolve host: github.com`
 - Next action:
   - Run checks on a host with Docker daemon access and installed project dependencies, then re-run required gates:
@@ -153,5 +155,5 @@
     - `(src/frontend) npm ci`
   - Complete commit/push on a host with git write/network access:
     - `git add -A`
-    - `git commit -m "blocked: implement per-subquery tool selection with smoke coverage"`
+    - `git commit -m "blocked: implement internal data loading/vectorization with smoke coverage"`
     - `git push`
