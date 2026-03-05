@@ -49,6 +49,40 @@ def test_extract_sub_qa_pairs_tool_call_input_with_tool_result() -> None:
     assert result[0].tool_call_input == '{"query": "What changed in policy X?"}'
 
 
+def test_extract_sub_qa_uses_last_ai_message_as_sub_agent_response() -> None:
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "name": "task",
+                    "args": {"query": "Summarize the latest internal incident notes"},
+                }
+            ],
+        ),
+        ToolMessage(content="Incident notes retrieved.", tool_call_id="call_1", name="task"),
+        AIMessage(content="Interim thought from subagent."),
+        AIMessage(content="Final subagent answer for this delegated question."),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_2",
+                    "name": "task",
+                    "args": {"query": "Draft final synthesis"},
+                }
+            ],
+        ),
+        AIMessage(content="Main-agent synthesis that should not be captured for call_1."),
+    ]
+
+    result = agent_service._extract_sub_qa(messages)
+
+    assert len(result) == 1
+    assert result[0].sub_agent_response == "Final subagent answer for this delegated question."
+
+
 def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
 

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 _VECTOR_COLLECTION_NAME = os.getenv("VECTOR_COLLECTION_NAME", "agent_search_internal_data")
 _RUNTIME_AGENT_MODEL = os.getenv("RUNTIME_AGENT_MODEL", "gpt-4.1-mini")
+_MAIN_AGENT_TASK_TOOL_NAME = "task"
 
 
 _QUERY_LOG_MAX = 200
@@ -26,6 +27,26 @@ _QUERY_LOG_MAX = 200
 
 def _truncate_query(q: str) -> str:
     return q[: _QUERY_LOG_MAX] + "..." if len(q) > _QUERY_LOG_MAX else q
+
+
+def _stringify_message_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    return str(content)
+
+
+def _is_main_agent_turn(msg: AIMessage) -> bool:
+    tool_calls = getattr(msg, "tool_calls", None)
+    if not isinstance(tool_calls, list):
+        return False
+    for tool_call in tool_calls:
+        if not isinstance(tool_call, dict):
+            continue
+        if tool_call.get("name") == _MAIN_AGENT_TASK_TOOL_NAME:
+            return True
+    return False
 
 
 def _extract_last_message_content(result: Any) -> str:
@@ -44,22 +65,20 @@ def _extract_last_message_content(result: Any) -> str:
 
 def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
     tool_results_by_call_id: dict[str, str] = {}
-    for msg in messages:
+    tool_message_indices_by_call_id: dict[str, int] = {}
+    for i, msg in enumerate(messages):
         if not isinstance(msg, ToolMessage):
             continue
         tool_call_id = getattr(msg, "tool_call_id", None)
         if not isinstance(tool_call_id, str) or not tool_call_id:
             continue
         content = getattr(msg, "content", "")
-        if isinstance(content, str):
-            content_str = content
-        elif content is None:
-            content_str = ""
-        else:
-            content_str = str(content)
+        content_str = _stringify_message_content(content)
         tool_results_by_call_id[tool_call_id] = content_str
+        tool_message_indices_by_call_id[tool_call_id] = i
 
     sub_qa: list[SubQuestionAnswer] = []
+    sub_qa_index_by_call_id: dict[str, int] = {}
     for msg in messages:
         if not isinstance(msg, AIMessage):
             continue
@@ -103,12 +122,33 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
                     tool_call_input=tool_call_input,
                 )
             )
+            sub_qa_index_by_call_id[tool_call_id] = len(sub_qa) - 1
             logger.info(
                 "Extracted sub_qa item tool_call_id=%s sub_question=%s tool_call_input=%s",
                 tool_call_id,
                 _truncate_query(sub_question),
                 _truncate_query(tool_call_input),
             )
+
+    for tool_call_id, sub_qa_index in sub_qa_index_by_call_id.items():
+        tool_message_index = tool_message_indices_by_call_id.get(tool_call_id)
+        if tool_message_index is None:
+            continue
+        last_sub_agent_response = ""
+        for later_msg in messages[tool_message_index + 1 :]:
+            if not isinstance(later_msg, AIMessage):
+                continue
+            if _is_main_agent_turn(later_msg):
+                break
+            content_str = _stringify_message_content(getattr(later_msg, "content", ""))
+            if content_str.strip():
+                last_sub_agent_response = content_str
+        sub_qa[sub_qa_index].sub_agent_response = last_sub_agent_response
+        logger.info(
+            "Extracted sub_agent_response tool_call_id=%s response_preview=%s",
+            tool_call_id,
+            _truncate_query(last_sub_agent_response),
+        )
 
     logger.info("Extracted sub_qa pairs count=%s", len(sub_qa))
     return sub_qa

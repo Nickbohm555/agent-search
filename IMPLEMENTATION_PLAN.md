@@ -15,23 +15,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 3: Populate sub_agent_response in _extract_sub_qa (use last AIMessage per sub-agent)
-
-**Goal:** In `_extract_sub_qa`, set `sub_agent_response` from the **last** AIMessage the sub-agent sends before control returns to the main agent—not the first AIMessage after the ToolMessage.
-
-**Why last:** A sub-agent may make multiple tool calls and multiple AIMessages in one run. Example flow: sub-agent receives query → tool → tool → AIMessage (e.g. clarification) → tool → AIMessage (final answer). We must use that **final** AIMessage for `sub_agent_response`, so the main agent and UI get the sub-agent’s actual answer, not an intermediate message.
-
-**Details:**
-- In `src/backend/services/agent_service.py`: After collecting tool results by tool_call_id and building the initial `sub_qa` list, walk the message list in order. For each ToolMessage with a matching tool_call_id, find the **last** AIMessage (with non-empty `content`) that appears **after** that ToolMessage in the list—i.e. the final AIMessage from that sub-agent run before the next main-agent turn or end of list. Use that content as `sub_agent_response` for that item. If there is no such AIMessage, leave `""`.
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/agent_service.py` | Set `sub_agent_response` in `_extract_sub_qa` from the last AIMessage per tool_call_id. |
-
-**How to test:** Run backend pytest. Add or extend unit tests with a message sequence that has multiple AIMessages after a ToolMessage and assert the extracted `sub_agent_response` is the **last** one.
-
----
-
 ## Section 4: Instruct RAG sub-agent to send its answer as its final message
 
 **Goal:** Ensure the RAG sub-agent (deepagent) is explicitly told to send its answer as its **final** message when done, so that the “last AIMessage” we extract in Section 3 is the intended answer.

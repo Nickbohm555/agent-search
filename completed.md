@@ -68,3 +68,48 @@
     - Result: `18 passed, 1 warning`.
 
 ---
+## Section 3: Populate sub_agent_response in _extract_sub_qa (use last AIMessage per sub-agent)
+
+**Goal:** In `_extract_sub_qa`, set `sub_agent_response` from the **last** AIMessage the sub-agent sends before control returns to the main agent—not the first AIMessage after the ToolMessage.
+
+**Why last:** A sub-agent may make multiple tool calls and multiple AIMessages in one run. Example flow: sub-agent receives query → tool → tool → AIMessage (e.g. clarification) → tool → AIMessage (final answer). We must use that **final** AIMessage for `sub_agent_response`, so the main agent and UI get the sub-agent’s actual answer, not an intermediate message.
+
+**Details:**
+- In `src/backend/services/agent_service.py`: After collecting tool results by tool_call_id and building the initial `sub_qa` list, walk the message list in order. For each ToolMessage with a matching tool_call_id, find the **last** AIMessage (with non-empty `content`) that appears **after** that ToolMessage in the list—i.e. the final AIMessage from that sub-agent run before the next main-agent turn or end of list. Use that content as `sub_agent_response` for that item. If there is no such AIMessage, leave `""`.
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Set `sub_agent_response` in `_extract_sub_qa` from the last AIMessage per tool_call_id. |
+
+**How to test:** Run backend pytest. Add or extend unit tests with a message sequence that has multiple AIMessages after a ToolMessage and assert the extracted `sub_agent_response` is the **last** one.
+
+**Test results:**
+- Code changes:
+  - Updated `src/backend/services/agent_service.py`:
+    - Added `_stringify_message_content` helper for consistent message content handling.
+    - Added `_is_main_agent_turn` helper to detect coordinator delegation turns (`task` tool call) and stop sub-agent-response capture at that boundary.
+    - Extended `_extract_sub_qa` to map tool message indices and assign `sub_agent_response` per `tool_call_id` from the last non-empty `AIMessage` after matching `ToolMessage` and before the next main-agent turn.
+    - Added extraction log line per `tool_call_id` for `sub_agent_response` visibility (`Extracted sub_agent_response ...`).
+  - Updated `src/backend/tests/services/test_agent_service.py`:
+    - Added `test_extract_sub_qa_uses_last_ai_message_as_sub_agent_response` with multiple post-ToolMessage `AIMessage` entries and asserted the extracted `sub_agent_response` is the last qualifying message.
+- Docker lifecycle:
+  - Pre-work full reboot completed: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-change backend restart completed: `docker compose restart backend`.
+  - Runtime issue fixed and restart repeated: installed missing package in container (`docker compose exec backend uv pip install --python .venv/bin/python langchain-text-splitters`) then `docker compose restart backend`.
+  - Running state verified via `docker compose ps` (`db` healthy; `backend`, `frontend`, and `chrome` up).
+- Tests run:
+  - `docker compose exec backend uv run --with pytest --with langchain-text-splitters python -m pytest`
+    - Result: `19 passed, 1 warning`.
+  - `docker compose exec backend uv run --with pytest --with langchain-text-splitters python -m pytest tests/services/test_agent_service.py -q`
+    - Result: `3 passed`.
+- Logs reviewed:
+  - `docker compose logs --no-color --tail=120 backend`
+  - `docker compose logs --no-color --tail=120 frontend`
+  - `docker compose logs --no-color --tail=120 db`
+  - `docker compose logs --no-color --tail=80 backend` (post-fix confirmation)
+  - `docker compose logs --no-color --tail=40 frontend`
+  - `docker compose logs --no-color --tail=40 db`
+- Health endpoint check:
+  - `curl http://localhost:8000/api/health` currently returns `404 {"detail":"Not Found"}` in this app state.
+
+---
