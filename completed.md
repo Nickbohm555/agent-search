@@ -311,3 +311,41 @@
 **How to test:** Frontend tests. Manually run a query; confirm main question line shows API `main_question` when present, else submitted query.
 
 ---
+## Section 12: Final Readout layout — Main question, Final answer, Subquestions section
+
+**Goal:** Restructure the "Final Readout" panel into three clear, labeled sections: **Main question**, **Final answer**, and **Subquestions & subanswers**. Use semantic markup and consistent spacing so the hierarchy is obvious. When there is no run yet or no `sub_qa`, the Subquestions section shows a short empty state (e.g. "No subquestions for this run.").
+
+**Details:**
+- In `src/frontend/src/App.tsx`: Replace the current single-block Final Readout with three distinct sections (e.g. subsections or clearly labeled blocks). (1) **Main question** — display `lastRunResponse?.main_question` or fallback to `submittedQuery` or "No query submitted yet." (2) **Final answer** — display `answer` or "No answer yet." (3) **Subquestions & subanswers** — container only: if `lastRunResponse?.sub_qa` is empty or missing, render the empty-state message; do not yet render per-item content (Section 13). Use clear headings/labels (e.g. "Main question", "Final answer", "Subquestions & subanswers").
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` | Three-section Final Readout layout and Subquestions empty state. |
+
+**How to test:** Manually run a query; confirm Main question, Final answer, and Subquestions section (with empty state when no sub_qa) are clearly separated and readable.
+
+**Test results:**
+- Code changes:
+  - Updated `src/frontend/src/App.tsx` to render Final Readout as three semantic subsections with headings: "Main question", "Final answer", and "Subquestions & subanswers".
+  - Subquestions container currently renders only state text per scope: "No subquestions for this run." when `sub_qa` is empty/missing, and no per-item rendering.
+  - Added run visibility log field in `handleRun` success path: `subQuestionCount`.
+  - Updated `src/frontend/src/App.test.tsx` run-flow test assertions to verify the three Final Readout headings and the Subquestions empty state when response only has `output`.
+- Docker lifecycle and container handling:
+  - Pre-work full clean reboot completed: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-change container restart completed: `docker compose restart frontend`.
+  - Running state verified via `docker compose ps` (`db` healthy; `backend`, `frontend`, and `chrome` up).
+- Tests run:
+  - `docker compose exec frontend npm run test -- --run`
+    - Result: `4 passed`.
+  - `docker compose exec frontend npm run typecheck`
+    - Result: pass.
+  - `docker compose exec frontend npm run build`
+    - Result: pass.
+- Logs reviewed:
+  - `docker compose logs --no-color --tail=120 frontend`
+  - `docker compose logs --no-color --tail=120 backend`
+  - `docker compose logs --no-color --tail=120 db`
+- Log issues / results:
+  - No new runtime errors introduced by this section.
+
+---

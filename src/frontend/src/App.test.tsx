@@ -81,7 +81,11 @@ describe("App run query flow", () => {
       }),
     );
 
+    expect(await screen.findByRole("heading", { name: "Main question" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Final answer" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Subquestions & subanswers" })).toBeInTheDocument();
     expect(await screen.findByText("NATO is a military alliance.")).toBeInTheDocument();
+    expect(screen.getByText("No subquestions for this run.")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(

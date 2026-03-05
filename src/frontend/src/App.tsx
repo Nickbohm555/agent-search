@@ -110,6 +110,7 @@ export default function App() {
       console.info("Run query completed.", {
         submittedQuery: submitted,
         hasMainQuestion: Boolean(result.data.main_question.trim()),
+        subQuestionCount: result.data.sub_qa.length,
       });
       return;
     }
@@ -179,12 +180,18 @@ export default function App() {
 
       <section className="panel">
         <h2>Final Readout</h2>
-        <p>
-          <strong>Main question:</strong> {lastRunResponse?.main_question.trim() || submittedQuery || "No query submitted yet."}
-        </p>
-        <p>
-          <strong>Final Answer:</strong> {answer || "No answer yet."}
-        </p>
+        <section aria-labelledby="final-readout-main-question">
+          <h3 id="final-readout-main-question">Main question</h3>
+          <p>{lastRunResponse?.main_question.trim() || submittedQuery || "No query submitted yet."}</p>
+        </section>
+        <section aria-labelledby="final-readout-final-answer">
+          <h3 id="final-readout-final-answer">Final answer</h3>
+          <p>{answer || "No answer yet."}</p>
+        </section>
+        <section aria-labelledby="final-readout-subquestions">
+          <h3 id="final-readout-subquestions">Subquestions &amp; subanswers</h3>
+          <p>{(lastRunResponse?.sub_qa?.length ?? 0) > 0 ? "Subquestions are available." : "No subquestions for this run."}</p>
+        </section>
       </section>
     </main>
   );
