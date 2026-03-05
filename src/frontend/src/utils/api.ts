@@ -41,8 +41,8 @@ export interface SubQuestionAnswer {
 
 export interface RuntimeAgentRunResponse {
   output: string;
-  main_question?: string;
-  sub_qa?: SubQuestionAnswer[];
+  main_question: string;
+  sub_qa: SubQuestionAnswer[];
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -83,7 +83,7 @@ export async function runAgent(query: string): Promise<ApiResult<RuntimeAgentRun
   return requestJson<RuntimeAgentRunResponse>("/api/agents/run", {
     method: "POST",
     payload: { query },
-    validate: (v): v is RuntimeAgentRunResponse => isObject(v) && typeof v.output === "string",
+    validate: (v): v is RuntimeAgentRunResponse => validateRuntimeAgentRunResponse(v),
     timeoutMs: AGENT_RUN_TIMEOUT_MS,
   });
 }
@@ -100,6 +100,40 @@ function isWikiSourceOption(value: unknown): value is WikiSourceOption {
     typeof value.article_query === "string" &&
     typeof value.already_loaded === "boolean"
   );
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
+  return (
+    isObject(value) &&
+    typeof value.sub_question === "string" &&
+    typeof value.sub_answer === "string" &&
+    isOptionalString(value.tool_call_input) &&
+    isOptionalString(value.sub_agent_response)
+  );
+}
+
+function validateRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentRunResponse {
+  if (!isObject(value) || typeof value.output !== "string") return false;
+
+  if (value.main_question === undefined) {
+    value.main_question = "";
+  } else if (typeof value.main_question !== "string") {
+    console.warn("runAgent response validation failed: main_question must be a string.");
+    return false;
+  }
+
+  if (value.sub_qa === undefined) {
+    value.sub_qa = [];
+  } else if (!Array.isArray(value.sub_qa) || !value.sub_qa.every(isSubQuestionAnswer)) {
+    console.warn("runAgent response validation failed: sub_qa must be an array of sub-question objects.");
+    return false;
+  }
+
+  return true;
 }
 
 async function requestJson<T>(

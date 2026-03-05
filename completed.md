@@ -282,3 +282,17 @@
 **How to test:** Frontend tests; no runtime change yet.
 
 ---
+## Section 10: Update runAgent response validator
+
+**Goal:** `runAgent` validator accepts and validates `main_question` and `sub_qa`; older responses (only `output`) still pass.
+
+**Details:**
+- In `src/frontend/src/utils/api.ts`: Update the `validate` function in `runAgent` to accept and validate `main_question` (string) and `sub_qa` (array of objects with `sub_question`, `sub_answer`, and optionally `tool_call_input`, `sub_agent_response`). Treat missing fields as empty string or empty array.
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/utils/api.ts` | Update `runAgent` validator for new fields. |
+
+**How to test:** Frontend tests. Call `POST /api/agents/run` from the app; confirm no "malformed response" when backend returns `main_question` and `sub_qa`.
+
+---
