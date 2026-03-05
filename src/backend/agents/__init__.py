@@ -1,4 +1,5 @@
-"""Runtime agent scaffolding package.
+"""Runtime agent construction helpers."""
 
-Define agent classes and runtime construction helpers here.
-"""
+from .coordinator import create_coordinator_agent
+
+__all__ = ["create_coordinator_agent"]

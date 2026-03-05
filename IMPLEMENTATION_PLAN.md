@@ -4,26 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 10: Coordinator agent factory (main + RAG subagent)
-
-**Single goal:** Implement `create_coordinator_agent()` that returns a runnable agent: main agent has no tools and breaks the query into subquestions; one RAG subagent has the retriever tool and runs similarity search. Use LangChain deep agents subagents and RAG patterns.
-
-**Details:**
-- Main agent: no direct tools; system prompt = break user query into subquestions and delegate to subagent via `task()` (or equivalent).
-- Subagent: retriever tool + system prompt to run similarity search and return retrieved content.
-- Factory: `create_coordinator_agent(vector_store, model, ...) -> runnable`. Use `create_deep_agent` and `subagents=[rag_subagent]`. Add logging (which agent ran, tool calls).
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/agents/__init__.py` | Export `create_coordinator_agent`. |
-| `src/backend/agents/coordinator.py` | `create_coordinator_agent(vector_store, model, ...)` building main + RAG subagent; return runnable. Logging. |
-
-**How to test:** Backend pytest. Factory returns an invocable; invoke with a query and assert subagent tool is used and a final answer is returned (mock vector store/tool to avoid real DB). Assert logging if feasible.
-
----
-
 ## Section 11: Run – backend route and run_runtime_agent service
 
 **Single goal:** When the frontend calls `POST /api/agents/run`, the backend creates the coordinator agent, invokes it with the user query, and returns the last message content. All request/response use Pydantic.

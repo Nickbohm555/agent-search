@@ -217,3 +217,30 @@
 - Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs show pre-existing startup import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 8 changes.
 
 ---
+## Section 10: Coordinator agent factory (main + RAG subagent)
+
+**Single goal:** Implement `create_coordinator_agent()` that returns a runnable agent: main agent has no tools and breaks the query into subquestions; one RAG subagent has the retriever tool and runs similarity search. Use LangChain deep agents subagents and RAG patterns.
+
+**Details:**
+- Main agent: no direct tools; system prompt = break user query into subquestions and delegate to subagent via `task()` (or equivalent).
+- Subagent: retriever tool + system prompt to run similarity search and return retrieved content.
+- Factory: `create_coordinator_agent(vector_store, model, ...) -> runnable`. Use `create_deep_agent` and `subagents=[rag_subagent]`. Add logging (which agent ran, tool calls).
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/__init__.py` | Export `create_coordinator_agent`. |
+| `src/backend/agents/coordinator.py` | `create_coordinator_agent(vector_store, model, ...)` building main + RAG subagent; return runnable. Logging. |
+| `src/backend/tests/agents/test_coordinator_agent.py` | Verifies factory builds an invocable coordinator, configures subagent/tool wiring, invokes retriever tool, and emits logs. |
+
+**How to test:** Backend pytest. Factory returns an invocable; invoke with a query and assert subagent tool is used and a final answer is returned (mock vector store/tool to avoid real DB). Assert logging if feasible.
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec backend uv run pytest tests/agents/test_coordinator_agent.py` (1 passed): verified `create_coordinator_agent` returns an invocable runnable, configures `create_deep_agent` with `subagents=[rag_retriever]` and retriever tool wiring, and returns a final answer after retrieval.
+- Ran `docker compose exec backend uv run pytest` (15 passed): full backend suite green, including new coordinator-agent test plus existing API/DB/wiki/vector/embedding/retriever/internal-data tests.
+- Ran `docker compose exec frontend npm run test` (passed, 2 tests).
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs confirm pre-existing startup/import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 10 changes.
+
+---
