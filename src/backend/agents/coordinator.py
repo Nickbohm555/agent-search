@@ -8,9 +8,12 @@ from tools import make_retriever_tool
 logger = logging.getLogger(__name__)
 
 _COORDINATOR_PROMPT = (
-    "You are the coordinator agent. Break the user query into focused subquestions and "
-    "delegate each one to the RAG subagent using the task tool. Do not answer with "
-    "unsupported claims; synthesize only from delegated retrieval results."
+    "You are the coordinator agent. Break the user query into focused subquestions. "
+    "For each user query, identify 1 to N focused "
+    "sub-questions that together cover the full request. Delegate every sub-question to "
+    "the RAG subagent using the task tool, one delegation per sub-question. After all "
+    "delegations complete, produce the final answer by synthesizing only what was returned "
+    "from those delegated retrieval results, and do not add unsupported claims."
 )
 _RAG_SUBAGENT_NAME = "rag_retriever"
 _RAG_SUBAGENT_PROMPT = (

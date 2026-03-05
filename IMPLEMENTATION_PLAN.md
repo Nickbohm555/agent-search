@@ -16,29 +16,6 @@ The following atomic sections implement: main question → sub-questions → eac
 
 ---
 
-## Section 3: Update coordinator prompt for sub-question breakdown
-
-**Single goal:** Change only `_COORDINATOR_PROMPT` so the coordinator is instructed to break the query into focused sub-questions and delegate each to the RAG sub-agent.
-
-**Details:**
-- In `coordinator.py`, rewrite `_COORDINATOR_PROMPT` to: (1) identify 1–N focused sub-questions covering the main query, (2) delegate each sub-question to the RAG sub-agent (e.g. task tool), one per delegation, (3) synthesize the final answer only from those retrieval results. Do not change the RAG sub-agent prompt or any other file in this section.
-
-**Tech stack and dependencies**
-- Libraries/packages: None.
-- Tooling: No change.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/agents/coordinator.py` | Update `_COORDINATOR_PROMPT` only for sub-question decomposition and one-to-one RAG delegation. |
-
-**How to test:** Restart backend; run backend pytest. Optionally call `POST /api/agents/run` and inspect logs to confirm coordinator behavior.
-
-**Test results:** (Record in `agent-search/completed.md` when section is complete.)
-
----
-
 ## Section 4: Update RAG sub-agent prompt for per–sub-question answers
 
 **Single goal:** Refine `_RAG_SUBAGENT_PROMPT` so the RAG agent returns concise, grounded answers per sub-question.

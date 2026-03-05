@@ -80,3 +80,59 @@
   - Health check request `GET /api/health` returned `404 Not Found` in current codebase.
 
 ---
+## Section 3: Update coordinator prompt for sub-question breakdown
+
+**Single goal:** Change only `_COORDINATOR_PROMPT` so the coordinator is instructed to break the query into focused sub-questions and delegate each to the RAG sub-agent.
+
+**Details:**
+- In `coordinator.py`, rewrite `_COORDINATOR_PROMPT` to: (1) identify 1–N focused sub-questions covering the main query, (2) delegate each sub-question to the RAG sub-agent (e.g. task tool), one per delegation, (3) synthesize the final answer only from those retrieval results. Do not change the RAG sub-agent prompt or any other file in this section.
+
+**Tech stack and dependencies**
+- Libraries/packages: None.
+- Tooling: No change.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Update `_COORDINATOR_PROMPT` only for sub-question decomposition and one-to-one RAG delegation. |
+
+**How to test:** Restart backend; run backend pytest. Optionally call `POST /api/agents/run` and inspect logs to confirm coordinator behavior.
+
+**Test results:**
+- Code/search verification:
+  - Reuse-first search before edits:
+    - `rg -n "_COORDINATOR_PROMPT|_RAG_SUBAGENT_PROMPT|create_react_agent|task" src/backend/agents src/backend/services src/backend/tests`
+    - Reviewed `src/backend/agents/coordinator.py` and updated only `_COORDINATOR_PROMPT`.
+  - Prompt now explicitly requires: focused subquestion decomposition, 1-to-N sub-questions, one task delegation per sub-question, and final synthesis only from delegated retrieval outputs.
+- Restart/rebuild actions:
+  - Full clean restart before work:
+    - `docker compose down -v --rmi all`
+    - `docker compose build`
+    - `docker compose up -d`
+  - Post-change validation restarts:
+    - `docker compose restart && docker compose ps` (re-run after each failed check per plan instructions).
+  - Final running state: `backend`, `frontend`, `db` (healthy), `chrome` all up.
+- Logs reviewed:
+  - `docker compose logs --tail=160 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+  - `docker compose logs --tail=80 chrome`
+  - Follow-up log checks after restarts:
+    - `docker compose logs --tail=80 backend`
+    - `docker compose logs --tail=50 frontend`
+    - `docker compose logs --tail=50 db`
+    - `docker compose logs --tail=40 chrome`
+  - Observed and addressed backend startup/test blockers:
+    - `ModuleNotFoundError: No module named 'langchain_text_splitters'`
+    - `uv run pytest` failing with missing pytest executable.
+- Environment fixes required to run mandated tests:
+  - `docker compose exec backend uv pip install pytest langchain-text-splitters`
+- Tests run:
+  - `docker compose exec backend uv run pytest`
+    - First run failed due a test expectation string mismatch after prompt rewrite (`tests/agents/test_coordinator_agent.py` expected phrase).
+    - Prompt text was adjusted (still Section 3-compliant) to preserve expected phrase while keeping new decomposition/delegation constraints.
+  - `docker compose exec backend uv run pytest` (re-run after fix)
+    - Final result: `17 passed, 1 warning`.
+
+---
