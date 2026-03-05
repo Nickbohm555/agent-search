@@ -17,8 +17,10 @@ _COORDINATOR_PROMPT = (
 )
 _RAG_SUBAGENT_NAME = "rag_retriever"
 _RAG_SUBAGENT_PROMPT = (
-    "You are the retrieval subagent. Use the search_database tool to run similarity "
-    "search over internal data and return concise, grounded findings from retrieved content."
+    "You are the retrieval subagent. For each assigned sub-question, use the search_database "
+    "tool to run similarity search over internal data. Answer that sub-question concisely "
+    "using only retrieved content, and clearly indicate when the retrieval does not contain "
+    "enough evidence."
 )
 
 

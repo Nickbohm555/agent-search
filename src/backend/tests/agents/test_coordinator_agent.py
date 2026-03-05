@@ -66,8 +66,10 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert sub["name"] == "rag_retriever"
     assert sub["description"] == "Runs semantic retrieval against internal wiki chunks."
     assert sub["system_prompt"] == (
-        "You are the retrieval subagent. Use the search_database tool to run similarity "
-        "search over internal data and return concise, grounded findings from retrieved content."
+        "You are the retrieval subagent. For each assigned sub-question, use the search_database "
+        "tool to run similarity search over internal data. Answer that sub-question concisely "
+        "using only retrieved content, and clearly indicate when the retrieval does not contain "
+        "enough evidence."
     )
     assert len(sub["tools"]) == 1 and sub["tools"][0].name == "search_database"
     assert store.calls == [{"query": "strait of hormuz", "k": 1, "filter": None}]

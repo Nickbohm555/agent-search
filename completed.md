@@ -132,7 +132,52 @@
   - `docker compose exec backend uv run pytest`
     - First run failed due a test expectation string mismatch after prompt rewrite (`tests/agents/test_coordinator_agent.py` expected phrase).
     - Prompt text was adjusted (still Section 3-compliant) to preserve expected phrase while keeping new decomposition/delegation constraints.
-  - `docker compose exec backend uv run pytest` (re-run after fix)
+- `docker compose exec backend uv run pytest` (re-run after fix)
     - Final result: `17 passed, 1 warning`.
+
+---
+
+## Section 4: Update RAG sub-agent prompt for per–sub-question answers
+
+**Single goal:** Refine `_RAG_SUBAGENT_PROMPT` so the RAG agent returns concise, grounded answers per sub-question.
+
+**Details:**
+- In `coordinator.py`, update `_RAG_SUBAGENT_PROMPT` so the retrieval subagent is explicitly instructed to answer the given sub-question concisely from retrieved content. No other code or schema changes.
+
+**Tech stack and dependencies**
+- Libraries/packages: None.
+- Tooling: No change.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Update `_RAG_SUBAGENT_PROMPT` only for concise, grounded per–sub-question answers. |
+
+**How to test:** Restart backend; run backend pytest.
+
+**Test results:**
+- Code/search verification:
+  - Reuse-first scan before edits:
+    - `rg -n "_RAG_SUBAGENT_PROMPT|RAG sub-agent|sub-question|subquestion|coordinator" src/backend`
+    - Reviewed `src/backend/agents/coordinator.py` and `src/backend/tests/agents/test_coordinator_agent.py` to preserve existing agent wiring and coverage.
+  - Updated `_RAG_SUBAGENT_PROMPT` to explicitly answer each assigned sub-question concisely from retrieved content and to state when evidence is insufficient.
+- Test and environment actions:
+  - `docker compose exec backend uv run pytest` initially failed because `pytest` was missing in-container.
+  - Installed test/runtime dependencies required by the current container image:
+    - `docker compose exec backend uv pip install pytest`
+    - `docker compose exec backend uv pip install langchain-text-splitters`
+  - `docker compose exec backend uv run pytest` then failed on one stale exact-string test assertion for the updated prompt.
+  - Updated `src/backend/tests/agents/test_coordinator_agent.py` expected subagent prompt text to match the refined prompt.
+  - Re-ran `docker compose exec backend uv run pytest` with final result: `17 passed, 1 warning`.
+- Restart/rebuild and container checks:
+  - Restarted full application after code completion: `docker compose restart`.
+  - Verified running state with `docker compose ps` (`backend`, `frontend`, `db` healthy, `chrome` all up).
+- Logs reviewed:
+  - `docker compose logs --tail=160 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+  - `docker compose logs --tail=80 chrome`
+  - Backend logs showed earlier missing dependency stack traces during setup, followed by successful startup (`Application startup complete`) after dependency install and restart.
 
 ---

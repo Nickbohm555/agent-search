@@ -16,29 +16,6 @@ The following atomic sections implement: main question → sub-questions → eac
 
 ---
 
-## Section 4: Update RAG sub-agent prompt for per–sub-question answers
-
-**Single goal:** Refine `_RAG_SUBAGENT_PROMPT` so the RAG agent returns concise, grounded answers per sub-question.
-
-**Details:**
-- In `coordinator.py`, update `_RAG_SUBAGENT_PROMPT` so the retrieval subagent is explicitly instructed to answer the given sub-question concisely from retrieved content. No other code or schema changes.
-
-**Tech stack and dependencies**
-- Libraries/packages: None.
-- Tooling: No change.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/agents/coordinator.py` | Update `_RAG_SUBAGENT_PROMPT` only for concise, grounded per–sub-question answers. |
-
-**How to test:** Restart backend; run backend pytest.
-
-**Test results:** (Record in `agent-search/completed.md` when section is complete.)
-
----
-
 ## Section 5: Implement _extract_sub_qa(messages) helper
 
 **Single goal:** Implement a function that parses the agent message list and returns `list[SubQuestionAnswer]`; add a unit test for it.
