@@ -100,6 +100,58 @@ describe("App run query flow", () => {
     });
   });
 
+  it("renders main question and expandable subquestion details from enriched response shape", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            output: "NATO was formed in 1949.",
+            main_question: "When and why was NATO formed?",
+            sub_qa: [
+              {
+                sub_question: "Which treaty created NATO?",
+                sub_answer: "The North Atlantic Treaty created NATO.",
+                sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
+                tool_call_input: "{\"query\":\"NATO founding treaty\"}",
+              },
+            ],
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "When and why was NATO formed?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    expect(await screen.findByRole("heading", { name: "Main question" })).toBeInTheDocument();
+    expect(screen.getAllByText("When and why was NATO formed?").length).toBeGreaterThan(0);
+    expect(screen.getByText("NATO was formed in 1949.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Subquestions & subanswers" })).toBeInTheDocument();
+
+    const firstSubQuestion = screen.getByText("Which treaty created NATO?");
+    fireEvent.click(firstSubQuestion);
+
+    expect(screen.getByText("The North Atlantic Treaty created NATO.")).toBeInTheDocument();
+    expect(
+      screen.getByText("NATO was established by the Washington Treaty in April 1949."),
+    ).toBeInTheDocument();
+    expect(screen.getByText('{"query":"NATO founding treaty"}')).toBeInTheDocument();
+  });
+
   it("shows an error message when run request fails", async () => {
     const fetchMock = vi
       .fn()

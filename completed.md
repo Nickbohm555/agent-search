@@ -442,3 +442,43 @@
   - Resolution status: no functional impact; services started successfully and tests passed.
 
 ---
+## Section 15: Frontend tests for new response shape
+
+**Goal:** Existing run-flow tests pass. One test asserts that when the response includes `main_question`, `sub_qa` (with sub_question, sub_answer, sub_agent_response, tool_call_input), and `output`, the UI shows Main question, Final answer, and Subquestions list; and that expanding a subquestion reveals sub_answer, sub_agent_response, and tool_call_input where present.
+
+**Details:**
+- In `src/frontend/src/App.test.tsx`: Keep the test that mocks `{ output: "..." }` (and any minimal shape) and expects final answer; it must still pass. Add or extend a test that mocks a response with `output`, `main_question`, and `sub_qa` (at least one item with sub_question, sub_answer, sub_agent_response, and optionally tool_call_input), submits a query, and asserts: (1) main question text appears in the document, (2) final answer (output) appears, (3) subquestion list is present, (4) after expanding the first subquestion (or by snapshot), sub_answer, sub_agent_response, and tool_call_input appear as expected where non-empty.
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.test.tsx` | Minimal-response test unchanged; add test for main_question, sub_qa accordion, and expanded content. |
+
+**How to test:** Run frontend test suite; all tests must pass.
+
+**Test results:**
+- Code changes:
+  - Updated `src/frontend/src/App.test.tsx`:
+    - Kept the existing minimal-response run-flow test that mocks `{ output: "NATO is a military alliance." }` and verifies final answer rendering.
+    - Added `renders main question and expandable subquestion details from enriched response shape` covering a response with `output`, `main_question`, and `sub_qa` including `sub_question`, `sub_answer`, `sub_agent_response`, and `tool_call_input`.
+    - New assertions verify: Main question heading + text present, Final answer text present, Subquestions section present, and subquestion detail values are shown after expanding the first subquestion.
+- Frontend tests:
+  - `docker compose exec frontend npm run test`
+    - First run: failed due ambiguous duplicate text matcher for main question.
+    - Fix applied in test assertion (`findByRole` + `getAllByText`).
+    - Re-run result: passed (`5 passed`).
+- Docker lifecycle and logs:
+  - Pre-work full fresh rebuild/restart completed:
+    - `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+  - Post-change service restart completed:
+    - `docker compose restart frontend`
+  - Runtime state validated:
+    - `docker compose ps` shows `db`, `backend`, `frontend`, `chrome` up (`db` healthy).
+  - Logs reviewed for visibility:
+    - `docker compose logs --tail 120 frontend`
+    - `docker compose logs --tail 120 backend`
+    - `docker compose logs --tail 120 db`
+- Log issues / results:
+  - No runtime errors introduced by this task.
+  - Observed expected startup warnings from backend `uv` environment setup; no action required for this frontend-test scope.
+
+---
