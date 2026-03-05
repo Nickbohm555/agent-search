@@ -4,25 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 4: Wiki load – chunk with RecursiveCharacterTextSplitter
-
-**Single goal:** Add a function that takes a list of LangChain Documents and returns chunked Documents using `RecursiveCharacterTextSplitter`. Preserve metadata on chunks; add logging.
-
-**Details:**
-- Use `RecursiveCharacterTextSplitter` (set `chunk_size`, `chunk_overlap`; optionally `separators`, `keep_separator`, `is_separator_regex`).
-- Input: `list[Document]`. Output: `list[Document]` (more, smaller docs with same metadata shape).
-- Log chunk count per doc and total.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/wiki_ingestion_service.py` | Add `chunk_wiki_documents(documents: list[Document], chunk_size=..., chunk_overlap=...) -> list[Document]`. Use `RecursiveCharacterTextSplitter`. Preserve metadata. Logging. |
-
-**How to test:** Backend pytest. TDD. Given 1–2 Documents, assert output has more Documents; each has `page_content` and metadata; chunk sizes within expected range. Assert logging.
-
----
-
 ## Section 5: Frontend – wiki dropdown from hardcoded list
 
 **Single goal:** Ensure the wiki source dropdown is populated from a hardcoded list of topics (geopolitics-focused: Geopolitics, Strait of Hormuz, NATO, etc.). Can mirror backend source list or be frontend-only.

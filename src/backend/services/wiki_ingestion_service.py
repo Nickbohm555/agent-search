@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from schemas import WikiLoadInput
 
@@ -41,6 +42,8 @@ _WIKI_SOURCE_DEFINITIONS: tuple[WikiSourceDefinition, ...] = (
 _WIKI_SOURCES_BY_ID = {item.source_id: item for item in _WIKI_SOURCE_DEFINITIONS}
 _MIN_WIKI_CHARS = 1000
 _WIKI_DOC_CHARS_MAX = 8000
+_DEFAULT_CHUNK_SIZE = 1000
+_DEFAULT_CHUNK_OVERLAP = 200
 
 
 def list_wiki_sources() -> tuple[WikiSourceDefinition, ...]:
@@ -123,3 +126,38 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[Document]:
     )
 
     return resolved_documents
+
+
+def chunk_wiki_documents(
+    documents: list[Document],
+    chunk_size: int = _DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = _DEFAULT_CHUNK_OVERLAP,
+) -> list[Document]:
+    """Chunk wiki documents while preserving per-document metadata."""
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be greater than zero.")
+    if chunk_overlap < 0:
+        raise ValueError("chunk_overlap must be zero or greater.")
+    if chunk_overlap >= chunk_size:
+        raise ValueError("chunk_overlap must be smaller than chunk_size.")
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+    )
+
+    chunked_documents: list[Document] = []
+    total_input_docs = len(documents)
+    for index, document in enumerate(documents, start=1):
+        chunks = splitter.split_documents([document])
+        chunked_documents.extend(chunks)
+        logger.info("Chunked wiki doc %s/%s into %s chunks", index, total_input_docs, len(chunks))
+
+    logger.info(
+        "Chunked %s wiki documents into %s total chunks (chunk_size=%s, chunk_overlap=%s)",
+        total_input_docs,
+        len(chunked_documents),
+        chunk_size,
+        chunk_overlap,
+    )
+    return chunked_documents

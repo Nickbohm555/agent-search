@@ -63,3 +63,28 @@
 - Ran health check with `curl http://localhost:8000/api/health` (failed due pre-existing backend startup/import error: `ImportError: cannot import name 'run_runtime_agent' from services.agent_service`; unrelated to Section 3 changes).
 
 ---
+## Section 4: Wiki load – chunk with RecursiveCharacterTextSplitter
+
+**Single goal:** Add a function that takes a list of LangChain Documents and returns chunked Documents using `RecursiveCharacterTextSplitter`. Preserve metadata on chunks; add logging.
+
+**Details:**
+- Use `RecursiveCharacterTextSplitter` (set `chunk_size`, `chunk_overlap`; optionally `separators`, `keep_separator`, `is_separator_regex`).
+- Input: `list[Document]`. Output: `list[Document]` (more, smaller docs with same metadata shape).
+- Log chunk count per doc and total.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/wiki_ingestion_service.py` | Add `chunk_wiki_documents(documents: list[Document], chunk_size=..., chunk_overlap=...) -> list[Document]`. Use `RecursiveCharacterTextSplitter`. Preserve metadata. Logging. |
+
+**How to test:** Backend pytest. TDD. Given 1–2 Documents, assert output has more Documents; each has `page_content` and metadata; chunk sizes within expected range. Assert logging.
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec backend uv run pytest tests/services/test_wiki_ingestion_service.py` (4 passed): verified chunking splits 1–2 input `Document` objects into more output chunks, preserves metadata, keeps chunk sizes within the configured `chunk_size`, validates bad chunk params, and emits per-doc plus total chunking logs.
+- Ran `docker compose exec backend uv run pytest` (6 passed): full backend suite green including wipe API/DB tests and wiki ingestion tests.
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran `docker compose exec frontend npm run test` (fails because no frontend test files exist yet; unchanged by this backend-only section).
+- Ran health check with `curl -i http://localhost:8000/api/health` (failed due pre-existing backend startup/import error: `ImportError: cannot import name 'run_runtime_agent' from services.agent_service`; unrelated to Section 4 changes).
+
+---
