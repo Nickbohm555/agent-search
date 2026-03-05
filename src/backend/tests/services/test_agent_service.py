@@ -26,7 +26,7 @@ def _make_session() -> Session:
     return Session(engine)
 
 
-def test_extract_sub_qa_pairs_tool_call_input_with_tool_result() -> None:
+def test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages() -> None:
     messages = [
         AIMessage(
             content="",
@@ -39,6 +39,17 @@ def test_extract_sub_qa_pairs_tool_call_input_with_tool_result() -> None:
             ],
         ),
         ToolMessage(content="Policy X was updated in 2024.", tool_call_id="call_1", name="task"),
+        AIMessage(content="Subagent final response for delegated policy question."),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_2",
+                    "name": "task",
+                    "args": {"query": "Synthesize a final user answer"},
+                }
+            ],
+        ),
     ]
 
     result = agent_service._extract_sub_qa(messages)
@@ -47,6 +58,7 @@ def test_extract_sub_qa_pairs_tool_call_input_with_tool_result() -> None:
     assert result[0].sub_question == "What changed in policy X?"
     assert result[0].sub_answer == "Policy X was updated in 2024."
     assert result[0].tool_call_input == '{"query": "What changed in policy X?"}'
+    assert result[0].sub_agent_response == "Subagent final response for delegated policy question."
 
 
 def test_extract_sub_qa_uses_last_ai_message_as_sub_agent_response() -> None:

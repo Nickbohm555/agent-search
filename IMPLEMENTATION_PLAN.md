@@ -15,21 +15,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 5: Update _extract_sub_qa unit test
-
-**Goal:** Unit test asserts all four fields: sub_question, sub_answer, tool_call_input, sub_agent_response.
-
-**Details:**
-- In `src/backend/tests/services/test_agent_service.py`: Update the `_extract_sub_qa` test so mock messages include an AIMessage after the ToolMessage. Assert the returned item(s) have `sub_question`, `sub_answer`, `tool_call_input`, and `sub_agent_response` set as expected.
-
-| File | Purpose |
-|------|--------|
-| `src/backend/tests/services/test_agent_service.py` | Update _extract_sub_qa test for new fields and message shape. |
-
-**How to test:** Run backend pytest; _extract_sub_qa test must pass.
-
----
-
 ## Section 6: Add run-end summary log for sub_qa
 
 **Goal:** At end of each agent run, log a clear summary so docker logs show sub_question, tool input/output, and sub_agent_response for every SubQuestionAnswer.

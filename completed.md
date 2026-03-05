@@ -154,3 +154,39 @@
   - `docker compose ps` confirms all services up (`db` healthy; `backend`, `frontend`, `chrome` running).
 
 ---
+## Section 5: Update _extract_sub_qa unit test
+
+**Goal:** Unit test asserts all four fields: sub_question, sub_answer, tool_call_input, sub_agent_response.
+
+**Details:**
+- In `src/backend/tests/services/test_agent_service.py`: Update the `_extract_sub_qa` test so mock messages include an AIMessage after the ToolMessage. Assert the returned item(s) have `sub_question`, `sub_answer`, `tool_call_input`, and `sub_agent_response` set as expected.
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Update _extract_sub_qa test for new fields and message shape. |
+
+**How to test:** Run backend pytest; _extract_sub_qa test must pass.
+
+**Test results:**
+- Code changes:
+  - Updated `src/backend/tests/services/test_agent_service.py`:
+    - Renamed test to `test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages`.
+    - Added post-`ToolMessage` `AIMessage` content and a subsequent main-agent tool call message boundary.
+    - Added assertions for all four fields on the extracted item: `sub_question`, `sub_answer`, `tool_call_input`, and `sub_agent_response`.
+- Docker lifecycle and logs:
+  - Pre-work full fresh reboot completed: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-change application restart completed: `docker compose restart`.
+  - Running state verified via `docker compose ps` (all services up; `db` healthy).
+  - Logs reviewed for each service:
+    - `docker compose logs --tail 120 backend`
+    - `docker compose logs --tail 120 frontend`
+    - `docker compose logs --tail 120 db`
+- Backend tests:
+  - Required command from task: `docker compose exec backend uv run pytest`.
+    - Result: failed in this environment (`Failed to spawn: pytest`; executable not present).
+  - Follow-up: `docker compose exec backend uv run --with pytest python -m pytest`.
+    - Result: collection blocked by existing dependency error (`ModuleNotFoundError: langchain_text_splitters`) in unrelated test modules.
+  - Task-targeted verification: `docker compose exec backend uv run --with pytest python -m pytest tests/services/test_agent_service.py -k extract_sub_qa -vv`.
+    - Result: `2 passed, 1 deselected`.
+
+---
