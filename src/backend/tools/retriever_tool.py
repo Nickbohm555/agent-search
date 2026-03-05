@@ -24,7 +24,10 @@ def _format_results(results: list[Document]) -> str:
 
 
 def make_retriever_tool(vector_store: Any) -> BaseTool:
-    """Build a retriever tool over a vector store similarity search interface."""
+    """Build a retriever tool over a vector store similarity search interface.
+    The retriever tool is used to answer sub-questions by the coordinator agent.
+    """
+
 
     @tool
     def search_database(
@@ -38,6 +41,7 @@ def make_retriever_tool(vector_store: Any) -> BaseTool:
             query: Natural language question to search for.
             limit: Maximum number of matching chunks to return.
             wiki_source_filter: Optional wiki source identifier or URL to filter by metadata.source.
+        The retriever tool is used to answer sub-questions by the coordinator agent.
         """
         safe_limit = max(1, limit)
         filter_payload = {"source": wiki_source_filter} if wiki_source_filter else None

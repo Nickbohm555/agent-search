@@ -107,11 +107,10 @@ export default function App() {
       setRunState("success");
       setAnswer(result.data.output);
       setLastRunResponse(result.data);
-      const subQuestionsWithDetails = result.data.sub_qa.filter(
+      const subQuestionsWithDetails = (result.data.sub_qa ?? []).filter(
         (item) =>
-          item.sub_answer.trim().length > 0 ||
-          item.sub_agent_response?.trim().length ||
-          item.tool_call_input?.trim().length,
+          (item.sub_agent_response?.trim() ?? "").length > 0 ||
+          (item.tool_call_input?.trim() ?? "").length > 0,
       ).length;
       console.info("Run query completed.", {
         submittedQuery: submitted,
@@ -200,7 +199,6 @@ export default function App() {
           {(lastRunResponse?.sub_qa?.length ?? 0) > 0 ? (
             <div className="subquestions-list">
               {(lastRunResponse?.sub_qa ?? []).map((item, index) => {
-                const subAnswer = item.sub_answer.trim();
                 const subAgentResponse = item.sub_agent_response?.trim() ?? "";
                 const toolCallInput = item.tool_call_input?.trim() ?? "";
                 const summaryId = `subquestion-summary-${index}`;
@@ -209,11 +207,6 @@ export default function App() {
                   <details key={`${item.sub_question}-${index}`} className="subquestion-item">
                     <summary id={summaryId}>{item.sub_question.trim() || `Subquestion ${index + 1}`}</summary>
                     <div className="subquestion-content" id={contentId} role="region" aria-labelledby={summaryId}>
-                      {subAnswer ? (
-                        <p>
-                          <strong>Subagent answer:</strong> {subAnswer}
-                        </p>
-                      ) : null}
                       {subAgentResponse ? (
                         <p>
                           <strong>Subagent response:</strong> {subAgentResponse}

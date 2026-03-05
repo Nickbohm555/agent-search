@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import os
@@ -12,7 +13,11 @@ from agents import create_coordinator_agent
 from db import DATABASE_URL
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
 from services.vector_store_service import get_vector_store
-from utils.agent_callbacks import AgentLoggingCallbackHandler, log_agent_messages_summary
+from utils.agent_callbacks import (
+    AgentLoggingCallbackHandler,
+    SearchDatabaseCaptureCallback,
+    log_agent_messages_summary,
+)
 from utils.embeddings import get_embedding_model
 
 logger = logging.getLogger(__name__)
@@ -20,6 +25,7 @@ logger = logging.getLogger(__name__)
 _VECTOR_COLLECTION_NAME = os.getenv("VECTOR_COLLECTION_NAME", "agent_search_internal_data")
 _RUNTIME_AGENT_MODEL = os.getenv("RUNTIME_AGENT_MODEL", "gpt-4.1-mini")
 _MAIN_AGENT_TASK_TOOL_NAME = "task"
+_SEARCH_DATABASE_TOOL_NAME = "search_database"
 
 
 _QUERY_LOG_MAX = 200
@@ -63,7 +69,111 @@ def _extract_last_message_content(result: Any) -> str:
     return str(content)
 
 
-def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
+def _get_description_from_args(args: Any) -> str:
+    """Extract a single display string from task/description args (e.g. description key)."""
+    if isinstance(args, dict):
+        for key in ("description", "sub_question", "question", "query", "input"):
+            value = args.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return str(args)
+    if isinstance(args, str):
+        return args.strip()
+    return str(args) if args is not None else ""
+
+
+def _tool_results_by_call_id(messages: list[BaseMessage]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        tool_call_id = getattr(msg, "tool_call_id", None)
+        if not isinstance(tool_call_id, str) or not tool_call_id:
+            continue
+        content = getattr(msg, "content", "")
+        out[tool_call_id] = _stringify_message_content(content)
+    return out
+
+
+def _task_items_ordered(messages: list[BaseMessage]) -> list[tuple[str, str, str]]:
+    """Return (tool_call_id, description, tool_call_input_json) for each main-agent 'task' call, in order."""
+    items: list[tuple[str, str, str]] = []
+    for msg in messages:
+        if not isinstance(msg, AIMessage) or not _is_main_agent_turn(msg):
+            continue
+        tool_calls = getattr(msg, "tool_calls", None)
+        if not isinstance(tool_calls, list):
+            continue
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict) or tool_call.get("name") != _MAIN_AGENT_TASK_TOOL_NAME:
+                continue
+            tool_call_id = tool_call.get("id")
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                continue
+            args = tool_call.get("args")
+            desc = _get_description_from_args(args)
+            tool_call_input = json.dumps(args) if isinstance(args, dict) else str(args) if args is not None else "{}"
+            if desc:
+                items.append((tool_call_id, desc, tool_call_input))
+    return items
+
+
+def _parse_tool_input_for_query(input_str: str) -> str:
+    """Parse search_database tool input string to get the query for sub_question display."""
+    if not input_str or not isinstance(input_str, str):
+        return ""
+    s = input_str.strip()
+    if not s:
+        return ""
+    if s.startswith("{"):
+        try:
+            data = json.loads(s)
+            if isinstance(data, dict):
+                return _get_description_from_args(data)
+        except json.JSONDecodeError:
+            pass
+        try:
+            data = ast.literal_eval(s)
+            if isinstance(data, dict):
+                return _get_description_from_args(data)
+        except (ValueError, SyntaxError):
+            pass
+    return s
+
+
+def _extract_sub_qa(
+    messages: list[BaseMessage],
+    search_database_calls: list[tuple[str, str]] | None = None,
+) -> list[SubQuestionAnswer]:
+    # Prefer callback-captured search_database calls so UI shows retriever input/output.
+    # sub_agent_response = subagent's final answer (task ToolMessage content); sub_answer = raw retrieval.
+    if search_database_calls:
+        tool_results_by_call_id = _tool_results_by_call_id(messages)
+        task_items_ordered = _task_items_ordered(messages)
+        task_final_answers = [
+            tool_results_by_call_id.get(tid) or ""
+            for (tid, _, _) in task_items_ordered
+        ]
+        sub_qa = []
+        for i, (input_str, output_str) in enumerate(search_database_calls):
+            sub_question = _parse_tool_input_for_query(input_str) or "Search"
+            sub_agent_response = task_final_answers[i] if i < len(task_final_answers) else ""
+            sub_qa.append(
+                SubQuestionAnswer(
+                    sub_question=sub_question,
+                    sub_answer=output_str,
+                    tool_call_input=input_str if isinstance(input_str, str) else str(input_str),
+                    sub_agent_response=sub_agent_response,
+                )
+            )
+            logger.info(
+                "Extracted sub_qa from callback sub_question=%s sub_agent_response_len=%s",
+                _truncate_query(sub_question),
+                len(sub_agent_response),
+            )
+        logger.info("Extracted sub_qa from search_database callback count=%s", len(sub_qa))
+        return sub_qa
+
     tool_results_by_call_id: dict[str, str] = {}
     tool_message_indices_by_call_id: dict[str, int] = {}
     for i, msg in enumerate(messages):
@@ -77,8 +187,29 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
         tool_results_by_call_id[tool_call_id] = content_str
         tool_message_indices_by_call_id[tool_call_id] = i
 
-    sub_qa: list[SubQuestionAnswer] = []
-    sub_qa_index_by_call_id: dict[str, int] = {}
+    # Main agent delegates via "task" tool; collect (tool_call_id, description) for pairing with task results.
+    task_items: list[tuple[str, str, str]] = []  # (tool_call_id, description, tool_call_input_json)
+    for msg in messages:
+        if not isinstance(msg, AIMessage) or not _is_main_agent_turn(msg):
+            continue
+        tool_calls = getattr(msg, "tool_calls", None)
+        if not isinstance(tool_calls, list):
+            continue
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict) or tool_call.get("name") != _MAIN_AGENT_TASK_TOOL_NAME:
+                continue
+            tool_call_id = tool_call.get("id")
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                continue
+            args = tool_call.get("args")
+            desc = _get_description_from_args(args)
+            tool_call_input = json.dumps(args) if isinstance(args, dict) else str(args) if args is not None else "{}"
+            if desc:
+                task_items.append((tool_call_id, desc, tool_call_input))
+
+    # Collect search_database tool calls from any agent (main or subagent). The coordinator's
+    # subagent holds the retriever tool, so these calls appear on subagent AIMessages, not main.
+    search_db_items: list[tuple[str, str, str, int]] = []
     for msg in messages:
         if not isinstance(msg, AIMessage):
             continue
@@ -86,35 +217,33 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
         if not isinstance(tool_calls, list):
             continue
         for tool_call in tool_calls:
-            if not isinstance(tool_call, dict):
+            if not isinstance(tool_call, dict) or tool_call.get("name") != _SEARCH_DATABASE_TOOL_NAME:
                 continue
             tool_call_id = tool_call.get("id")
             if not isinstance(tool_call_id, str) or not tool_call_id:
                 continue
             args = tool_call.get("args")
-            sub_question = ""
-            tool_call_input = ""
-            if isinstance(args, dict):
-                tool_call_input = json.dumps(args)
-                for key in ("sub_question", "question", "query", "input"):
-                    value = args.get(key)
-                    if isinstance(value, str) and value.strip():
-                        sub_question = value
-                        break
-                if not sub_question:
-                    sub_question = str(args)
-            elif isinstance(args, str):
-                sub_question = args
-                tool_call_input = args
-            elif args is not None:
-                sub_question = str(args)
-                tool_call_input = str(args)
-
-            if not sub_question:
-                continue
+            tool_call_input = json.dumps(args) if isinstance(args, dict) else str(args) if args is not None else "{}"
             sub_answer = tool_results_by_call_id.get(tool_call_id)
             if sub_answer is None:
                 continue
+            tool_message_index = tool_message_indices_by_call_id.get(tool_call_id, -1)
+            search_db_items.append((tool_call_id, tool_call_input, sub_answer, tool_message_index))
+
+    task_descriptions = [t[1] for t in task_items]
+
+    sub_qa: list[SubQuestionAnswer] = []
+    if search_db_items:
+        # Subagent search_database calls are in the message list; use them.
+        for idx, (tool_call_id, tool_call_input, sub_answer, tool_message_index) in enumerate(search_db_items):
+            if idx < len(task_descriptions):
+                sub_question = task_descriptions[idx]
+            else:
+                try:
+                    args = json.loads(tool_call_input) if isinstance(tool_call_input, str) and tool_call_input.strip().startswith("{") else None
+                except (json.JSONDecodeError, TypeError):
+                    args = None
+                sub_question = _get_description_from_args(args)
             sub_qa.append(
                 SubQuestionAnswer(
                     sub_question=sub_question,
@@ -122,7 +251,6 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
                     tool_call_input=tool_call_input,
                 )
             )
-            sub_qa_index_by_call_id[tool_call_id] = len(sub_qa) - 1
             logger.info(
                 "Extracted sub_qa item tool_call_id=%s sub_question=%s tool_call_input=%s",
                 tool_call_id,
@@ -130,25 +258,46 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
                 _truncate_query(tool_call_input),
             )
 
-    for tool_call_id, sub_qa_index in sub_qa_index_by_call_id.items():
-        tool_message_index = tool_message_indices_by_call_id.get(tool_call_id)
-        if tool_message_index is None:
-            continue
-        last_sub_agent_response = ""
-        for later_msg in messages[tool_message_index + 1 :]:
-            if not isinstance(later_msg, AIMessage):
-                continue
-            if _is_main_agent_turn(later_msg):
+        for idx, (tool_call_id, _input, _answer, tool_message_index) in enumerate(search_db_items):
+            if idx >= len(sub_qa):
                 break
-            content_str = _stringify_message_content(getattr(later_msg, "content", ""))
-            if content_str.strip():
-                last_sub_agent_response = content_str
-        sub_qa[sub_qa_index].sub_agent_response = last_sub_agent_response
-        logger.info(
-            "Extracted sub_agent_response tool_call_id=%s response_preview=%s",
-            tool_call_id,
-            _truncate_query(last_sub_agent_response),
-        )
+            if tool_message_index < 0:
+                continue
+            last_sub_agent_response = ""
+            for later_msg in messages[tool_message_index + 1 :]:
+                if not isinstance(later_msg, AIMessage):
+                    continue
+                if _is_main_agent_turn(later_msg):
+                    break
+                content_str = _stringify_message_content(getattr(later_msg, "content", ""))
+                if content_str.strip():
+                    last_sub_agent_response = content_str
+            sub_qa[idx].sub_agent_response = last_sub_agent_response
+            logger.info(
+                "Extracted sub_agent_response tool_call_id=%s response_preview=%s",
+                tool_call_id,
+                _truncate_query(last_sub_agent_response),
+            )
+    else:
+        # Subagent messages are not in top-level messages (e.g. deep agent isolates subagent run).
+        # Build sub_qa from main agent "task" tool calls and their ToolMessage results.
+        for task_call_id, desc, tool_call_input in task_items:
+            sub_answer = tool_results_by_call_id.get(task_call_id)
+            if sub_answer is None:
+                continue
+            sub_qa.append(
+                SubQuestionAnswer(
+                    sub_question=desc,
+                    sub_answer=sub_answer,
+                    tool_call_input=tool_call_input,
+                    sub_agent_response="",
+                )
+            )
+            logger.info(
+                "Extracted sub_qa from task tool_call_id=%s sub_question=%s",
+                task_call_id,
+                _truncate_query(desc),
+            )
 
     logger.info("Extracted sub_qa pairs count=%s", len(sub_qa))
     return sub_qa
@@ -183,7 +332,8 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         vector_store=vector_store,
         model=_RUNTIME_AGENT_MODEL,
     )
-    callbacks = [AgentLoggingCallbackHandler()]
+    search_db_capture = SearchDatabaseCaptureCallback()
+    callbacks = [AgentLoggingCallbackHandler(), search_db_capture]
     config = {"callbacks": callbacks}
     result = agent.invoke(
         {"messages": [HumanMessage(content=payload.query)]},
@@ -193,7 +343,11 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     if isinstance(messages, list) and messages:
         logger.info("Agent run finished; logging tool calls and tool results from %s messages", len(messages))
         log_agent_messages_summary(messages)
-    sub_qa = _extract_sub_qa(messages) if isinstance(messages, list) else []
+    search_database_calls = search_db_capture.get_calls()
+    sub_qa = _extract_sub_qa(
+        messages if isinstance(messages, list) else [],
+        search_database_calls=search_database_calls if search_database_calls else None,
+    )
     _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(

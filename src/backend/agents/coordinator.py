@@ -8,20 +8,20 @@ from tools import make_retriever_tool
 logger = logging.getLogger(__name__)
 
 _COORDINATOR_PROMPT = (
-    "You are the coordinator agent. Break the user query into focused subquestions. "
-    "For each user query, identify 1 to N focused "
-    "sub-questions that together cover the full request. Delegate every sub-question to "
-    "the RAG subagent using the task tool, one delegation per sub-question. After all "
-    "delegations complete, produce the final answer by synthesizing only what was returned "
-    "from those delegated retrieval results, and do not add unsupported claims."
+    "You are the coordinator agent. Your job is to break the user query into ATOMIC subquestions and delegate each to the RAG subagent.\n\n"
+    "Sub-question rules (from agent-search best practice):\n"
+    "- break each question into as many subquestions as possible.\n"
+    "- One topic or entity per sub-question: never put more than one proper noun or concept in a single question.\n"
+    "- Ask the question directly; do not say 'research ...' or 'answer this question...'. Always end with '?'.\n\n"
+    " Always end with '?'"
+    "After you have subanswers, use them to answer the main question. Respond with one concise answer."
 )
 _RAG_SUBAGENT_NAME = "rag_retriever"
 _RAG_SUBAGENT_PROMPT = (
-    "You are the retrieval subagent. For each assigned sub-question, use the search_database "
-    "tool to run similarity search over internal data. Answer that sub-question concisely "
-    "using only retrieved content, and clearly indicate when the retrieval does not contain "
-    "enough evidence. When you have finished answering the sub-question, send that answer as "
-    "your final message and do not make any further tool calls after providing the answer."
+    "You are the retrieval subagent. Read the incoming question. it should be atomic. If it is not, break it down further until it is."
+    "Ask that exact subquestion to the retriever tool. If it gives you relevant docs, use them to answer the question and send that answer back to the coordinator agent. "
+    "If it does not give you relevant docs, say 'nothing relevant found' and send that answer back to the coordinator agent. "
+    "here is the format to send back to the coordinator agent: {subquestion}: {answer}"
 )
 
 
@@ -60,7 +60,7 @@ def create_coordinator_agent(
     # Subagent gets the retriever; main agent has no tools and delegates via task() only.
     rag_subagent = {
         "name": _RAG_SUBAGENT_NAME,
-        "description": "Runs semantic retrieval against internal wiki chunks.",
+        "description": "This agent is a RAG subagent which answers each sub-question using the retriever tool.",
         "system_prompt": _RAG_SUBAGENT_PROMPT,
         "tools": [retriever_tool],
     }

@@ -11,6 +11,69 @@ from langchain_core.agents import AgentAction, AgentFinish
 
 logger = logging.getLogger(__name__)
 
+SEARCH_DATABASE_TOOL_NAME = "search_database"
+
+
+class SearchDatabaseCaptureCallback(BaseCallbackHandler):
+    """Captures search_database tool input and output by run_id for use in sub_qa extraction."""
+
+    def __init__(self) -> None:
+        self._pending: dict[Any, tuple[str, str]] = {}  # run_id -> (name, input_str)
+        self._calls: list[tuple[str, str]] = []  # (input_str, output_str) in order
+
+    def on_tool_start(
+        self,
+        serialized: dict[str, Any] | None,
+        input_str: str,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        serialized = serialized if isinstance(serialized, dict) else {}
+        name = serialized.get("name", "unknown")
+        if name != SEARCH_DATABASE_TOOL_NAME:
+            return
+        input_s = input_str if isinstance(input_str, str) else str(input_str)
+        self._pending[run_id] = (name, input_s)
+
+    def on_tool_end(
+        self,
+        output: Any,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        if run_id is None or run_id not in self._pending:
+            return
+        name, input_s = self._pending.pop(run_id)
+        if name != SEARCH_DATABASE_TOOL_NAME:
+            return
+        if output is None:
+            output_str = ""
+        elif hasattr(output, "content"):
+            raw = getattr(output, "content", output)
+            output_str = raw if isinstance(raw, str) else str(raw)
+        else:
+            output_str = str(output)
+        self._calls.append((input_s, output_str))
+
+    def on_tool_error(
+        self,
+        error: BaseException,
+        *,
+        run_id: Any = None,
+        parent_run_id: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        if run_id is not None and run_id in self._pending:
+            self._pending.pop(run_id)
+
+    def get_calls(self) -> list[tuple[str, str]]:
+        """Return list of (input_str, output_str) for each search_database invocation in order."""
+        return list(self._calls)
+
 _MAX_LOG_INPUT = 500
 _MAX_LOG_OUTPUT = 300
 

@@ -189,6 +189,28 @@ p {
   margin-top: 6px;
 }
 
+.tool-call-output-details {
+  margin-top: 8px;
+}
+
+.tool-call-output-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tool-call-output-content {
+  margin-top: 6px;
+  padding: 8px;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 20em;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
 .final-readout-panel > h2 {
   margin-bottom: 16px;
 }

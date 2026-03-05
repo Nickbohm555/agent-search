@@ -31,21 +31,31 @@ def test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages() ->
             content="",
             tool_calls=[
                 {
-                    "id": "call_1",
+                    "id": "call_task_1",
                     "name": "task",
-                    "args": {"query": "What changed in policy X?"},
+                    "args": {"description": "What changed in policy X?", "subagent_type": "rag_retriever"},
                 }
             ],
         ),
-        ToolMessage(content="Policy X was updated in 2024.", tool_call_id="call_1", name="task"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_sd_1",
+                    "name": "search_database",
+                    "args": {"query": "What changed in policy X?", "limit": 10},
+                }
+            ],
+        ),
+        ToolMessage(content="Policy X was updated in 2024.", tool_call_id="call_sd_1", name="search_database"),
         AIMessage(content="Subagent final response for delegated policy question."),
         AIMessage(
             content="",
             tool_calls=[
                 {
-                    "id": "call_2",
+                    "id": "call_task_2",
                     "name": "task",
-                    "args": {"query": "Synthesize a final user answer"},
+                    "args": {"description": "Synthesize a final user answer", "subagent_type": "rag_retriever"},
                 }
             ],
         ),
@@ -56,7 +66,7 @@ def test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages() ->
     assert len(result) == 1
     assert result[0].sub_question == "What changed in policy X?"
     assert result[0].sub_answer == "Policy X was updated in 2024."
-    assert result[0].tool_call_input == '{"query": "What changed in policy X?"}'
+    assert result[0].tool_call_input == '{"query": "What changed in policy X?", "limit": 10}'
     assert result[0].sub_agent_response == "Subagent final response for delegated policy question."
 
 
@@ -66,22 +76,32 @@ def test_extract_sub_qa_uses_last_ai_message_as_sub_agent_response() -> None:
             content="",
             tool_calls=[
                 {
-                    "id": "call_1",
+                    "id": "call_task_1",
                     "name": "task",
-                    "args": {"query": "Summarize the latest internal incident notes"},
+                    "args": {"description": "Summarize the latest internal incident notes", "subagent_type": "rag_retriever"},
                 }
             ],
         ),
-        ToolMessage(content="Incident notes retrieved.", tool_call_id="call_1", name="task"),
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_sd_1",
+                    "name": "search_database",
+                    "args": {"query": "Summarize the latest internal incident notes", "limit": 10},
+                }
+            ],
+        ),
+        ToolMessage(content="Incident notes retrieved.", tool_call_id="call_sd_1", name="search_database"),
         AIMessage(content="Interim thought from subagent."),
         AIMessage(content="Final subagent answer for this delegated question."),
         AIMessage(
             content="",
             tool_calls=[
                 {
-                    "id": "call_2",
+                    "id": "call_task_2",
                     "name": "task",
-                    "args": {"query": "Draft final synthesis"},
+                    "args": {"description": "Draft final synthesis", "subagent_type": "rag_retriever"},
                 }
             ],
         ),
@@ -107,13 +127,23 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
                         content="",
                         tool_calls=[
                             {
-                                "id": "call_1",
+                                "id": "call_task_1",
                                 "name": "task",
-                                "args": {"query": "What happened in NATO policy?"},
+                                "args": {"description": "What happened in NATO policy?", "subagent_type": "rag_retriever"},
                             }
                         ],
                     ),
-                    ToolMessage(content="Policy shifted in 2025.", tool_call_id="call_1", name="task"),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What happened in NATO policy?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy shifted in 2025.", tool_call_id="call_sd_1", name="search_database"),
                     AIMessage(content="Subagent completed the delegated lookup."),
                     AIMessage(content="Final output"),
                 ]
@@ -145,7 +175,7 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert len(response.sub_qa) == 1
     assert response.sub_qa[0].sub_question == "What happened in NATO policy?"
     assert response.sub_qa[0].sub_answer == "Policy shifted in 2025."
-    assert response.sub_qa[0].tool_call_input == '{"query": "What happened in NATO policy?"}'
+    assert response.sub_qa[0].tool_call_input == '{"query": "What happened in NATO policy?", "limit": 10}'
     assert response.sub_qa[0].sub_agent_response == "Final output"
     assert captured["vector_store"] == "fake-vector-store"
     assert captured["collection_name"] == "agent_search_internal_data"
@@ -153,5 +183,5 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert captured["payload"]["messages"][0].content == "What happened in NATO policy?"
     assert "Runtime agent run start" in caplog.text
     assert "SubQuestionAnswer summary count=1" in caplog.text
-    assert "SubQuestionAnswer[1] sub_question=What happened in NATO policy?" in caplog.text
+    assert "SubQuestionAnswer[1]" in caplog.text and "What happened in NATO policy?" in caplog.text
     assert "Runtime agent run complete" in caplog.text
