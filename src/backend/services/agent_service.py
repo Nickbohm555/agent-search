@@ -201,4 +201,8 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         len(output),
         output[:200] + "..." if len(output) > 200 else output,
     )
-    return RuntimeAgentRunResponse(output=output)
+    return RuntimeAgentRunResponse(
+        main_question=payload.query,
+        sub_qa=sub_qa,
+        output=output,
+    )

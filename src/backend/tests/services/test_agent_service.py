@@ -141,6 +141,12 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
         )
 
     assert response.output == "Final output"
+    assert response.main_question == "What happened in NATO policy?"
+    assert len(response.sub_qa) == 1
+    assert response.sub_qa[0].sub_question == "What happened in NATO policy?"
+    assert response.sub_qa[0].sub_answer == "Policy shifted in 2025."
+    assert response.sub_qa[0].tool_call_input == '{"query": "What happened in NATO policy?"}'
+    assert response.sub_qa[0].sub_agent_response == "Final output"
     assert captured["vector_store"] == "fake-vector-store"
     assert captured["collection_name"] == "agent_search_internal_data"
     assert captured["model"] == "gpt-4.1-mini"

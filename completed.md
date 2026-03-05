@@ -240,3 +240,17 @@
     - `SubQuestionAnswer[1] ... sub_question=... tool_call_input=... sub_answer=... sub_agent_response=...`
 
 ---
+## Section 7: Call _extract_sub_qa and return RuntimeAgentRunResponse with main_question and sub_qa
+
+**Goal:** In `run_runtime_agent`, call `_extract_sub_qa(messages)` and return `RuntimeAgentRunResponse(main_question=payload.query, sub_qa=extracted, output=output)`.
+
+**Details:**
+- In `src/backend/services/agent_service.py`: After `agent.invoke()` and existing main-answer extraction, call `_extract_sub_qa(result["messages"])`. Build and return `RuntimeAgentRunResponse(main_question=payload.query, sub_qa=extracted, output=output)`. Ensure existing tests that mock the agent still pass (e.g. empty `sub_qa` when message shape doesn’t match).
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Call `_extract_sub_qa`; return `RuntimeAgentRunResponse` with `main_question`, `sub_qa`, `output`. |
+
+**How to test:** Run full backend pytest. Restart backend; verify sub_qa in logs for a real run.
+
+---
