@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any
@@ -73,7 +74,9 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
                 continue
             args = tool_call.get("args")
             sub_question = ""
+            tool_call_input = ""
             if isinstance(args, dict):
+                tool_call_input = json.dumps(args)
                 for key in ("sub_question", "question", "query", "input"):
                     value = args.get(key)
                     if isinstance(value, str) and value.strip():
@@ -83,15 +86,29 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
                     sub_question = str(args)
             elif isinstance(args, str):
                 sub_question = args
+                tool_call_input = args
             elif args is not None:
                 sub_question = str(args)
+                tool_call_input = str(args)
 
             if not sub_question:
                 continue
             sub_answer = tool_results_by_call_id.get(tool_call_id)
             if sub_answer is None:
                 continue
-            sub_qa.append(SubQuestionAnswer(sub_question=sub_question, sub_answer=sub_answer))
+            sub_qa.append(
+                SubQuestionAnswer(
+                    sub_question=sub_question,
+                    sub_answer=sub_answer,
+                    tool_call_input=tool_call_input,
+                )
+            )
+            logger.info(
+                "Extracted sub_qa item tool_call_id=%s sub_question=%s tool_call_input=%s",
+                tool_call_id,
+                _truncate_query(sub_question),
+                _truncate_query(tool_call_input),
+            )
 
     logger.info("Extracted sub_qa pairs count=%s", len(sub_qa))
     return sub_qa

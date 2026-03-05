@@ -46,6 +46,7 @@ def test_extract_sub_qa_pairs_tool_call_input_with_tool_result() -> None:
     assert len(result) == 1
     assert result[0].sub_question == "What changed in policy X?"
     assert result[0].sub_answer == "Policy X was updated in 2024."
+    assert result[0].tool_call_input == '{"query": "What changed in policy X?"}'
 
 
 def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, caplog) -> None:
