@@ -1,4 +1,4 @@
-from .agent import RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from .agent import RuntimeAgentInfo, RuntimeAgentRunRequest, RuntimeAgentRunResponse
 from .internal_data import (
     InternalDataLoadRequest,
     InternalDataLoadResponse,
@@ -15,6 +15,7 @@ from .internal_data import (
 __all__ = [
     "RuntimeAgentRunRequest",
     "RuntimeAgentRunResponse",
+    "RuntimeAgentInfo",
     "InternalDocumentInput",
     "InternalDataLoadRequest",
     "InternalDataLoadResponse",

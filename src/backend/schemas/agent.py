@@ -7,3 +7,7 @@ class RuntimeAgentRunRequest(BaseModel):
 
 class RuntimeAgentRunResponse(BaseModel):
     output: str
+
+
+class RuntimeAgentInfo(BaseModel):
+    agent_name: str

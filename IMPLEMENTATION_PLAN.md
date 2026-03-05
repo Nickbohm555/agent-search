@@ -4,26 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 11: Run – backend route and run_runtime_agent service
-
-**Single goal:** When the frontend calls `POST /api/agents/run`, the backend creates the coordinator agent, invokes it with the user query, and returns the last message content. All request/response use Pydantic.
-
-**Details:**
-- Route: `POST /api/agents/run` with body `RuntimeAgentRunRequest` (e.g. `query: str`); response `RuntimeAgentRunResponse` (e.g. `output: str`).
-- Service: `run_runtime_agent(payload, db, ...)` creates agent via `create_coordinator_agent(...)`, runs `agent.invoke({"messages": [HumanMessage(content=payload.query)]})`, returns `RuntimeAgentRunResponse(output=result["messages"][-1].content)`.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/agent_service.py` | `run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session, ...) -> RuntimeAgentRunResponse`: create agent, invoke, extract last message content. Logging. |
-| `src/backend/routers/agent.py` | Ensure `POST /run` (or `/api/agents/run`) uses `RuntimeAgentRunRequest`/`RuntimeAgentRunResponse` and calls `run_runtime_agent`. |
-| `src/backend/schemas/agent.py` | Keep `RuntimeAgentRunRequest`, `RuntimeAgentRunResponse`, `RuntimeAgentInfo`. |
-
-**How to test:** Backend pytest. POST to run endpoint with a query; assert 200 and response has `output` string (can mock agent or use real agent with test vector store).
-
----
-
 ## Section 12: Run – frontend button and response display
 
 **Single goal:** Run button submits the query to `POST /api/agents/run` and displays the returned answer. Add or adjust frontend tests for Run flow.

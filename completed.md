@@ -244,3 +244,28 @@
 - Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs confirm pre-existing startup/import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 10 changes.
 
 ---
+
+---
+## Section 11: Run – backend route and run_runtime_agent service
+
+**Single goal:** When the frontend calls `POST /api/agents/run`, the backend creates the coordinator agent, invokes it with the user query, and returns the last message content. All request/response use Pydantic.
+
+**Details:**
+- Route: `POST /api/agents/run` with body `RuntimeAgentRunRequest` (e.g. `query: str`); response `RuntimeAgentRunResponse` (e.g. `output: str`).
+- Service: `run_runtime_agent(payload, db, ...)` creates agent via `create_coordinator_agent(...)`, runs `agent.invoke({"messages": [HumanMessage(content=payload.query)]})`, returns `RuntimeAgentRunResponse(output=result["messages"][-1].content)`.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | `run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session, ...) -> RuntimeAgentRunResponse`: create agent, invoke, extract last message content. Logging. |
+| `src/backend/routers/agent.py` | Ensure `POST /run` (or `/api/agents/run`) uses `RuntimeAgentRunRequest`/`RuntimeAgentRunResponse` and calls `run_runtime_agent`. |
+| `src/backend/schemas/agent.py` | Keep `RuntimeAgentRunRequest`, `RuntimeAgentRunResponse`, `RuntimeAgentInfo`. |
+
+**How to test:** Backend pytest. POST to run endpoint with a query; assert 200 and response has `output` string (can mock agent or use real agent with test vector store).
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec backend uv run pytest tests/services/test_agent_service.py tests/api/test_agent_run.py` via the full backend suite command `docker compose exec backend uv run pytest` (17 passed total): verified `run_runtime_agent` creates vector store + coordinator agent, invokes with `HumanMessage(payload.query)`, extracts the final message as `RuntimeAgentRunResponse.output`, and logs start/complete events; verified `POST /api/agents/run` returns 200 with `{ "output": string }`.
+- Ran `docker compose exec frontend npm run test` (passed, 2 tests).
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran health check with `curl -sS -i http://localhost:8000/api/health` (returned `404 Not Found`; health endpoint is not currently implemented in the running backend).
