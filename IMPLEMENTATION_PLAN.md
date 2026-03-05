@@ -16,30 +16,6 @@ The following atomic sections implement: main question → sub-questions → eac
 
 ---
 
-## Section 5: Implement _extract_sub_qa(messages) helper
-
-**Single goal:** Implement a function that parses the agent message list and returns `list[SubQuestionAnswer]`; add a unit test for it.
-
-**Details:**
-- In `agent_service.py` (or a small helper module), implement `_extract_sub_qa(messages) -> list[SubQuestionAnswer]` that: finds AIMessage(s) with tool_calls (e.g. to the RAG/task tool), extracts the sub-question from each tool input; finds the corresponding ToolMessage(s) by tool_call_id; pairs each sub-question with the tool result content as sub_answer. Return list in order. Add a unit test that builds a minimal `messages` list (AIMessage with tool_calls + ToolMessage) and asserts the returned list matches. Do not call this from `run_runtime_agent` yet.
-
-**Tech stack and dependencies**
-- Libraries/packages: None; use LangChain message types already in use.
-- Tooling: No change.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/agent_service.py` (or shared util) | Implement `_extract_sub_qa(messages)` and keep it testable in isolation. |
-| `src/backend/tests/services/test_agent_service.py` | Add unit test for `_extract_sub_qa` with mocked messages. |
-
-**How to test:** Run backend pytest; the new unit test must pass.
-
-**Test results:** (Record in `agent-search/completed.md` when section is complete.)
-
----
-
 ## Section 6: Call _extract_sub_qa in run_runtime_agent and return new fields
 
 **Single goal:** In `run_runtime_agent`, call `_extract_sub_qa(result["messages"])`, set `main_question` from `payload.query`, and return `RuntimeAgentRunResponse(main_question=..., sub_qa=..., output=...)` with `output` unchanged from current logic.

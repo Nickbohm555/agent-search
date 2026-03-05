@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -23,6 +24,28 @@ def _make_session() -> Session:
         poolclass=StaticPool,
     )
     return Session(engine)
+
+
+def test_extract_sub_qa_pairs_tool_call_input_with_tool_result() -> None:
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_1",
+                    "name": "task",
+                    "args": {"query": "What changed in policy X?"},
+                }
+            ],
+        ),
+        ToolMessage(content="Policy X was updated in 2024.", tool_call_id="call_1", name="task"),
+    ]
+
+    result = agent_service._extract_sub_qa(messages)
+
+    assert len(result) == 1
+    assert result[0].sub_question == "What changed in policy X?"
+    assert result[0].sub_answer == "Policy X was updated in 2024."
 
 
 def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, caplog) -> None:

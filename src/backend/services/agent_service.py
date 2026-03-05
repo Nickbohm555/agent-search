@@ -4,12 +4,12 @@ import logging
 import os
 from typing import Any
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from sqlalchemy.orm import Session
 
 from agents import create_coordinator_agent
 from db import DATABASE_URL
-from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
 from services.vector_store_service import get_vector_store
 from utils.agent_callbacks import AgentLoggingCallbackHandler, log_agent_messages_summary
 from utils.embeddings import get_embedding_model
@@ -39,6 +39,62 @@ def _extract_last_message_content(result: Any) -> str:
     if content is None:
         raise ValueError("Agent invoke result last message content is empty.")
     return str(content)
+
+
+def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
+    tool_results_by_call_id: dict[str, str] = {}
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        tool_call_id = getattr(msg, "tool_call_id", None)
+        if not isinstance(tool_call_id, str) or not tool_call_id:
+            continue
+        content = getattr(msg, "content", "")
+        if isinstance(content, str):
+            content_str = content
+        elif content is None:
+            content_str = ""
+        else:
+            content_str = str(content)
+        tool_results_by_call_id[tool_call_id] = content_str
+
+    sub_qa: list[SubQuestionAnswer] = []
+    for msg in messages:
+        if not isinstance(msg, AIMessage):
+            continue
+        tool_calls = getattr(msg, "tool_calls", None)
+        if not isinstance(tool_calls, list):
+            continue
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            tool_call_id = tool_call.get("id")
+            if not isinstance(tool_call_id, str) or not tool_call_id:
+                continue
+            args = tool_call.get("args")
+            sub_question = ""
+            if isinstance(args, dict):
+                for key in ("sub_question", "question", "query", "input"):
+                    value = args.get(key)
+                    if isinstance(value, str) and value.strip():
+                        sub_question = value
+                        break
+                if not sub_question:
+                    sub_question = str(args)
+            elif isinstance(args, str):
+                sub_question = args
+            elif args is not None:
+                sub_question = str(args)
+
+            if not sub_question:
+                continue
+            sub_answer = tool_results_by_call_id.get(tool_call_id)
+            if sub_answer is None:
+                continue
+            sub_qa.append(SubQuestionAnswer(sub_question=sub_question, sub_answer=sub_answer))
+
+    logger.info("Extracted sub_qa pairs count=%s", len(sub_qa))
+    return sub_qa
 
 
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
