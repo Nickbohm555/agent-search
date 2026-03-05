@@ -5,6 +5,7 @@ from db import get_db
 from schemas import (
     InternalDataLoadRequest,
     InternalDataLoadResponse,
+    WipeResponse,
     WikiSourcesResponse,
 )
 from services.internal_data_service import (
@@ -25,11 +26,11 @@ def load_data(payload: InternalDataLoadRequest, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/wipe")
-def wipe_data(db: Session = Depends(get_db)) -> dict[str, str]:
+@router.post("/wipe", response_model=WipeResponse)
+def wipe_data(db: Session = Depends(get_db)) -> WipeResponse:
     """Wipe all internal documents and chunks."""
     wipe_internal_data(db)
-    return {"status": "success", "message": "All internal documents and chunks removed."}
+    return WipeResponse(status="success", message="All internal documents and chunks removed.")
 
 
 @router.get("/wiki-sources", response_model=WikiSourcesResponse)

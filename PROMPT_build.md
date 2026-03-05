@@ -10,7 +10,7 @@
 
 3. After implementing functionality, run the required tests from the task definition. Prefer all required tests passing unless blocked by rule 998.
 
-4. When the task is completed or blocked: always remove that item from @IMPLEMENTATION_PLAN.md and append it to @completed.md. If completed, append the item as-is. 
+4. When the task is completed or blocked: always remove that item from @IMPLEMENTATION_PLAN.md and append it to @completed.md. If completed, append the item as-is. Include the test results - what specifically was tested and what passed. How did you test? docker, logging, pytest, ect;
 
 5. For blocked external dependency (rule 998): remove the item from @IMPLEMENTATION_PLAN.md and add it to @completed.md with a BLOCKED message and explanation (see step 5);
 

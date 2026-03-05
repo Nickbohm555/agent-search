@@ -18,3 +18,23 @@
 
 ---
 
+## Section 2: Wipe – route, schema, and service wiring
+
+**Single goal:** Expose wipe via FastAPI. Add Pydantic response schema and wire `POST /api/internal-data/wipe` to the service, which calls `wipe_all_internal_data`.
+
+**Details:**
+- Response body: `{ "status": "success", "message": "..." }` (Pydantic model).
+- Route calls a service function that calls `common.db.wipe.wipe_all_internal_data(db)`.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/schemas/internal_data.py` | Add `WipeResponse(BaseModel)` with `status: Literal["success"]`, `message: str`. |
+| `src/backend/services/internal_data_service.py` | Implement `wipe_internal_data(db: Session)`: call `common.db.wipe.wipe_all_internal_data(db)`; optional logging. |
+| `src/backend/routers/internal_data.py` | Change wipe route to return `response_model=WipeResponse`; call `wipe_internal_data(db)`. |
+
+**How to test:** Backend pytest. Call `POST /api/internal-data/wipe`; assert status 200, response shape; assert internal_documents and internal_document_chunks tables are empty.
+
+---
+
