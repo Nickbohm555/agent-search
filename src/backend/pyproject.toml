@@ -1,8 +1,8 @@
 [project]
 name = "agent-search-backend"
 version = "0.1.0"
-description = "Scaffold-only FastAPI backend for agent-search"
-requires-python = ">=3.11"
+description = "Minimal FastAPI backend for agent-search"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "fastapi==0.115.12",
   "uvicorn[standard]==0.34.0",
@@ -13,21 +13,4 @@ dependencies = [
   "pydantic==2.10.6",
   "langchain-community==0.3.31",
   "wikipedia>=1.4.0",
-  "langgraph==0.6.11",
-  "langfuse==2.60.1",
-  "deepagents>=0.0.5",
-]
-
-[dependency-groups]
-dev = [
-  "pytest==8.3.5",
-  "httpx==0.28.1",
-]
-
-[tool.pytest.ini_options]
-addopts = "-q"
-pythonpath = ["."]
-testpaths = ["tests"]
-markers = [
-  "smoke: quick scaffold smoke tests",
 ]

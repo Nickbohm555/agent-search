@@ -20,6 +20,8 @@ services:
     build:
       context: ./src/backend
     container_name: agent-search-backend
+    env_file:
+      - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search}
     ports:
@@ -29,6 +31,8 @@ services:
         condition: service_healthy
     volumes:
       - ./src/backend:/app
+      # Keep container's venv so SQLAlchemy etc. are the Linux build, not host's .venv
+      - backend_venv:/app/.venv
     command: ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"]
 
   frontend:
@@ -57,3 +61,4 @@ services:
 
 volumes:
   pg_data:
+  backend_venv:

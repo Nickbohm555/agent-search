@@ -5,14 +5,11 @@ from db import get_db
 from schemas import (
     InternalDataLoadRequest,
     InternalDataLoadResponse,
-    InternalDataRetrieveRequest,
-    InternalDataRetrieveResponse,
     WikiSourcesResponse,
 )
 from services.internal_data_service import (
     list_wiki_sources_with_load_state,
     load_internal_data,
-    retrieve_internal_data,
     wipe_internal_data,
 )
 
@@ -21,7 +18,7 @@ router = APIRouter(prefix="/api/internal-data", tags=["internal-data"])
 
 @router.post("/load", response_model=InternalDataLoadResponse)
 def load_data(payload: InternalDataLoadRequest, db: Session = Depends(get_db)) -> InternalDataLoadResponse:
-    """Load internal data from inline docs or deterministic wiki source."""
+    """Load internal data from deterministic wiki source."""
     try:
         return load_internal_data(payload, db)
     except ValueError as exc:
@@ -30,20 +27,12 @@ def load_data(payload: InternalDataLoadRequest, db: Session = Depends(get_db)) -
 
 @router.post("/wipe")
 def wipe_data(db: Session = Depends(get_db)) -> dict[str, str]:
-    """Wipe all internal documents and chunks. Data loads only when the user clicks Load Data."""
+    """Wipe all internal documents and chunks."""
     wipe_internal_data(db)
     return {"status": "success", "message": "All internal documents and chunks removed."}
 
 
 @router.get("/wiki-sources", response_model=WikiSourcesResponse)
 def list_wiki_sources(db: Session = Depends(get_db)) -> WikiSourcesResponse:
-    """Return curated wiki source options with already-loaded state for the UI."""
+    """Return curated wiki source options with loaded state for the UI."""
     return list_wiki_sources_with_load_state(db)
-
-
-@router.post("/retrieve", response_model=InternalDataRetrieveResponse)
-def retrieve_data(
-    payload: InternalDataRetrieveRequest,
-    db: Session = Depends(get_db),
-) -> InternalDataRetrieveResponse:
-    return retrieve_internal_data(payload, db)
