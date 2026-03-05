@@ -4,25 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 3: Wiki load – produce LangChain Documents with metadata
-
-**Single goal:** Ensure the Wikipedia load path returns `langchain_core.documents.Document` instances with `page_content` and `metadata` (e.g. source URL, title). Add logging for document count and metadata.
-
-**Details:**
-- Use `from langchain_core.documents import Document`.
-- Each loaded wiki page → `Document(page_content=..., metadata={"source": url, "title": ...})`.
-- Keep or adapt existing `WikipediaLoader` usage; normalize output to `Document` and log.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/wiki_ingestion_service.py` | Ensure `_load_wikipedia_documents` / `resolve_wiki_documents` (or equivalent) return `list[Document]` with `page_content` and `metadata`. Add logging (doc count, metadata keys). |
-
-**How to test:** Backend pytest. TDD. Load one known wiki source (e.g. geopolitics); assert result is list of `Document`, each has `page_content` and `metadata` with expected keys (e.g. source, title). Assert logging (e.g. via caplog).
-
----
-
 ## Section 4: Wiki load – chunk with RecursiveCharacterTextSplitter
 
 **Single goal:** Add a function that takes a list of LangChain Documents and returns chunked Documents using `RecursiveCharacterTextSplitter`. Preserve metadata on chunks; add logging.

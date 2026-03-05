@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
-from schemas import InternalDocumentInput, WikiLoadInput
+from langchain_core.documents import Document
+
+from schemas import WikiLoadInput
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -71,17 +76,18 @@ def _load_wikipedia_documents(article_query: str) -> list[Any]:
     return loader.load()
 
 
-def resolve_wiki_documents(wiki: WikiLoadInput) -> list[InternalDocumentInput]:
-    """Resolve LangChain wiki `Document` objects into ingestible internal docs.
+def resolve_wiki_documents(wiki: WikiLoadInput) -> list[Document]:
+    """Resolve wiki source content into normalized LangChain `Document` objects.
 
     Called by `internal_data_service.load_internal_data` when
     `source_type='wiki'`. This enforces curated source IDs and large-content
-    requirements while preserving attribution fields for retrieval responses.
+    requirements while preserving and normalizing attribution metadata.
     """
     source = resolve_wiki_source(wiki.source_id)
     loaded_documents = _load_wikipedia_documents(source.article_query)
-    resolved_documents: list[InternalDocumentInput] = []
+    resolved_documents: list[Document] = []
     total_chars = 0
+    metadata_keys: set[str] = set()
 
     for loaded in loaded_documents:
         content = str(getattr(loaded, "page_content", "")).strip()
@@ -90,14 +96,16 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[InternalDocumentInput]:
         metadata = getattr(loaded, "metadata", {}) or {}
         title = str(metadata.get("title") or source.label).strip()
         source_ref = str(metadata.get("source") or source.source_id).strip() or source.source_id
+        normalized_metadata = dict(metadata)
+        normalized_metadata["source"] = source_ref
+        normalized_metadata["title"] = title
+        metadata_keys.update(str(key) for key in normalized_metadata.keys())
         total_chars += len(content)
         resolved_documents.append(
-            InternalDocumentInput(
-                title=title,
-                content=content,
-                source_ref=source_ref,
-                source_url=str(metadata.get("source") or "").strip() or None,
-            )
+            Document(
+                page_content=content,
+                metadata=normalized_metadata,
+            ),
         )
 
     if not resolved_documents:
@@ -106,5 +114,12 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[InternalDocumentInput]:
         raise ValueError(
             f"Loaded wiki content too small ({total_chars} chars). Minimum required is {_MIN_WIKI_CHARS}.",
         )
+
+    logger.info(
+        "Resolved %s wiki documents for source_id='%s' with metadata_keys=%s",
+        len(resolved_documents),
+        source.source_id,
+        sorted(metadata_keys),
+    )
 
     return resolved_documents
