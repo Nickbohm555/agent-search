@@ -4,26 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 9: Retriever tool – similarity search with optional filter
-
-**Single goal:** Expose a LangChain `@tool` that runs similarity search on the vector store and optionally filters by wiki page/source. Return a string representation of results. Add logging.
-
-**Details:**
-- Tool signature: e.g. `search_database(query: str, limit: int = 10, wiki_source_filter: Optional[str] = None) -> str`.
-- Implementation: `vector_store.similarity_search(query, k=limit, filter=...)`; build filter dict when `wiki_source_filter` is set (e.g. metadata.source or custom field).
-- Docstring clear for LLM (query, limit, optional wiki filter). Log query, limit, filter, result count.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/tools/__init__.py` | Export the retriever tool (or `make_retriever_tool`). |
-| `src/backend/tools/retriever_tool.py` | `@tool` or `make_retriever_tool(vector_store)` that calls `similarity_search` with optional filter; return string; logging. |
-
-**How to test:** Backend pytest. TDD. Tool returns string; respects `limit`; when filter provided, results (or count) reflect filter when data supports it. Assert logging.
-
----
-
 ## Section 10: Coordinator agent factory (main + RAG subagent)
 
 **Single goal:** Implement `create_coordinator_agent()` that returns a runnable agent: main agent has no tools and breaks the query into subquestions; one RAG subagent has the retriever tool and runs similarity search. Use LangChain deep agents subagents and RAG patterns.

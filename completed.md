@@ -18,6 +18,33 @@
 
 ---
 
+## Section 9: Retriever tool – similarity search with optional filter
+
+**Single goal:** Expose a LangChain `@tool` that runs similarity search on the vector store and optionally filters by wiki page/source. Return a string representation of results. Add logging.
+
+**Details:**
+- Tool signature: e.g. `search_database(query: str, limit: int = 10, wiki_source_filter: Optional[str] = None) -> str`.
+- Implementation: `vector_store.similarity_search(query, k=limit, filter=...)`; build filter dict when `wiki_source_filter` is set (e.g. metadata.source or custom field).
+- Docstring clear for LLM (query, limit, optional wiki filter). Log query, limit, filter, result count.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tools/__init__.py` | Export the retriever tool (or `make_retriever_tool`). |
+| `src/backend/tools/retriever_tool.py` | `@tool` or `make_retriever_tool(vector_store)` that calls `similarity_search` with optional filter; return string; logging. |
+
+**How to test:** Backend pytest. TDD. Tool returns string; respects `limit`; when filter provided, results (or count) reflect filter when data supports it. Assert logging.
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec backend uv run pytest tests/tools/test_retriever_tool.py` (2 passed): verified tool returns a formatted string, enforces `limit`, applies optional `wiki_source_filter` via similarity search `filter`, and emits caplog-asserted query/limit/filter/result_count logging.
+- Ran `docker compose exec backend uv run pytest` (14 passed): full backend suite green, including new retriever-tool tests plus existing API/DB/wiki/vector/embedding/internal-data tests.
+- Ran `docker compose exec frontend npm run test` (passed, 2 tests).
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs show pre-existing startup import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 9 changes.
+
+---
+
 ## Section 2: Wipe – route, schema, and service wiring
 
 **Single goal:** Expose wipe via FastAPI. Add Pydantic response schema and wire `POST /api/internal-data/wipe` to the service, which calls `wipe_all_internal_data`.
