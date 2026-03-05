@@ -4,25 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 8: Internal data – orchestrate wiki load → chunk → vector store
-
-**Single goal:** Implement `load_internal_data` (wiki path) and `list_wiki_sources_with_load_state` so that “Load Wiki Source” runs: resolve wiki → LangChain Documents → chunk → add to vector store, and the UI can show which sources are loaded.
-
-**Details:**
-- `load_internal_data(payload: InternalDataLoadRequest, db: Session)`: for `source_type="wiki"`, call wiki ingestion (Documents), chunk, get vector store, add_documents_to_store; return `InternalDataLoadResponse` (e.g. documents_loaded, chunks_created).
-- `list_wiki_sources_with_load_state(db)`: return wiki source options with an “already_loaded” flag (e.g. from DB or vector store metadata).
-- Optionally persist “loaded” state in SQLAlchemy tables if not inferred from vector store alone.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/internal_data_service.py` | `list_wiki_sources_with_load_state(db) -> WikiSourcesResponse`; `load_internal_data(payload, db) -> InternalDataLoadResponse` (wiki: resolve → chunk → vector store). Logging. |
-
-**How to test:** Backend pytest. TDD. Test load_internal_data with wiki payload: assert response counts; assert vector store contains expected chunks/metadata. Test list_wiki_sources_with_load_state: assert sources and already_loaded where applicable.
-
----
-
 ## Section 9: Retriever tool – similarity search with optional filter
 
 **Single goal:** Expose a LangChain `@tool` that runs similarity search on the vector store and optionally filters by wiki page/source. Return a string representation of results. Add logging.
