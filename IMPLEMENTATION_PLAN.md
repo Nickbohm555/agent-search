@@ -5,21 +5,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 8: Integration test for run response shape
-
-**Goal:** Integration test asserts `POST /api/agents/run` response includes `main_question`, `sub_qa` (with sub_question, sub_answer, tool_call_input, sub_agent_response), and `output`.
-
-**Details:**
-- In `src/backend/tests/api/test_agent_run.py` (or equivalent): Add or update a test that mocks the runtime agent to return messages yielding at least one sub_qa item, POSTs to `/api/agents/run`, and asserts the response has `main_question`, `sub_qa` (list of objects with those four fields), and `output`.
-
-| File | Purpose |
-|------|--------|
-| `src/backend/tests/api/test_agent_run.py` | Integration test for run endpoint response shape. |
-
-**How to test:** Run backend pytest including this test; restart backend and confirm no regressions.
-
----
-
 ## Section 9: Frontend types for run response
 
 **Goal:** Define `SubQuestionAnswer` and extend `RuntimeAgentRunResponse` with `main_question` and `sub_qa` in the frontend.

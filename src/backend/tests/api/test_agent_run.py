@@ -15,7 +15,7 @@ from db import get_db
 from routers.agent import router as agent_router
 
 
-def test_post_run_returns_output_from_runtime_agent(monkeypatch) -> None:
+def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         future=True,
@@ -24,7 +24,7 @@ def test_post_run_returns_output_from_runtime_agent(monkeypatch) -> None:
     )
     session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
-    from schemas import RuntimeAgentRunResponse
+    from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
     from routers import agent as agent_router_module
 
     captured: dict[str, object] = {}
@@ -32,7 +32,18 @@ def test_post_run_returns_output_from_runtime_agent(monkeypatch) -> None:
     def fake_run_runtime_agent(payload, db):
         captured["query"] = payload.query
         assert isinstance(db, Session)
-        return RuntimeAgentRunResponse(output=f"Echo: {payload.query}")
+        return RuntimeAgentRunResponse(
+            main_question=payload.query,
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What changed in policy X?",
+                    sub_answer="Policy X was revised in January 2026.",
+                    tool_call_input='{"query":"What changed in policy X?"}',
+                    sub_agent_response="I reviewed the latest policy notes and summarized the change.",
+                )
+            ],
+            output=f"Echo: {payload.query}",
+        )
 
     monkeypatch.setattr(agent_router_module, "run_runtime_agent", fake_run_runtime_agent)
 
@@ -52,8 +63,15 @@ def test_post_run_returns_output_from_runtime_agent(monkeypatch) -> None:
     response = client.post("/api/agents/run", json={"query": "Find Hormuz risks"})
     assert response.status_code == 200
     assert response.json() == {
-        "main_question": "",
-        "sub_qa": [],
+        "main_question": "Find Hormuz risks",
+        "sub_qa": [
+            {
+                "sub_question": "What changed in policy X?",
+                "sub_answer": "Policy X was revised in January 2026.",
+                "tool_call_input": '{"query":"What changed in policy X?"}',
+                "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
+            }
+        ],
         "output": "Echo: Find Hormuz risks",
     }
     assert captured["query"] == "Find Hormuz risks"
