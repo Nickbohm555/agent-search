@@ -51,5 +51,9 @@ def test_post_run_returns_output_from_runtime_agent(monkeypatch) -> None:
 
     response = client.post("/api/agents/run", json={"query": "Find Hormuz risks"})
     assert response.status_code == 200
-    assert response.json() == {"output": "Echo: Find Hormuz risks"}
+    assert response.json() == {
+        "main_question": "",
+        "sub_qa": [],
+        "output": "Echo: Find Hormuz risks",
+    }
     assert captured["query"] == "Find Hormuz risks"

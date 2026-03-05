@@ -11,6 +11,8 @@ class SubQuestionAnswer(BaseModel):
 
 
 class RuntimeAgentRunResponse(BaseModel):
+    main_question: str = ""
+    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
 
 

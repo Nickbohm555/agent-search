@@ -16,29 +16,6 @@ The following atomic sections implement: main question → sub-questions → eac
 
 ---
 
-## Section 2: Add main_question and sub_qa to RuntimeAgentRunResponse
-
-**Single goal:** Extend `RuntimeAgentRunResponse` with `main_question` and `sub_qa` so the API can return them; keep existing `output`; no service/route logic change yet.
-
-**Details:**
-- Add `main_question: str = ""` and `sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)` to `RuntimeAgentRunResponse`. Ensure existing code that builds `RuntimeAgentRunResponse(output=...)` still works (defaults or minimal call-site updates).
-
-**Tech stack and dependencies**
-- Libraries/packages: None.
-- Tooling: No change.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/schemas/agent.py` | Add `main_question` and `sub_qa` to `RuntimeAgentRunResponse` with backward-friendly defaults. |
-
-**How to test:** Run backend pytest. Existing run tests should still pass; optionally assert response model serialization includes the new fields.
-
-**Test results:** (Record in `agent-search/completed.md` when section is complete.)
-
----
-
 ## Section 3: Update coordinator prompt for sub-question breakdown
 
 **Single goal:** Change only `_COORDINATOR_PROMPT` so the coordinator is instructed to break the query into focused sub-questions and delegate each to the RAG sub-agent.
