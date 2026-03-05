@@ -20,7 +20,8 @@ _RAG_SUBAGENT_PROMPT = (
     "You are the retrieval subagent. For each assigned sub-question, use the search_database "
     "tool to run similarity search over internal data. Answer that sub-question concisely "
     "using only retrieved content, and clearly indicate when the retrieval does not contain "
-    "enough evidence."
+    "enough evidence. When you have finished answering the sub-question, send that answer as "
+    "your final message and do not make any further tool calls after providing the answer."
 )
 
 
@@ -82,5 +83,9 @@ def create_coordinator_agent(
         "Coordinator agent ready main_agent=coordinator subagent=%s tool=%s",
         rag_subagent["name"],
         retriever_tool.name,
+    )
+    logger.info(
+        "Coordinator subagent guardrail enabled subagent=%s final_message_only=true",
+        rag_subagent["name"],
     )
     return _LoggingRunnable(runnable)

@@ -15,21 +15,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 4: Instruct RAG sub-agent to send its answer as its final message
-
-**Goal:** Ensure the RAG sub-agent (deepagent) is explicitly told to send its answer as its **final** message when done, so that the “last AIMessage” we extract in Section 3 is the intended answer.
-
-**Details:**
-- In `src/backend/agents/coordinator.py`, update `_RAG_SUBAGENT_PROMPT` (and any related instructions) to state clearly: when you have finished answering the sub-question, send your answer as your final message; do not make further tool calls after providing the answer. This aligns sub-agent behavior with Section 3’s extraction (last AIMessage per sub-agent).
-
-| File | Purpose |
-|------|--------|
-| `src/backend/agents/coordinator.py` | Add to RAG sub-agent prompt: send answer as final message when done. |
-
-**How to test:** Run backend pytest (including coordinator/agent tests). Optionally run a live query and confirm logs show the sub-agent’s final message as the one captured in `sub_agent_response`.
-
----
-
 ## Section 5: Update _extract_sub_qa unit test
 
 **Goal:** Unit test asserts all four fields: sub_question, sub_answer, tool_call_input, sub_agent_response.

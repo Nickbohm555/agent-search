@@ -113,3 +113,44 @@
   - `curl http://localhost:8000/api/health` currently returns `404 {"detail":"Not Found"}` in this app state.
 
 ---
+## Section 4: Instruct RAG sub-agent to send its answer as its final message
+
+**Goal:** Ensure the RAG sub-agent (deepagent) is explicitly told to send its answer as its **final** message when done, so that the “last AIMessage” we extract in Section 3 is the intended answer.
+
+**Details:**
+- In `src/backend/agents/coordinator.py`, update `_RAG_SUBAGENT_PROMPT` (and any related instructions) to state clearly: when you have finished answering the sub-question, send your answer as your final message; do not make further tool calls after providing the answer. This aligns sub-agent behavior with Section 3’s extraction (last AIMessage per sub-agent).
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Add to RAG sub-agent prompt: send answer as final message when done. |
+
+**How to test:** Run backend pytest (including coordinator/agent tests). Optionally run a live query and confirm logs show the sub-agent’s final message as the one captured in `sub_agent_response`.
+
+**Test results:**
+- Code changes:
+  - Updated `src/backend/agents/coordinator.py`:
+    - Extended `_RAG_SUBAGENT_PROMPT` with explicit instruction to send the completed answer as the final message and make no further tool calls afterward.
+    - Added run-time visibility log: `Coordinator subagent guardrail enabled ... final_message_only=true`.
+  - Updated `src/backend/tests/agents/test_coordinator_agent.py`:
+    - Updated strict prompt assertion to match the new final-message wording.
+    - Added assertion that the new guardrail log line is emitted.
+- Docker lifecycle and container handling:
+  - Pre-work clean reboot completed: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-change application restart completed: `docker compose restart`.
+  - Backend runtime dependency issue addressed for operational validation in-container:
+    - `docker compose exec backend uv pip install --python .venv/bin/python langchain-text-splitters pytest`
+    - `docker compose restart backend`
+- Tests run:
+  - `docker compose exec backend uv run pytest`
+    - Result: `19 passed, 1 warning`.
+  - `docker compose exec backend uv run --with pytest --with langchain-text-splitters python -m pytest tests/agents/test_coordinator_agent.py -q`
+    - Result: `1 passed`.
+  - `docker compose exec backend uv run --with pytest --with langchain-text-splitters python -m pytest -q`
+    - Result: `19 passed, 1 warning`.
+- Logs reviewed:
+  - `docker compose logs --no-color --tail=120 backend`
+  - `docker compose logs --no-color --tail=80 frontend`
+  - `docker compose logs --no-color --tail=80 db`
+  - `docker compose ps` confirms all services up (`db` healthy; `backend`, `frontend`, `chrome` running).
+
+---

@@ -69,7 +69,8 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
         "You are the retrieval subagent. For each assigned sub-question, use the search_database "
         "tool to run similarity search over internal data. Answer that sub-question concisely "
         "using only retrieved content, and clearly indicate when the retrieval does not contain "
-        "enough evidence."
+        "enough evidence. When you have finished answering the sub-question, send that answer as "
+        "your final message and do not make any further tool calls after providing the answer."
     )
     assert len(sub["tools"]) == 1 and sub["tools"][0].name == "search_database"
     assert store.calls == [{"query": "strait of hormuz", "k": 1, "filter": None}]
@@ -77,3 +78,4 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert "Hormuz shipping chokepoint summary." in result["messages"][-1].content
     assert "Coordinator agent invoke start subagent=rag_retriever" in caplog.text
     assert "Retriever tool search_database" in caplog.text
+    assert "final_message_only=true" in caplog.text
