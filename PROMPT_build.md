@@ -11,7 +11,7 @@ Before starting, completely restart the application so we have fresh builds, log
 
 3. After implementing functionality, ALWAYS add logs for visibility and check what containers were changed and either restart or completely reboot depending on the task. when in doubt, restart the application entirely and check all the container logs. If you see an error, fix it now and re-run to make sure it works. run the required tests from the task definition. You must provide and view logs for every item built. 
 
-4. When the task is completed: always remove that item from @IMPLEMENTATION_PLAN.md and append it to @completed.md. If completed, append the item as-is. 
+4. When the task is completed: always remove that item from @IMPLEMENTATION_PLAN.md and append it to @completed.md. If completed, append the item as-is. Also append log issues / results, and if they were resolved.
 
 5. After completion or blocked, either way we write `.loop-commit-msg` then end this run. For `loop-commit-msg`, add every a short summary of what was built and tested. 
 

@@ -296,3 +296,18 @@
 **How to test:** Frontend tests. Call `POST /api/agents/run` from the app; confirm no "malformed response" when backend returns `main_question` and `sub_qa`.
 
 ---
+
+## Section 11: Display main_question in Final Readout
+
+**Goal:** Show main question from API response in "Final Readout"; fallback to submitted query when absent.
+
+**Details:**
+- In `src/frontend/src/App.tsx`: For the main question line, use `result.data.main_question` when non-empty, else `submittedQuery`. Store full run result if needed (e.g. `lastRunResponse`) so `main_question` and later `sub_qa` can be shown. Optionally update label (e.g. "Main question:" or "Requested query:").
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` | Use main_question from run response in Final Readout with fallback to submitted query. |
+
+**How to test:** Frontend tests. Manually run a query; confirm main question line shows API `main_question` when present, else submitted query.
+
+---

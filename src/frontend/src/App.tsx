@@ -1,5 +1,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { RequestState, WikiSourceOption, listWikiSources, loadWikiSource, runAgent, wipeInternalData } from "./utils/api";
+import {
+  RequestState,
+  RuntimeAgentRunResponse,
+  WikiSourceOption,
+  listWikiSources,
+  loadWikiSource,
+  runAgent,
+  wipeInternalData,
+} from "./utils/api";
 import { DEFAULT_WIKI_SOURCES } from "./utils/constants";
 
 function runSymbol(state: RequestState): string {
@@ -21,6 +29,7 @@ export default function App() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
   const [answer, setAnswer] = useState("");
+  const [lastRunResponse, setLastRunResponse] = useState<RuntimeAgentRunResponse | null>(null);
 
   const selectedWikiSource = useMemo(
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
@@ -90,16 +99,24 @@ export default function App() {
     setSubmittedQuery(submitted);
     setRunState("loading");
     setAnswer("");
+    setLastRunResponse(null);
+    console.info("Run query started.", { submittedQuery: submitted });
 
     const result = await runAgent(submitted);
     if (result.ok) {
       setRunState("success");
       setAnswer(result.data.output);
+      setLastRunResponse(result.data);
+      console.info("Run query completed.", {
+        submittedQuery: submitted,
+        hasMainQuestion: Boolean(result.data.main_question.trim()),
+      });
       return;
     }
 
     setRunState("error");
     setAnswer(result.error.message);
+    console.error("Run query failed.", { submittedQuery: submitted, error: result.error.message });
   }
 
   return (
@@ -163,7 +180,7 @@ export default function App() {
       <section className="panel">
         <h2>Final Readout</h2>
         <p>
-          <strong>Requested Query:</strong> {submittedQuery || "No query submitted yet."}
+          <strong>Main question:</strong> {lastRunResponse?.main_question.trim() || submittedQuery || "No query submitted yet."}
         </p>
         <p>
           <strong>Final Answer:</strong> {answer || "No answer yet."}

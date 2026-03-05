@@ -3,21 +3,6 @@
 Tasks are in **recommended implementation order**. Each section has a **single clear goal**. Complete one section at a time.
 
 
-## Section 11: Display main_question in Final Readout
-
-**Goal:** Show main question from API response in "Final Readout"; fallback to submitted query when absent.
-
-**Details:**
-- In `src/frontend/src/App.tsx`: For the main question line, use `result.data.main_question` when non-empty, else `submittedQuery`. Store full run result if needed (e.g. `lastRunResponse`) so `main_question` and later `sub_qa` can be shown. Optionally update label (e.g. "Main question:" or "Requested query:").
-
-| File | Purpose |
-|------|--------|
-| `src/frontend/src/App.tsx` | Use main_question from run response in Final Readout with fallback to submitted query. |
-
-**How to test:** Frontend tests. Manually run a query; confirm main question line shows API `main_question` when present, else submitted query.
-
----
-
 ## Section 12: Display sub_qa list in UI
 
 **Goal:** Render `sub_qa` in Final Readout so the UI shows only **subagent answer** (`sub_answer`), **subagent response** (`sub_agent_response`), and **final answer** (existing output). Do **not** display `tool_call_input` in the UI (it remains in logs only).
