@@ -15,21 +15,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 1: Add tool_call_input and sub_agent_response to SubQuestionAnswer schema
-
-**Goal:** Add two optional string fields to the backend `SubQuestionAnswer` model.
-
-**Details:**
-- In `src/backend/schemas/agent.py`: Keep `sub_question: str` and `sub_answer: str`. Add `tool_call_input: str = ""` (serialized tool-call args). Add `sub_agent_response: str = ""` (sub-agent AIMessage content for this sub-question). No other file changes.
-
-| File | Purpose |
-|------|--------|
-| `src/backend/schemas/agent.py` | Add `tool_call_input` and `sub_agent_response` with empty-string defaults. |
-
-**How to test:** Run backend pytest. Tests that build `SubQuestionAnswer` may rely on defaults.
-
----
-
 ## Section 2: Populate tool_call_input in _extract_sub_qa
 
 **Goal:** In `_extract_sub_qa`, set `tool_call_input` on each `SubQuestionAnswer` from the tool-call args.
