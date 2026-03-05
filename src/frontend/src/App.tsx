@@ -185,17 +185,17 @@ export default function App() {
         </form>
       </section>
 
-      <section className="panel">
+      <section className="panel final-readout-panel">
         <h2>Final Readout</h2>
-        <section aria-labelledby="final-readout-main-question">
+        <section className="final-readout-section" aria-labelledby="final-readout-main-question">
           <h3 id="final-readout-main-question">Main question</h3>
-          <p>{lastRunResponse?.main_question.trim() || submittedQuery || "No query submitted yet."}</p>
+          <p className="readout-body">{lastRunResponse?.main_question.trim() || submittedQuery || "No query submitted yet."}</p>
         </section>
-        <section aria-labelledby="final-readout-final-answer">
+        <section className="final-readout-section" aria-labelledby="final-readout-final-answer">
           <h3 id="final-readout-final-answer">Final answer</h3>
-          <p>{answer || "No answer yet."}</p>
+          <p className="readout-body">{answer || "No answer yet."}</p>
         </section>
-        <section aria-labelledby="final-readout-subquestions">
+        <section className="final-readout-section" aria-labelledby="final-readout-subquestions">
           <h3 id="final-readout-subquestions">Subquestions &amp; subanswers</h3>
           {(lastRunResponse?.sub_qa?.length ?? 0) > 0 ? (
             <div className="subquestions-list">
@@ -203,10 +203,12 @@ export default function App() {
                 const subAnswer = item.sub_answer.trim();
                 const subAgentResponse = item.sub_agent_response?.trim() ?? "";
                 const toolCallInput = item.tool_call_input?.trim() ?? "";
+                const summaryId = `subquestion-summary-${index}`;
+                const contentId = `subquestion-content-${index}`;
                 return (
                   <details key={`${item.sub_question}-${index}`} className="subquestion-item">
-                    <summary>{item.sub_question.trim() || `Subquestion ${index + 1}`}</summary>
-                    <div className="subquestion-content">
+                    <summary id={summaryId}>{item.sub_question.trim() || `Subquestion ${index + 1}`}</summary>
+                    <div className="subquestion-content" id={contentId} role="region" aria-labelledby={summaryId}>
                       {subAnswer ? (
                         <p>
                           <strong>Subagent answer:</strong> {subAnswer}

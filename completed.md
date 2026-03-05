@@ -398,3 +398,47 @@
   - Backend log included one `GET /` 404 and DB log included transaction warnings during startup/runtime checks; behavior remained healthy and no action required for this task scope.
 
 ---
+## Section 14: Final Readout polish and accessibility
+
+**Goal:** Improve readability and accessibility of the Final Readout: spacing, typography, and optional ARIA/labels for the Subquestions accordion. No new data or behavior.
+
+**Details:**
+- In `src/frontend/src/App.tsx` (and any related CSS): Add or adjust spacing between Main question, Final answer, and Subquestions sections; ensure accordion buttons/summaries have clear focus and, if using custom accordion, `aria-expanded` and `aria-controls`. Keep visual hierarchy (e.g. section labels vs. body text). Optionally add a small cue (e.g. chevron) for expand/collapse.
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` (+ styles) | Spacing, typography, ARIA and focus for Final Readout and accordion. |
+
+**How to test:** Visual pass and keyboard tab-through; screen reader if available; confirm no regressions in existing behavior.
+
+**Test results:**
+- Code changes:
+  - Updated `src/frontend/src/App.tsx`:
+    - Added Final Readout structure classes (`final-readout-panel`, `final-readout-section`, `readout-body`) to improve section spacing and text hierarchy without behavior changes.
+    - Added stable summary/content ids per subquestion and labeled expanded content region (`role="region"`, `aria-labelledby`) for better assistive tech navigation.
+  - Updated `src/frontend/src/styles.css`:
+    - Added `h3` styling to strengthen visual hierarchy between section labels and body text.
+    - Added clear focus-visible styling for `button`, `textarea`, `select`, and subquestion `summary`.
+    - Added subquestion chevron indicator via `summary::after` and rotation on open state.
+    - Improved Final Readout spacing/dividers between Main question, Final answer, and Subquestions.
+    - Ensured readout body text has stronger readability (`line-height`, text color).
+- Frontend verification:
+  - `docker compose exec frontend npm run test` -> passed (`4 passed`).
+  - `docker compose exec frontend npm run typecheck` -> passed.
+  - `docker compose exec frontend npm run build` -> passed.
+- Docker lifecycle and logs:
+  - Pre-work full fresh rebuild/restart completed:
+    - `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+  - Post-change full restart completed:
+    - `docker compose restart`
+  - Runtime state validated:
+    - `docker compose ps` shows `db`, `backend`, `frontend`, `chrome` up (`db` healthy).
+  - Logs reviewed for visibility:
+    - `docker compose logs --no-color --tail=120 backend`
+    - `docker compose logs --no-color --tail=120 frontend`
+    - `docker compose logs --no-color --tail=120 db`
+- Log issues / results:
+  - Observed backend startup warning during restart cycle: `Failed to hardlink files; falling back to full copy` from `uv` env creation.
+  - Resolution status: no functional impact; services started successfully and tests passed.
+
+---

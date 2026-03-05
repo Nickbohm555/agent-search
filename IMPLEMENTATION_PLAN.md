@@ -3,21 +3,6 @@
 Tasks are in **recommended implementation order**. Each section has a **single clear goal**. Complete one section at a time.
 
 
-## Section 14: Final Readout polish and accessibility
-
-**Goal:** Improve readability and accessibility of the Final Readout: spacing, typography, and optional ARIA/labels for the Subquestions accordion. No new data or behavior.
-
-**Details:**
-- In `src/frontend/src/App.tsx` (and any related CSS): Add or adjust spacing between Main question, Final answer, and Subquestions sections; ensure accordion buttons/summaries have clear focus and, if using custom accordion, `aria-expanded` and `aria-controls`. Keep visual hierarchy (e.g. section labels vs. body text). Optionally add a small cue (e.g. chevron) for expand/collapse.
-
-| File | Purpose |
-|------|--------|
-| `src/frontend/src/App.tsx` (+ styles) | Spacing, typography, ARIA and focus for Final Readout and accordion. |
-
-**How to test:** Visual pass and keyboard tab-through; screen reader if available; confirm no regressions in existing behavior.
-
----
-
 ## Section 15: Frontend tests for new response shape
 
 **Goal:** Existing run-flow tests pass. One test asserts that when the response includes `main_question`, `sub_qa` (with sub_question, sub_answer, sub_agent_response, tool_call_input), and `output`, the UI shows Main question, Final answer, and Subquestions list; and that expanding a subquestion reveals sub_answer, sub_agent_response, and tool_call_input where present.

@@ -1,4 +1,5 @@
 2. Stack: Docker Compose + FastAPI + React/TypeScript/Vite + Postgres + Alembic + pgvector.
+2. Always use react for frontend, not html
 3. Source roots: `src/backend/`, `src/frontend/`, and `docker-compose.yml`.
 4. Backend dependencies are managed with `uv` (`pyproject.toml` + `uv.lock`).
 6. Build all services: `docker compose build`.
