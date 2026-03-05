@@ -4,25 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 6: Vector store – embeddings utility
-
-**Single goal:** Provide a single place for embedding dimension and embedding model used by PGVector and (if needed) SQLAlchemy `Vector(EMBEDDING_DIM)`.
-
-**Details:**
-- Export `EMBEDDING_DIM` (int) and a way to get an `Embeddings` instance (e.g. `get_embedding_model()` or module-level instance).
-- Used by `models.py` (Vector column) and later by PGVector and the retriever.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/utils/__init__.py` | Package marker (if not present). |
-| `src/backend/utils/embeddings.py` | `EMBEDDING_DIM` constant; `get_embedding_model()` or `embeddings` instance. Match backend’s chosen embedding provider. |
-
-**How to test:** Backend pytest. Assert `EMBEDDING_DIM` is a positive int; assert `get_embedding_model()` (or equivalent) returns an object with an `embed_documents` (or equivalent) method. Mock API keys if needed.
-
----
-
 ## Section 7: Vector store – PGVector get and add documents
 
 **Single goal:** Implement getting a PGVector instance (one collection) and adding documents to it. Collection created if it doesn’t exist. Document metadata includes wiki page name/URL. Add logging.

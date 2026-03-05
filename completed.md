@@ -113,3 +113,28 @@
 - Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs confirm pre-existing startup import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`.
 
 ---
+## Section 6: Vector store – embeddings utility
+
+**Single goal:** Provide a single place for embedding dimension and embedding model used by PGVector and (if needed) SQLAlchemy `Vector(EMBEDDING_DIM)`.
+
+**Details:**
+- Export `EMBEDDING_DIM` (int) and a way to get an `Embeddings` instance (e.g. `get_embedding_model()` or module-level instance).
+- Used by `models.py` (Vector column) and later by PGVector and the retriever.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/utils/__init__.py` | Package marker (if not present). |
+| `src/backend/utils/embeddings.py` | `EMBEDDING_DIM` constant; `get_embedding_model()` or `embeddings` instance. Match backend’s chosen embedding provider. |
+
+**How to test:** Backend pytest. Assert `EMBEDDING_DIM` is a positive int; assert `get_embedding_model()` (or equivalent) returns an object with an `embed_documents` (or equivalent) method. Mock API keys if needed.
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec backend uv run pytest tests/utils/test_embeddings.py` (2 passed): verified `EMBEDDING_DIM` is a positive int and `get_embedding_model()` returns an embeddings-like object with `embed_documents`, producing vectors with length `EMBEDDING_DIM`.
+- Ran `docker compose exec backend uv run pytest` (8 passed): full backend suite green including new embeddings tests plus existing API/DB/wiki tests.
+- Ran `docker compose exec frontend npm run test` (passed, 2 tests).
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs show pre-existing startup import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 6 changes.
+
+---
