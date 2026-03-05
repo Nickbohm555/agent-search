@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { RequestState, WikiSourceOption, listWikiSources, loadWikiSource, runAgent, wipeInternalData } from "./utils/api";
+import { DEFAULT_WIKI_SOURCES } from "./utils/constants";
 
 function runSymbol(state: RequestState): string {
   if (state === "success") return "✓";
@@ -9,8 +10,8 @@ function runSymbol(state: RequestState): string {
 }
 
 export default function App() {
-  const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>([]);
-  const [wikiSourceId, setWikiSourceId] = useState("");
+  const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>(DEFAULT_WIKI_SOURCES);
+  const [wikiSourceId, setWikiSourceId] = useState(DEFAULT_WIKI_SOURCES[0]?.source_id ?? "");
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
   const [wipeState, setWipeState] = useState<RequestState>("idle");
@@ -31,9 +32,10 @@ export default function App() {
     async function init() {
       const result = await listWikiSources();
       if (!mounted || !result.ok) return;
-      setWikiSources(result.data.sources);
-      if (result.data.sources.length > 0) {
-        setWikiSourceId(result.data.sources[0].source_id);
+      const mergedSources = mergeWikiSourcesWithFallback(result.data.sources);
+      setWikiSources(mergedSources);
+      if (mergedSources.length > 0) {
+        setWikiSourceId(mergedSources[0].source_id);
       }
     }
     init();
@@ -53,7 +55,7 @@ export default function App() {
       setLoadState("success");
       setLoadMessage(`Loaded ${result.data.documents_loaded} docs (${result.data.chunks_created} chunks).`);
       const refresh = await listWikiSources();
-      if (refresh.ok) setWikiSources(refresh.data.sources);
+      if (refresh.ok) setWikiSources(mergeWikiSourcesWithFallback(refresh.data.sources));
       return;
     }
 
@@ -72,7 +74,7 @@ export default function App() {
       setWipeState("success");
       setWipeMessage(result.data.message);
       const refresh = await listWikiSources();
-      if (refresh.ok) setWikiSources(refresh.data.sources);
+      if (refresh.ok) setWikiSources(mergeWikiSourcesWithFallback(refresh.data.sources));
       return;
     }
 
@@ -169,4 +171,14 @@ export default function App() {
       </section>
     </main>
   );
+}
+
+function mergeWikiSourcesWithFallback(apiSources: WikiSourceOption[]): WikiSourceOption[] {
+  const apiSourcesById = new Map(apiSources.map((source) => [source.source_id, source]));
+  const merged = DEFAULT_WIKI_SOURCES.map((fallbackSource) => {
+    const apiSource = apiSourcesById.get(fallbackSource.source_id);
+    return apiSource ? { ...fallbackSource, ...apiSource } : fallbackSource;
+  });
+  const extraApiSources = apiSources.filter((source) => !DEFAULT_WIKI_SOURCES.some((item) => item.source_id === source.source_id));
+  return merged.concat(extraApiSources);
 }

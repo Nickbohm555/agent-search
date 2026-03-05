@@ -4,26 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 5: Frontend – wiki dropdown from hardcoded list
-
-**Single goal:** Ensure the wiki source dropdown is populated from a hardcoded list of topics (geopolitics-focused: Geopolitics, Strait of Hormuz, NATO, etc.). Can mirror backend source list or be frontend-only.
-
-**Details:**
-- Dropdown options: fixed list (e.g. same labels as backend `WikiSourceDefinition`).
-- If list comes from API (`/api/internal-data/wiki-sources`), ensure backend returns that list; otherwise define a hardcoded list in the frontend (e.g. constants or inline).
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/frontend/src/App.tsx` | Dropdown options from hardcoded list or from `listWikiSources()`; display label and “loaded” state if from API. |
-| `src/frontend/src/utils/constants.ts` (optional) | Hardcoded wiki topic list (ids + labels) if not using API for options. |
-| `src/frontend/src/utils/api.ts` | No change if already using `listWikiSources`; otherwise ensure types match. |
-
-**How to test:** Manual check or frontend test: open app, assert dropdown shows expected wiki topics (e.g. Geopolitics, NATO, …). If using API, assert options update when “loaded” state changes.
-
----
-
 ## Section 6: Vector store – embeddings utility
 
 **Single goal:** Provide a single place for embedding dimension and embedding model used by PGVector and (if needed) SQLAlchemy `Vector(EMBEDDING_DIM)`.
