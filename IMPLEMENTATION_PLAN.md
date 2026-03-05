@@ -4,25 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 12: Run – frontend button and response display
-
-**Single goal:** Run button submits the query to `POST /api/agents/run` and displays the returned answer. Add or adjust frontend tests for Run flow.
-
-**Details:**
-- On Run click: POST `{ query }` to `/api/agents/run`; on success, show `response.output` in the UI.
-- Handle loading and error states; types aligned with Pydantic (e.g. `RuntimeAgentRunResponse`).
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/frontend/src/App.tsx` | Run button/form calls `runAgent(query)`; display answer and run state (loading/success/error). |
-| `src/frontend/src/utils/api.ts` | `runAgent(query)` POST to `/api/agents/run`; validate response shape; types for request/response. |
-
-**How to test:** Frontend tests: e.g. submit Run with a query, assert request to `/api/agents/run` and that response output is displayed. Optional E2E or manual test.
-
----
-
 ## Wipe + PGVector (optional follow-up)
 
 **Single goal:** If PGVector stores data in the same PostgreSQL DB and uses tables that should be cleared on “Wipe Data”, extend `wipe_all_internal_data` (or the code path called by the wipe route) to delete or truncate those tables/collections so wipe is full. Document in the wipe section which tables/collections are cleared.

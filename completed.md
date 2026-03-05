@@ -269,3 +269,29 @@
 - Ran `docker compose exec frontend npm run test` (passed, 2 tests).
 - Ran `docker compose exec frontend npm run typecheck` (passed).
 - Ran health check with `curl -sS -i http://localhost:8000/api/health` (returned `404 Not Found`; health endpoint is not currently implemented in the running backend).
+
+---
+## Section 12: Run – frontend button and response display
+
+**Single goal:** Run button submits the query to `POST /api/agents/run` and displays the returned answer. Add or adjust frontend tests for Run flow.
+
+**Details:**
+- On Run click: POST `{ query }` to `/api/agents/run`; on success, show `response.output` in the UI.
+- Handle loading and error states; types aligned with Pydantic (e.g. `RuntimeAgentRunResponse`).
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` | Run button/form calls `runAgent(query)`; display answer and run state (loading/success/error). |
+| `src/frontend/src/utils/api.ts` | `runAgent(query)` POST to `/api/agents/run`; validate response shape; types for request/response. |
+
+**How to test:** Frontend tests: e.g. submit Run with a query, assert request to `/api/agents/run` and that response output is displayed. Optional E2E or manual test.
+
+---
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec frontend npm run test` (4 passed): updated `src/frontend/src/App.test.tsx` with Run-flow interaction tests that verify query submission POSTs to `http://localhost:8000/api/agents/run` with `{ "query": ... }`, loading state shows `Running...`, successful response renders returned `output`, and failed response renders the HTTP error message.
+- Ran `docker compose exec backend uv run pytest` (17 passed).
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran health check with `curl -sS -i http://localhost:8000/api/health` (returned `404 Not Found`; endpoint is not implemented in current backend).
