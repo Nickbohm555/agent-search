@@ -8,6 +8,8 @@ class RuntimeAgentRunRequest(BaseModel):
 class SubQuestionAnswer(BaseModel):
     sub_question: str
     sub_answer: str
+    tool_call_input: str = ""
+    sub_agent_response: str = ""
 
 
 class RuntimeAgentRunResponse(BaseModel):
