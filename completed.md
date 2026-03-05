@@ -190,3 +190,53 @@
     - Result: `2 passed, 1 deselected`.
 
 ---
+## Section 6: Add run-end summary log for sub_qa
+
+**Goal:** At end of each agent run, log a clear summary so docker logs show sub_question, tool input/output, and sub_agent_response for every SubQuestionAnswer.
+
+**Details:**
+- In `src/backend/services/agent_service.py`: After extracting `sub_qa` and before returning (e.g. in `run_runtime_agent`), log a structured block: for each item in `sub_qa`, log sub_question (truncate if needed), tool_call_input, sub_answer, sub_agent_response (truncate if needed). Use a clear label (e.g. "SubQuestionAnswer", index). Optionally keep one "Extracted sub_qa count=N" and trim other per-message logs so the summary is easy to find.
+- Optional: In `src/backend/utils/agent_callbacks.py`, trim or gate `log_agent_messages_summary` if too noisy.
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Log run-end summary per SubQuestionAnswer. |
+| `src/backend/utils/agent_callbacks.py` | Optional: reduce log noise. |
+
+**How to test:** Restart backend; run a query that produces at least one sub_qa; confirm docker logs show sub_question, tool_call_input, sub_answer, and sub_agent_response for every item at run end (tool_call stays in logs only, not on UI).
+
+**Test results:**
+- Code changes:
+  - Updated `src/backend/services/agent_service.py`:
+    - Added `_log_sub_qa_run_end_summary(sub_qa)` to emit an indexed run-end block for each item.
+    - In `run_runtime_agent`, now calls `_extract_sub_qa(messages)` and logs `SubQuestionAnswer summary count=N` plus per-item fields (`sub_question`, `tool_call_input`, `sub_answer`, `sub_agent_response`) before returning.
+  - Updated `src/backend/tests/services/test_agent_service.py`:
+    - Extended `test_run_runtime_agent_returns_last_message_output_and_logs` to use a realistic AI→Tool→AI message flow and assert run-end summary log lines are emitted.
+- Docker lifecycle and container handling:
+  - Pre-work full fresh restart completed: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-change backend restart completed: `docker compose restart backend`.
+  - Runtime dependency issue surfaced in backend logs (`ModuleNotFoundError: langchain_text_splitters`); fixed in running backend venv with:
+    - `docker compose exec backend uv pip install --python .venv/bin/python langchain-text-splitters`
+    - then `docker compose restart backend`.
+  - Running state verified with `docker compose ps` (`db` healthy; `backend`, `frontend`, `chrome` up).
+- Tests run:
+  - Required command from task guidance: `docker compose exec backend uv run pytest`.
+    - Result: failed in this environment (`Failed to spawn: pytest`).
+  - Backend service tests with explicit test dependency:
+    - `docker compose exec backend uv run --with pytest --with langchain-text-splitters python -m pytest tests/services/test_agent_service.py -q`
+    - Result: `3 passed`.
+  - Full backend suite with explicit test dependency:
+    - `docker compose exec backend uv run --with pytest --with langchain-text-splitters python -m pytest -q`
+    - Result: `19 passed, 1 warning`.
+- Logs reviewed:
+  - `docker compose logs --no-color --tail=200 backend`
+  - `docker compose logs --no-color --tail=120 frontend`
+  - `docker compose logs --no-color --tail=120 db`
+- Live runtime verification:
+  - Ran: `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in policy X?"}'`
+  - Response returned successfully with output text.
+  - Backend logs confirmed run-end summary for one extracted item:
+    - `SubQuestionAnswer summary count=1`
+    - `SubQuestionAnswer[1] ... sub_question=... tool_call_input=... sub_answer=... sub_agent_response=...`
+
+---

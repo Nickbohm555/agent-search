@@ -154,6 +154,19 @@ def _extract_sub_qa(messages: list[BaseMessage]) -> list[SubQuestionAnswer]:
     return sub_qa
 
 
+def _log_sub_qa_run_end_summary(sub_qa: list[SubQuestionAnswer]) -> None:
+    logger.info("SubQuestionAnswer summary count=%s", len(sub_qa))
+    for index, item in enumerate(sub_qa, start=1):
+        logger.info(
+            "SubQuestionAnswer[%s] sub_question=%s tool_call_input=%s sub_answer=%s sub_agent_response=%s",
+            index,
+            _truncate_query(item.sub_question),
+            _truncate_query(item.tool_call_input),
+            _truncate_query(item.sub_answer),
+            _truncate_query(item.sub_agent_response),
+        )
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -180,6 +193,8 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     if isinstance(messages, list) and messages:
         logger.info("Agent run finished; logging tool calls and tool results from %s messages", len(messages))
         log_agent_messages_summary(messages)
+    sub_qa = _extract_sub_qa(messages) if isinstance(messages, list) else []
+    _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(
         "Runtime agent run complete output_length=%s output_preview=%s",

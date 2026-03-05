@@ -1,7 +1,6 @@
 import logging
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage, ToolMessage
 from sqlalchemy import create_engine
@@ -102,7 +101,23 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
         def invoke(self, payload, **kwargs):
             captured["payload"] = payload
             captured["config"] = kwargs.get("config")
-            return {"messages": [SimpleNamespace(content="First"), SimpleNamespace(content="Final output")]}
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_1",
+                                "name": "task",
+                                "args": {"query": "What happened in NATO policy?"},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy shifted in 2025.", tool_call_id="call_1", name="task"),
+                    AIMessage(content="Subagent completed the delegated lookup."),
+                    AIMessage(content="Final output"),
+                ]
+            }
 
     def fake_get_vector_store(*, connection: str, collection_name: str, embeddings):
         captured["connection"] = connection
@@ -131,4 +146,6 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert captured["model"] == "gpt-4.1-mini"
     assert captured["payload"]["messages"][0].content == "What happened in NATO policy?"
     assert "Runtime agent run start" in caplog.text
+    assert "SubQuestionAnswer summary count=1" in caplog.text
+    assert "SubQuestionAnswer[1] sub_question=What happened in NATO policy?" in caplog.text
     assert "Runtime agent run complete" in caplog.text

@@ -1,34 +1,7 @@
 # Agent-Search Implementation Plan
 
-Tasks are in **recommended implementation order**. Each section has a **single clear goal**. Complete one section at a time; run the listed tests before moving on.
+Tasks are in **recommended implementation order**. Each section has a **single clear goal**. Complete one section at a time.
 
-**Tech stack:** No new dependencies. **Tooling:** No change.
-
-**UI vs logs:** The Final Readout UI shows only **subagent response**, **subagent answer**, and **final answer** (no tool-call input on the UI). Keep `tool_call_input` in the API and in **run-end logs** (e.g. docker logs) for debugging; do not render it in the frontend.
-
-**Before marking any section complete or moving it to `agent-search/completed.md`:**
-1. **Restart the application** after all code for that section is built.
-2. Add or adjust **logging** so behavior can be inspected; **check relevant docker logs** and **run all relevant tests** (unit, integration, or "How to test").
-3. If anything fails, such as docker log issues: fix, then **repeat from step 1**. Do **not** mark complete or add to `completed.md` until everything passes.
-4. Record outcomes under **Test results** in `agent-search/completed.md`, then mark the section complete / move it to `completed.md`.
-
-
----
-
-## Section 6: Add run-end summary log for sub_qa
-
-**Goal:** At end of each agent run, log a clear summary so docker logs show sub_question, tool input/output, and sub_agent_response for every SubQuestionAnswer.
-
-**Details:**
-- In `src/backend/services/agent_service.py`: After extracting `sub_qa` and before returning (e.g. in `run_runtime_agent`), log a structured block: for each item in `sub_qa`, log sub_question (truncate if needed), tool_call_input, sub_answer, sub_agent_response (truncate if needed). Use a clear label (e.g. "SubQuestionAnswer", index). Optionally keep one "Extracted sub_qa count=N" and trim other per-message logs so the summary is easy to find.
-- Optional: In `src/backend/utils/agent_callbacks.py`, trim or gate `log_agent_messages_summary` if too noisy.
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/agent_service.py` | Log run-end summary per SubQuestionAnswer. |
-| `src/backend/utils/agent_callbacks.py` | Optional: reduce log noise. |
-
-**How to test:** Restart backend; run a query that produces at least one sub_qa; confirm docker logs show sub_question, tool_call_input, sub_answer, and sub_agent_response for every item at run end (tool_call stays in logs only, not on UI).
 
 ---
 
