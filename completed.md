@@ -28,3 +28,43 @@
   - Health check attempted via `curl http://localhost:8000/api/health` returns `404 Not Found` in current app state.
 
 ---
+
+## Section 2: Populate tool_call_input in _extract_sub_qa
+
+**Goal:** In `_extract_sub_qa`, set `tool_call_input` on each `SubQuestionAnswer` from the tool-call args.
+
+**Details:**
+- In `src/backend/services/agent_service.py`: When building each `SubQuestionAnswer`, set `tool_call_input` to a string representation of the tool call `args` (e.g. `json.dumps(args)` or the value used for sub_question if a single key). Keep `sub_answer` from ToolMessage content; leave `sub_agent_response` as `""` for this section.
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Set `tool_call_input` in `_extract_sub_qa`. |
+
+**How to test:** Run backend pytest (existing _extract_sub_qa test may need a small assertion update for tool_call_input).
+
+**Test results:**
+- Code verification:
+  - Confirmed `_extract_sub_qa` already sets `tool_call_input` from tool-call args in `src/backend/services/agent_service.py`.
+  - Confirmed unit assertion exists in `tests/services/test_agent_service.py` for `tool_call_input == '{"query": "What changed in policy X?"}'`.
+- Docker lifecycle and logs:
+  - Pre-work clean reboot completed: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-verification full restart completed: `docker compose down && docker compose up -d`.
+  - Logs reviewed for each service:
+    - `docker compose logs --no-color --tail=120 backend`
+    - `docker compose logs --no-color --tail=120 frontend`
+    - `docker compose logs --no-color --tail=120 db`
+  - `docker compose ps` confirms `db`, `backend`, `frontend`, and `chrome` are up (`db` healthy).
+- Backend tests:
+  - Initial required command `docker compose exec backend uv run pytest` failed because `pytest` entrypoint is not included in project dependencies.
+  - `docker compose exec backend uv run python -m pytest` initially failed (`No module named pytest`).
+  - Installed runtime test tools in backend container venv (no repo dependency changes):
+    - `uv pip install --python .venv/bin/python pytest`
+    - `uv pip install --python .venv/bin/python langchain-text-splitters`
+  - Ran targeted section test:
+    - `docker compose exec backend uv run python -m pytest tests/services/test_agent_service.py -q`
+    - Result: `2 passed`.
+  - Ran full backend suite:
+    - `docker compose exec backend uv run python -m pytest -q`
+    - Result: `18 passed, 1 warning`.
+
+---

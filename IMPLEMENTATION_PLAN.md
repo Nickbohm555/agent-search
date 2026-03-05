@@ -15,21 +15,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 2: Populate tool_call_input in _extract_sub_qa
-
-**Goal:** In `_extract_sub_qa`, set `tool_call_input` on each `SubQuestionAnswer` from the tool-call args.
-
-**Details:**
-- In `src/backend/services/agent_service.py`: When building each `SubQuestionAnswer`, set `tool_call_input` to a string representation of the tool call `args` (e.g. `json.dumps(args)` or the value used for sub_question if a single key). Keep `sub_answer` from ToolMessage content; leave `sub_agent_response` as `""` for this section.
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/agent_service.py` | Set `tool_call_input` in `_extract_sub_qa`. |
-
-**How to test:** Run backend pytest (existing _extract_sub_qa test may need a small assertion update for tool_call_input).
-
----
-
 ## Section 3: Populate sub_agent_response in _extract_sub_qa (use last AIMessage per sub-agent)
 
 **Goal:** In `_extract_sub_qa`, set `sub_agent_response` from the **last** AIMessage the sub-agent sends before control returns to the main agent—not the first AIMessage after the ToolMessage.
