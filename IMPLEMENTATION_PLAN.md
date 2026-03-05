@@ -16,29 +16,6 @@ The following atomic sections implement: main question → sub-questions → eac
 
 ---
 
-## Section 1: Add SubQuestionAnswer model
-
-**Single goal:** Add a Pydantic model for a single (sub_question, sub_answer) item so the run response can later expose a list of them as `sub_qa`.
-
-**Details:**
-- In `schemas/agent.py`, define `SubQuestionAnswer` with `sub_question: str` and `sub_answer: str`. This model represents one sub-question and its answer; the response will use `sub_qa: list[SubQuestionAnswer]` (many such items). Export it from schemas if needed. No other file changes.
-
-**Tech stack and dependencies**
-- Libraries/packages: None; existing Pydantic in `src/backend/pyproject.toml`.
-- Tooling: No change.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/schemas/agent.py` | Add `SubQuestionAnswer` model with `sub_question` and `sub_answer` fields. |
-
-**How to test:** Run backend pytest. Optionally instantiate `SubQuestionAnswer(sub_question="q", sub_answer="a")` in a small test and assert fields.
-
-**Test results:** (Record in `agent-search/completed.md` when section is complete.)
-
----
-
 ## Section 2: Add main_question and sub_qa to RuntimeAgentRunResponse
 
 **Single goal:** Extend `RuntimeAgentRunResponse` with `main_question` and `sub_qa` so the API can return them; keep existing `output`; no service/route logic change yet.
