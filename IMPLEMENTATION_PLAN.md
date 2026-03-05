@@ -5,21 +5,6 @@ Tasks are in **recommended implementation order**. Each section has a **single c
 
 ---
 
-## Section 9: Frontend types for run response
-
-**Goal:** Define `SubQuestionAnswer` and extend `RuntimeAgentRunResponse` with `main_question` and `sub_qa` in the frontend.
-
-**Details:**
-- In `src/frontend/src/utils/api.ts`: Add interface `SubQuestionAnswer` with `sub_question: string`, `sub_answer: string`, optional `tool_call_input?: string`, `sub_agent_response?: string` (treat absent as `""`). Extend `RuntimeAgentRunResponse` with `main_question?: string` (absent → `""`) and `sub_qa?: SubQuestionAnswer[]` (absent → `[]`). Keep `output: string` required.
-
-| File | Purpose |
-|------|--------|
-| `src/frontend/src/utils/api.ts` | Add `SubQuestionAnswer`; extend `RuntimeAgentRunResponse` with `main_question`, `sub_qa`. |
-
-**How to test:** Frontend tests; no runtime change yet.
-
----
-
 ## Section 10: Update runAgent response validator
 
 **Goal:** `runAgent` validator accepts and validates `main_question` and `sub_qa`; older responses (only `output`) still pass.

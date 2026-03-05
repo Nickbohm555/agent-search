@@ -32,8 +32,17 @@ export interface WipeInternalDataResponse {
   message: string;
 }
 
+export interface SubQuestionAnswer {
+  sub_question: string;
+  sub_answer: string;
+  tool_call_input?: string;
+  sub_agent_response?: string;
+}
+
 export interface RuntimeAgentRunResponse {
   output: string;
+  main_question?: string;
+  sub_qa?: SubQuestionAnswer[];
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;

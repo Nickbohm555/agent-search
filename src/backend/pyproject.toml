@@ -15,4 +15,5 @@ dependencies = [
   "langchain-openai>=0.3.0",
   "deepagents>=0.4.0",
   "wikipedia>=1.4.0",
+  "langchain-text-splitters>=1.1.1",
 ]
