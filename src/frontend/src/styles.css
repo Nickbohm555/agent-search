@@ -123,6 +123,37 @@ p {
   color: var(--muted);
 }
 
+.subquestions-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.subquestion-item {
+  border: 1px solid rgba(29, 242, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(9, 12, 29, 0.7);
+}
+
+.subquestion-item summary {
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.subquestion-item[open] summary {
+  border-bottom: 1px solid rgba(29, 242, 255, 0.2);
+}
+
+.subquestion-content {
+  padding: 8px 10px 10px;
+}
+
+.subquestion-content p {
+  margin-top: 6px;
+}
+
 strong {
   color: var(--text);
 }

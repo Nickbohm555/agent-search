@@ -107,10 +107,17 @@ export default function App() {
       setRunState("success");
       setAnswer(result.data.output);
       setLastRunResponse(result.data);
+      const subQuestionsWithDetails = result.data.sub_qa.filter(
+        (item) =>
+          item.sub_answer.trim().length > 0 ||
+          item.sub_agent_response?.trim().length ||
+          item.tool_call_input?.trim().length,
+      ).length;
       console.info("Run query completed.", {
         submittedQuery: submitted,
         hasMainQuestion: Boolean(result.data.main_question.trim()),
         subQuestionCount: result.data.sub_qa.length,
+        subQuestionsWithDetails,
       });
       return;
     }
@@ -190,7 +197,39 @@ export default function App() {
         </section>
         <section aria-labelledby="final-readout-subquestions">
           <h3 id="final-readout-subquestions">Subquestions &amp; subanswers</h3>
-          <p>{(lastRunResponse?.sub_qa?.length ?? 0) > 0 ? "Subquestions are available." : "No subquestions for this run."}</p>
+          {(lastRunResponse?.sub_qa?.length ?? 0) > 0 ? (
+            <div className="subquestions-list">
+              {(lastRunResponse?.sub_qa ?? []).map((item, index) => {
+                const subAnswer = item.sub_answer.trim();
+                const subAgentResponse = item.sub_agent_response?.trim() ?? "";
+                const toolCallInput = item.tool_call_input?.trim() ?? "";
+                return (
+                  <details key={`${item.sub_question}-${index}`} className="subquestion-item">
+                    <summary>{item.sub_question.trim() || `Subquestion ${index + 1}`}</summary>
+                    <div className="subquestion-content">
+                      {subAnswer ? (
+                        <p>
+                          <strong>Subagent answer:</strong> {subAnswer}
+                        </p>
+                      ) : null}
+                      {subAgentResponse ? (
+                        <p>
+                          <strong>Subagent response:</strong> {subAgentResponse}
+                        </p>
+                      ) : null}
+                      {toolCallInput ? (
+                        <p>
+                          <strong>Tool call input:</strong> {toolCallInput}
+                        </p>
+                      ) : null}
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          ) : (
+            <p>No subquestions for this run.</p>
+          )}
         </section>
       </section>
     </main>

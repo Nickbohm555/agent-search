@@ -349,3 +349,52 @@
   - No new runtime errors introduced by this section.
 
 ---
+## Section 13: Subquestions list with nested dropdown (accordion)
+
+**Goal:** For each item in `sub_qa`, render one collapsible row (dropdown/accordion). The row header shows the **sub-question** (optionally truncated). When expanded, show labeled blocks: **Subagent answer** (`sub_answer`), **Subagent response** (`sub_agent_response`), and **Tool call input** (`tool_call_input`). Hide any block when its value is empty. Keep the UI clean and scannable.
+
+**Details:**
+- In `src/frontend/src/App.tsx`: Inside the Subquestions section, map over `lastRunResponse?.sub_qa ?? []`. Each item is one collapsible: summary/button = sub_question text; expanded content = optional blocks for "Subagent answer:", "Subagent response:", "Tool call input:" with the corresponding values. Omit a block if the value is empty or undefined. Use native `<details>/<summary>` or a small state-based accordion; style so multiple items can be expanded at once and the list is easy to scan.
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` | Render sub_qa as accordion list with sub_answer, sub_agent_response, tool_call_input in expanded area. |
+
+**How to test:** Run a query that returns `sub_qa` with at least one item; confirm each sub-question appears as a row, expanding shows subagent answer, subagent response, and tool call input (when present); empty values do not show blocks; empty sub_qa still shows Section 12 empty state.
+
+**Test results:**
+- Code changes:
+  - Updated `src/frontend/src/App.tsx` Subquestions section to render `lastRunResponse?.sub_qa ?? []` as native `<details>/<summary>` accordion rows.
+  - Added conditional expanded blocks for:
+    - `Subagent answer:` from `sub_answer`
+    - `Subagent response:` from `sub_agent_response`
+    - `Tool call input:` from `tool_call_input`
+  - Empty/whitespace-only values are omitted from rendering.
+  - Added run visibility metric in success log: `subQuestionsWithDetails`.
+  - Updated `src/frontend/src/styles.css` with `.subquestions-list`, `.subquestion-item`, and `.subquestion-content` styles for scanability and multi-open accordion behavior.
+- Container handling:
+  - Full fresh restart before work: `docker compose down -v --rmi all && docker compose build && docker compose up -d`.
+  - Post-change restart: `docker compose restart frontend`.
+  - Verified runtime state via `docker compose ps` (`backend`, `frontend`, `db`, `chrome` all up; `db` healthy).
+- Tests run:
+  - `docker compose exec frontend npm run test -- --run`
+    - Result: pass (`4 passed`).
+  - `docker compose exec frontend npm run typecheck`
+    - Result: pass.
+  - `docker compose exec frontend npm run build`
+    - Result: pass.
+  - Manual runtime verification:
+    - `curl -sS -X POST http://localhost:8000/api/internal-data/load -H 'Content-Type: application/json' -d '{"source_type":"wiki","wiki":{"source_id":"geopolitics"}}'`
+      - Result: success (`documents_loaded: 1`, `chunks_created: 15`).
+    - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is NATO and what is its role in geopolitics?"}'`
+      - Result: success with `sub_qa` containing 1 item including `sub_question`, `sub_answer`, `sub_agent_response`, and `tool_call_input`.
+- Logs reviewed:
+  - `docker compose logs --tail=120 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+- Log issues / results:
+  - No runtime errors after the change.
+  - Backend showed expected startup warning about uv hardlink fallback and venv recreation; no functional impact observed.
+  - Backend log included one `GET /` 404 and DB log included transaction warnings during startup/runtime checks; behavior remained healthy and no action required for this task scope.
+
+---
