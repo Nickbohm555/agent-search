@@ -29,8 +29,9 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     captured: dict[str, object] = {}
 
     class _FakeAgent:
-        def invoke(self, payload):
+        def invoke(self, payload, **kwargs):
             captured["payload"] = payload
+            captured["config"] = kwargs.get("config")
             return {"messages": [SimpleNamespace(content="First"), SimpleNamespace(content="Final output")]}
 
     def fake_get_vector_store(*, connection: str, collection_name: str, embeddings):

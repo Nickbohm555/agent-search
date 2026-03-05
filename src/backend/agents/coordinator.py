@@ -51,35 +51,27 @@ def create_coordinator_agent(
     """Create a coordinator agent with one RAG subagent backed by the retriever tool."""
     create_deep_agent_impl = create_deep_agent_fn or _default_create_deep_agent()
     retriever_tool = make_retriever_tool(vector_store)
+    # Subagent gets the retriever; main agent has no tools and delegates via task() only.
     rag_subagent = {
         "name": _RAG_SUBAGENT_NAME,
         "description": "Runs semantic retrieval against internal wiki chunks.",
-        "prompt": _RAG_SUBAGENT_PROMPT,
-        "tools": [retriever_tool.name],
+        "system_prompt": _RAG_SUBAGENT_PROMPT,
+        "tools": [retriever_tool],
     }
 
+    main_agent_tools: list[Any] = []
     logger.info(
         "Building coordinator agent model=%r main_tools=%s subagents=%s",
         model,
-        [],
+        main_agent_tools,
         [rag_subagent["name"]],
     )
-    try:
-        runnable = create_deep_agent_impl(
-            tools=[retriever_tool],
-            instructions=_COORDINATOR_PROMPT,
-            model=model,
-            subagents=[rag_subagent],
-            builtin_tools=[],
-        )
-    except TypeError:
-        # Backward-compat path if builtin_tools is not supported.
-        runnable = create_deep_agent_impl(
-            tools=[retriever_tool],
-            instructions=_COORDINATOR_PROMPT,
-            model=model,
-            subagents=[rag_subagent],
-        )
+    runnable = create_deep_agent_impl(
+        model=model,
+        tools=main_agent_tools,
+        system_prompt=_COORDINATOR_PROMPT,
+        subagents=[rag_subagent],
+    )
 
     logger.info(
         "Coordinator agent ready main_agent=coordinator subagent=%s tool=%s",

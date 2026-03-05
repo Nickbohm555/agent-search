@@ -1,6 +1,7 @@
 0b. Study @IMPLEMENTATION_PLAN.md.
 0c. For reference, the application source code is in `src/*`.
 
+Before starting, completely restart the application so we have fresh builds, logs, ect;
 
 997. Iteration scope: complete exactly ONE item per run—always the first item listed in @IMPLEMENTATION_PLAN.md—then stop for the next loop.
 
@@ -8,13 +9,11 @@
 
 2. Before making changes, search the codebase so existing functionality is reused when possible.
 
-3. After implementing functionality, run the required tests from the task definition. Prefer all required tests passing unless blocked by rule 998.
+3. After implementing functionality, ALWAYS add logs for visibility and check what containers were changed and either restart or completely reboot depending on the task. when in doubt, restart the application entirely and check all the container logs.  run the required tests from the task definition. You must provide and view logs for every item built. 
 
-4. When the task is completed or blocked: always remove that item from @IMPLEMENTATION_PLAN.md and append it to @completed.md. If completed, append the item as-is. Include the test results - what specifically was tested and what passed. How did you test? docker, logging, pytest, ect;
+4. When the task is completed: always remove that item from @IMPLEMENTATION_PLAN.md and append it to @completed.md. If completed, append the item as-is. Include the test results - what specifically was tested and what passed. How did you test? docker, logging, pytest, ect;
 
-5. For blocked external dependency (rule 998): remove the item from @IMPLEMENTATION_PLAN.md and add it to @completed.md with a BLOCKED message and explanation (see step 5);
-
-6. After completion or blocked, either way we write `.loop-commit-msg` then end this run. For `loop-commit-msg`, add every a short summary of what was built and tested.
+5. After completion or blocked, either way we write `.loop-commit-msg` then end this run. For `loop-commit-msg`, add every a short summary of what was built and tested. 
 
 
 NOTE: Keep @AGENTS.md operational only (how to build/test/run). Keep remaining work in @IMPLEMENTATION_PLAN.md; record completed items in @completed.md.

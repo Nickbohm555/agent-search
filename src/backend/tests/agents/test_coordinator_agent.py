@@ -39,13 +39,14 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
             tool_output = self._tool.invoke({"query": "strait of hormuz", "limit": 1})
             return {"messages": [SimpleNamespace(content=f"Answer based on retrieval: {tool_output}")]}
 
-    def fake_create_deep_agent(*, tools, instructions, model, subagents, builtin_tools=None):
-        captured["tools"] = tools
-        captured["instructions"] = instructions
+    def fake_create_deep_agent(*, model, tools, system_prompt, subagents):
         captured["model"] = model
+        captured["tools"] = tools
+        captured["system_prompt"] = system_prompt
         captured["subagents"] = subagents
-        captured["builtin_tools"] = builtin_tools
-        return _FakeDeepAgent(tools[0])
+        # Retriever is on the subagent only; main agent has no tools.
+        retriever = subagents[0]["tools"][0]
+        return _FakeDeepAgent(retriever)
 
     store = _FakeVectorStore()
     with caplog.at_level(logging.INFO):
@@ -58,21 +59,17 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
 
     assert hasattr(agent, "invoke")
     assert captured["model"] == "fake-model"
-    assert isinstance(captured["tools"], list)
-    assert captured["tools"][0].name == "search_database"
-    assert "Break the user query into focused subquestions" in str(captured["instructions"])
-    assert captured["builtin_tools"] == []
-    assert captured["subagents"] == [
-        {
-            "name": "rag_retriever",
-            "description": "Runs semantic retrieval against internal wiki chunks.",
-            "prompt": (
-                "You are the retrieval subagent. Use the search_database tool to run similarity "
-                "search over internal data and return concise, grounded findings from retrieved content."
-            ),
-            "tools": ["search_database"],
-        }
-    ]
+    assert captured["tools"] == []
+    assert "Break the user query into focused subquestions" in str(captured["system_prompt"])
+    assert len(captured["subagents"]) == 1
+    sub = captured["subagents"][0]
+    assert sub["name"] == "rag_retriever"
+    assert sub["description"] == "Runs semantic retrieval against internal wiki chunks."
+    assert sub["system_prompt"] == (
+        "You are the retrieval subagent. Use the search_database tool to run similarity "
+        "search over internal data and return concise, grounded findings from retrieved content."
+    )
+    assert len(sub["tools"]) == 1 and sub["tools"][0].name == "search_database"
     assert store.calls == [{"query": "strait of hormuz", "k": 1, "filter": None}]
     assert "Answer based on retrieval:" in result["messages"][-1].content
     assert "Hormuz shipping chokepoint summary." in result["messages"][-1].content

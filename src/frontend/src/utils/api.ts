@@ -37,6 +37,8 @@ export interface RuntimeAgentRunResponse {
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
+/** Agent run can take longer (LLM + RAG + subagent). */
+const AGENT_RUN_TIMEOUT_MS = 180000; // 3 minutes
 
 export async function listWikiSources(): Promise<ApiResult<WikiSourcesResponse>> {
   return requestJson<WikiSourcesResponse>("/api/internal-data/wiki-sources", {
@@ -73,6 +75,7 @@ export async function runAgent(query: string): Promise<ApiResult<RuntimeAgentRun
     method: "POST",
     payload: { query },
     validate: (v): v is RuntimeAgentRunResponse => isObject(v) && typeof v.output === "string",
+    timeoutMs: AGENT_RUN_TIMEOUT_MS,
   });
 }
 
@@ -96,10 +99,12 @@ async function requestJson<T>(
     method: "GET" | "POST";
     validate: (value: unknown) => value is T;
     payload?: unknown;
+    timeoutMs?: number;
   },
 ): Promise<ApiResult<T>> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
