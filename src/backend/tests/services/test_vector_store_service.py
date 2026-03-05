@@ -1,0 +1,82 @@
+import logging
+import sys
+from pathlib import Path
+from uuid import uuid4
+
+from langchain_core.documents import Document
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+from db import DATABASE_URL
+from services.vector_store_service import add_documents_to_store, get_vector_store
+from utils.embeddings import get_embedding_model
+
+
+def test_get_vector_store_logs_created_then_existing(caplog) -> None:
+    embeddings = get_embedding_model()
+    collection_name = f"test_vector_store_{uuid4().hex}"
+
+    with caplog.at_level(logging.INFO):
+        first_store = get_vector_store(
+            connection=DATABASE_URL,
+            collection_name=collection_name,
+            embeddings=embeddings,
+        )
+        second_store = get_vector_store(
+            connection=DATABASE_URL,
+            collection_name=collection_name,
+            embeddings=embeddings,
+        )
+
+    assert first_store.collection_name == collection_name
+    assert second_store.collection_name == collection_name
+    assert "state=created" in caplog.text
+    assert "state=existing" in caplog.text
+
+    second_store.delete_collection()
+
+
+def test_add_documents_to_store_returns_ids_and_persists_wiki_metadata() -> None:
+    embeddings = get_embedding_model()
+    collection_name = f"test_vector_add_{uuid4().hex}"
+    vector_store = get_vector_store(
+        connection=DATABASE_URL,
+        collection_name=collection_name,
+        embeddings=embeddings,
+    )
+
+    documents = [
+        Document(
+            page_content="The Strait of Hormuz is a strategic shipping route.",
+            metadata={
+                "title": "Strait of Hormuz",
+                "source": "https://en.wikipedia.org/wiki/Strait_of_Hormuz",
+            },
+        ),
+        Document(
+            page_content="NATO is a political and military alliance.",
+            metadata={
+                "title": "NATO",
+                "source": "https://en.wikipedia.org/wiki/NATO",
+            },
+        ),
+    ]
+
+    ids = add_documents_to_store(vector_store, documents)
+    assert len(ids) == 2
+    assert all(isinstance(doc_id, str) and doc_id for doc_id in ids)
+
+    results = vector_store.similarity_search("Hormuz shipping route", k=2)
+    assert results
+    assert any(result.metadata.get("wiki_page") for result in results)
+    assert any(result.metadata.get("wiki_url") for result in results)
+    assert any("Hormuz" in result.page_content for result in results)
+
+    # Re-adding to the same collection should not fail and should return new ids.
+    more_ids = add_documents_to_store(vector_store, documents[:1])
+    assert len(more_ids) == 1
+    assert more_ids[0]
+
+    vector_store.delete_collection()

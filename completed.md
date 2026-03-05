@@ -138,3 +138,28 @@
 - Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs show pre-existing startup import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 6 changes.
 
 ---
+## Section 7: Vector store – PGVector get and add documents
+
+**Single goal:** Implement getting a PGVector instance (one collection) and adding documents to it. Collection created if it doesn’t exist. Document metadata includes wiki page name/URL. Add logging.
+
+**Details:**
+- `get_vector_store(connection, collection_name, embeddings) -> PGVector` (e.g. `use_jsonb=True`).
+- `add_documents_to_store(vector_store, documents: list[Document]) -> list[str]` (return ids or similar).
+- One collection for the app; metadata on each doc for wiki page and URL.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/vector_store_service.py` | `get_vector_store(...)` returning `PGVector`; `add_documents_to_store(vector_store, documents)` adding docs and returning ids. Logging (docs added, collection created vs existing). |
+
+**How to test:** Backend pytest. TDD. Create vector store (test DB or in-memory if supported); add documents; assert store has docs and metadata; idempotent add to same collection. Isolate with test DB or cleanup.
+
+**Test results (Docker-based):**
+- Added and ran `docker compose exec backend uv run pytest tests/services/test_vector_store_service.py` (2 passed): verified `get_vector_store` initializes the collection and logs `state=created` then `state=existing` on repeated calls for the same collection; verified `add_documents_to_store` returns IDs, stores documents, preserves searchable content, and normalizes metadata with `wiki_page`/`wiki_url`.
+- Ran `docker compose exec backend uv run pytest` (10 passed): full backend suite green, including new vector store tests and existing API/DB/wiki/embedding tests.
+- Ran `docker compose exec frontend npm run test` (passed, 2 tests).
+- Ran `docker compose exec frontend npm run typecheck` (passed).
+- Ran health check with `curl -sS -i http://localhost:8000/api/health` (failed: `curl: (56) Recv failure: Connection reset by peer`). Backend logs show pre-existing startup import error: `ImportError: cannot import name 'run_runtime_agent' from 'services.agent_service'`; unrelated to Section 7 changes.
+
+---

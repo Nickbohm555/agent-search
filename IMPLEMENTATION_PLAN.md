@@ -4,25 +4,6 @@ Tasks are ordered by **recommended implementation order**. Each section has a **
 
 ---
 
-## Section 7: Vector store – PGVector get and add documents
-
-**Single goal:** Implement getting a PGVector instance (one collection) and adding documents to it. Collection created if it doesn’t exist. Document metadata includes wiki page name/URL. Add logging.
-
-**Details:**
-- `get_vector_store(connection, collection_name, embeddings) -> PGVector` (e.g. `use_jsonb=True`).
-- `add_documents_to_store(vector_store, documents: list[Document]) -> list[str]` (return ids or similar).
-- One collection for the app; metadata on each doc for wiki page and URL.
-
-**Files and purpose**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/services/vector_store_service.py` | `get_vector_store(...)` returning `PGVector`; `add_documents_to_store(vector_store, documents)` adding docs and returning ids. Logging (docs added, collection created vs existing). |
-
-**How to test:** Backend pytest. TDD. Create vector store (test DB or in-memory if supported); add documents; assert store has docs and metadata; idempotent add to same collection. Isolate with test DB or cleanup.
-
----
-
 ## Section 8: Internal data – orchestrate wiki load → chunk → vector store
 
 **Single goal:** Implement `load_internal_data` (wiki path) and `list_wiki_sources_with_load_state` so that “Load Wiki Source” runs: resolve wiki → LangChain Documents → chunk → add to vector store, and the UI can show which sources are loaded.
