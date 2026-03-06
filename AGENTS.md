@@ -33,6 +33,8 @@
 35. Browser debug workflow for E2E feature testing:
 - Start app services: `docker compose up -d backend frontend`.
 - Stop Docker Chrome if it occupies debug port: `docker compose stop chrome`.
+- `launch-devtools.sh` is not a one-time setup command; run it whenever you want to start a new local Chrome DevTools session.
+- If port `9222` is already in use and `curl http://127.0.0.1:9222/json/list` returns targets, reuse that active session instead of relaunching.
 - Launch debug browser: `./launch-devtools.sh http://localhost:5173`.
 - DevTools targets endpoint: `http://127.0.0.1:9222/json/list`.
 - Verify debug endpoint: `curl http://127.0.0.1:9222/json/list` (expect JSON with targets and `webSocketDebuggerUrl`).
