@@ -7,10 +7,15 @@ from services.document_validation_service import parse_retrieved_documents
 
 _NO_EVIDENCE_PATTERNS = (
     "no relevant evidence",
+    "no relevant information",
+    "no information available",
     "insufficient evidence",
     "not enough evidence",
     "unable to determine",
     "cannot determine",
+    "nothing relevant found",
+    "does not contain any information",
+    "does not contain information",
 )
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}")
 _MIN_EVIDENCE_TOKENS = 2

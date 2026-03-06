@@ -5,7 +5,7 @@ Atomic testing sections to verify each implemented part via **docker logs** and 
 **Reference:** AGENTS.md for docker commands, health URL, wipe/load/run APIs, and browser debug workflow (`./launch-devtools.sh http://localhost:5173`, DevTools at `http://127.0.0.1:9222/json/list`).
 
 
-Current section to work on: 1
+Current section to work on: 17
 ---
 
 ## Test Section 1: Stack and health – services up and reachable

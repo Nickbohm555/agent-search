@@ -39,3 +39,14 @@ def test_verify_subanswer_returns_true_when_grounded_in_docs() -> None:
 
     assert result.answerable is True
     assert result.reason == "grounded_in_reranked_documents"
+
+
+def test_verify_subanswer_returns_false_for_no_information_phrase() -> None:
+    result = verify_subanswer(
+        sub_question="What happened in policy XZQ-999?",
+        sub_answer="The provided evidence does not contain any information about policy XZQ-999.",
+        reranked_retrieved_output="1. title=NATO source=wiki://nato content=NATO is a military alliance.",
+    )
+
+    assert result.answerable is False
+    assert result.reason == "subanswer_reports_insufficient_evidence"

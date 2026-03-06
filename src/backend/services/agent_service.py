@@ -67,6 +67,29 @@ def _truncate_query(q: str) -> str:
     return q[: _QUERY_LOG_MAX] + "..." if len(q) > _QUERY_LOG_MAX else q
 
 
+def _normalize_sub_question(text: str) -> str:
+    normalized = (text or "").strip()
+    if not normalized:
+        return ""
+    normalized = normalized.rstrip("?.! ").strip()
+    if not normalized:
+        return ""
+    return f"{normalized}?"
+
+
+def _normalize_sub_qa_questions(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
+    for item in sub_qa:
+        normalized = _normalize_sub_question(item.sub_question)
+        if normalized and normalized != item.sub_question:
+            logger.info(
+                "Normalized sub_question original=%s normalized=%s",
+                _truncate_query(item.sub_question),
+                _truncate_query(normalized),
+            )
+            item.sub_question = normalized
+    return sub_qa
+
+
 def _estimate_retrieved_doc_count(search_output: str) -> int:
     if not isinstance(search_output, str) or not search_output.strip():
         return 0
@@ -268,6 +291,7 @@ def _extract_sub_qa(
                 retrieved_doc_count,
                 len(sub_agent_response),
             )
+        sub_qa = _normalize_sub_qa_questions(sub_qa)
         logger.info("Extracted sub_qa from search_database callback count=%s", len(sub_qa))
         return sub_qa
 
@@ -398,6 +422,7 @@ def _extract_sub_qa(
                 _truncate_query(desc),
             )
 
+    sub_qa = _normalize_sub_qa_questions(sub_qa)
     logger.info("Extracted sub_qa pairs count=%s", len(sub_qa))
     return sub_qa
 
@@ -724,6 +749,11 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         len(sub_qa),
     )
     if refinement_decision.refinement_needed:
+        logger.info(
+            "Refinement path flagged refinement_needed=%s reason=%s",
+            refinement_decision.refinement_needed,
+            _truncate_query(refinement_decision.reason),
+        )
         refined_subquestions = refine_subquestions(
             question=payload.query,
             initial_answer=output,
