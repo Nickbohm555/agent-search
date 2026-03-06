@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 5. (move +1 after each turn)
+Current section to work on: section 6. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -164,7 +164,14 @@ Current section to work on: section 5. (move +1 after each turn)
 
 **How to test:** Run retriever; inspect output for "1. title=… source=…". Read docstring for citation contract.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/tools/test_retriever_tool.py'` -> 3 passed.
+- Retriever output contract remains:
+  - `1. title=Alpha source=wiki://alpha content=First content`
+  - `2. title=Beta source=wiki://beta content=Second content`
+- Live runtime logs include:
+  - `Retriever tool search_database ... citation_contract=index.title.source.content ...`
+  - `GET /api/health HTTP/1.1" 200 OK`
 
 ---
 

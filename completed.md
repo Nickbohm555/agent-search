@@ -172,3 +172,44 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> `20 passed`
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector?"}'` -> `200 OK` with unchanged `RuntimeAgentRunResponse` shape (`main_question`, `sub_qa`, `output`)
+
+---
+
+## Section 5: Retriever tool citation contract
+
+**Onyx article:** Lesson 4 — "Tool Design": return results and let the model choose and cite; preserve identity so "facts don't become disconnected from their sources."
+
+**Single goal:** Ensure the retriever tool returns a stable numbered format (index, title, source, content) and document that format as the citation contract.
+
+**Details:**
+- retriever_tool._format_results should return lines like "1. title=… source=… content=…". Confirm this is stable; document index (1, 2, 3…) is the citation key.
+- Add a docstring or comment in retriever_tool.py: the numbered format is the citation contract for RAG; downstream (subanswer, verification, UI) may cite by [1], [2] etc.
+- No behavior change required if format is already correct; otherwise small tweaks only.
+
+**Tech stack and dependencies**
+- No new packages; retriever_tool.py only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/tools/retriever_tool.py | Confirm _format_results keeps index/title/source; add docstring or comment on citation contract. |
+
+**How to test:** Run retriever; inspect output for "1. title=… source=…". Read docstring for citation contract.
+
+### Completion notes (March 6, 2026)
+- Added `_format_results(...)` docstring in `src/backend/tools/retriever_tool.py` that explicitly defines the stable citation contract shape:
+  - `{index}. title={title} source={source} content={content}`
+  - 1-based index is the canonical citation key for downstream references like `[1]`, `[2]`.
+- Extended retriever runtime log payload to include `citation_contract=index.title.source.content` for operational visibility.
+- Updated `src/backend/tests/tools/test_retriever_tool.py` to assert citation-contract log emission.
+
+### Useful logs
+- `Retriever tool search_database query='strategic shipping' ... result_count=2 citation_contract=index.title.source.content`
+- `docker compose ps` shows `backend` up, `frontend` up, `db` healthy.
+- `INFO: ... "GET /api/health HTTP/1.1" 200 OK`
+- Backend restart and log check completed after code edits.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/tools/test_retriever_tool.py'` -> `3 passed`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`

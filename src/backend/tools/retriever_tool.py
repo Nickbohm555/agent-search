@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 def _format_results(results: list[Document]) -> str:
+    """Return stable numbered retrieval lines used as the citation contract.
+
+    Contract shape (one line per retrieved document):
+    ``{index}. title={title} source={source} content={content}``
+
+    The 1-based index is the canonical citation key used downstream (for example
+    `[1]`, `[2]`) by subanswer generation, verification, and UI rendering.
+    """
     if not results:
         return "No relevant documents found."
 
@@ -50,13 +58,14 @@ def make_retriever_tool(vector_store: Any) -> BaseTool:
         filter_payload = {"source": wiki_source_filter} if wiki_source_filter else None
         results = vector_store.similarity_search(retrieval_query, k=safe_limit, filter=filter_payload)
         logger.info(
-            "Retriever tool search_database query=%r expanded_query=%r retrieval_query=%r limit=%s filter=%s result_count=%s",
+            "Retriever tool search_database query=%r expanded_query=%r retrieval_query=%r limit=%s filter=%s result_count=%s citation_contract=%s",
             query,
             expanded_query,
             retrieval_query,
             safe_limit,
             filter_payload,
             len(results),
+            "index.title.source.content",
         )
         return _format_results(results)
 

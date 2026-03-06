@@ -43,6 +43,7 @@ def test_make_retriever_tool_returns_string_and_respects_limit(caplog) -> None:
     assert "limit=2" in caplog.text
     assert "filter=None" in caplog.text
     assert "result_count=2" in caplog.text
+    assert "citation_contract=index.title.source.content" in caplog.text
 
 
 def test_make_retriever_tool_passes_source_filter() -> None:
