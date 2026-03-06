@@ -381,3 +381,55 @@
 - Response consistency check against reranked sub-questions passed:
   - Extracted the latest 5 `Per-subquestion reranking sub_question=` entries and compared them to `sub_qa[].sub_question` from `/tmp/section8_run.json`.
   - Result: `RERANK_RESPONSE_MATCH:OK` (all reranked sub-questions were present in the response).
+
+## Test Section 9: Per-subquestion subanswer generation (Section 8)
+
+**Single goal:** Logs show subanswer generation start and "Per-subquestion subanswer generated" per sub-question; response sub_qa have non-empty sub_answer.
+
+**Details:**
+- Same run. Logs must show "Per-subquestion subanswer generation start" and "Per-subquestion subanswer generated" with sub_question and generated_len. Response `sub_qa[*].sub_answer` non-empty for generated items.
+
+**Tech stack and dependencies**
+- subanswer_service and agent_service pipeline.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/subanswer_service.py` | Generates subanswers from reranked docs. |
+| `src/backend/services/agent_service.py` | Applies subanswer generation and logs. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Per-subquestion subanswer generation start` and at least one `Per-subquestion subanswer generated sub_question=... generated_len=...`.
+3. Response: at least one `sub_qa` entry has non-empty `sub_answer`.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+**Test results:**
+- Fresh full restart/build completed before running this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Service startup logs viewed after build/start:
+  - `docker compose logs --tail=40 backend` (Alembic + Uvicorn startup)
+  - `docker compose logs --tail=20 frontend` (Vite ready on `http://localhost:5173/`)
+  - `docker compose logs --tail=20 db` (PostgreSQL ready)
+- Section 9 execution flow and API outcomes:
+  - `POST /api/internal-data/wipe` => `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200.
+- Required backend log assertions passed:
+  - `Per-subquestion subanswer generation start count=1` found (multiple matches).
+  - `Per-subquestion subanswer generated sub_question=... generated_len=...` found for multiple sub-questions.
+  - Examples from logs:
+    - `Per-subquestion subanswer generated sub_question=What is Article 5 in NATO policy and when was it invoked? generated_len=302`
+    - `Per-subquestion subanswer generated sub_question=NATO policy changes over time major shifts after Cold War recent adaptations? generated_len=473`
+  - Run completion confirmed:
+    - `Runtime agent run complete ...`
+    - `POST /api/agents/run HTTP/1.1" 200 OK`
+- Response assertion passed:
+  - `/tmp/section9_run.json` contains non-empty `sub_qa[*].sub_answer` (multiple populated entries).
+
