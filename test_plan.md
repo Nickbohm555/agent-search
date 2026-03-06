@@ -440,9 +440,3 @@ Current section to work on: 1
 - Snapshot summaries and console/network outcomes.
 
 ---
-
-**MANDATORY before marking any test section complete:**
-1. **Restart the application** after any code changes that affect that section (e.g. `docker compose restart backend`).
-2. **Check backend logs** (`docker compose logs --tail=... backend`) and **run the section’s steps** (curl, browser, log grep).
-3. **If anything fails** (non-200, missing log lines, UI not updating, errors in console): fix the cause, restart, and re-run the section. Do **not** mark the section complete until all checks pass.
-4. Only then fill in **Test results** for that section.

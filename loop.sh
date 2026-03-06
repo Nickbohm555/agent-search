@@ -5,6 +5,10 @@ set -euo pipefail
 #   ./loop.sh                               # Build mode, unlimited
 #   ./loop.sh 20                            # Build mode, max 20
 #   ./loop.sh build 15                      # Build mode, max 15 (explicit)
+#   ./loop.sh test                          # Test mode (prompt_test.md), unlimited
+#   ./loop.sh test 5                        # Test mode, max 5
+#   ./loop.sh architecture                  # Architecture mode (prompt_architecture.md), unlimited
+#   ./loop.sh architecture 5                # Architecture mode, max 5
 #   ./loop.sh plan                          # Full planning, unlimited
 #   ./loop.sh plan 5                        # Full planning, max 5
 #   ./loop.sh plan-work "user auth"         # Scoped planning, default max 5
@@ -18,6 +22,14 @@ WORK_SCOPE="${WORK_SCOPE:-}"
 if [ "${1:-}" = "plan" ]; then
   MODE="plan"
   PROMPT_FILE="PROMPT_plan.md"
+  MAX_ITERATIONS="${2:-0}"
+elif [ "${1:-}" = "test" ]; then
+  MODE="test"
+  PROMPT_FILE="prompt_test.md"
+  MAX_ITERATIONS="${2:-0}"
+elif [ "${1:-}" = "architecture" ]; then
+  MODE="architecture"
+  PROMPT_FILE="prompt_architecture.md"
   MAX_ITERATIONS="${2:-0}"
 elif [ "${1:-}" = "plan-work" ]; then
   MODE="plan-work"
