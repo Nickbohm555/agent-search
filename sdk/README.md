@@ -68,6 +68,28 @@ Use the checked-in example script:
 AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py
 ```
 
+### Updating the SDK
+
+When backend routes or schema change, refresh the SDK in this exact order:
+
+1. Re-export the canonical OpenAPI spec (**S1**):
+
+```bash
+uv run --project src/backend python scripts/export_openapi.py
+```
+
+2. Regenerate the Python SDK from that spec (**S5**):
+
+```bash
+./scripts/generate_sdk.sh
+```
+
+3. Review generated changes and commit updated `openapi.json` and `sdk/python` files:
+
+```bash
+git status -- openapi.json sdk/python
+```
+
 ## Repository policy
 
 Generated files under `sdk/python` are committed to git (not ignored).  

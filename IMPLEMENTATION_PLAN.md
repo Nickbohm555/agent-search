@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S9. (move +1 after each turn)
+Current section to work on: section S10. (move +1 after each turn)
 
 ---
 
@@ -207,7 +207,21 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Follow the doc in a clean venv; confirm install and one successful call (against running API or mock).
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- Added `### Updating the SDK` to `sdk/README.md` with explicit ordered steps:
+  1. `uv run --project src/backend python scripts/export_openapi.py` (**S1**)
+  2. `./scripts/generate_sdk.sh` (**S5**)
+  3. `git status -- openapi.json sdk/python`
+- Executed the documented refresh workflow end-to-end:
+  - `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical `openapi.json` (`openapi_version=3.1.0`, expected API paths present).
+  - `./scripts/generate_sdk.sh` -> regenerated `sdk/python` successfully via Docker OpenAPI Generator.
+- Restarted the full application stack and reviewed logs for required visibility:
+  - `docker compose restart` -> restarted `backend`, `frontend`, `db`, and `chrome`.
+  - `docker compose ps` -> `db` healthy; `backend`, `frontend`, and `chrome` up.
+  - `docker compose logs --no-color --tail=180 backend`, `frontend`, and `db` reviewed; no blocking startup/runtime errors.
+- Runtime verification after restart:
+  - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
+  - In a clean venv, `pip install -e sdk/python` and `AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> success (`{'status': 'ok'}`).
 
 ---
 

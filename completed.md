@@ -903,3 +903,61 @@
 - `curl -sS -i http://localhost:8000/api/health` -> transient connection reset observed during immediate post-restart window.
 - Retry health check after stabilization:
   - `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
+
+---
+
+## Section S9: Document “Updating the SDK” workflow
+
+**Single goal:** Document the steps to refresh the SDK when the API or spec changes (re-export spec, then re-run generator).
+
+**Details:**
+- Add “Updating the SDK” subsection to README or sdk/README: run export script, then generate script; link to S1 and S5.
+- No automation required in this section; docs only.
+
+**Tech stack and dependencies**
+- None.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/README.md` or `agent-search/sdk/README.md` | “Updating the SDK” subsection with ordered steps. |
+
+**How to test:** Change a route or schema, follow the documented steps, confirm generated SDK reflects the change.
+
+### Completion notes (March 6, 2026)
+- Added `### Updating the SDK` subsection to `sdk/README.md` with explicit ordered workflow and direct linkage to **S1** (`export_openapi.py`) and **S5** (`generate_sdk.sh`).
+- Included a review step (`git status -- openapi.json sdk/python`) so generated artifacts are consistently verified before commit.
+- Executed the documented update steps end-to-end and validated the generated SDK still runs against the live backend.
+
+### Useful logs
+- OpenAPI export:
+  - `2026-03-06 17:48:19,856 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json canonical_output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json openapi_version=3.1.0 path_count=5 sample_paths=['/api/agents/run', '/api/health', '/api/internal-data/load', '/api/internal-data/wiki-sources', '/api/internal-data/wipe']`
+- SDK generation:
+  - `2026-03-06T22:48:21Z INFO generate_sdk: starting image=openapitools/openapi-generator-cli lang=python spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+  - `OpenAPI Generator: python (client)`
+  - `writing file /local/sdk/python/openapi_client/api/agents_api.py`
+  - `writing file /local/sdk/python/openapi_client/configuration.py`
+  - `2026-03-06T22:48:26Z INFO generate_sdk: generation complete spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+- Container restart and runtime visibility:
+  - `docker compose restart` restarted `backend`, `frontend`, `db`, and `chrome`.
+  - `docker compose ps` shows `agent-search-db ... Up ... (healthy)` and `agent-search-backend` / `agent-search-frontend` / `agent-search-chrome` up.
+  - Backend logs include `Uvicorn running on http://0.0.0.0:8000` and `Application startup complete.`
+  - Frontend logs include `VITE v5.4.21 ready` and `Local:   http://localhost:5173/`.
+  - DB logs include `database system is ready to accept connections`.
+- Health + SDK runtime checks:
+  - `HTTP/1.1 200 OK` with `{"status":"ok"}` from `GET /api/health`.
+  - `2026-03-06 17:49:02,002 INFO run_health: starting health check base_url=http://localhost:8000`
+  - `2026-03-06 17:49:02,020 INFO run_health: health check succeeded status=ok`
+  - `{'status': 'ok'}`
+
+### Tests run
+- `uv run --project src/backend python scripts/export_openapi.py` -> pass.
+- `./scripts/generate_sdk.sh` -> pass.
+- `docker compose restart` -> pass.
+- `docker compose ps` -> pass (`db` healthy; `backend`/`frontend`/`chrome` up).
+- `docker compose logs --no-color --tail=180 backend` -> reviewed; no blocking errors.
+- `docker compose logs --no-color --tail=180 frontend` -> reviewed; no blocking errors.
+- `docker compose logs --no-color --tail=180 db` -> reviewed; no blocking errors.
+- `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
+- `python3 -m venv .venv-sdk-s9 && source .venv-sdk-s9/bin/activate && pip install -e sdk/python && AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> pass.
