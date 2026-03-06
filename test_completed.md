@@ -330,3 +330,54 @@
   - `Initial decomposition context built query=What changed in NATO policy? docs=5 ...`
   - `Per-subquestion search callbacks captured count=6`
   - `Per-subquestion search result ... docs_retrieved=10` (multiple entries)
+
+## Test Section 8: Per-subquestion reranking (Section 7)
+
+**Single goal:** Backend logs show reranking stage with config and per-subquestion top_document; response sub_qa order/content consistent with reranked docs.
+
+**Details:**
+- Same run. Logs must show "Per-subquestion reranking start" (with top_n, weights) and "Per-subquestion reranking sub_question=" with `docs_before=`, `docs_after=`, `top_document=`.
+
+**Tech stack and dependencies**
+- reranker_service and agent_service pipeline.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/reranker_service.py` | Reranks validated docs. |
+| `src/backend/services/agent_service.py` | Applies reranking and logs. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Per-subquestion reranking start` and at least one `Per-subquestion reranking sub_question=... top_document=...`.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+**Test results:**
+- Fresh full restart/build/start completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Startup/infra checks and logs captured for all built services:
+  - `docker compose ps` showed `backend`, `frontend`, `db`, and `chrome` up (`db` healthy).
+  - `curl http://localhost:8000/api/health` => HTTP `200`, body `{"status":"ok"}`.
+  - `docker compose logs --tail=80 db` showed PostgreSQL init + `database system is ready to accept connections`.
+  - `docker compose logs --tail=120 backend` showed Alembic upgrade + Uvicorn startup.
+  - `docker compose logs --tail=80 frontend` showed Vite ready at `http://localhost:5173/`.
+  - `docker compose logs --tail=40 chrome` showed browserless startup on port `3000`.
+- Section 8 run inputs/results:
+  - `POST /api/internal-data/wipe` => HTTP `200`, body: `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => HTTP `200`, body: `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP `200`
+  - Response summary (`/tmp/section8_run.json`): `main_question` present, `sub_qa_count=5`, `non_empty_sub_answer_count=5`, `output_len=528`.
+- Required reranking log assertions passed (`docker compose logs backend`):
+  - `Per-subquestion reranking start count=1 top_n=None title_weight=1.3 content_weight=1.0 source_weight=0.3 original_rank_bias=0.05`
+  - `Per-subquestion reranking sub_question=How did NATO's policy change after the Cold War? ... docs_before=10 docs_after=10 top_document=NATO`
+  - `Per-subquestion reranking sub_question=NATO policy changes after the dissolution of the Soviet Union? ... docs_before=10 docs_after=10 top_document=NATO`
+  - Backend completion log: `Runtime agent run complete ...` and `POST /api/agents/run HTTP/1.1" 200 OK`.
+- Response consistency check against reranked sub-questions passed:
+  - Extracted the latest 5 `Per-subquestion reranking sub_question=` entries and compared them to `sub_qa[].sub_question` from `/tmp/section8_run.json`.
+  - Result: `RERANK_RESPONSE_MATCH:OK` (all reranked sub-questions were present in the response).
