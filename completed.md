@@ -1060,3 +1060,55 @@
 - `curl -sS http://localhost:8000/api/health` -> pass.
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (200 with `main_question`, `sub_qa`, `output` response shape).
 - `docker compose logs --tail 80 backend db frontend` -> reviewed for visibility; no change-specific blocking errors.
+
+---
+
+## Section 2: Optional vector store parameter at run entry
+
+**Single goal:** Allow the run entry point to accept an optional vector store instance so callers can supply their own store; when not provided, keep current `get_vector_store(...)` from env/DB.
+
+**Details:**
+- Add optional `vector_store` parameter to `run_runtime_agent` (and any public SDK entry).
+- When provided, use it for initial search, coordinator retriever, and refinement retrieval; when not provided, call `get_vector_store(connection=..., collection_name=..., embeddings=...)` as today.
+- Do not change request/response schema in this section; focus on the service layer.
+
+### Completion notes (March 6, 2026)
+- Updated `src/backend/services/agent_service.py` to accept optional `vector_store: Any | None = None` on `run_runtime_agent(...)`.
+- Added selection logic:
+  - Uses caller-provided vector store when present.
+  - Falls back to existing `get_vector_store(connection=DATABASE_URL, collection_name=_VECTOR_COLLECTION_NAME, embeddings=get_embedding_model())` path when omitted.
+- Threaded selected vector store through all required retrieval paths:
+  - initial search (`search_documents_for_context` before decomposition),
+  - coordinator creation (`create_coordinator_agent(vector_store=...)`),
+  - refinement retrieval (`_seed_refined_sub_qa_from_retrieval(vector_store=...)`).
+- Added visibility logs for vector store source:
+  - `provided_vector_store` at run start,
+  - `Runtime agent vector store selected source=default|provided`.
+- Added coverage in `src/backend/tests/services/test_agent_service.py`:
+  - new test asserts provided vector store bypasses `get_vector_store` and is used in initial search, coordinator, and refinement retrieval.
+  - default path remains covered by existing tests with `get_vector_store` monkeypatched and asserted.
+
+### Useful logs
+- Unit tests:
+  - `============================== 21 passed in 4.20s ==============================`
+- Backend restart + health:
+  - `Container agent-search-backend  Restarting`
+  - `Container agent-search-backend  Started`
+  - `{"status":"ok"}` from `GET /api/health`
+- Runtime visibility:
+  - `Runtime agent run start query=What is pgvector used for? query_length=26 provided_model=False provided_vector_store=False`
+  - `Runtime agent vector store selected source=default collection_name=agent_search_internal_data`
+- API smoke:
+  - `POST /api/agents/run` returned HTTP `200`
+  - Response shape includes `main_question`, `sub_qa`, `output`
+- Container log checks performed for all relevant services:
+  - `docker compose logs --tail=200 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> pass (`21 passed`).
+- `docker compose restart backend` -> pass.
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`).
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`).
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific blocking errors.

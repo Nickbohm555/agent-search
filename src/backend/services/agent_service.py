@@ -832,22 +832,32 @@ def run_runtime_agent(
     payload: RuntimeAgentRunRequest,
     db: Session,
     model: BaseChatModel | None = None,
+    vector_store: Any | None = None,
 ) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     selected_model: BaseChatModel | str = model if model is not None else _RUNTIME_AGENT_MODEL
     logger.info(
-        "Runtime agent run start query=%s query_length=%s provided_model=%s",
+        "Runtime agent run start query=%s query_length=%s provided_model=%s provided_vector_store=%s",
         _truncate_query(payload.query),
         len(payload.query),
         model is not None,
+        vector_store is not None,
     )
-    vector_store = get_vector_store(
-        connection=DATABASE_URL,
-        collection_name=_VECTOR_COLLECTION_NAME,
-        embeddings=get_embedding_model(),
-    )
+    selected_vector_store = vector_store
+    if selected_vector_store is None:
+        selected_vector_store = get_vector_store(
+            connection=DATABASE_URL,
+            collection_name=_VECTOR_COLLECTION_NAME,
+            embeddings=get_embedding_model(),
+        )
+        logger.info(
+            "Runtime agent vector store selected source=default collection_name=%s",
+            _VECTOR_COLLECTION_NAME,
+        )
+    else:
+        logger.info("Runtime agent vector store selected source=provided")
     initial_context_docs = search_documents_for_context(
-        vector_store=vector_store,
+        vector_store=selected_vector_store,
         query=payload.query,
         k=_INITIAL_SEARCH_CONTEXT_K,
         score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
@@ -880,7 +890,7 @@ def run_runtime_agent(
         json.dumps(decomposition_sub_questions, ensure_ascii=True),
     )
     agent = create_coordinator_agent(
-        vector_store=vector_store,
+        vector_store=selected_vector_store,
         model=selected_model,
     )
     search_db_capture = SearchDatabaseCaptureCallback()
@@ -973,7 +983,7 @@ def run_runtime_agent(
                 len(refined_subquestions),
             )
             refined_seed_sub_qa = _seed_refined_sub_qa_from_retrieval(
-                vector_store=vector_store,
+                vector_store=selected_vector_store,
                 refined_subquestions=refined_subquestions,
             )
             refined_sub_qa = run_pipeline_for_subquestions(refined_seed_sub_qa)

@@ -356,6 +356,121 @@ def test_run_runtime_agent_uses_provided_model_for_coordinator_and_decomposition
     assert captured["decomposition_model"] is provided_model
 
 
+def test_run_runtime_agent_uses_provided_vector_store_for_search_coordinator_and_refinement(monkeypatch) -> None:
+    captured: dict[str, object] = {"search_calls": []}
+
+    class _FakeAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "What changed in policy X?", "subagent_type": "rag_retriever"},
+                            }
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What changed in policy X?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy X evidence.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent completed policy X."),
+                    AIMessage(content="Coordinator output"),
+                ]
+            }
+
+    provided_vector_store = object()
+
+    def fail_if_get_vector_store_called(**kwargs):
+        raise AssertionError("get_vector_store should not be called when vector_store is provided")
+
+    def fake_search_documents_for_context(*, vector_store, query, k, score_threshold):
+        captured["search_calls"].append(
+            {
+                "vector_store": vector_store,
+                "query": query,
+                "k": k,
+                "score_threshold": score_threshold,
+            }
+        )
+        return []
+
+    monkeypatch.setattr(agent_service, "get_vector_store", fail_if_get_vector_store_called)
+    monkeypatch.setattr(agent_service, "search_documents_for_context", fake_search_documents_for_context)
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "create_coordinator_agent",
+        lambda *, vector_store, model: captured.update({"coordinator_vector_store": vector_store}) or _FakeAgent(),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["What changed in policy X?"]',
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: (
+            "Initial synthesized output"
+            if len(initial_search_context) == 0 and len(sub_qa) == 1 and sub_qa[0].sub_question == "What changed in policy X?"
+            else "Refined synthesized output"
+        ),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "Generated subanswer from reranked docs.",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=False,
+            reason="insufficient_grounding",
+        ),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: type(
+            "Decision",
+            (),
+            {"refinement_needed": True, "reason": "low_answerable_ratio"},
+        )(),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "refine_subquestions",
+        lambda *, question, initial_answer, sub_qa: ["Which source confirms policy X changes?"],
+    )
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="What changed in policy X?"),
+        db=_make_session(),
+        vector_store=provided_vector_store,
+    )
+
+    assert response.output == "Refined synthesized output"
+    assert captured["coordinator_vector_store"] is provided_vector_store
+    assert len(captured["search_calls"]) >= 2
+    assert captured["search_calls"][0]["query"] == "What changed in policy X?"
+    assert captured["search_calls"][0]["vector_store"] is provided_vector_store
+    assert captured["search_calls"][1]["query"] == "Which source confirms policy X changes?"
+    assert captured["search_calls"][1]["vector_store"] is provided_vector_store
+
+
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
     answer_calls: list[dict[str, object]] = []
