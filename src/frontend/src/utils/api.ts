@@ -46,8 +46,12 @@ export interface RuntimeAgentRunResponse {
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 /** Agent run can take longer (LLM + RAG + subagent). */
-const AGENT_RUN_TIMEOUT_MS = 180000; // 3 minutes
+const AGENT_RUN_TIMEOUT_MS = parseTimeoutMs(
+  import.meta.env.VITE_AGENT_RUN_TIMEOUT_MS,
+  DEFAULT_AGENT_RUN_TIMEOUT_MS,
+);
 
 export async function listWikiSources(): Promise<ApiResult<WikiSourcesResponse>> {
   return requestJson<WikiSourcesResponse>("/api/internal-data/wiki-sources", {
@@ -86,6 +90,13 @@ export async function runAgent(query: string): Promise<ApiResult<RuntimeAgentRun
     validate: (v): v is RuntimeAgentRunResponse => validateRuntimeAgentRunResponse(v),
     timeoutMs: AGENT_RUN_TIMEOUT_MS,
   });
+}
+
+function parseTimeoutMs(value: unknown, fallbackMs: number): number {
+  if (typeof value !== "string" || value.trim().length === 0) return fallbackMs;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallbackMs;
+  return Math.floor(parsed);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
