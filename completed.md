@@ -80,3 +80,49 @@
 
 ### Tests run
 - `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> `20 passed`
+
+---
+
+## Section 3: Coordinator receives only sub-questions (no decomposition in same context)
+
+**Onyx article:** Lesson 1 — Plan is the only context brought into the research phase; "contrast this with instructing the LLM to first generate a plan then immediately execute on it" (avoid that; we do decomposition then hand off).
+
+**Single goal:** Coordinator receives only the list of sub-questions from Sections 1–2; it does not perform decomposition in the same context.
+
+**Details:**
+- Agent_service builds the coordinator input from the Section 2 sub-questions list only (e.g. a single HumanMessage listing them). Do not pass the full "Decomposition input" that asks the coordinator to derive sub-questions from context.
+- Update _COORDINATOR_PROMPT: remove or narrow decomposition rules; state that sub-questions are provided and the coordinator must call write_todos, maintain the flow file, and delegate each via task(description=sub_question).
+- _extract_sub_qa and the per-subquestion pipeline unchanged; only the input and coordinator role change.
+- Update docs/section-03: note that decomposition is isolated in Sections 1–2.
+
+**Tech stack and dependencies**
+- No new packages; prompt and message-building only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/services/agent_service.py | Build coordinator message from sub-questions list (not _build_coordinator_input_message(query, context)). |
+| src/backend/agents/coordinator.py | Update _COORDINATOR_PROMPT: no decomposition; receive sub-questions; write_todos, flow, task(description=sub_question). |
+| docs/section-03-question-decomposition-informed-by-context.md | Note decomposition is done in a prior step (Sections 1–2). |
+
+**How to test:** Run a query; confirm coordinator receives a message that lists sub-questions (not "derive sub-questions from context"). Confirm task() calls match that list. Extend test_agent_service / test_coordinator_agent as needed.
+
+### Completion notes (March 6, 2026)
+- Updated `agent_service._build_coordinator_input_message(...)` to accept only the normalized sub-question list and removed query/context decomposition payload from coordinator input.
+- Updated coordinator handoff logging to `Coordinator sub-question input prepared ...` including delegated sub-question list for visibility.
+- Updated `_COORDINATOR_PROMPT` so stage 2 consumes provided sub-questions and explicitly forbids same-context decomposition.
+- Rewrote `docs/section-03-question-decomposition-informed-by-context.md` to document isolated decomposition handoff from Sections 1–2 into coordinator delegation.
+- Updated backend tests (`test_agent_service`, `test_coordinator_agent`) to validate new coordinator input contract and prompt semantics.
+
+### Useful logs
+- `Runtime agent run start query=What is pgvector used for? query_length=26`
+- `Decomposition output parsed sub_question_count=2 sub_questions=["What is pgvector?", "What are the use cases of pgvector?"]`
+- `Coordinator sub-question input prepared parsed_sub_questions=2 sub_questions=["What is pgvector?", "What are the use cases of pgvector?"]`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `docker compose ps` shows `db` healthy and `backend/frontend/chrome` up.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> `20 passed`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK`

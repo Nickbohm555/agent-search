@@ -194,25 +194,16 @@ def _stringify_message_content(content: Any) -> str:
     return str(content)
 
 
-def _build_coordinator_input_message(
-    query: str,
-    initial_search_context: list[dict[str, Any]],
-    decomposition_sub_questions: list[str],
-) -> str:
-    serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
+def _build_coordinator_input_message(decomposition_sub_questions: list[str]) -> str:
     serialized_subquestions = json.dumps(decomposition_sub_questions, ensure_ascii=True)
     return (
-        "Decomposition input:\n"
-        f"User question:\n{query}\n\n"
-        "Initial retrieval context for decomposition (top-k from the original question):\n"
-        f"{serialized_context}\n\n"
-        "Normalized decomposition output (contract-compliant list of sub-questions):\n"
+        "Provided sub-questions for delegation:\n"
         f"{serialized_subquestions}\n\n"
-        "Decomposition constraints:\n"
-        "- Produce narrow sub-questions only.\n"
-        "- One concept per sub-question.\n"
-        "- Every sub-question must be a complete question ending with '?'.\n"
-        "- Prefer entities and concepts surfaced in the provided context."
+        "Delegation requirements:\n"
+        "- These sub-questions are already decomposed and normalized.\n"
+        "- Delegate each provided sub-question via task(description=<exact sub-question>).\n"
+        "- Preserve the provided order and trailing '?'.\n"
+        "- Do not create new decomposition sub-questions unless refinement is explicitly required later."
     )
 
 
@@ -856,16 +847,11 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         langfuse_callback is not None,
     )
     config = {"callbacks": callbacks}
-    coordinator_message = _build_coordinator_input_message(
-        payload.query,
-        initial_search_context,
-        decomposition_sub_questions,
-    )
+    coordinator_message = _build_coordinator_input_message(decomposition_sub_questions)
     logger.info(
-        "Coordinator decomposition input prepared query=%s context_items=%s parsed_sub_questions=%s",
-        _truncate_query(payload.query),
-        len(initial_search_context),
+        "Coordinator sub-question input prepared parsed_sub_questions=%s sub_questions=%s",
         len(decomposition_sub_questions),
+        json.dumps(decomposition_sub_questions, ensure_ascii=True),
     )
     try:
         result = agent.invoke(

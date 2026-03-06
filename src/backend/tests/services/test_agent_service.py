@@ -257,22 +257,17 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert captured["initial_answer_input"]["sub_qa_count"] == 1
     assert captured["initial_answer_input"]["initial_search_context"][0]["title"] == "NATO"
     coordinator_message = captured["payload"]["messages"][0].content
-    assert "Decomposition input:" in coordinator_message
-    assert "User question:" in coordinator_message
-    assert "What happened in NATO policy?" in coordinator_message
-    assert "Initial retrieval context for decomposition" in coordinator_message
-    assert '"title": "NATO"' in coordinator_message
-    assert "Normalized decomposition output (contract-compliant list of sub-questions)" in coordinator_message
+    assert "Provided sub-questions for delegation:" in coordinator_message
     assert '"What changed in NATO policy?"' in coordinator_message
     assert '"Why did NATO policy change?"' in coordinator_message
-    assert "Decomposition constraints:" in coordinator_message
-    assert "One concept per sub-question." in coordinator_message
-    assert "Every sub-question must be a complete question ending with '?'." in coordinator_message
+    assert "Delegation requirements:" in coordinator_message
+    assert "Delegate each provided sub-question via task(description=<exact sub-question>)." in coordinator_message
+    assert "Do not create new decomposition sub-questions" in coordinator_message
     assert "Runtime agent run start" in caplog.text
     assert "Initial decomposition context built" in caplog.text
     assert "Decomposition-only LLM output captured" in caplog.text
     assert "Decomposition output parsed sub_question_count=2" in caplog.text
-    assert "Coordinator decomposition input prepared" in caplog.text
+    assert "Coordinator sub-question input prepared parsed_sub_questions=2" in caplog.text
 
 
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
@@ -389,19 +384,13 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
     assert "Runtime agent run complete" in caplog.text
 
 
-def test_build_coordinator_input_message_includes_context_and_constraints_when_empty_context() -> None:
-    message = agent_service._build_coordinator_input_message(
-        "Explain VAT changes",
-        [],
-        ["What changed in VAT policy?"],
-    )
+def test_build_coordinator_input_message_lists_provided_sub_questions_for_delegation() -> None:
+    message = agent_service._build_coordinator_input_message(["What changed in VAT policy?"])
 
-    assert "User question:\nExplain VAT changes" in message
-    assert "Initial retrieval context for decomposition" in message
-    assert "[]" in message
+    assert "Provided sub-questions for delegation:" in message
     assert '["What changed in VAT policy?"]' in message
-    assert "Decomposition constraints:" in message
-    assert "Every sub-question must be a complete question ending with '?'." in message
+    assert "Delegation requirements:" in message
+    assert "Delegate each provided sub-question via task(description=<exact sub-question>)." in message
 
 
 def test_parse_decomposition_output_accepts_json_array_and_normalizes_questions() -> None:

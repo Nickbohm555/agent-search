@@ -70,10 +70,12 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     )
     assert "Do not call write_file on an existing file path." in str(captured["system_prompt"])
     assert "/runtime/coordinator_flow.md" in str(captured["system_prompt"])
-    assert "Initial retrieval context for decomposition" in str(captured["system_prompt"])
-    assert "Use that context to derive context-aware initial sub-questions" in str(captured["system_prompt"])
-    assert "always end each sub-question with '?'" in str(captured["system_prompt"])
-    assert "When delegating with task(), pass the exact sub-question in description" in str(captured["system_prompt"])
+    assert "The user message will provide the exact initial sub-questions." in str(captured["system_prompt"])
+    assert "Do not decompose again in this same context window." in str(captured["system_prompt"])
+    assert "Delegate each provided sub-question via task(description=<exact sub-question>)." in str(
+        captured["system_prompt"]
+    )
+    assert "Preserve the provided order and trailing '?'" in str(captured["system_prompt"])
     assert "For each initial sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check." in str(
         captured["system_prompt"]
     )
