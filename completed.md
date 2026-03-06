@@ -478,3 +478,47 @@
   - `POST /api/agents/run HTTP/1.1" 200 OK`
 
 ---
+
+## Section S1: Add script to export OpenAPI from FastAPI app to a file
+
+**Single goal:** Add a script that loads the FastAPI app, calls `app.openapi()`, and writes the OpenAPI spec to a file (no running server required).
+
+**Details:**
+- Script must be runnable from repo (e.g. `python scripts/export_openapi.py` or from backend dir).
+- Output path may be configurable or fixed; schema must include all mounted routes (`/api/health`, `/api/agents/*`, `/api/internal-data/*`).
+
+**Tech stack and dependencies**
+- FastAPI (existing). Optional: `pyyaml` if writing YAML; otherwise JSON is fine.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/scripts/export_openapi.py` | Loads app, calls `app.openapi()`, writes spec to a file. |
+
+**How to test:** Run the script; confirm the output file exists and contains OpenAPI 3.x paths and components.
+
+### Completion notes (March 6, 2026)
+- Added `scripts/export_openapi.py` to load FastAPI app from `src/backend/main.py`, call `app.openapi()`, and export JSON schema without starting the server.
+- Added configurable output path via `--output` (default `openapi.json`) with path normalization to repo root.
+- Added INFO log visibility in script output: exported file path, OpenAPI version, total path count, and sample exported routes.
+- Confirmed exported schema contains required API routes and components.
+
+### Useful logs
+- `2026-03-06 17:29:33,061 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json openapi_version=3.1.0 path_count=5 sample_paths=['/api/agents/run', '/api/health', '/api/internal-data/load', '/api/internal-data/wiki-sources', '/api/internal-data/wipe']`
+- `docker compose restart` showed all services restarted successfully (`backend`, `frontend`, `db`, `chrome`).
+- Backend logs after restart:
+  - `INFO: Uvicorn running on http://0.0.0.0:8000`
+  - `INFO: Application startup complete.`
+- Frontend logs after restart:
+  - `VITE v5.4.21 ready in ...`
+  - `Local: http://localhost:5173/`
+- DB logs after restart:
+  - `database system is ready to accept connections`
+- Health check after restart:
+  - `HTTP/1.1 200 OK` for `GET /api/health`.
+
+### Tests run
+- `uv run --project src/backend python scripts/export_openapi.py` -> pass, `openapi.json` generated.
+- `python - <<'PY' ...` schema verification -> pass (`openapi_version: 3.1.0`, `has_components: True`, all required `/api/*` paths present).
+- `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK`.
