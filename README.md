@@ -244,6 +244,18 @@ Direct Docker equivalent:
 docker run --rm -v "$(pwd):/local" openapitools/openapi-generator-cli validate -i /local/openapi.json
 ```
 
+Generate Python SDK with Docker (no local OpenAPI Generator install):
+
+```bash
+docker run --rm \
+  -u "$(id -u):$(id -g)" \
+  -v "$(pwd):/local" \
+  openapitools/openapi-generator-cli generate \
+  -i /local/openapi.json \
+  -g python \
+  -o /local/sdk/python
+```
+
 ## Links
 
 ```text

@@ -616,3 +616,53 @@
 - Backend logs: `Application startup complete.` and `GET /api/health ... 200 OK` after restart.
 - Frontend logs: `VITE v5.4.21 ready` and `Local: http://localhost:5173/` after restart.
 - DB logs after restart end in: `database system is ready to accept connections`.
+
+---
+
+## Section S4: Docker command for OpenAPI Generator (Python client)
+
+**Single goal:** Document the exact `docker run` command that generates the Python SDK from the canonical spec, with no local generator install.
+
+**Details:**
+- Use image `openapitools/openapi-generator-cli`; mount repo (or spec dir) so `-i` and `-o` point at host paths.
+- Output to a dedicated directory (e.g. `sdk/python/` or `agent-search-python-sdk/`). No script yet; command only.
+
+**Tech stack and dependencies**
+- Docker.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/README.md` or `agent-search/sdk/README.md` | Document the one-line `docker run ... generate -i ... -g python -o ...` command. |
+
+**How to test:** Run the documented command; confirm output directory exists and contains generated Python client (e.g. `api/`, `models/`, `configuration.py`).
+
+### Completion notes (March 6, 2026)
+- Added the exact Docker OpenAPI Generator command to `README.md` under the OpenAPI section.
+- Chosen SDK output path is `sdk/python` (dedicated generated-client directory).
+- Included `-u "$(id -u):$(id -g)"` in the command so generated files are owned by the current host user.
+- Verified the command generates a complete Python SDK layout from canonical `openapi.json`.
+
+### Useful logs
+- `2026-03-06 17:36:06,716 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json canonical_output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json openapi_version=3.1.0 path_count=5 sample_paths=['/api/agents/run', '/api/health', '/api/internal-data/load', '/api/internal-data/wiki-sources', '/api/internal-data/wipe']`
+- OpenAPI Generator output includes:
+  - `OpenAPI Generator: python (client)`
+  - `writing file /local/sdk/python/openapi_client/api/agents_api.py`
+  - `writing file /local/sdk/python/openapi_client/models/runtime_agent_run_response.py`
+  - `writing file /local/sdk/python/openapi_client/configuration.py`
+- Backend logs after restart include `Application startup complete.` and `GET /api/health HTTP/1.1" 200 OK`.
+- Frontend logs after restart include `VITE v5.4.21 ready` and `Local: http://localhost:5173/`.
+- DB logs after restart end with `database system is ready to accept connections`.
+- `docker compose ps` after restart:
+  - `agent-search-db ... Up ... (healthy)`
+  - `agent-search-backend ... Up`
+  - `agent-search-frontend ... Up`
+
+### Tests run
+- `uv run --project src/backend python scripts/export_openapi.py` -> pass; refreshed `openapi.json`.
+- `docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd):/local" openapitools/openapi-generator-cli generate -i /local/openapi.json -g python -o /local/sdk/python` -> pass; SDK generated.
+- `ls -la sdk/python` and `rg --files sdk/python` -> pass; confirmed presence of `openapi_client/api`, `openapi_client/models`, and `openapi_client/configuration.py`.
+- `docker compose restart db backend frontend` -> pass.
+- `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed; no blocking errors.
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.

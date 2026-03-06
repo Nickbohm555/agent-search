@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S4. (move +1 after each turn)
+Current section to work on: section S5. (move +1 after each turn)
 
 ---
 
@@ -112,7 +112,14 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Run the documented command; confirm output directory exists and contains generated Python client (e.g. `api/`, `models/`, `configuration.py`).
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- Added the exact Docker OpenAPI Generator command to `README.md` under OpenAPI spec, generating Python SDK to dedicated output path `sdk/python`.
+- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec `openapi.json` (OpenAPI `3.1.0`).
+- `docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd):/local" openapitools/openapi-generator-cli generate -i /local/openapi.json -g python -o /local/sdk/python` -> generated client successfully.
+- Output verification confirms generated Python client structure present under `sdk/python`, including `openapi_client/api`, `openapi_client/models`, and `openapi_client/configuration.py`.
+- Restarted app services with `docker compose restart db backend frontend`; `docker compose ps` shows `db` healthy and `backend`/`frontend` up.
+- Reviewed `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, and `docker compose logs --tail=120 db`; no blocking startup/runtime errors observed.
+- Health check `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}` after restart stabilization.
 
 ---
 
