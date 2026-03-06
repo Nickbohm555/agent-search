@@ -200,11 +200,19 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
         }
         return "Initial synthesized answer"
 
+    def fake_run_decomposition_only_llm_call(*, query, initial_search_context):
+        captured["decomposition_input"] = {
+            "query": query,
+            "initial_search_context": initial_search_context,
+        }
+        return '["What changed in NATO policy?", "Why did NATO policy change?"]'
+
     monkeypatch.setattr(agent_service, "get_vector_store", fake_get_vector_store)
     monkeypatch.setattr(agent_service, "create_coordinator_agent", fake_create_coordinator_agent)
     monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
     monkeypatch.setattr(agent_service, "search_documents_for_context", fake_search_documents_for_context)
     monkeypatch.setattr(agent_service, "build_initial_search_context", fake_build_initial_search_context)
+    monkeypatch.setattr(agent_service, "_run_decomposition_only_llm_call", fake_run_decomposition_only_llm_call)
     monkeypatch.setattr(agent_service, "generate_initial_answer", fake_generate_initial_answer)
     monkeypatch.setattr(
         agent_service,
@@ -243,6 +251,8 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert captured["context_search"]["vector_store"] == "fake-vector-store"
     assert captured["context_search"]["k"] == agent_service._INITIAL_SEARCH_CONTEXT_K
     assert captured["context_docs"] == ["doc-a", "doc-b"]
+    assert captured["decomposition_input"]["query"] == "What happened in NATO policy?"
+    assert captured["decomposition_input"]["initial_search_context"][0]["title"] == "NATO"
     assert captured["initial_answer_input"]["main_question"] == "What happened in NATO policy?"
     assert captured["initial_answer_input"]["sub_qa_count"] == 1
     assert captured["initial_answer_input"]["initial_search_context"][0]["title"] == "NATO"
@@ -257,6 +267,7 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert "Every sub-question must be a complete question ending with '?'." in coordinator_message
     assert "Runtime agent run start" in caplog.text
     assert "Initial decomposition context built" in caplog.text
+    assert "Decomposition-only LLM output captured" in caplog.text
     assert "Coordinator decomposition input prepared" in caplog.text
 
 

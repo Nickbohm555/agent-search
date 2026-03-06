@@ -8,7 +8,7 @@ Before starting, completely restart the application so we have fresh builds, log
 1. Take the item in  @IMPLEMENTATION_PLAN.md where it says: 'Current section to work on:'
 
 
-2. Before making changes, search the codebase so existing functionality is reused when possible. Keep deep agents / subagents general architecture. Keep the same UI features.
+2. Before making changes, search the codebase so existing functionality is reused when possible.Keep deep agents / subagents general architecture. Keep the same UI features. Remember our object of this app is build an improved RAG system.
 
 3. After implementing functionality, ALWAYS add logs for visibility and check what containers were changed and either restart or completely reboot depending on the task. when in doubt, restart the application entirely and check all the container logs. If you see an error, fix it now and re-run to make sure it works. run the required tests from the task definition. You must provide and view logs for every item built. 
 

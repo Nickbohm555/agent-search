@@ -1,35 +1,40 @@
-# Section 1: Langfuse instrumentation (send traces)
+## Section 1: Add decomposition-only LLM call and prompt
 
-**Single goal:** Instrument agent-search so that when it runs, it sends traces to Langfuse. This enables the agent-trace harness tracer to fetch and analyze runs.
+**Onyx article:** Lesson 1 — "Agents are just prompts": planning is *completely isolated* from execution; use a specific system prompt and curate input so the planning task is well defined and simple.
 
-**Details implemented:**
-- Added `langfuse>=3.0.0` to backend dependencies and regenerated `src/backend/uv.lock`.
-- Added `src/backend/utils/langfuse_tracing.py`:
-  - `build_langfuse_callback_handler()` gated by `LANGFUSE_ENABLED`.
-  - Reads `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and host from `LANGFUSE_BASE_URL` fallback `LANGFUSE_HOST`.
-  - Initializes Langfuse client and LangChain callback handler with SDK-signature-compatible kwargs.
-  - Logs enabled/disabled/misconfiguration states.
-  - Best-effort flush helper for callback/client.
-- Reused existing callback architecture in `src/backend/services/agent_service.py`:
-  - Adds Langfuse callback to existing callback list when enabled.
-  - Logs callback configuration.
-  - Flushes Langfuse callback/client after coordinator invoke.
-- Added backend tests in `src/backend/tests/utils/test_langfuse_tracing.py`.
+**Single goal:** Add one new LLM call that takes user query + initial_search_context and returns a list of sub-questions. No flow tracking, write_todos, or task() in this call.
 
-**Useful logs and validation outputs:**
-- Rebuild/restart:
-  - `docker compose down && docker compose build && docker compose up -d`
-  - Backend startup logs include uvicorn + alembic startup with no runtime errors.
-- Backend health:
-  - `curl -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
-- Tests:
-  - `docker compose exec backend sh -lc 'cd /app && uv run --with pytest pytest tests/utils/test_langfuse_tracing.py tests/services/test_agent_service.py tests/api'`
-  - Result: `22 passed`.
-- Langfuse-enabled run:
-  - Executed `run_runtime_agent` in backend container with `LANGFUSE_ENABLED=true`.
-  - Output summary: `RUN_OK True`.
-- Langfuse trace verification:
-  - `GET https://us.cloud.langfuse.com/api/public/traces?limit=10` with configured keys returned `200`.
-  - Latest traces include:
-    - `2026-03-06T16:46:53.378Z` trace `192a697a1a2dcbf21ac6af212b7bf73c`
-    - `2026-03-06T16:44:25.649Z` trace `3451be79178fa1683f083587722b9793`
+**Details:**
+- In agent_service, after building initial_search_context and before invoking the coordinator, run a dedicated decomposition call.
+- Input: user query + initial_search_context. Output: list of sub-questions only (e.g. JSON array or one-question-per-line).
+- Add a dedicated system prompt (e.g. in coordinator.py as `_DECOMPOSITION_ONLY_PROMPT` or a small new module). This step produces the "plan"; Section 3 will consume it.
+
+**Tech stack and dependencies**
+- No new packages; one new LLM invoke path (same model as coordinator or env-configured).
+- get_vector_store / build_initial_search_context unchanged.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/services/agent_service.py | Run decomposition-only step after initial_search_context is built; capture raw output for Section 2. |
+| src/backend/agents/coordinator.py | Add _DECOMPOSITION_ONLY_PROMPT for the decomposition-only call. |
+
+**How to test:** Run a query; in logs or trace confirm one LLM call returns only sub-questions (no task() or write_todos). Unit test: mock LLM returning a fixed list, assert agent_service captures it.
+
+### Completion notes (March 6, 2026)
+- Added `_DECOMPOSITION_ONLY_PROMPT` and exported prompt accessor via `agents`.
+- Added `_run_decomposition_only_llm_call(...)` in `agent_service` and invoked it immediately after initial context construction and before coordinator invocation.
+- Added runtime logging for decomposition-only output capture.
+- Updated service unit test to mock decomposition call and assert capture.
+
+### Useful logs
+- `Runtime agent run start query=What is vector search? query_length=22`
+- `Initial decomposition context built query=What is vector search? docs=0 k=5 score_threshold=None`
+- `Decomposition-only LLM output captured output_length=26 output_preview=["What is vector search?"]`
+- `Coordinator decomposition input prepared query=What is vector search? context_items=0`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+
+### Tests run
+- `docker compose exec backend uv run pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py` -> `16 passed`
+- `docker compose exec backend uv run pytest tests/api -m smoke` -> `3 deselected / 0 selected`

@@ -8,10 +8,11 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
-from agents import create_coordinator_agent
+from agents import create_coordinator_agent, get_decomposition_only_prompt
 from db import DATABASE_URL
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
 from services.document_validation_service import (
@@ -49,6 +50,9 @@ logger = logging.getLogger(__name__)
 
 _VECTOR_COLLECTION_NAME = os.getenv("VECTOR_COLLECTION_NAME", "agent_search_internal_data")
 _RUNTIME_AGENT_MODEL = os.getenv("RUNTIME_AGENT_MODEL", "gpt-4.1-mini")
+_DECOMPOSITION_ONLY_MODEL = os.getenv("DECOMPOSITION_ONLY_MODEL", _RUNTIME_AGENT_MODEL)
+_DECOMPOSITION_ONLY_TEMPERATURE = float(os.getenv("DECOMPOSITION_ONLY_TEMPERATURE", "0"))
+_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _MAIN_AGENT_TASK_TOOL_NAME = "task"
 _SEARCH_DATABASE_TOOL_NAME = "search_database"
 
@@ -135,6 +139,49 @@ def _build_coordinator_input_message(query: str, initial_search_context: list[di
         "- Every sub-question must be a complete question ending with '?'.\n"
         "- Prefer entities and concepts surfaced in the provided context."
     )
+
+
+def _build_decomposition_only_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str:
+    serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
+    return (
+        f"User question:\n{query}\n\n"
+        "Initial retrieval context:\n"
+        f"{serialized_context}\n"
+    )
+
+
+def _run_decomposition_only_llm_call(*, query: str, initial_search_context: list[dict[str, Any]]) -> str:
+    fallback_question = _normalize_sub_question(query) or f"{query.strip()}?"
+    if not _OPENAI_API_KEY:
+        logger.info(
+            "Decomposition-only LLM call using fallback; OPENAI_API_KEY is not set model=%s",
+            _DECOMPOSITION_ONLY_MODEL,
+        )
+        return json.dumps([fallback_question], ensure_ascii=True)
+
+    messages = [
+        SystemMessage(content=get_decomposition_only_prompt()),
+        HumanMessage(content=_build_decomposition_only_input_message(query, initial_search_context)),
+    ]
+    try:
+        llm = ChatOpenAI(
+            model=_DECOMPOSITION_ONLY_MODEL,
+            temperature=_DECOMPOSITION_ONLY_TEMPERATURE,
+        )
+        response = llm.invoke(messages)
+        content = _stringify_message_content(getattr(response, "content", "")).strip()
+        if content:
+            return content
+        logger.warning(
+            "Decomposition-only LLM call returned empty content; using fallback model=%s",
+            _DECOMPOSITION_ONLY_MODEL,
+        )
+    except Exception:
+        logger.exception(
+            "Decomposition-only LLM call failed; using fallback model=%s",
+            _DECOMPOSITION_ONLY_MODEL,
+        )
+    return json.dumps([fallback_question], ensure_ascii=True)
 
 
 def _is_main_agent_turn(msg: AIMessage) -> bool:
@@ -700,6 +747,15 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         len(initial_search_context),
         _INITIAL_SEARCH_CONTEXT_K,
         _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+    )
+    decomposition_raw_output = _run_decomposition_only_llm_call(
+        query=payload.query,
+        initial_search_context=initial_search_context,
+    )
+    logger.info(
+        "Decomposition-only LLM output captured output_length=%s output_preview=%s",
+        len(decomposition_raw_output),
+        _truncate_query(decomposition_raw_output),
     )
     agent = create_coordinator_agent(
         vector_store=vector_store,

@@ -10,6 +10,16 @@ from tools import make_retriever_tool
 logger = logging.getLogger(__name__)
 
 _FLOW_TRACKING_FILE = "/runtime/coordinator_flow.md"
+_DECOMPOSITION_ONLY_PROMPT = (
+    "You are a decomposition planner for retrieval.\n"
+    "Task: break the user question into narrow, atomic sub-questions using the provided retrieval context.\n\n"
+    "Rules:\n"
+    "- Output only sub-questions; do not answer them.\n"
+    "- One concept or entity per sub-question.\n"
+    "- Every sub-question must end with '?'.\n"
+    "- Prefer entities and concepts from the provided context.\n"
+    "- Return valid JSON as an array of strings.\n"
+)
 _COORDINATOR_PROMPT = (
     "You are the coordinator agent.\n"
     "Your job is to break the user query into ATOMIC subquestions and delegate each to the RAG subagent.\n\n"
@@ -53,6 +63,10 @@ _RAG_SUBAGENT_PROMPT = (
     "If it does not give you relevant docs, say 'nothing relevant found' and send that answer back to the coordinator agent. "
     "here is the format to send back to the coordinator agent: {subquestion}: {answer}"
 )
+
+
+def get_decomposition_only_prompt() -> str:
+    return _DECOMPOSITION_ONLY_PROMPT
 
 
 class _LoggingRunnable:
