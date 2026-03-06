@@ -400,3 +400,48 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> `2 passed`
 - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK`
 - `docker compose logs --tail=120 backend` / `--tail=60 frontend` / `--tail=80 db` reviewed; no blocking runtime errors.
+
+---
+
+## Section 10: Add RAG subagent end-of-context reminder
+
+**Onyx article:** Lesson 3, Rule 3 — "Use Reminders": inject reminders at the very end of context; the LLM attends strongly to the most recent tokens; keep reminders short and coherent (one thing).
+
+**Single goal:** Append a short end-of-context reminder to the RAG subagent so it reliably follows the required response format and citation behavior.
+
+**Details:**
+- Add a reminder at the end of the subagent's context (trailing message or suffix if the framework supports it). Reminder: one thing only, e.g. "Respond in the format: {subquestion}: {answer}. Use document content to support your answer."
+- If the framework does not support per-subagent end-of-context injection, add the reminder as the final sentence of _RAG_SUBAGENT_PROMPT.
+
+**Tech stack and dependencies**
+- No new packages; prompt or deep-agents subagent config only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/agents/coordinator.py | Add reminder text to RAG subagent (end of _RAG_SUBAGENT_PROMPT or via framework hook if available). |
+
+**How to test:** Run queries; inspect subagent responses (_extract_sub_qa / sub_agent_response). Confirm format "{subquestion}: {answer}" (or citation) appears consistently.
+
+### Completion notes (March 6, 2026)
+- Updated `src/backend/agents/coordinator.py` `_RAG_SUBAGENT_PROMPT` by appending a final end-of-context reminder sentence (at the very end of the prompt) that reinforces one coherent requirement: return `{subquestion}: {answer}` grounded in retrieved docs with citation markers like `[1]` when supported.
+- Added runtime visibility logging for this section by extending the prompt-configuration log with:
+  - `reminder=end_of_context_format_and_citation`
+- Updated `src/backend/tests/agents/test_coordinator_agent.py` to assert:
+  - the reminder text exists,
+  - it is the final prompt sentence (`endswith(...)`),
+  - prompt visibility log contains the reminder marker.
+
+### Useful logs
+- `RAG subagent prompt configured subagent=rag_retriever tool=search_database contract=co_located_retriever_and_response_format reminder=end_of_context_format_and_citation`
+- `Agent message[4] tool_result tool=task content_len=41 content_preview=What is pgvector?: nothing relevant found`
+- `Agent message[5] tool_result tool=task content_len=54 content_preview=What are the uses of pgvector: Nothing relevant found.`
+- `INFO: ... "GET /api/health HTTP/1.1" 200 OK`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- Frontend logs show Vite ready on `http://localhost:5173/`; DB logs show PostgreSQL ready for connections.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> `2 passed`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with runtime `sub_qa` output captured

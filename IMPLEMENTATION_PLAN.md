@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 10. (move +1 after each turn)
+Current section to work on: section 11. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -320,7 +320,14 @@ Current section to work on: section 10. (move +1 after each turn)
 
 **How to test:** Run queries; inspect subagent responses (_extract_sub_qa / sub_agent_response). Confirm format "{subquestion}: {answer}" (or citation) appears consistently.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> 2 passed.
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> 200 OK.
+- Live backend logs include:
+  - `RAG subagent prompt configured ... reminder=end_of_context_format_and_citation`
+  - `tool_result tool=task content_preview=What is pgvector?: nothing relevant found`
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
 
 ---
 

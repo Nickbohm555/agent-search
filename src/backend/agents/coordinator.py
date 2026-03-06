@@ -64,7 +64,8 @@ _RAG_SUBAGENT_PROMPT = (
     "2) Call search_database with query=<exact subquestion> and expanded_query=<expanded query>.\n"
     "3) If no useful expansion exists, set expanded_query equal to the exact subquestion.\n"
     "4) If retrieved docs are relevant, answer using those docs. Otherwise answer exactly: nothing relevant found.\n"
-    "5) Return your response in this format: {subquestion}: {answer}"
+    "5) Return your response in this format: {subquestion}: {answer}\n\n"
+    "Reminder: Return exactly {subquestion}: {answer}, grounded in retrieved documents with citation markers like [1] when supported."
 )
 
 
@@ -114,7 +115,7 @@ def create_coordinator_agent(
         "tools": [retriever_tool],
     }
     logger.info(
-        "RAG subagent prompt configured subagent=%s tool=%s contract=co_located_retriever_and_response_format",
+        "RAG subagent prompt configured subagent=%s tool=%s contract=co_located_retriever_and_response_format reminder=end_of_context_format_and_citation",
         rag_subagent["name"],
         retriever_tool.name,
     )
