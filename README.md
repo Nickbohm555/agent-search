@@ -7,6 +7,9 @@
 **A plug-and-play RAG SDK that turns your `model` + `vector_store` into a multi-stage, traceable answer pipeline.**  
 Ship faster with coordinator-driven decomposition, parallel per-subquestion retrieval, evidence checks, and an optional refinement loop—without rebuilding the plumbing.
 
+> **Cyberpunk background note**  
+> GitHub controls the page background color and doesn’t allow a README to force it. For the full cyberpunk “dark + neon” look, view this README in **GitHub Dark mode** (Settings → Appearance → **Dark**).
+
 ```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ SYSTEM README — AGENT-SEARCH // ARCHITECTURE MAP                             ┃
