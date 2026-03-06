@@ -1,72 +1,104 @@
-```mermaid
-flowchart TB
-    Q["&lt;question&gt;"]
+# AGENT-SEARCH
 
-    A["Conduct Exploratory (Fast &amp; Simple) Search"]
-    B["Full search on original question"]
-    C["Decompose Question into Sub-Questions"]
-
-    E["Entity/Relationship/Term Extraction"]
-
-    S1["Initial Subquestion 1<br/>Expand<br/>Search<br/>Validate<br/>Rerank<br/>Answer<br/>Check"]
-    SN["Initial Subquestion n<br/>Expand<br/>Search<br/>Validate<br/>Rerank<br/>Answer<br/>Check"]
-
-    G["Generate Initial Answer"]
-    N{"Need refinement?"}
-
-    GI["Generate new &amp; informed subquestions"]
-
-    R1["Refined Subquestion 1<br/>Expand<br/>Search<br/>Validate<br/>Rerank<br/>Answer<br/>Check"]
-    RN["Refined Subquestion n<br/>Expand<br/>Search<br/>Validate<br/>Rerank<br/>Answer<br/>Check"]
-
-    PV["Produce &amp; Validate Refined Answer"]
-    CI["Compare Refined to Initial Answer"]
-
-    ANS["&lt;answers&gt;"]
-
-    Q --> A
-    A --> B
-    A --> C
-    A --> E
-
-    C --> S1
-    C --> SN
-
-    S1 --> G
-    SN --> G
-    B --> G
-
-    E --> GI
-    G --> N
-    N -- Yes --> GI
-    N -- No --> ANS
-
-    GI --> R1
-    GI --> RN
-
-    R1 --> PV
-    RN --> PV
-    PV --> CI
-    CI --> ANS
-
-    %% Dashed feedback links from initial/refinement decision to informed subquestions
-    N -.-> GI
+```
+╔══════════════════════════════════════════════════════════════════╗
+║  RETRIEVAL + DECOMPOSITION + SYNTHESIS  │  WIKI → VECTORS → QA   ║
+╚══════════════════════════════════════════════════════════════════╝
 ```
 
-## DevTools launcher
+**Multi-step question answering over curated wiki sources.** Load knowledge, decompose questions, run parallel sub-question pipelines, synthesize answers with optional refinement. Built for transparent data flow and grounded evidence.
 
-Start Chrome (default) with remote debugging and open the app URL:
+---
+
+## SYSTEM OVERVIEW
+
+| Layer        | Stack |
+|-------------|--------|
+| **Frontend** | React, TypeScript, Vite — load sources, run queries, view sub-QA + final answer |
+| **Backend**  | FastAPI, Uvicorn — health, data load/wipe, agent run |
+| **Orchestration** | Coordinator agent (decomposition) + deterministic pipeline (validation → rerank → subanswer → verify → synthesis) |
+| **Storage**  | Postgres 16, pgvector, Alembic — documents, chunks, embeddings |
+| **Runtime**  | Docker Compose — `db`, `backend`, `frontend`, optional `chrome` |
+
+---
+
+## QUICK START
 
 ```bash
-./launch-devtools.sh http://localhost:5173
+# Build and bring the stack online
+docker compose build
+docker compose up -d
+
+# Frontend  →  http://localhost:5173
+# Backend   →  http://localhost:8000
+# Health    →  http://localhost:8000/api/health
 ```
 
-Start Electron instead (set your app path):
+**First run:** Load a wiki source in the UI, then run a query. Backend runs Alembic on startup.
 
-```bash
-ELECTRON_APP=./path-to-electron-app ./launch-devtools.sh http://localhost:5173 electron
+**Iterate:** `docker compose restart backend` after code changes. Full reset: `docker compose down -v --rmi all` then rebuild and `up -d`.
+
+---
+
+## DATA FLOW
+
+```
+[ USER QUERY ]
+      │
+      ▼
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│ Initial search  │────▶│ Coordinator      │────▶│ Sub-question search │
+│ (vector store)  │     │ (decompose +     │     │ (per sub-Q, parallel)│
+└─────────────────┘     │  tool callbacks) │     └──────────┬──────────┘
+                        └──────────────────┘                │
+                                                            ▼
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│ Final answer    │◀────│ Initial answer   │◀────│ Validate → Rerank   │
+│ (or refined)    │     │ synthesis        │     │ → Subanswer → Verify │
+└─────────────────┘     └──────────────────┘     └─────────────────────┘
+                              │
+                              ▼
+                        [ Refine? ] ──yes──▶ Refine sub-Qs → pipeline again
 ```
 
-DevTools endpoint:
+- **Load knowledge:** `POST /api/internal-data/load` with `{ "source_type": "wiki", "wiki": { "source_id": "…" } }`.
+- **Run QA:** `POST /api/agents/run` with `{ "query": "…" }` → `main_question`, `sub_qa`, `output`.
+- **Wipe:** `POST /api/internal-data/wipe` — clears documents and chunks; wiki sources report not loaded.
 
-- http://127.0.0.1:9222/json/list
+---
+
+## API SURFACE
+
+| Method | Path | Purpose |
+|--------|------|--------|
+| GET  | `/api/health` | Liveness |
+| POST | `/api/internal-data/load` | Load wiki (or other curated) source |
+| POST | `/api/internal-data/wipe` | Remove all internal docs/chunks |
+| GET  | `/api/internal-data/wiki-sources` | List wiki sources and load state |
+| POST | `/api/agents/run` | Run full QA pipeline |
+
+---
+
+## REPO LAYOUT
+
+```
+agent-search/
+├── docker-compose.yml      # db, backend, frontend, chrome
+├── src/
+│   ├── backend/            # FastAPI, agents, services, migrations
+│   └── frontend/           # React/Vite app
+└── docs/                   # SYSTEM_ARCHITECTURE.md, section-*.md
+```
+
+Backend: `uv` + `pyproject.toml`. Frontend: npm. Tests: `docker compose exec backend uv run pytest` and `docker compose exec frontend npm run test`.
+
+---
+
+## DOCS
+
+- **Architecture:** [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md) — components, flows, tradeoffs.
+- **Sections 1–14:** [docs/section-01-coordinator-flow-tracking.md](docs/section-01-coordinator-flow-tracking.md) through refinement — implementation notes and validation.
+
+---
+
+*Agent-Search — decompose, retrieve, verify, synthesize.*
