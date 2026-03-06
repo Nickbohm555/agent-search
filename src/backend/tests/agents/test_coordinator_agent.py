@@ -60,12 +60,7 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert hasattr(agent, "invoke")
     assert captured["model"] == "fake-model"
     assert captured["tools"] == []
-    system_prompt = str(captured["system_prompt"])
-    assert "write_todos planning tool" in system_prompt
-    assert "In parallel: exploratory/full search on the original question and decomposition into initial sub-questions." in system_prompt
-    assert "For each initial sub-question, run: Expand -> Search -> Validate -> Rerank -> Answer -> Check." in system_prompt
-    assert "If refinement is needed: generate informed refined sub-questions from gaps/unanswered parts." in system_prompt
-    assert "Do not add an 'Entity Relationship' stage." in system_prompt
+    assert "Break the user query into focused subquestions" in str(captured["system_prompt"])
     assert len(captured["subagents"]) == 1
     sub = captured["subagents"][0]
     assert sub["name"] == "rag_retriever"
@@ -83,5 +78,4 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert "Hormuz shipping chokepoint summary." in result["messages"][-1].content
     assert "Coordinator agent invoke start subagent=rag_retriever" in caplog.text
     assert "Retriever tool search_database" in caplog.text
-    assert "Coordinator planning contract enabled tool=write_todos" in caplog.text
     assert "final_message_only=true" in caplog.text

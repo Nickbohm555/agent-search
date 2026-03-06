@@ -2,13 +2,15 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 2. (move +1 after each turn)
+Current section to work on: section 1. (move +1 after each turn)
 
 ---
 
-## Section 1: Coordinator flow tracking via write_todos
+## Section 1: Coordinator flow tracking via write_todos and virtual file system
 
-**Single goal:** The coordinator agent uses the deep-agents (LangGraph) `write_todos` planning tool to keep track of the pipeline flow so it does not lose context across steps.
+**Single goal:** The coordinator agent uses the deep-agents (LangGraph) `write_todos` planning tool and the **deep-agents virtual file system** to keep track of the pipeline flow so it does not lose context across steps.
+
+**Requirement:** The coordinator **MUST** use the deep-agents library’s virtual file system (e.g. `read_file`, `write_file`, or equivalent backend) to persist or read plan/flow state across steps—in addition to `write_todos`. No custom file I/O; use the built-in filesystem tools/backend provided by deep-agents.
 
 **Flow the coordinator coordinates (align with flow.jpg):**
 
@@ -30,17 +32,18 @@ Current section to work on: section 2. (move +1 after each turn)
 
 **Details:**
 - At run start, the coordinator creates or updates a plan via `write_todos` with todos that mirror the stages above (e.g. initial search, decomposition, parallel initial sub-question pipelines, initial answer, refinement decision; and when refining: refined sub-questions, refined pipelines, refined answer, compare → output).
-- The coordinator marks items in_progress and completed as it delegates and synthesizes. No change to decomposition or RAG logic; only wiring so the coordinator uses the existing `write_todos` tool with a plan aligned to this flow (see flow.jpg). The only difference is the 'Entity Relationship' step no longer exists or is needed.
+- The coordinator **MUST** use the deep-agents virtual file system to store/read plan or flow state (e.g. write the current plan or stage to a file in the agent’s filesystem, read it back when resuming or delegating). This ensures context survives across tool calls and subagent runs.
+- The coordinator marks items in_progress and completed as it delegates and synthesizes. No change to decomposition or RAG logic; only wiring so the coordinator uses `write_todos` and the virtual file system with a plan aligned to this flow (see flow.jpg).
 
-**Tech:** Deep-agents/LangGraph built-in `write_todos` tool (already available on the coordinator). No new packages. No Docker change.
+**Tech:** Deep-agents/LangGraph built-in `write_todos` tool and **virtual file system** (e.g. FilesystemMiddleware / backend with `read_file`, `write_file`, etc.). The coordinator must be configured to use a deep-agents backend that provides the virtual file system. No new packages. No Docker change.
 
 **Files**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/agents/coordinator.py` | Ensure system prompt (or invoke-time input) instructs the coordinator to use `write_todos` and to seed/update the plan with the pipeline stages above. |
+| `src/backend/agents/coordinator.py` | Ensure the coordinator is created with a deep-agents backend that provides the virtual file system, and that the system prompt (or invoke-time input) instructs the coordinator to use `write_todos` and the virtual file system to seed/update and persist the plan with the pipeline stages above. |
 
-**How to test:** Unit: mock run where coordinator receives instruction to use write_todos; assert plan items align with Sections 2–14 or agreed pipeline stages. Integration: run coordinator with a multi-step query; inspect agent state or tool calls for write_todos usage and plan content.
+**How to test:** Unit: mock run where coordinator receives instruction to use write_todos and the virtual file system; assert plan items align with Sections 2–14 and that plan/flow state is written to or read from the virtual file system. Integration: run coordinator with a multi-step query; inspect agent state or tool calls for write_todos usage, plan content, and virtual file system usage (e.g. read_file/write_file or backend writes) for plan persistence.
 
 **Test results:**
 - Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py tests/services/test_agent_service.py'` -> `4 passed`.
