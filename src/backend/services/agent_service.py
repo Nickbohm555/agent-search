@@ -62,6 +62,7 @@ _VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE = (
     "Knowledge base retrieval is temporarily unavailable. Please try again in a moment."
 )
 _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT = "Answer not available in time."
+_SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON = "verification_timed_out"
 
 
 _QUERY_LOG_MAX = 200
@@ -869,10 +870,23 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
             _truncate_query(working_item.sub_question),
             _RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
         )
-    working_item = _apply_subanswer_verification_to_sub_qa(
-        [working_item],
-        reranked_output_by_sub_question={working_item.sub_question: reranked_output},
-    )[0]
+    try:
+        working_item = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_verification_timeout_s,
+            operation_name="subanswer_verification_subquestion",
+            fn=lambda: _apply_subanswer_verification_to_sub_qa(
+                [working_item],
+                reranked_output_by_sub_question={working_item.sub_question: reranked_output},
+            )[0],
+        )
+    except FuturesTimeoutError:
+        working_item.answerable = False
+        working_item.verification_reason = _SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON
+        logger.warning(
+            "Per-subquestion subanswer verification timeout; continuing with default unanswerable status sub_question=%s timeout_s=%s",
+            _truncate_query(working_item.sub_question),
+            _RUNTIME_TIMEOUT_CONFIG.subanswer_verification_timeout_s,
+        )
     logger.info(
         "Per-subquestion pipeline item complete sub_question=%s answerable=%s reason=%s",
         _truncate_query(working_item.sub_question),

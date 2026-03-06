@@ -1993,6 +1993,111 @@ def test_run_pipeline_for_single_subquestion_generates_subanswer_when_within_tim
     assert output_item.sub_answer == "generated output"
 
 
+def test_run_pipeline_for_single_subquestion_marks_unanswerable_on_verification_timeout(
+    monkeypatch, caplog
+) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=1,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    def passthrough(sub_qa):
+        return sub_qa
+
+    def slow_subanswer_verification(sub_qa, **kwargs):
+        _ = kwargs
+        time.sleep(1.2)
+        return sub_qa
+
+    monkeypatch.setattr(agent_service, "_apply_document_validation_to_sub_qa", passthrough)
+    monkeypatch.setattr(agent_service, "_apply_reranking_to_sub_qa", passthrough)
+    monkeypatch.setattr(agent_service, "_apply_subanswer_generation_to_sub_qa", passthrough)
+    monkeypatch.setattr(agent_service, "_apply_subanswer_verification_to_sub_qa", slow_subanswer_verification)
+
+    input_item = agent_service.SubQuestionAnswer(
+        sub_question="What changed in NATO policy?",
+        sub_answer="1. title=Doc A source=wiki://a content=A",
+        tool_call_input='{"query":"What changed in NATO policy?"}',
+    )
+
+    with caplog.at_level(logging.WARNING):
+        output_item = agent_service._run_pipeline_for_single_subquestion(input_item)
+
+    assert output_item.answerable is False
+    assert output_item.verification_reason == "verification_timed_out"
+    assert "Runtime guardrail timeout operation=subanswer_verification_subquestion timeout_s=1" in caplog.text
+    assert "Per-subquestion subanswer verification timeout; continuing with default unanswerable status" in caplog.text
+
+
+def test_run_pipeline_for_single_subquestion_applies_verification_when_within_timeout(monkeypatch) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=2,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    def passthrough(sub_qa):
+        return sub_qa
+
+    def fast_subanswer_verification(sub_qa, **kwargs):
+        _ = kwargs
+        output = [item.model_copy(deep=True) for item in sub_qa]
+        output[0].answerable = True
+        output[0].verification_reason = "grounded_in_reranked_documents"
+        return output
+
+    monkeypatch.setattr(agent_service, "_apply_document_validation_to_sub_qa", passthrough)
+    monkeypatch.setattr(agent_service, "_apply_reranking_to_sub_qa", passthrough)
+    monkeypatch.setattr(agent_service, "_apply_subanswer_generation_to_sub_qa", passthrough)
+    monkeypatch.setattr(agent_service, "_apply_subanswer_verification_to_sub_qa", fast_subanswer_verification)
+
+    input_item = agent_service.SubQuestionAnswer(
+        sub_question="What changed in NATO policy?",
+        sub_answer="1. title=Doc A source=wiki://a content=A",
+        tool_call_input='{"query":"What changed in NATO policy?"}',
+    )
+
+    output_item = agent_service._run_pipeline_for_single_subquestion(input_item)
+
+    assert output_item.answerable is True
+    assert output_item.verification_reason == "grounded_in_reranked_documents"
+
+
 def test_seed_refined_sub_qa_from_retrieval_builds_retrieved_payloads(monkeypatch) -> None:
     class _Doc:
         def __init__(self, title: str, source: str, content: str):

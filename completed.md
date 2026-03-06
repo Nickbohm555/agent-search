@@ -1475,3 +1475,35 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility
+
+## Section 11: Time guardrail — per-subquestion subanswer verification
+
+**Single goal:** Enforce a maximum time for the subanswer verification step per sub-question.
+
+**Details:**
+- Wrap the verification call in a timeout; on timeout, **do not fail**—mark as not answerable (or use default reason) and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `SUBANSWER_VERIFICATION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap subanswer verification in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow verify triggers timeout; normal path completes. Restart app and run one query.
+
+**Test results:**
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `39 passed`
+- `docker compose restart backend` -> backend restarted successfully
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 11 change-specific runtime exceptions
+
+**Useful logs:**
+- Backend timeout guardrail log (unit test): `Runtime guardrail timeout operation=subanswer_verification_subquestion timeout_s=1`
+- Backend fallback log (unit test): `Per-subquestion subanswer verification timeout; continuing with default unanswerable status`
+- Backend runtime check logs include per-item verification lines: `Per-subquestion subanswer verification sub_question=... answerable=False reason=...`
