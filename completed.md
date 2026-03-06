@@ -342,3 +342,68 @@
   - `docker compose logs --tail=120 backend`
   - `docker compose logs --tail=80 frontend`
   - `docker compose logs --tail=80 db`
+
+## Section 7: Per-subquestion reranking
+
+**Single goal:** Rerank validated documents per sub-question so top results are best for subanswer generation.
+
+**Details:**
+- Input: per-subquestion validated doc list. Output: same docs in new order (or top-n) per sub-question. Reranker = cross-encoder, LLM, or heuristic. No subanswer generation or verification here.
+
+**Tech:** Add reranker dependency if needed (e.g. sentence-transformers, LLM) in pyproject.toml. No Docker change unless new runtime dependency.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| New `src/backend/services/reranker_service.py` (or equivalent) | rerank(docs, query) → ordered list; cross-encoder or LLM. |
+| `src/backend/services/agent_service.py` or pipeline module | After validation, call reranker per sub-question; pass reranked docs to subanswer generation. |
+
+**How to test:** Unit: fixed docs + query → output order differs when non-trivial; top doc sensible. Integration: validation → rerank → order and count verified.
+
+### Implemented
+- Added `src/backend/services/reranker_service.py`:
+  - `RerankerConfig` and `build_reranker_config_from_env()` with optional `RERANK_TOP_N` and weight settings.
+  - Heuristic lexical reranker (`rerank_documents`) that scores per-query overlap across title/content/source plus a small original-rank bias.
+  - Returns reranked documents with rank reset to the new order.
+- Updated `src/backend/services/agent_service.py`:
+  - Added `_RERANKER_CONFIG` initialization.
+  - Added `_apply_reranking_to_sub_qa(...)` immediately after document validation.
+  - Reranks parsed validated docs per sub-question using `expanded_query` fallback to `sub_question`.
+  - Added visibility logs for reranker config and per-subquestion before/after counts + top document.
+- Added tests:
+  - `src/backend/tests/services/test_reranker_service.py`
+    - Validates non-trivial rerank ordering and `top_n` behavior.
+  - `src/backend/tests/services/test_agent_service.py`
+    - Added reranking pipeline test to verify per-subquestion reordered output.
+- Operational fix discovered while validating logs:
+  - Added `/api/health` endpoint in `src/backend/main.py` to match AGENTS.md runbook.
+  - Added `src/backend/tests/api/test_health.py`.
+
+### Validation and logs
+- Full fresh restart before implementation:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend restart after changes:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_reranker_service.py tests/services/test_agent_service.py tests/api/test_health.py'`
+  - Result: `11 passed`
+- Integration data prep + run:
+  - `POST /api/health` -> `200`, `{"status":"ok"}`
+  - `POST /api/internal-data/wipe` -> `200`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `200`, `documents_loaded=1`, `chunks_created=14`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`
+- Backend log evidence:
+  - `Per-subquestion document validation start count=10 ...`
+  - `Per-subquestion reranking start count=10 top_n=None title_weight=1.3 content_weight=1.0 source_weight=0.3 original_rank_bias=0.05`
+  - `Per-subquestion reranking sub_question=... docs_before=10 docs_after=10 top_document=NATO`
+  - `Runtime agent run complete output_length=1579 ...`
+- Container/log checks:
+  - `docker compose ps` -> all services up, `db` healthy.
+  - `docker compose logs --tail=240 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+
+**Test results:** Complete.

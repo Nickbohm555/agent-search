@@ -16,8 +16,10 @@ from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestion
 from services.document_validation_service import (
     build_document_validation_config_from_env,
     format_retrieved_documents,
+    parse_retrieved_documents,
     validate_subquestion_documents,
 )
+from services.reranker_service import build_reranker_config_from_env, rerank_documents
 from services.vector_store_service import (
     build_initial_search_context,
     get_vector_store,
@@ -47,6 +49,7 @@ _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
     else None
 )
 _DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
+_RERANKER_CONFIG = build_reranker_config_from_env()
 
 
 def _truncate_query(q: str) -> str:
@@ -425,6 +428,44 @@ def _apply_document_validation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> lis
     return sub_qa
 
 
+def _apply_reranking_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
+    logger.info(
+        "Per-subquestion reranking start count=%s top_n=%s title_weight=%s content_weight=%s source_weight=%s original_rank_bias=%s",
+        len(sub_qa),
+        _RERANKER_CONFIG.top_n,
+        _RERANKER_CONFIG.title_weight,
+        _RERANKER_CONFIG.content_weight,
+        _RERANKER_CONFIG.source_weight,
+        _RERANKER_CONFIG.original_rank_bias,
+    )
+    for item in sub_qa:
+        parsed_documents = parse_retrieved_documents(item.sub_answer)
+        if not parsed_documents:
+            logger.info(
+                "Per-subquestion reranking skipped; no parseable retrieved docs sub_question=%s",
+                _truncate_query(item.sub_question),
+            )
+            continue
+
+        rerank_query = item.expanded_query.strip() or item.sub_question
+        reranked = rerank_documents(
+            query=rerank_query,
+            documents=parsed_documents,
+            config=_RERANKER_CONFIG,
+        )
+        reranked_documents = [entry.document for entry in reranked]
+        item.sub_answer = format_retrieved_documents(reranked_documents)
+        logger.info(
+            "Per-subquestion reranking sub_question=%s query=%s docs_before=%s docs_after=%s top_document=%s",
+            _truncate_query(item.sub_question),
+            _truncate_query(rerank_query),
+            len(parsed_documents),
+            len(reranked_documents),
+            _truncate_query(reranked_documents[0].title if reranked_documents else "n/a"),
+        )
+    return sub_qa
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -479,6 +520,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         search_database_calls=search_database_calls if search_database_calls else None,
     )
     sub_qa = _apply_document_validation_to_sub_qa(sub_qa)
+    sub_qa = _apply_reranking_to_sub_qa(sub_qa)
     _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(

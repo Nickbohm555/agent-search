@@ -320,3 +320,23 @@ def test_apply_document_validation_to_sub_qa_filters_documents(monkeypatch) -> N
 
     assert len(output_sub_qa) == 1
     assert output_sub_qa[0].sub_answer == "1. title=Doc A source=wiki://trusted content=Policy changed in 2025."
+
+
+def test_apply_reranking_to_sub_qa_reorders_documents(monkeypatch) -> None:
+    input_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="What changed in NATO policy?",
+            sub_answer=(
+                "1. title=General Update source=wiki://general content=Generic summary.\n"
+                "2. title=NATO Policy Shift source=wiki://nato content=Policy changed in 2025."
+            ),
+            tool_call_input='{"query":"What changed in NATO policy?","expanded_query":"nato policy changes 2025","limit":2}',
+            expanded_query="nato policy changes 2025",
+            sub_agent_response="Delegated summary.",
+        )
+    ]
+
+    output_sub_qa = agent_service._apply_reranking_to_sub_qa(input_sub_qa)
+
+    assert len(output_sub_qa) == 1
+    assert output_sub_qa[0].sub_answer.startswith("1. title=NATO Policy Shift")

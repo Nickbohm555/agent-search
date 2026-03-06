@@ -42,3 +42,8 @@ app.add_middleware(
 
 app.include_router(agent_router)
 app.include_router(internal_data_router)
+
+
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
