@@ -4,6 +4,7 @@ import ast
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -44,6 +45,12 @@ _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
 
 def _truncate_query(q: str) -> str:
     return q[: _QUERY_LOG_MAX] + "..." if len(q) > _QUERY_LOG_MAX else q
+
+
+def _estimate_retrieved_doc_count(search_output: str) -> int:
+    if not isinstance(search_output, str) or not search_output.strip():
+        return 0
+    return len(re.findall(r"^\d+\.\s", search_output, flags=re.MULTILINE))
 
 
 def _stringify_message_content(content: Any) -> str:
@@ -210,6 +217,7 @@ def _extract_sub_qa(
             sub_question = _parse_tool_input_for_query(input_str) or "Search"
             expanded_query = _parse_tool_input_for_expanded_query(input_str)
             sub_agent_response = task_final_answers[i] if i < len(task_final_answers) else ""
+            retrieved_doc_count = _estimate_retrieved_doc_count(output_str)
             sub_qa.append(
                 SubQuestionAnswer(
                     sub_question=sub_question,
@@ -220,9 +228,10 @@ def _extract_sub_qa(
                 )
             )
             logger.info(
-                "Extracted sub_qa from callback sub_question=%s expanded_query=%s sub_agent_response_len=%s",
+                "Per-subquestion search result sub_question=%s expanded_query=%s docs_retrieved=%s sub_agent_response_len=%s",
                 _truncate_query(sub_question),
                 _truncate_query(expanded_query),
+                retrieved_doc_count,
                 len(sub_agent_response),
             )
         logger.info("Extracted sub_qa from search_database callback count=%s", len(sub_qa))
@@ -421,6 +430,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         logger.info("Agent run finished; logging tool calls and tool results from %s messages", len(messages))
         log_agent_messages_summary(messages)
     search_database_calls = search_db_capture.get_calls()
+    logger.info("Per-subquestion search callbacks captured count=%s", len(search_database_calls))
     sub_qa = _extract_sub_qa(
         messages if isinstance(messages, list) else [],
         search_database_calls=search_database_calls if search_database_calls else None,

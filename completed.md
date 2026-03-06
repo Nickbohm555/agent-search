@@ -222,3 +222,59 @@
   - `docker compose logs --tail=80 db`
 
 **Test results:** Complete.
+
+## Section 5: Per-subquestion search
+
+**Single goal:** Run retrieval per sub-question using the expanded query (Section 4); return ranked list of documents per sub-question.
+
+**Details:**
+- Input: expanded query (or sub-question if expansion skipped). Output: ordered list of docs (or IDs + snippets) per sub-question. Use existing vector store/retriever; pipeline must call it with expanded query when expansion enabled. No validation, reranking, or subanswer generation here.
+
+**Tech:** Existing retriever and vector_store_service. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` or pipeline module | Per sub-question: call expansion then retriever with expanded query; store retrieved docs per sub-question. |
+| `src/backend/tools/retriever_tool.py` | Invoked as-is or via service wrapper (query string → docs). |
+
+**How to test:** Unit: mock retriever + expanded query → returned doc list passed to next step. Integration: one sub-question through expansion + search → doc count and content as expected.
+
+### Implemented
+- Updated `src/backend/services/agent_service.py` to add explicit per-subquestion search observability:
+  - Added `_estimate_retrieved_doc_count(...)` to count ranked retrieval rows in retriever output.
+  - Added run-level log after callback capture: `Per-subquestion search callbacks captured count=...`.
+  - Added per-item log in callback extraction path: `Per-subquestion search result ... docs_retrieved=...` including sub-question and expanded query.
+- Added unit coverage in `src/backend/tests/services/test_agent_service.py`:
+  - `test_extract_sub_qa_uses_callback_captured_search_calls` validates callback-captured per-subquestion doc list is passed through into `SubQuestionAnswer.sub_answer` and preserves `expanded_query`.
+  - `test_estimate_retrieved_doc_count_counts_ranked_lines` validates ranked-doc counting logic used by logs.
+- Reused existing `src/backend/tools/retriever_tool.py` behavior that already executes search using `expanded_query` when provided and logs `retrieval_query`/`result_count`.
+
+### Validation and logs
+- Full fresh restart before implementation:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend restart after code changes:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/tools/test_retriever_tool.py tests/services/test_agent_service.py'`
+  - Result: `9 passed`
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `200`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `200`, `documents_loaded=1`, `chunks_created=14`
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`
+  - Response included ranked per-subquestion retrieval output in `sub_qa[*].sub_answer` and populated `sub_qa[*].expanded_query`.
+- Backend log evidence for Section 5:
+  - `Retriever tool search_database query='...' expanded_query='...' retrieval_query='...' limit=10 ... result_count=10`
+  - `Per-subquestion search callbacks captured count=18`
+  - `Per-subquestion search result sub_question=... expanded_query=... docs_retrieved=10 ...`
+- Container checks/logs:
+  - `docker compose ps` -> all services up; `db` healthy.
+  - `docker compose logs --tail=220 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+
+**Test results:** Complete.

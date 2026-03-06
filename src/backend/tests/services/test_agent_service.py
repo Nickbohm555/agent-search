@@ -242,3 +242,44 @@ def test_build_coordinator_input_message_includes_context_and_constraints_when_e
     assert "[]" in message
     assert "Decomposition constraints:" in message
     assert "Every sub-question must be a complete question ending with '?'." in message
+
+
+def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:
+    messages = [
+        AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_task_1",
+                    "name": "task",
+                    "args": {"description": "What changed in policy X?", "subagent_type": "rag_retriever"},
+                }
+            ],
+        ),
+        ToolMessage(content="Final delegated answer.", tool_call_id="call_task_1", name="task"),
+    ]
+
+    search_database_calls = [
+        (
+            '{"query":"What changed in policy X?","expanded_query":"policy x updates changes","limit":2}',
+            "1. title=Policy X source=wiki://policy-x content=Policy X changed.\n2. title=Policy X Timeline source=wiki://policy-x-timeline content=Timeline details.",
+        )
+    ]
+
+    result = agent_service._extract_sub_qa(messages, search_database_calls=search_database_calls)
+
+    assert len(result) == 1
+    assert result[0].sub_question == "What changed in policy X?"
+    assert "1. title=Policy X" in result[0].sub_answer
+    assert result[0].expanded_query == "policy x updates changes"
+    assert result[0].sub_agent_response == "Final delegated answer."
+
+
+def test_estimate_retrieved_doc_count_counts_ranked_lines() -> None:
+    output = (
+        "1. title=Alpha source=wiki://alpha content=A\n"
+        "2. title=Beta source=wiki://beta content=B\n"
+        "Not a numbered row"
+    )
+
+    assert agent_service._estimate_retrieved_doc_count(output) == 2

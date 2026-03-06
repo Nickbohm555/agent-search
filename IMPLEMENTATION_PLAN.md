@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 5. (move +1 after each turn)
+Current section to work on: section 6. (move +1 after each turn)
 
 ---
 
@@ -154,7 +154,14 @@ Current section to work on: section 5. (move +1 after each turn)
 
 **How to test:** Unit: mock retriever + expanded query → returned doc list passed to next step. Integration: one sub-question through expansion + search → doc count and content as expected.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/tools/test_retriever_tool.py tests/services/test_agent_service.py'` -> `9 passed`.
+- Integration data prep: `POST /api/internal-data/wipe` -> `200`, then `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`.
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`, response included ranked per-subquestion retrieval content in `sub_qa[*].sub_answer`.
+- Backend logs confirmed per-subquestion search usage and visibility:
+  - `Retriever tool search_database query='...' expanded_query='...' retrieval_query='...' limit=10 ... result_count=10`
+  - `Per-subquestion search callbacks captured count=18`
+  - `Per-subquestion search result sub_question=... expanded_query=... docs_retrieved=10 ...`
 
 ---
 
