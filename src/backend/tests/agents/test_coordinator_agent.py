@@ -90,6 +90,7 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert sub["description"] == "This agent is a RAG subagent which answers each sub-question using the retriever tool."
     assert "You are the retrieval subagent." in sub["system_prompt"]
     assert "Retriever tool contract (search_database):" in sub["system_prompt"]
+    assert "Use the exact subquestion as query." in sub["system_prompt"]
     assert "Call search_database with query=<exact subquestion> and expanded_query=<expanded query>." in sub["system_prompt"]
     assert "Return your response in this format: {subquestion}: {answer}" in sub["system_prompt"]
     assert "Reminder: Return exactly {subquestion}: {answer}, grounded in retrieved documents with citation markers like [1] when supported." in sub["system_prompt"]
@@ -104,6 +105,7 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert "backend=StateBackend" in caplog.text
     assert "final_message_only=true" in caplog.text
     assert "contract=co_located_retriever_and_response_format" in caplog.text
+    assert "flow=simplified_single_path" in caplog.text
     assert "reminder=end_of_context_format_and_citation" in caplog.text
 
 

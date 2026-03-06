@@ -60,10 +60,10 @@ _RAG_SUBAGENT_NAME = "rag_retriever"
 _RAG_SUBAGENT_PROMPT = (
     "You are the retrieval subagent. Read the incoming question; it should already be atomic.\n\n"
     "Retriever tool contract (search_database):\n"
-    "1) Build expanded_query by adding close synonyms and compact reformulations of the exact subquestion.\n"
-    "2) Call search_database with query=<exact subquestion> and expanded_query=<expanded query>.\n"
-    "3) If no useful expansion exists, set expanded_query equal to the exact subquestion.\n"
-    "4) If retrieved docs are relevant, answer using those docs. Otherwise answer exactly: nothing relevant found.\n"
+    "1) Use the exact subquestion as query.\n"
+    "2) Set expanded_query to a compact reformulation with close synonyms, or reuse the exact subquestion.\n"
+    "3) Call search_database with query=<exact subquestion> and expanded_query=<expanded query>.\n"
+    "4) Answer using retrieved documents; if they do not support an answer, respond exactly: nothing relevant found.\n"
     "5) Return your response in this format: {subquestion}: {answer}\n\n"
     "Reminder: Return exactly {subquestion}: {answer}, grounded in retrieved documents with citation markers like [1] when supported."
 )
@@ -115,7 +115,7 @@ def create_coordinator_agent(
         "tools": [retriever_tool],
     }
     logger.info(
-        "RAG subagent prompt configured subagent=%s tool=%s contract=co_located_retriever_and_response_format reminder=end_of_context_format_and_citation",
+        "RAG subagent prompt configured subagent=%s tool=%s contract=co_located_retriever_and_response_format flow=simplified_single_path reminder=end_of_context_format_and_citation",
         rag_subagent["name"],
         retriever_tool.name,
     )

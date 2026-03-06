@@ -445,3 +445,36 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> `2 passed`
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with runtime `sub_qa` output captured
+
+---
+
+## Section 11: Simplify RAG subagent prompt
+
+**Onyx article:** Lesson 3, Rule 2 — "Don't add too many instructions": give high-level tasks; too many "in this case do X, but if Y do Z" causes loss of track; prefer fewer, high-level instructions.
+
+**Single goal:** Reduce conditional and multi-branch instructions in _RAG_SUBAGENT_PROMPT to one clear flow; keep co-location (Section 9) and reminder (Section 10).
+
+**Details:**
+- Audit _RAG_SUBAGENT_PROMPT: remove or consolidate "If it is not atomic break down further", "Generate one expanded query", "If no useful expansion…", "If retriever gives relevant docs…", "If it does not…". Single flow: receive question → expand query (or use as-is) → call retriever → answer from docs or "nothing relevant found" → respond "{subquestion}: {answer}".
+- Keep co-location and end-of-context reminder; remove redundant or rarely applicable branches.
+
+**Tech stack and dependencies**
+- No new packages; prompt text only in coordinator.py.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/agents/coordinator.py | Simplify _RAG_SUBAGENT_PROMPT: one clear flow, fewer if/else instructions. |
+
+**How to test:** Run queries; confirm subagent still calls search_database with query/expanded_query and returns answers in the expected format. Check sub_agent_response and sub_answer in RuntimeAgentRunResponse.
+
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> 2 passed.
+- `curl -sS -m 30 -w '\n%{http_code}\n' -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> 200 OK.
+- Live backend logs include:
+  - `RAG subagent prompt configured subagent=rag_retriever tool=search_database contract=co_located_retriever_and_response_format flow=simplified_single_path reminder=end_of_context_format_and_citation`
+  - `tool_result tool=task content_preview=What is pgvector?: nothing relevant found`
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
+
+---
