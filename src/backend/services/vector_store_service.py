@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from langchain_community.vectorstores.pgvector import PGVector, _get_embedding_collection_store
 from langchain_core.documents import Document
@@ -64,3 +65,57 @@ def add_documents_to_store(vector_store: PGVector, documents: list[Document]) ->
         vector_store.collection_name,
     )
     return ids
+
+
+def search_documents_for_context(
+    vector_store: Any,
+    query: str,
+    *,
+    k: int,
+    score_threshold: float | None = None,
+) -> list[Document]:
+    """Run one retrieval pass for context gathering before decomposition."""
+    safe_k = max(1, k)
+    if score_threshold is not None and hasattr(vector_store, "similarity_search_with_relevance_scores"):
+        docs_with_scores = vector_store.similarity_search_with_relevance_scores(
+            query,
+            k=safe_k,
+            score_threshold=score_threshold,
+        )
+        documents = [doc for doc, _score in docs_with_scores]
+        logger.info(
+            "Context search complete query=%r k=%s score_threshold=%s results=%s mode=with_scores",
+            query,
+            safe_k,
+            score_threshold,
+            len(documents),
+        )
+        return documents
+
+    documents = vector_store.similarity_search(query, k=safe_k)
+    logger.info(
+        "Context search complete query=%r k=%s score_threshold=%s results=%s mode=similarity_search",
+        query,
+        safe_k,
+        score_threshold,
+        len(documents),
+    )
+    return documents
+
+
+def build_initial_search_context(documents: list[Document]) -> list[dict[str, str | int]]:
+    """Return bounded, structured context items for coordinator decomposition input."""
+    context_items: list[dict[str, str | int]] = []
+    for rank, document in enumerate(documents, start=1):
+        metadata = document.metadata or {}
+        snippet = document.page_content.strip().replace("\n", " ")
+        context_items.append(
+            {
+                "rank": rank,
+                "document_id": str(document.id or ""),
+                "title": str(metadata.get("title") or metadata.get("wiki_page") or ""),
+                "source": str(metadata.get("source") or metadata.get("wiki_url") or ""),
+                "snippet": snippet[:500],
+            }
+        )
+    return context_items

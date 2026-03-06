@@ -12,7 +12,11 @@ from sqlalchemy.orm import Session
 from agents import create_coordinator_agent
 from db import DATABASE_URL
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
-from services.vector_store_service import get_vector_store
+from services.vector_store_service import (
+    build_initial_search_context,
+    get_vector_store,
+    search_documents_for_context,
+)
 from utils.agent_callbacks import (
     AgentLoggingCallbackHandler,
     SearchDatabaseCaptureCallback,
@@ -29,6 +33,13 @@ _SEARCH_DATABASE_TOOL_NAME = "search_database"
 
 
 _QUERY_LOG_MAX = 200
+_INITIAL_SEARCH_CONTEXT_K = int(os.getenv("INITIAL_SEARCH_CONTEXT_K", "5"))
+_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW = os.getenv("INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD")
+_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
+    float(_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW)
+    if _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW not in (None, "")
+    else None
+)
 
 
 def _truncate_query(q: str) -> str:
@@ -41,6 +52,18 @@ def _stringify_message_content(content: Any) -> str:
     if content is None:
         return ""
     return str(content)
+
+
+def _build_coordinator_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str:
+    if not initial_search_context:
+        return query
+    serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
+    return (
+        f"User question:\n{query}\n\n"
+        "Initial retrieval context for decomposition (top-k from the original question):\n"
+        f"{serialized_context}\n\n"
+        "Use this context when decomposing the question into atomic sub-questions."
+    )
 
 
 def _is_main_agent_turn(msg: AIMessage) -> bool:
@@ -328,6 +351,20 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         collection_name=_VECTOR_COLLECTION_NAME,
         embeddings=get_embedding_model(),
     )
+    initial_context_docs = search_documents_for_context(
+        vector_store=vector_store,
+        query=payload.query,
+        k=_INITIAL_SEARCH_CONTEXT_K,
+        score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+    )
+    initial_search_context = build_initial_search_context(initial_context_docs)
+    logger.info(
+        "Initial decomposition context built query=%s docs=%s k=%s score_threshold=%s",
+        _truncate_query(payload.query),
+        len(initial_search_context),
+        _INITIAL_SEARCH_CONTEXT_K,
+        _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+    )
     agent = create_coordinator_agent(
         vector_store=vector_store,
         model=_RUNTIME_AGENT_MODEL,
@@ -335,8 +372,9 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     search_db_capture = SearchDatabaseCaptureCallback()
     callbacks = [AgentLoggingCallbackHandler(), search_db_capture]
     config = {"callbacks": callbacks}
+    coordinator_message = _build_coordinator_input_message(payload.query, initial_search_context)
     result = agent.invoke(
-        {"messages": [HumanMessage(content=payload.query)]},
+        {"messages": [HumanMessage(content=coordinator_message)]},
         config=config,
     )
     messages = result.get("messages") if isinstance(result, dict) else []

@@ -160,9 +160,32 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
         captured["model"] = model
         return _FakeAgent()
 
+    def fake_search_documents_for_context(*, vector_store, query, k, score_threshold):
+        captured["context_search"] = {
+            "vector_store": vector_store,
+            "query": query,
+            "k": k,
+            "score_threshold": score_threshold,
+        }
+        return ["doc-a", "doc-b"]
+
+    def fake_build_initial_search_context(documents):
+        captured["context_docs"] = list(documents)
+        return [
+            {
+                "rank": 1,
+                "document_id": "doc-a",
+                "title": "NATO",
+                "source": "https://example.com/nato",
+                "snippet": "NATO policy changed in 2025.",
+            }
+        ]
+
     monkeypatch.setattr(agent_service, "get_vector_store", fake_get_vector_store)
     monkeypatch.setattr(agent_service, "create_coordinator_agent", fake_create_coordinator_agent)
     monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", fake_search_documents_for_context)
+    monkeypatch.setattr(agent_service, "build_initial_search_context", fake_build_initial_search_context)
 
     with caplog.at_level(logging.INFO):
         response = agent_service.run_runtime_agent(
@@ -180,8 +203,17 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert captured["vector_store"] == "fake-vector-store"
     assert captured["collection_name"] == "agent_search_internal_data"
     assert captured["model"] == "gpt-4.1-mini"
-    assert captured["payload"]["messages"][0].content == "What happened in NATO policy?"
+    assert captured["context_search"]["query"] == "What happened in NATO policy?"
+    assert captured["context_search"]["vector_store"] == "fake-vector-store"
+    assert captured["context_search"]["k"] == agent_service._INITIAL_SEARCH_CONTEXT_K
+    assert captured["context_docs"] == ["doc-a", "doc-b"]
+    coordinator_message = captured["payload"]["messages"][0].content
+    assert "User question:" in coordinator_message
+    assert "What happened in NATO policy?" in coordinator_message
+    assert "Initial retrieval context for decomposition" in coordinator_message
+    assert '"title": "NATO"' in coordinator_message
     assert "Runtime agent run start" in caplog.text
+    assert "Initial decomposition context built" in caplog.text
     assert "SubQuestionAnswer summary count=1" in caplog.text
     assert "SubQuestionAnswer[1]" in caplog.text and "What happened in NATO policy?" in caplog.text
     assert "Runtime agent run complete" in caplog.text

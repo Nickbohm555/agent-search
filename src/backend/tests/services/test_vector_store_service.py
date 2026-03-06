@@ -10,7 +10,12 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from db import DATABASE_URL
-from services.vector_store_service import add_documents_to_store, get_vector_store
+from services.vector_store_service import (
+    add_documents_to_store,
+    build_initial_search_context,
+    get_vector_store,
+    search_documents_for_context,
+)
 from utils.embeddings import get_embedding_model
 
 
@@ -80,3 +85,47 @@ def test_add_documents_to_store_returns_ids_and_persists_wiki_metadata() -> None
     assert more_ids[0]
 
     vector_store.delete_collection()
+
+
+def test_search_documents_for_context_uses_threshold_when_available() -> None:
+    expected_docs = [Document(page_content="doc one", metadata={"title": "One"})]
+    captured: dict[str, object] = {}
+
+    class _FakeStore:
+        def similarity_search_with_relevance_scores(self, query, k, score_threshold):
+            captured["query"] = query
+            captured["k"] = k
+            captured["score_threshold"] = score_threshold
+            return [(expected_docs[0], 0.91)]
+
+    docs = search_documents_for_context(
+        vector_store=_FakeStore(),
+        query="nato policy",
+        k=3,
+        score_threshold=0.5,
+    )
+
+    assert docs == expected_docs
+    assert captured == {"query": "nato policy", "k": 3, "score_threshold": 0.5}
+
+
+def test_build_initial_search_context_shapes_metadata_and_snippet() -> None:
+    docs = [
+        Document(
+            id="abc123",
+            page_content="Line 1\nLine 2",
+            metadata={"title": "NATO", "source": "https://example.com/nato"},
+        )
+    ]
+
+    context = build_initial_search_context(docs)
+
+    assert context == [
+        {
+            "rank": 1,
+            "document_id": "abc123",
+            "title": "NATO",
+            "source": "https://example.com/nato",
+            "snippet": "Line 1 Line 2",
+        }
+    ]
