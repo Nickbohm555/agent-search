@@ -484,3 +484,58 @@
 - Response field assertion passed:
   - `/tmp/section10_run.json` had `sub_qa_count=5`.
   - Every `sub_qa` item included `answerable: true` and `verification_reason: "grounded_in_reranked_documents"`.
+
+## Test Section 11: Parallel sub-question pipeline (Section 10)
+
+**Single goal:** Logs show parallel pipeline start and complete with count and workers; multiple sub_qa completed.
+
+**Details:**
+- Same run. Logs must show "Per-subquestion pipeline parallel start" with count and effective_workers, and "Per-subquestion pipeline parallel complete" with count. Response has multiple `sub_qa` entries.
+
+**Tech stack and dependencies**
+- agent_service run_pipeline_for_subquestions.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | run_pipeline_for_subquestions and parallel logs. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Per-subquestion pipeline parallel start count=...` and `Per-subquestion pipeline parallel complete count=...`.
+3. Response: `sub_qa` length ≥ 2 (multiple sub-questions processed).
+
+**Test results:** (Add when section is complete.)
+
+---
+
+**Test results:**
+- Fresh full restart/build completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Running state after restart (`docker compose ps`) showed core services up:
+  - `backend` Up with `0.0.0.0:8000->8000/tcp`
+  - `db` Up (healthy) with `0.0.0.0:5432->5432/tcp`
+  - `frontend` Up with `0.0.0.0:5173->5173/tcp`
+- Logs viewed for every running service image after fresh start:
+  - `docker compose logs --tail=80 db`
+  - `docker compose logs --tail=120 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=60 chrome`
+- Section 11 API execution:
+  - `POST /api/internal-data/wipe` => HTTP 200, body `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => HTTP 200, body `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200
+- Required Section 11 backend log assertions passed (`docker compose logs --tail=1200 backend`):
+  - `Per-subquestion pipeline parallel start count=9 configured_max_workers=4 effective_workers=4`
+  - `Per-subquestion pipeline parallel complete count=9`
+  - Request completion line: `POST /api/agents/run HTTP/1.1" 200 OK`
+- Response assertions passed:
+  - `sub_qa` length check: `9` (>= 2)
+  - `output` length check: `546` (non-empty)
+- Additional useful runtime logs viewed:
+  - Backend showed per-subquestion item start/complete logs and subanswer generation/verification for multiple items.
+  - Frontend logs remained healthy with Vite ready at `http://localhost:5173/`.
+  - DB logs showed ready state and active transaction warnings only, no fatal errors.
