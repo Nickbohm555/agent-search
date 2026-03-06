@@ -40,6 +40,10 @@ from utils.agent_callbacks import (
     log_agent_messages_summary,
 )
 from utils.embeddings import get_embedding_model
+from utils.langfuse_tracing import (
+    build_langfuse_callback_handler,
+    flush_langfuse_callback_handler,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -703,6 +707,14 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     )
     search_db_capture = SearchDatabaseCaptureCallback()
     callbacks = [AgentLoggingCallbackHandler(), search_db_capture]
+    langfuse_callback = build_langfuse_callback_handler()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
+    logger.info(
+        "Runtime agent callback configuration callback_count=%s langfuse_enabled=%s",
+        len(callbacks),
+        langfuse_callback is not None,
+    )
     config = {"callbacks": callbacks}
     coordinator_message = _build_coordinator_input_message(payload.query, initial_search_context)
     logger.info(
@@ -710,10 +722,13 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         _truncate_query(payload.query),
         len(initial_search_context),
     )
-    result = agent.invoke(
-        {"messages": [HumanMessage(content=coordinator_message)]},
-        config=config,
-    )
+    try:
+        result = agent.invoke(
+            {"messages": [HumanMessage(content=coordinator_message)]},
+            config=config,
+        )
+    finally:
+        flush_langfuse_callback_handler(langfuse_callback)
     messages = result.get("messages") if isinstance(result, dict) else []
     if isinstance(messages, list) and messages:
         logger.info("Agent run finished; logging tool calls and tool results from %s messages", len(messages))
