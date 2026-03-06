@@ -96,3 +96,51 @@
   - Backend (`docker compose logs --tail=25 backend`) showed full pipeline completion and `Runtime agent run complete`.
   - Frontend (`docker compose logs --tail=25 frontend`) showed Vite dev server ready at `http://localhost:5173/`.
   - DB (`docker compose logs --tail=25 db`) showed PostgreSQL ready to accept connections.
+
+## Test Section 3: Initial search for decomposition context (Section 2)
+
+**Single goal:** After loading NATO wiki data, one agent run produces backend logs showing initial context search and decomposition context built with non-zero docs.
+
+**Details:**
+- Wipe internal data, load NATO wiki, run one query. Logs must show context search completion and "Initial decomposition context built" with `docs=5` (or similar) and `context_items` ≥ 1.
+
+**Tech stack and dependencies**
+- Docker backend; vector store and internal-data API.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/vector_store_service.py` | Context search and context building. |
+| `src/backend/services/agent_service.py` | Invokes context search and passes context to decomposition. |
+
+**How to test:**
+1. Wipe: `POST /api/internal-data/wipe` → 200.
+2. Load: `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` → 200; body shows `documents_loaded=1`, `chunks_created=14` (or similar).
+3. Run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` → 200.
+4. Backend logs: `docker compose logs --tail=200 backend`. Require:
+   - A line matching `Context search complete` with the query and `results=` (e.g. `results=5`).
+   - A line matching `Initial decomposition context built` with `docs=` and `context_items=` (e.g. `docs=5`, `context_items=5`).
+
+**Test results:**
+- Fresh build/run context used for this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Wipe command/result:
+  - `POST /api/internal-data/wipe` => `HTTP 200`
+  - Body: `{"status":"success","message":"All internal documents and chunks removed."}`
+- Load command/result:
+  - `POST /api/internal-data/load` with NATO wiki payload => `HTTP 200`
+  - Body: `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+- Agent run command/result:
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => `HTTP 200`
+  - Response body included `main_question`, `sub_qa`, and `output`.
+- Backend log assertions (verified from full backend logs due long run output):
+  - `Context search complete query='What changed in NATO policy?' k=5 score_threshold=None results=5 mode=similarity_search`
+  - `Initial decomposition context built query=What changed in NATO policy? docs=5 k=5 score_threshold=None`
+  - `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- Useful service logs viewed for this iteration:
+  - `docker compose logs --tail=200 db`
+  - `docker compose logs --tail=200 backend`
+  - `docker compose logs --tail=200 frontend`
