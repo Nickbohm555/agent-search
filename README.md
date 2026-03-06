@@ -262,6 +262,12 @@ Generate Python SDK with the repo script (single invocation):
 ./scripts/generate_sdk.sh
 ```
 
+### SDK output location and repo policy
+
+- Canonical generated SDK path: `sdk/python`
+- Repo policy: generated SDK files in `sdk/python` are committed to git.
+- `.gitignore` intentionally does not ignore `sdk/python`; regenerate with `./scripts/generate_sdk.sh` whenever `openapi.json` changes.
+
 ## Links
 
 ```text

@@ -716,3 +716,57 @@
 - `docker compose ps` -> pass (`db` healthy; `backend`/`frontend`/`chrome` up).
 - `docker compose logs --tail=140` -> reviewed for all running containers; no blocking errors.
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.
+
+---
+
+## Section S6: SDK output location and repo policy
+
+**Single goal:** Decide where the generated SDK lives in the repo and whether it is committed or gitignored.
+
+**Details:**
+- One chosen path (e.g. `sdk/python/` or `agent-search-python-sdk/`). Document in README or sdk/README.
+- Either add that path to `.gitignore` (regenerate only) or commit generated files; document the choice.
+
+**Tech stack and dependencies**
+- None.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/.gitignore` and/or `agent-search/sdk/README.md` | Ignore or commit policy for generated SDK directory; document location. |
+
+**How to test:** Run generate script; confirm output is at the documented path; confirm git state matches policy.
+
+### Completion notes (March 6, 2026)
+- Documented canonical SDK location and repo policy in `README.md` under OpenAPI: generated Python SDK output path is `sdk/python` and generated files are committed to git.
+- Added `sdk/README.md` with SDK directory guidance, canonical source spec (`openapi.json`), generation command (`./scripts/generate_sdk.sh`), and explicit committed-artifact policy.
+- Added policy note to `.gitignore` clarifying `sdk/python` is intentionally not ignored.
+- Re-exported OpenAPI and regenerated SDK to verify location and policy alignment.
+
+### Useful logs
+- OpenAPI export log:
+  - `2026-03-06 17:40:45,689 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json canonical_output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json openapi_version=3.1.0 path_count=5 sample_paths=['/api/agents/run', '/api/health', '/api/internal-data/load', '/api/internal-data/wiki-sources', '/api/internal-data/wipe']`
+- SDK generation logs:
+  - `2026-03-06T22:40:31Z INFO generate_sdk: starting image=openapitools/openapi-generator-cli lang=python spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+  - `OpenAPI Generator: python (client)`
+  - `writing file /local/sdk/python/openapi_client/api/agents_api.py`
+  - `writing file /local/sdk/python/openapi_client/configuration.py`
+  - `2026-03-06T22:40:45Z INFO generate_sdk: generation complete spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+- Container restart and runtime logs:
+  - `docker compose restart db backend frontend` restarted all required app services successfully.
+  - Backend logs include `Uvicorn running on http://0.0.0.0:8000` and `Application startup complete.`
+  - Frontend logs include `VITE v5.4.21 ready` and `Local: http://localhost:5173/`.
+  - DB logs include `database system is ready to accept connections`.
+  - Initial health probe during restart returned transient `curl: (56) Recv failure: Connection reset by peer`; follow-up health check succeeded once services stabilized.
+
+### Tests run
+- `uv run --project src/backend python scripts/export_openapi.py` -> pass.
+- `./scripts/generate_sdk.sh` -> pass (regenerated `sdk/python`).
+- `test -d sdk/python && ls -la sdk/python` -> pass (output present at documented path).
+- `git check-ignore -v sdk/python` and `git check-ignore -v sdk/python/README.md` -> pass (no ignore rule applies).
+- `git ls-files sdk/python` -> pass (generated SDK files are tracked, matching committed policy).
+- `docker compose restart db backend frontend` -> pass.
+- `docker compose ps` -> pass (`db` healthy; `backend` and `frontend` up).
+- `docker compose logs --tail=140 backend`, `docker compose logs --tail=140 frontend`, `docker compose logs --tail=140 db` -> reviewed; no blocking startup/runtime errors.
+- `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
