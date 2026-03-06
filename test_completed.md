@@ -282,3 +282,51 @@
   - `sub_qa_count: 5`
   - `non_empty_sub_answer_count: 5`
   - `output_len: 557`
+
+## Test Section 7: Per-subquestion document validation (Section 6)
+
+**Single goal:** Backend logs show document validation stage with config and per-subquestion docs_before/docs_after/rejected.
+
+**Details:**
+- Same run. Logs must show "Per-subquestion document validation start" (with config such as min_relevance_score, source_allowlist_count, max_workers) and at least one "Per-subquestion document validation sub_question=" with `docs_before=`, `docs_after=`, `rejected=`.
+
+**Tech stack and dependencies**
+- document_validation_service and agent_service pipeline.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/document_validation_service.py` | Validates docs in parallel. |
+| `src/backend/services/agent_service.py` | Applies validation to sub_qa and logs. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Per-subquestion document validation start` and at least one `Per-subquestion document validation sub_question=... docs_before=... docs_after=... rejected=...`.
+
+**Test results:**
+- Fresh full restart/build/start completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Startup/infra checks performed:
+  - `docker compose ps` showed `backend`, `frontend`, `db` up (`db` healthy).
+  - `curl http://localhost:8000/api/health` => `{"status":"ok"}` (HTTP 200).
+  - `curl http://localhost:5173` => HTTP 200.
+- Logs viewed for built services:
+  - `docker compose logs --tail=80 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`
+- Section 7 run inputs/results:
+  - `POST /api/internal-data/wipe` => HTTP 200, body: `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => HTTP 200, body: `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200
+- Required backend log assertions passed (`docker compose logs --tail=1200 backend`):
+  - `Per-subquestion document validation start count=1 min_relevance_score=0.0 source_allowlist_count=0 min_year=None max_year=None max_workers=8`
+  - `Per-subquestion document validation sub_question=NATO response to September 11 attacks? docs_before=10 docs_after=10 rejected=0`
+  - Additional sub-question validations also logged with `docs_before`, `docs_after`, and `rejected` fields.
+- Useful related pipeline evidence from same run:
+  - `Context search complete query='What changed in NATO policy?' ... results=5`
+  - `Initial decomposition context built query=What changed in NATO policy? docs=5 ...`
+  - `Per-subquestion search callbacks captured count=6`
+  - `Per-subquestion search result ... docs_retrieved=10` (multiple entries)
