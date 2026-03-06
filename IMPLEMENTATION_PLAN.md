@@ -30,7 +30,7 @@ Current section to work on: section 1. (move +1 after each turn)
 
 **Details:**
 - At run start, the coordinator creates or updates a plan via `write_todos` with todos that mirror the stages above (e.g. initial search, decomposition, parallel initial sub-question pipelines, initial answer, refinement decision; and when refining: refined sub-questions, refined pipelines, refined answer, compare → output).
-- The coordinator marks items in_progress and completed as it delegates and synthesizes. No change to decomposition or RAG logic; only wiring so the coordinator uses the existing `write_todos` tool with a plan aligned to this flow (see flow.jpg).
+- The coordinator marks items in_progress and completed as it delegates and synthesizes. No change to decomposition or RAG logic; only wiring so the coordinator uses the existing `write_todos` tool with a plan aligned to this flow (see flow.jpg). The only difference is the 'Entity Relationship' step no longer exists or is needed.
 
 **Tech:** Deep-agents/LangGraph built-in `write_todos` tool (already available on the coordinator). No new packages. No Docker change.
 
