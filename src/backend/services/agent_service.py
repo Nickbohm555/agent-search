@@ -977,20 +977,36 @@ def run_runtime_agent(
         )
     else:
         logger.info("Runtime agent vector store selected source=provided")
-    initial_context_docs = search_documents_for_context(
-        vector_store=selected_vector_store,
-        query=payload.query,
-        k=_INITIAL_SEARCH_CONTEXT_K,
-        score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-    )
-    initial_search_context = build_initial_search_context(initial_context_docs)
-    logger.info(
-        "Initial decomposition context built query=%s docs=%s k=%s score_threshold=%s",
-        _truncate_query(payload.query),
-        len(initial_search_context),
-        _INITIAL_SEARCH_CONTEXT_K,
-        _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-    )
+    def _build_initial_context_payload() -> tuple[list[Any], list[dict[str, Any]]]:
+        docs = search_documents_for_context(
+            vector_store=selected_vector_store,
+            query=payload.query,
+            k=_INITIAL_SEARCH_CONTEXT_K,
+            score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+        )
+        return docs, build_initial_search_context(docs)
+
+    try:
+        initial_context_docs, initial_search_context = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
+            operation_name="initial_search_context_build",
+            fn=_build_initial_context_payload,
+        )
+        logger.info(
+            "Initial decomposition context built query=%s docs=%s k=%s score_threshold=%s",
+            _truncate_query(payload.query),
+            len(initial_search_context),
+            _INITIAL_SEARCH_CONTEXT_K,
+            _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+        )
+    except FuturesTimeoutError:
+        initial_context_docs = []
+        initial_search_context = []
+        logger.warning(
+            "Initial decomposition context timeout; continuing with empty context query=%s timeout_s=%s",
+            _truncate_query(payload.query),
+            _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
+        )
     decomposition_raw_output = _run_decomposition_only_llm_call(
         query=payload.query,
         initial_search_context=initial_search_context,

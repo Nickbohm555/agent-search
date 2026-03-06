@@ -1212,3 +1212,47 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`).
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`).
 - `docker compose logs --tail=200 backend`, `docker compose logs --tail=80 frontend`, `docker compose logs --tail=80 db` -> reviewed for visibility.
+
+---
+
+## Section 5: Time guardrail — initial search (context for decomposition)
+
+**Single goal:** Enforce a maximum time for the initial retrieval and context build (search_documents_for_context + build_initial_search_context) before decomposition.
+
+**Details:**
+- Wrap the block that performs initial search and builds `initial_search_context` in a timeout; on timeout, **do not fail**—use empty or partial context and continue (decomposition can still run with less context).
+- Use config from Section 3 (e.g. `INITIAL_SEARCH_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; reuse same timeout pattern as Section 4.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap initial search + build_initial_search_context in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow search mock triggers timeout; normal path succeeds. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Updated `run_runtime_agent(...)` in `src/backend/services/agent_service.py` to guardrail the initial context-build block with `_run_with_timeout(...)` using `INITIAL_SEARCH_TIMEOUT_S`.
+- Wrapped both calls (`search_documents_for_context(...)` and `build_initial_search_context(...)`) in one timeout operation (`initial_search_context_build`) so the entire context pre-step is bounded.
+- Added timeout fallback behavior that does not fail the run: if the operation times out, runtime now logs a warning and continues with `initial_search_context = []`.
+- Added two tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout path: slow initial search triggers timeout, decomposition/answer generation receive empty context and run continues.
+  - normal path: initial search within timeout preserves built context and passes it through decomposition + initial answer generation.
+
+### Useful logs
+- `Runtime guardrail timeout operation=initial_search_context_build timeout_s=1`
+- `Initial decomposition context timeout; continuing with empty context query=... timeout_s=1`
+- `Initial decomposition context built query=... docs=... k=5 score_threshold=None`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `docker compose ps` shows `backend` up and `db` healthy after restart.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `27 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`)
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
