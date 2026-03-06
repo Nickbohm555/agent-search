@@ -961,3 +961,60 @@
 - `docker compose logs --no-color --tail=180 db` -> reviewed; no blocking errors.
 - `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
 - `python3 -m venv .venv-sdk-s9 && source .venv-sdk-s9/bin/activate && pip install -e sdk/python && AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> pass.
+
+---
+
+## Section S10: Optional orchestration script (export + generate)
+
+**Single goal:** Add a single script or Make target that runs export then generate (optional one-command SDK refresh).
+
+**Details:**
+- Script runs export_openapi (or equivalent) then generate_sdk; may assume cwd or accept paths.
+- Optional: only add if the team wants one-command refresh; can be skipped.
+
+**Tech stack and dependencies**
+- Same as S1 and S5.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/scripts/update_sdk.sh` or Makefile target | Runs export script then generate_sdk script. |
+
+**How to test:** Run orchestration script; confirm spec file and SDK output are both updated.
+
+### Completion notes (March 6, 2026)
+- Added executable orchestration script at `scripts/update_sdk.sh` that chains:
+  1. `uv run --project src/backend python scripts/export_openapi.py --output <spec>`
+  2. `scripts/generate_sdk.sh <spec> <output>`
+- Script supports optional args (`SPEC_PATH`, `OUTPUT_DIR`) with defaults (`openapi.json`, `sdk/python`) and emits timestamped INFO logs for start/export-complete/full-complete visibility.
+- Updated `sdk/README.md` with optional one-command refresh entry:
+  - `./scripts/update_sdk.sh`
+
+### Useful logs
+- Orchestration run:
+  - `2026-03-06T22:51:22Z INFO update_sdk: start spec=openapi.json output=sdk/python`
+  - `2026-03-06 17:51:24,805 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json ... openapi_version=3.1.0 path_count=5`
+  - `2026-03-06T22:51:25Z INFO update_sdk: openapi export complete spec=openapi.json`
+  - `2026-03-06T22:51:25Z INFO generate_sdk: starting ...`
+  - `OpenAPI Generator: python (client)`
+  - `2026-03-06T22:51:30Z INFO generate_sdk: generation complete spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+  - `2026-03-06T22:51:30Z INFO update_sdk: sdk refresh complete spec=openapi.json output=sdk/python`
+- Container restart and runtime visibility:
+  - `docker compose restart` restarted `backend`, `frontend`, `db`, and `chrome`.
+  - `docker compose ps` shows `agent-search-db ... Up ... (healthy)` and `agent-search-backend` / `agent-search-frontend` / `agent-search-chrome` up.
+  - Backend logs include `Uvicorn running on http://0.0.0.0:8000` and `Application startup complete.`
+  - Frontend logs include `VITE v5.4.21 ready` and `Local: http://localhost:5173/`.
+  - DB logs include `database system is ready to accept connections`.
+- Health check:
+  - `HTTP/1.1 200 OK`
+  - `{"status":"ok"}`
+
+### Tests run
+- `chmod +x scripts/update_sdk.sh && ./scripts/update_sdk.sh` -> pass.
+- `docker compose restart` -> pass.
+- `docker compose ps` -> pass (`db` healthy; `backend`/`frontend`/`chrome` up).
+- `docker compose logs --no-color --tail=200 backend` -> reviewed; no blocking errors.
+- `docker compose logs --no-color --tail=200 frontend` -> reviewed; no blocking errors.
+- `docker compose logs --no-color --tail=200 db` -> reviewed; no blocking errors.
+- `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).

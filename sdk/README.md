@@ -90,6 +90,12 @@ uv run --project src/backend python scripts/export_openapi.py
 git status -- openapi.json sdk/python
 ```
 
+Optional one-command refresh:
+
+```bash
+./scripts/update_sdk.sh
+```
+
 ## Repository policy
 
 Generated files under `sdk/python` are committed to git (not ignored).  
