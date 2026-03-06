@@ -585,3 +585,59 @@
 - Backend log evidence included startup/reload with no runtime errors after final restart.
 
 **Test results:** Complete.
+
+## Section 11: Initial answer generation
+
+**Single goal:** Produce the initial answer from initial search results (Section 2) and sub-question answers (Section 10).
+
+**Details:**
+- Input: user question, initial-search context, list of SubQuestionAnswer. Output: one initial answer string. LLM (coordinator or synthesizer) uses both initial docs and sub_qa. No refinement decision or refinement decomposition here.
+
+**Tech:** Existing LLM and coordinator/synthesizer. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | After parallel pipeline, call initial-answer generation with question + initial context + sub_qa; set response.output (or state for refinement). |
+| `src/backend/agents/coordinator.py` (optional) | If coordinator produces initial answer, feed it initial-search context and sub_qa; else dedicated synthesizer. |
+
+**How to test:** Unit: fixed initial context + sub_qa → initial answer non-empty, aligned with inputs. Integration: full flow → response.output is initial answer (no refinement yet).
+
+### Implemented
+- Added `src/backend/services/initial_answer_service.py` with `generate_initial_answer(...)`:
+  - Synthesizes initial answer from `main_question + initial_search_context + sub_qa`.
+  - Uses `ChatOpenAI` (`INITIAL_ANSWER_MODEL`, default `gpt-4.1-mini`) when API key exists.
+  - Provides deterministic fallback when LLM is unavailable, prioritizing verified subanswers and then initial context snippets.
+  - Added explicit logs for stage start, fallback usage, and LLM completion.
+- Updated `src/backend/services/agent_service.py`:
+  - Wired Section 11 synthesis after per-subquestion parallel pipeline completes.
+  - Captures/logs coordinator raw output separately for visibility.
+  - Sets `response.output` from `generate_initial_answer(...)` instead of raw coordinator last message.
+- Updated `src/backend/tests/services/test_agent_service.py`:
+  - Runtime tests now assert Section 11 synthesized output path and synthesis inputs.
+  - Added log assertion for `Coordinator raw output captured`.
+- Added `src/backend/tests/services/test_initial_answer_service.py`:
+  - Validates fallback synthesis from verified subanswers.
+  - Validates fallback synthesis from initial context when subanswers are absent.
+
+### Validation and useful logs
+- Restarted changed container:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py'`
+  - Result: `14 passed`
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `{"status":"success","documents_loaded":1,"chunks_created":14,...}`
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `HTTP 200`
+  - Response included populated `sub_qa` and synthesized `output`.
+- Backend log evidence:
+  - `Coordinator raw output captured output_length=1330 ...`
+  - `Initial answer generation start question_len=28 context_items=5 sub_qa_count=11`
+  - `Initial answer generation complete via LLM answer_len=579 model=gpt-4.1-mini`
+  - `Runtime agent run complete output_length=579 ...`
+- Frontend/DB logs checked (`docker compose logs --tail ... frontend db`) with no new runtime errors related to this change.
+
+**Test results:** Complete.

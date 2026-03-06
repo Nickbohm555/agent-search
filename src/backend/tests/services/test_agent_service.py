@@ -125,7 +125,7 @@ def test_extract_sub_qa_uses_last_ai_message_as_sub_agent_response() -> None:
     assert result[0].sub_agent_response == "Final subagent answer for this delegated question."
 
 
-def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, caplog) -> None:
+def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
 
     class _FakeAgent:
@@ -192,11 +192,20 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
             }
         ]
 
+    def fake_generate_initial_answer(*, main_question, initial_search_context, sub_qa):
+        captured["initial_answer_input"] = {
+            "main_question": main_question,
+            "initial_search_context": initial_search_context,
+            "sub_qa_count": len(sub_qa),
+        }
+        return "Initial synthesized answer"
+
     monkeypatch.setattr(agent_service, "get_vector_store", fake_get_vector_store)
     monkeypatch.setattr(agent_service, "create_coordinator_agent", fake_create_coordinator_agent)
     monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
     monkeypatch.setattr(agent_service, "search_documents_for_context", fake_search_documents_for_context)
     monkeypatch.setattr(agent_service, "build_initial_search_context", fake_build_initial_search_context)
+    monkeypatch.setattr(agent_service, "generate_initial_answer", fake_generate_initial_answer)
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
@@ -217,7 +226,7 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
             db=_make_session(),
         )
 
-    assert response.output == "Final output"
+    assert response.output == "Initial synthesized answer"
     assert response.main_question == "What happened in NATO policy?"
     assert len(response.sub_qa) == 1
     assert response.sub_qa[0].sub_question == "What happened in NATO policy?"
@@ -234,6 +243,9 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert captured["context_search"]["vector_store"] == "fake-vector-store"
     assert captured["context_search"]["k"] == agent_service._INITIAL_SEARCH_CONTEXT_K
     assert captured["context_docs"] == ["doc-a", "doc-b"]
+    assert captured["initial_answer_input"]["main_question"] == "What happened in NATO policy?"
+    assert captured["initial_answer_input"]["sub_qa_count"] == 1
+    assert captured["initial_answer_input"]["initial_search_context"][0]["title"] == "NATO"
     coordinator_message = captured["payload"]["messages"][0].content
     assert "Decomposition input:" in coordinator_message
     assert "User question:" in coordinator_message
@@ -248,6 +260,7 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert "Coordinator decomposition input prepared" in caplog.text
     assert "SubQuestionAnswer summary count=1" in caplog.text
     assert "SubQuestionAnswer[1]" in caplog.text and "What happened in NATO policy?" in caplog.text
+    assert "Coordinator raw output captured" in caplog.text
     assert "Runtime agent run complete" in caplog.text
 
 
@@ -515,6 +528,11 @@ def test_run_runtime_agent_populates_multiple_subquestions_with_verification(mon
     monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
     monkeypatch.setattr(
         agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Initial synthesized output",
+    )
+    monkeypatch.setattr(
+        agent_service,
         "generate_subanswer",
         lambda *, sub_question, reranked_retrieved_output: f"answer:{sub_question}",
     )
@@ -533,7 +551,7 @@ def test_run_runtime_agent_populates_multiple_subquestions_with_verification(mon
         db=_make_session(),
     )
 
-    assert response.output == "Final output"
+    assert response.output == "Initial synthesized output"
     assert len(response.sub_qa) == 2
     assert [item.sub_question for item in response.sub_qa] == [
         "What changed in policy X?",

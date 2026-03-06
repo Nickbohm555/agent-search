@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 11. (move +1 after each turn)
+Current section to work on: section 12. (move +1 after each turn)
 
 ---
 
@@ -321,7 +321,17 @@ Current section to work on: section 11. (move +1 after each turn)
 
 **How to test:** Unit: fixed initial context + sub_qa → initial answer non-empty, aligned with inputs. Integration: full flow → response.output is initial answer (no refinement yet).
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py'` -> `14 passed`.
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `{"status":"success","documents_loaded":1,"chunks_created":14,...}`
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200` and response `output` returned synthesized initial answer from initial retrieval context + `sub_qa`.
+- Backend logs confirmed Section 11 stage:
+  - `Coordinator raw output captured output_length=...`
+  - `Initial answer generation start question_len=28 context_items=5 sub_qa_count=11`
+  - `Initial answer generation complete via LLM answer_len=579 model=gpt-4.1-mini`
+  - `Runtime agent run complete output_length=579 ...`
 
 ---
 

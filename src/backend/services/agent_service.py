@@ -21,6 +21,7 @@ from services.document_validation_service import (
     validate_subquestion_documents,
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
+from services.initial_answer_service import generate_initial_answer
 from services.subanswer_service import generate_subanswer
 from services.subanswer_verification_service import (
     SubanswerVerificationResult,
@@ -622,7 +623,17 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     )
     sub_qa = run_pipeline_for_subquestions(sub_qa)
     _log_sub_qa_run_end_summary(sub_qa)
-    output = _extract_last_message_content(result)
+    coordinator_output = _extract_last_message_content(result)
+    logger.info(
+        "Coordinator raw output captured output_length=%s output_preview=%s",
+        len(coordinator_output),
+        coordinator_output[:200] + "..." if len(coordinator_output) > 200 else coordinator_output,
+    )
+    output = generate_initial_answer(
+        main_question=payload.query,
+        initial_search_context=initial_search_context,
+        sub_qa=sub_qa,
+    )
     logger.info(
         "Runtime agent run complete output_length=%s output_preview=%s",
         len(output),
