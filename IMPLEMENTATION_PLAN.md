@@ -4,343 +4,443 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S11. (move +1 after each turn)
+Current section to work on: section 1. (move +1 after each turn)
+
+**Guardrail policy:** Time guardrails (Sections 3–18) **do not fail** the run. On timeout, force a return (partial result, fallback, or safe default) and continue so the pipeline stays fast and the user always gets an answer when possible.
 
 ---
 
-## SDK creation (OpenAPI Generator)
+## Section 1: Optional chat model parameter at run entry
 
-Steps below turn the agent-search FastAPI API into a generated, schema-driven SDK. Complete in order; each section is exactly one deliverable.
-
----
-
-## Section S1: Add script to export OpenAPI from FastAPI app to a file
-
-**Single goal:** Add a script that loads the FastAPI app, calls `app.openapi()`, and writes the OpenAPI spec to a file (no running server required).
+**Single goal:** Allow the run entry point to accept an optional chat model (e.g. LangChain `BaseChatModel` / OpenAI) so callers can supply their own model; when not provided, keep current env-based default.
 
 **Details:**
-- Script must be runnable from repo (e.g. `python scripts/export_openapi.py` or from backend dir).
-- Output path may be configurable or fixed; schema must include all mounted routes (`/api/health`, `/api/agents/*`, `/api/internal-data/*`).
+- Add optional `model` parameter to `run_runtime_agent` (and any public SDK entry that calls it).
+- When provided, use it for `create_coordinator_agent(..., model=...)` and for the decomposition LLM call (`_run_decomposition_only_llm_call`); when not provided, use existing `_RUNTIME_AGENT_MODEL` / `_DECOMPOSITION_ONLY_MODEL` and current `ChatOpenAI` construction.
+- Do not change request/response schema in this section; focus on the service layer signature and coordinator/decomposition wiring.
 
 **Tech stack and dependencies**
-- FastAPI (existing). Optional: `pyyaml` if writing YAML; otherwise JSON is fine.
+- No new packages; existing `langchain_core` / `langchain_openai` for `BaseChatModel`-like typing if desired.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/scripts/export_openapi.py` | Loads app, calls `app.openapi()`, writes spec to a file. |
+| `src/backend/services/agent_service.py` | Add optional `model` to `run_runtime_agent`; thread to `create_coordinator_agent` and `_run_decomposition_only_llm_call`. |
+| `src/backend/agents/coordinator.py` | Already accepts `model`; no change unless signature doc updated. |
+| `src/backend/tests/services/test_agent_service.py` | Tests for run with provided model vs default. |
 
-**How to test:** Run the script; confirm the output file exists and contains OpenAPI 3.x paths and components.
+**How to test:** Unit tests: run with `model=None` (default behavior unchanged); run with a fake model and assert it is passed to `create_coordinator_agent` and used in decomposition. Restart app and run one query via API to confirm no regression.
 
-**Test results:** Completed on March 6, 2026.
-- `uv run --project src/backend python scripts/export_openapi.py` -> exported `openapi.json` at repo root with OpenAPI `3.1.0`.
-- Validation check confirms required paths exist: `/api/health`, `/api/agents/run`, `/api/internal-data/load`, `/api/internal-data/wipe`, `/api/internal-data/wiki-sources`.
-- Validation check confirms `components` is present in exported schema.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S2: Canonical OpenAPI spec file path and format
+## Section 2: Optional vector store parameter at run entry
 
-**Single goal:** Define a single canonical path and format for the OpenAPI spec file in the repo so all tooling uses the same input.
+**Single goal:** Allow the run entry point to accept an optional vector store instance so callers can supply their own store; when not provided, keep current `get_vector_store(...)` from env/DB.
 
 **Details:**
-- Spec file lives at one path (e.g. `agent-search-api.yaml` or `openapi.yaml` at repo root or in a designated folder).
-- Export script (S1) must write to this path. YAML preferred for readability; JSON acceptable.
+- Add optional `vector_store` parameter to `run_runtime_agent` (and any public SDK entry).
+- When provided, use it for initial search, coordinator retriever, and refinement retrieval; when not provided, call `get_vector_store(connection=..., collection_name=..., embeddings=...)` as today.
+- Do not change request/response schema in this section; focus on the service layer.
 
 **Tech stack and dependencies**
-- None new; export script from S1.
+- No new packages; existing `vector_store_service.get_vector_store` and store interface (e.g. `similarity_search`).
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/agent-search-api.yaml` (or chosen path) | Canonical OpenAPI 3.x spec; produced by export script. |
+| `src/backend/services/agent_service.py` | Add optional `vector_store` to `run_runtime_agent`; use when provided, else `get_vector_store(...)`. |
+| `src/backend/tests/services/test_agent_service.py` | Tests for run with provided vector_store vs default. |
 
-**How to test:** Run export script; confirm file exists at canonical path. Optionally validate with `openapi-generator validate -i <path>` or online validator.
+**How to test:** Unit tests: run with `vector_store=None` (default behavior unchanged); run with a fake vector_store and assert it is used for initial search and coordinator. Restart app and run one query via API to confirm no regression.
 
-**Test results:** Completed on March 6, 2026.
-- `uv run --project src/backend python scripts/export_openapi.py` -> exported canonical spec to `openapi.json` at repo root.
-- Validation check confirms JSON OpenAPI schema contains `openapi`, `paths`, and `components`, and includes `/api/health`, `/api/agents/run`, `/api/internal-data/load`, and `/api/internal-data/wipe`.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S3: Validate exported OpenAPI spec
+## Section 3: Time guardrail configuration
 
-**Single goal:** Add a repeatable way to validate the canonical OpenAPI spec (syntax and structure).
+**Single goal:** Introduce a single place (env or config) that defines timeout seconds for each RAG step so every guardrail can be configured without code changes.
 
 **Details:**
-- Use OpenAPI Generator’s validate command (e.g. via Docker) or a documented validator; no new app code required.
-- Document the validation command in README or script comment.
+- Define named timeout keys (e.g. `INITIAL_SEARCH_TIMEOUT_S`, `DECOMPOSITION_LLM_TIMEOUT_S`, `COORDINATOR_INVOKE_TIMEOUT_S`, etc.) and read from env with sensible defaults (e.g. 30–120s for LLM steps, 10–30s for retrieval).
+- No actual timeout enforcement in this section; only add the configuration and document it (e.g. in `.env.example` or docs).
 
 **Tech stack and dependencies**
-- Docker (for `openapi-generator validate`) or another validator; no new app dependencies.
+- No new packages; `os.getenv` or existing config pattern.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| Optional: one-line in `scripts/validate_openapi.sh` or in docs | Runs validation against canonical spec file. |
+| `src/backend/services/agent_service.py` or a small `config.py` / env module | Declare and read timeout env vars for all steps. |
+| `.env.example` or `docs/` | Document new env vars and default values. |
 
-**How to test:** Run validation; fix spec or export if it fails until validation passes.
+**How to test:** Assert that timeout values are read correctly in tests (e.g. default present, override from env when set). No runtime behavior change yet.
 
-**Test results:** Completed on March 6, 2026.
-- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec at `openapi.json` with OpenAPI `3.1.0`.
-- `./scripts/validate_openapi.sh` -> OpenAPI Generator validation passed (`No validation issues detected.`).
-- `docker compose restart db backend frontend` -> all required services restarted cleanly.
-- `docker compose ps` -> `db` healthy; `backend` and `frontend` up.
-- `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, and `docker compose logs --tail=120 db` reviewed with no startup/runtime errors after restart.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S4: Docker command for OpenAPI Generator (Python client)
+## Section 4: Time guardrail — vector store acquisition
 
-**Single goal:** Document the exact `docker run` command that generates the Python SDK from the canonical spec, with no local generator install.
+**Single goal:** Enforce a maximum time for obtaining the vector store when not provided by the caller (i.e. for the `get_vector_store(...)` path).
 
 **Details:**
-- Use image `openapitools/openapi-generator-cli`; mount repo (or spec dir) so `-i` and `-o` point at host paths.
-- Output to a dedicated directory (e.g. `sdk/python/` or `agent-search-python-sdk/`). No script yet; command only.
+- When `run_runtime_agent` calls `get_vector_store(...)`, wrap that call in a timeout; on timeout, **do not fail**—return a safe fallback (e.g. return early from run with a short “unavailable” message, or retry once with shorter timeout) so the API still returns a response.
+- Use the timeout value from Section 3 (e.g. `VECTOR_STORE_ACQUISITION_TIMEOUT_S`).
+- When caller provides `vector_store`, skip this step; no guardrail applied.
 
 **Tech stack and dependencies**
-- Docker.
+- Python stdlib `concurrent.futures` or equivalent; no new pip packages.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/README.md` or `agent-search/sdk/README.md` | Document the one-line `docker run ... generate -i ... -g python -o ...` command. |
+| `src/backend/services/agent_service.py` | Wrap `get_vector_store` in timeout when vector_store not provided. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout triggers and normal completion. |
 
-**How to test:** Run the documented command; confirm output directory exists and contains generated Python client (e.g. `api/`, `models/`, `configuration.py`).
+**How to test:** Unit test: mock slow `get_vector_store` and assert timeout raises; test normal path still returns store. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added the exact Docker OpenAPI Generator command to `README.md` under OpenAPI spec, generating Python SDK to dedicated output path `sdk/python`.
-- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec `openapi.json` (OpenAPI `3.1.0`).
-- `docker run --rm -u "$(id -u):$(id -g)" -v "$(pwd):/local" openapitools/openapi-generator-cli generate -i /local/openapi.json -g python -o /local/sdk/python` -> generated client successfully.
-- Output verification confirms generated Python client structure present under `sdk/python`, including `openapi_client/api`, `openapi_client/models`, and `openapi_client/configuration.py`.
-- Restarted app services with `docker compose restart db backend frontend`; `docker compose ps` shows `db` healthy and `backend`/`frontend` up.
-- Reviewed `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, and `docker compose logs --tail=120 db`; no blocking startup/runtime errors observed.
-- Health check `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}` after restart stabilization.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S5: Generate-SDK shell script
+## Section 5: Time guardrail — initial search (context for decomposition)
 
-**Single goal:** Add a shell script that runs the OpenAPI Generator Docker command so SDK generation is a single invocation.
+**Single goal:** Enforce a maximum time for the initial retrieval and context build (search_documents_for_context + build_initial_search_context) before decomposition.
 
 **Details:**
-- Script takes no args (or optional spec path / output path); uses canonical spec path and output dir from S2 and S4.
-- Must be runnable from repo root or a documented cwd.
+- Wrap the block that performs initial search and builds `initial_search_context` in a timeout; on timeout, **do not fail**—use empty or partial context and continue (decomposition can still run with less context).
+- Use config from Section 3 (e.g. `INITIAL_SEARCH_TIMEOUT_S`).
 
 **Tech stack and dependencies**
-- Docker; no new pip/npm deps.
+- Python stdlib; reuse same timeout pattern as Section 4.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/scripts/generate_sdk.sh` | Invokes `docker run ... openapi-generator-cli generate` with correct `-i`, `-g python`, `-o`. |
+| `src/backend/services/agent_service.py` | Wrap initial search + build_initial_search_context in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
 
-**How to test:** Run `./scripts/generate_sdk.sh`; confirm SDK output directory is created/updated with generated code.
+**How to test:** Unit test: slow search mock triggers timeout; normal path succeeds. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added `scripts/generate_sdk.sh` with canonical defaults (`openapi.json` -> `sdk/python`), optional path overrides, and timestamped INFO/ERROR logs.
-- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec at `openapi.json`.
-- `./scripts/generate_sdk.sh` -> generated/updated SDK under `sdk/python` via Docker OpenAPI Generator.
-- `docker compose restart` -> restarted `backend`, `frontend`, `db`, and `chrome`; `docker compose ps` shows app services up and `db` healthy.
-- `docker compose logs --tail=140` reviewed for all running services; no blocking startup/runtime errors observed.
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S6: SDK output location and repo policy
+## Section 6: Time guardrail — decomposition LLM call
 
-**Single goal:** Decide where the generated SDK lives in the repo and whether it is committed or gitignored.
+**Single goal:** Enforce a maximum time for the decomposition-only LLM call (`_run_decomposition_only_llm_call`).
 
 **Details:**
-- One chosen path (e.g. `sdk/python/` or `agent-search-python-sdk/`). Document in README or sdk/README.
-- Either add that path to `.gitignore` (regenerate only) or commit generated files; document the choice.
+- Wrap `_run_decomposition_only_llm_call` in a timeout; on timeout, **do not fail**—use fallback (e.g. single normalized question from user query) and continue so the pipeline still runs.
+- Use config from Section 3 (e.g. `DECOMPOSITION_LLM_TIMEOUT_S`).
 
 **Tech stack and dependencies**
-- None.
+- Python stdlib; same timeout pattern.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/.gitignore` and/or `agent-search/sdk/README.md` | Ignore or commit policy for generated SDK directory; document location. |
+| `src/backend/services/agent_service.py` | Wrap _run_decomposition_only_llm_call in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout (fallback or error) and normal path. |
 
-**How to test:** Run generate script; confirm output is at the documented path; confirm git state matches policy.
+**How to test:** Unit test: slow LLM mock triggers timeout; normal path returns parsed sub-questions. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added SDK install and usage documentation to `sdk/README.md` with copy-pasteable setup (`python3 -m venv`, `pip install -e sdk/python`) and minimal endpoint-call examples.
-- Verified the install flow in a clean virtual environment:
-  - `python3 -m venv .venv-sdk-s7`
-  - `source .venv-sdk-s7/bin/activate`
-  - `pip install --upgrade pip`
-  - `pip install -e sdk/python`
-- Verified one successful SDK call against the running API:
-  - `AGENT_SEARCH_BASE_URL=http://localhost:8000 python - <<'PY' ... health_api_health_get() ... PY` -> `HEALTH_RESPONSE {'status': 'ok'}`.
-- Restarted required app services: `docker compose restart db backend frontend`.
-- Verified runtime state and logs:
-  - `docker compose ps` -> `db` healthy; `backend` and `frontend` up.
-  - `docker compose logs --no-color --tail=140 backend`, `frontend`, `db` reviewed; no blocking startup/runtime errors.
-  - Post-restart health check `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S7: SDK install and usage documentation
+## Section 7: Time guardrail — coordinator agent invoke
 
-**Single goal:** Document how to install the generated SDK and call one endpoint (e.g. health or agents run).
+**Single goal:** Enforce a maximum time for the coordinator agent invocation (agent.invoke with sub-questions and retriever tool).
 
 **Details:**
-- Install steps (e.g. `pip install -e sdk/python` or from generated folder).
-- Minimal code example: import client, set base URL, call one method. No new code deliverable; docs only.
+- Wrap `agent.invoke(...)` in a timeout; on timeout, **do not fail**—use whatever messages/sub_qa were captured so far (or build minimal sub_qa from decomposition only) and continue to synthesis so the user still gets an answer.
+- Use config from Section 3 (e.g. `COORDINATOR_INVOKE_TIMEOUT_S`).
 
 **Tech stack and dependencies**
-- Generated SDK’s own dependencies only.
+- Python stdlib; same timeout pattern.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/sdk/README.md` or main `README.md` | Install instructions and minimal usage example (copy-pasteable). |
+| `src/backend/services/agent_service.py` | Wrap coordinator agent.invoke in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
 
-**How to test:** Follow the doc in a clean venv; confirm install and one successful call (against running API or mock).
+**How to test:** Unit test: slow invoke triggers timeout; normal path returns messages and sub_qa. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added `### Updating the SDK` to `sdk/README.md` with explicit ordered steps:
-  1. `uv run --project src/backend python scripts/export_openapi.py` (**S1**)
-  2. `./scripts/generate_sdk.sh` (**S5**)
-  3. `git status -- openapi.json sdk/python`
-- Executed the documented refresh workflow end-to-end:
-  - `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical `openapi.json` (`openapi_version=3.1.0`, expected API paths present).
-  - `./scripts/generate_sdk.sh` -> regenerated `sdk/python` successfully via Docker OpenAPI Generator.
-- Restarted the full application stack and reviewed logs for required visibility:
-  - `docker compose restart` -> restarted `backend`, `frontend`, `db`, and `chrome`.
-  - `docker compose ps` -> `db` healthy; `backend`, `frontend`, and `chrome` up.
-  - `docker compose logs --no-color --tail=180 backend`, `frontend`, and `db` reviewed; no blocking startup/runtime errors.
-- Runtime verification after restart:
-  - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
-  - In a clean venv, `pip install -e sdk/python` and `AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> success (`{'status': 'ok'}`).
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S8: Minimal runnable example script using generated SDK
+## Section 8: Time guardrail — per-subquestion document validation
 
-**Single goal:** Add one runnable example script that uses the generated client to call the API.
+**Single goal:** Enforce a maximum time for the document validation step applied to each sub-question (e.g. each `_apply_document_validation_to_sub_qa` batch or per-item).
 
 **Details:**
-- Single file (e.g. `sdk/examples/run_health.py` or `sdk/examples/run_agent.py`); uses generated client; base URL configurable via env or arg.
-- No new libraries; only the generated SDK.
+- Wrap the document validation work in a timeout; on timeout, **do not fail**—treat that sub-question as validation-skipped (keep existing docs/order) and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `DOCUMENT_VALIDATION_TIMEOUT_S`).
 
 **Tech stack and dependencies**
-- Generated SDK from S5.
+- Python stdlib; same timeout pattern.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/sdk/examples/run_health.py` (or similar) | Calls one endpoint (e.g. health or agents/run) using generated client. |
+| `src/backend/services/agent_service.py` | Wrap document validation in timeout (per item or per batch as chosen). |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
 
-**How to test:** Install SDK, set base URL, run example script; confirm no import or runtime errors against running API.
+**How to test:** Unit test: slow validation triggers timeout; normal path completes. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added runnable SDK example script at `sdk/examples/run_health.py` with INFO/ERROR logs and configurable base URL via `--base-url` or `AGENT_SEARCH_BASE_URL`.
-- Updated `sdk/README.md` with direct run command for the new example script.
-- Verified in a clean virtual environment:
-  - `python3 -m venv .venv-sdk-s8`
-  - `source .venv-sdk-s8/bin/activate`
-  - `pip install --upgrade pip`
-  - `pip install -e sdk/python`
-  - `AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> logged success and returned `{'status': 'ok'}`.
-- Restarted application containers with `docker compose restart` and reviewed logs via:
-  - `docker compose logs --no-color --tail=160`
-  - `docker compose logs --no-color --tail=160 backend`
-  - `docker compose logs --no-color --tail=160 frontend`
-  - `docker compose logs --no-color --tail=160 db`
-- Verified post-restart service health:
-  - `docker compose ps` -> `backend`, `frontend`, and `chrome` up; `db` healthy.
-  - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}` after startup stabilization.
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S9: Document “Updating the SDK” workflow
+## Section 9: Time guardrail — per-subquestion reranking
 
-**Single goal:** Document the steps to refresh the SDK when the API or spec changes (re-export spec, then re-run generator).
+**Single goal:** Enforce a maximum time for the reranking step applied to each sub-question.
 
 **Details:**
-- Add “Updating the SDK” subsection to README or sdk/README: run export script, then generate script; link to S1 and S5.
-- No automation required in this section; docs only.
+- Wrap the reranking work in a timeout; on timeout, **do not fail**—keep existing document order and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `RERANK_TIMEOUT_S`).
 
 **Tech stack and dependencies**
-- None.
+- Python stdlib; same timeout pattern.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/README.md` or `agent-search/sdk/README.md` | “Updating the SDK” subsection with ordered steps. |
+| `src/backend/services/agent_service.py` | Wrap reranking in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
 
-**How to test:** Change a route or schema, follow the documented steps, confirm generated SDK reflects the change.
+**How to test:** Unit test: slow rerank triggers timeout; normal path completes. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added `### Updating the SDK` to `sdk/README.md` with explicit ordered steps:
-  1. `uv run --project src/backend python scripts/export_openapi.py` (**S1**)
-  2. `./scripts/generate_sdk.sh` (**S5**)
-  3. `git status -- openapi.json sdk/python`
-- Executed the documented refresh workflow end-to-end:
-  - `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical `openapi.json` (`openapi_version=3.1.0`, expected API paths present).
-  - `./scripts/generate_sdk.sh` -> regenerated `sdk/python` successfully via Docker OpenAPI Generator.
-- Restarted the full application stack and reviewed logs for required visibility:
-  - `docker compose restart` -> restarted `backend`, `frontend`, `db`, and `chrome`.
-  - `docker compose ps` -> `db` healthy; `backend`, `frontend`, and `chrome` up.
-  - `docker compose logs --no-color --tail=180 backend`, `frontend`, and `db` reviewed; no blocking startup/runtime errors.
-- Runtime verification after restart:
-  - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
-  - In a clean venv, `pip install -e sdk/python` and `AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> success (`{'status': 'ok'}`).
+**Test results:** (Add when section is complete.)
 
 ---
 
-## Section S10: Optional orchestration script (export + generate)
+## Section 10: Time guardrail — per-subquestion subanswer generation
 
-**Single goal:** Add a single script or Make target that runs export then generate (optional one-command SDK refresh).
+**Single goal:** Enforce a maximum time for the subanswer generation step (LLM call per sub-question).
 
 **Details:**
-- Script runs export_openapi (or equivalent) then generate_sdk; may assume cwd or accept paths.
-- Optional: only add if the team wants one-command refresh; can be skipped.
+- Wrap the subanswer generation call in a timeout; on timeout, **do not fail**—use fallback text (e.g. “Answer not available in time”) or mark unanswerable and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `SUBANSWER_GENERATION_TIMEOUT_S`).
 
 **Tech stack and dependencies**
-- Same as S1 and S5.
+- Python stdlib; same timeout pattern.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `agent-search/scripts/update_sdk.sh` or Makefile target | Runs export script then generate_sdk script. |
+| `src/backend/services/agent_service.py` | Wrap subanswer generation in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
 
-**How to test:** Run orchestration script; confirm spec file and SDK output are both updated.
+**How to test:** Unit test: slow subanswer triggers timeout; normal path completes. Restart app and run one query.
 
-**Test results:** Completed on March 6, 2026.
-- Added one-command orchestration script `scripts/update_sdk.sh` to run OpenAPI export then SDK generation with timestamped INFO logs.
-- Ran `chmod +x scripts/update_sdk.sh && ./scripts/update_sdk.sh`:
-  - OpenAPI export completed to canonical `openapi.json`.
-  - SDK generation completed to `sdk/python` via existing `scripts/generate_sdk.sh`.
-- Updated `sdk/README.md` with optional one-command refresh usage:
-  - `./scripts/update_sdk.sh`
-- Restarted the application after implementation and reviewed logs:
-  - `docker compose restart` restarted `backend`, `frontend`, `db`, and `chrome`.
-  - `docker compose ps` confirms `db` healthy and `backend`/`frontend`/`chrome` up.
-  - `docker compose logs --no-color --tail=200 backend`, `frontend`, and `db` reviewed with no blocking startup/runtime errors.
-- Health verification after restart:
-  - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
+**Test results:** (Add when section is complete.)
 
 ---
 
-**MANDATORY before marking section complete or moving to `agent-search/completed.md`:**
-1. **Restart the application** after all code for this section is built (e.g. stop then start the app/server/containers).
-2. **Check all logs** (app logs, build logs, runtime logs) and **run all relevant tests** (unit, integration, or commands from "How to test").
-3. **If anything fails** (startup error, test failure, bad logs, browser/API errors): read the logs and test output, fix the cause, then **repeat from step 1** (restart and re-check). Do **not** call the section "completed" or add it to `completed.md` until everything passes.
-4. Only after a successful restart and passing checks (and browser check when applicable), record outcomes under **Test results** and then mark the section complete / move to `completed.md`.
+## Section 11: Time guardrail — per-subquestion subanswer verification
 
+**Single goal:** Enforce a maximum time for the subanswer verification step per sub-question.
+
+**Details:**
+- Wrap the verification call in a timeout; on timeout, **do not fail**—mark as not answerable (or use default reason) and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `SUBANSWER_VERIFICATION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap subanswer verification in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow verify triggers timeout; normal path completes. Restart app and run one query.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 12: Time guardrail — entire per-subquestion pipeline
+
+**Single goal:** Enforce a maximum total time for `run_pipeline_for_subquestions` (all sub-questions, parallel) so the whole lane is capped even if individual steps pass.
+
+**Details:**
+- Wrap `run_pipeline_for_subquestions(sub_qa)` in a timeout; on timeout, **do not fail**—return whatever sub_qa items completed so far and treat the rest as skipped/unanswerable so synthesis still runs and the user gets an answer.
+- Use config from Section 3 (e.g. `SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern; coordinate with ThreadPoolExecutor usage.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap run_pipeline_for_subquestions in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout (partial results) and normal path. |
+
+**How to test:** Unit test: pipeline that would exceed limit returns partial results or error; normal path returns full sub_qa. Restart app and run one query.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 13: Time guardrail — initial answer generation
+
+**Single goal:** Enforce a maximum time for generating the initial answer from context and sub_qa (`generate_initial_answer`).
+
+**Details:**
+- Wrap `generate_initial_answer(...)` in a timeout; on timeout, **do not fail**—return a fallback string (e.g. concatenate available subanswers or “Answer generation timed out; partial context only”) so the API still returns a response.
+- Use config from Section 3 (e.g. `INITIAL_ANSWER_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap generate_initial_answer in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow generate_initial_answer triggers timeout; normal path returns output. Restart app and run one query.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 14: Time guardrail — refinement decision
+
+**Single goal:** Enforce a maximum time for the refinement decision step (`should_refine`).
+
+**Details:**
+- Wrap `should_refine(...)` in a timeout; on timeout, **do not fail**—treat as no refinement (safe default: return initial answer) and continue.
+- Use config from Section 3 (e.g. `REFINEMENT_DECISION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap should_refine in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow should_refine triggers timeout; normal path returns decision. Restart app and run one query.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 15: Time guardrail — refinement decomposition
+
+**Single goal:** Enforce a maximum time for refinement decomposition (`refine_subquestions`).
+
+**Details:**
+- Wrap `refine_subquestions(...)` in a timeout; on timeout, **do not fail**—use empty list (no refined sub-questions) and return initial answer as final output so the user still gets a response.
+- Use config from Section 3 (e.g. `REFINEMENT_DECOMPOSITION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap refine_subquestions in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow refine_subquestions triggers timeout; normal path returns list. Restart app and run one query that triggers refinement.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 16: Time guardrail — refinement retrieval
+
+**Single goal:** Enforce a maximum time for refinement retrieval (`_seed_refined_sub_qa_from_retrieval`).
+
+**Details:**
+- Wrap `_seed_refined_sub_qa_from_retrieval(...)` in a timeout; on timeout, **do not fail**—return partial list or empty and continue (use initial answer as final if refinement path yields nothing).
+- Use config from Section 3 (e.g. `REFINEMENT_RETRIEVAL_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap _seed_refined_sub_qa_from_retrieval in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow refinement retrieval triggers timeout; normal path returns seeded sub_qa. Restart app and run one query that triggers refinement.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 17: Time guardrail — refinement pipeline run
+
+**Single goal:** Enforce a maximum time for the refinement path’s per-subquestion pipeline run (second `run_pipeline_for_subquestions` on refined sub_qa).
+
+**Details:**
+- Reuse the same whole-pipeline timeout as Section 12, or define `REFINEMENT_PIPELINE_TOTAL_TIMEOUT_S`; wrap the refinement pipeline call in that timeout; on timeout, **do not fail**—return partial refined results or keep initial answer as final so the user still gets a response.
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap refinement run_pipeline_for_subquestions in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: refinement pipeline timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 18: Time guardrail — refined answer generation
+
+**Single goal:** Enforce a maximum time for generating the refined final answer (second `generate_initial_answer` call in the refinement path).
+
+**Details:**
+- Wrap the refined-answer `generate_initial_answer(...)` call in a timeout; on timeout, **do not fail**—keep initial answer as final output so the user always gets a response.
+- Use config from Section 3 (e.g. same `INITIAL_ANSWER_TIMEOUT_S` or `REFINED_ANSWER_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap refined generate_initial_answer in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow refined answer generation triggers timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
+
+**Test results:** (Add when section is complete.)
 
 ---
