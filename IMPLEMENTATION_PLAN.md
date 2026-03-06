@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 6. (move +1 after each turn)
+Current section to work on: section 7. (move +1 after each turn)
 
 ---
 
@@ -132,7 +132,16 @@ Current section to work on: section 6. (move +1 after each turn)
 
 **How to test:** Unit: sub-question → expanded query non-empty (or equals original if no-op). Integration: one sub-question through pipeline → search uses expanded query.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_document_validation_service.py tests/services/test_agent_service.py'` -> `9 passed`.
+- Unit (smoke selector): `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'` -> `2 deselected` (no smoke-selected tests).
+- Integration data prep: `POST /api/internal-data/wipe` -> `200`, then `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`.
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`, response included validated per-subquestion retrieval payloads.
+- Backend logs confirmed Section 6 validation step:
+  - `Per-subquestion search callbacks captured count=7`
+  - `Per-subquestion document validation start count=7 min_relevance_score=0.0 source_allowlist_count=0 min_year=None max_year=None max_workers=8`
+  - `Per-subquestion document validation sub_question=... docs_before=10 docs_after=10 rejected=0`
+  - `Runtime agent run complete output_length=1011 ...`
 
 ---
 
@@ -183,7 +192,16 @@ Current section to work on: section 6. (move +1 after each turn)
 
 **How to test:** Unit: fixed docs + rules → validated output subset/flags correct; parallel (mock delay, check total time). Integration: search → validation → only valid docs proceed.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_document_validation_service.py tests/services/test_agent_service.py'` -> `9 passed`.
+- Unit (smoke selector): `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'` -> `2 deselected` (no smoke-selected tests).
+- Integration data prep: `POST /api/internal-data/wipe` -> `200`, then `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`.
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`, response included validated per-subquestion retrieval payloads.
+- Backend logs confirmed Section 6 validation step:
+  - `Per-subquestion search callbacks captured count=7`
+  - `Per-subquestion document validation start count=7 min_relevance_score=0.0 source_allowlist_count=0 min_year=None max_year=None max_workers=8`
+  - `Per-subquestion document validation sub_question=... docs_before=10 docs_after=10 rejected=0`
+  - `Runtime agent run complete output_length=1011 ...`
 
 ---
 

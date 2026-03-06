@@ -13,6 +13,11 @@ from sqlalchemy.orm import Session
 from agents import create_coordinator_agent
 from db import DATABASE_URL
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
+from services.document_validation_service import (
+    build_document_validation_config_from_env,
+    format_retrieved_documents,
+    validate_subquestion_documents,
+)
 from services.vector_store_service import (
     build_initial_search_context,
     get_vector_store,
@@ -41,6 +46,7 @@ _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
     if _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW not in (None, "")
     else None
 )
+_DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
 
 
 def _truncate_query(q: str) -> str:
@@ -382,6 +388,43 @@ def _log_sub_qa_run_end_summary(sub_qa: list[SubQuestionAnswer]) -> None:
         )
 
 
+def _apply_document_validation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
+    logger.info(
+        "Per-subquestion document validation start count=%s min_relevance_score=%s source_allowlist_count=%s min_year=%s max_year=%s max_workers=%s",
+        len(sub_qa),
+        _DOCUMENT_VALIDATION_CONFIG.min_relevance_score,
+        len(_DOCUMENT_VALIDATION_CONFIG.source_allowlist),
+        _DOCUMENT_VALIDATION_CONFIG.min_year,
+        _DOCUMENT_VALIDATION_CONFIG.max_year,
+        _DOCUMENT_VALIDATION_CONFIG.max_workers,
+    )
+    for item in sub_qa:
+        validation_result = validate_subquestion_documents(
+            sub_question=item.sub_question,
+            retrieved_output=item.sub_answer,
+            config=_DOCUMENT_VALIDATION_CONFIG,
+        )
+        if validation_result.total_documents > 0:
+            item.sub_answer = format_retrieved_documents(validation_result.valid_documents)
+        else:
+            logger.info(
+                "Per-subquestion document validation skipped; no parseable retrieved docs sub_question=%s",
+                _truncate_query(item.sub_question),
+            )
+        logger.info(
+            "Per-subquestion document validation sub_question=%s docs_before=%s docs_after=%s rejected=%s",
+            _truncate_query(item.sub_question),
+            validation_result.total_documents,
+            len(validation_result.valid_documents) if validation_result.total_documents > 0 else "n/a",
+            (
+                validation_result.total_documents - len(validation_result.valid_documents)
+                if validation_result.total_documents > 0
+                else "n/a"
+            ),
+        )
+    return sub_qa
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -435,6 +478,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         messages if isinstance(messages, list) else [],
         search_database_calls=search_database_calls if search_database_calls else None,
     )
+    sub_qa = _apply_document_validation_to_sub_qa(sub_qa)
     _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(

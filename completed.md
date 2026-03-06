@@ -278,3 +278,67 @@
   - `docker compose logs --tail=120 db`
 
 **Test results:** Complete.
+
+## Section 6: Per-subquestion document validation (parallel)
+
+**Single goal:** Validate retrieved documents per sub-question (relevance/constraints); run validations in parallel across documents.
+
+**Details:**
+- Input: per-subquestion doc list. Output: per-subquestion list of docs that passed (or validation flags). Criteria configurable (score threshold, date, source allowlist); parallel within sub-question (thread pool or async). No reranking or subanswer generation here.
+
+**Tech:** LLM or rule-based; add any new dependency to pyproject.toml. No Docker change unless new env vars.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| New `src/backend/services/document_validation_service.py` (or equivalent) | Validate list of docs in parallel; expose to pipeline. |
+| `src/backend/services/agent_service.py` or pipeline module | After search, call validation per sub-question; pass validated docs to reranking. |
+
+**How to test:** Unit: fixed docs + rules → validated output subset/flags correct; parallel (mock delay, check total time). Integration: search → validation → only valid docs proceed.
+
+### Implemented
+- Added `src/backend/services/document_validation_service.py`:
+  - Parses retriever output rows into structured documents.
+  - Applies configurable validation constraints: relevance threshold (`DOCUMENT_VALIDATION_MIN_RELEVANCE_SCORE`), source allowlist (`DOCUMENT_VALIDATION_SOURCE_ALLOWLIST`), and date window (`DOCUMENT_VALIDATION_MIN_YEAR` / `DOCUMENT_VALIDATION_MAX_YEAR`, optional strict year presence).
+  - Runs per-document validation in parallel via `ThreadPoolExecutor` with configurable workers (`DOCUMENT_VALIDATION_MAX_WORKERS`).
+  - Returns structured validation results and provides formatter for validated document output.
+- Updated `src/backend/services/agent_service.py`:
+  - Added `_apply_document_validation_to_sub_qa(...)` after per-subquestion search extraction.
+  - Applies validation per sub-question and rewrites `sub_answer` to validated document rows when parseable retrieval rows are present.
+  - Preserves original `sub_answer` when no parseable rows are found.
+  - Added runtime logs for validation config and per-subquestion before/after/rejected counts.
+- Added tests:
+  - `src/backend/tests/services/test_document_validation_service.py`
+    - Validates rule-based filtering (relevance/source/year).
+    - Verifies parallel execution via timing with mocked per-document delay.
+  - `src/backend/tests/services/test_agent_service.py`
+    - Verifies runtime sub_qa validation step is invoked and filtered document output is applied.
+
+### Validation and logs
+- Full fresh rebuild/restart before implementation:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_document_validation_service.py tests/services/test_agent_service.py'`
+  - Result: `9 passed`
+- Smoke selector command:
+  - `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'`
+  - Result: `2 deselected` (no smoke-selected tests)
+- Integration run:
+  - `POST /api/internal-data/wipe` -> `200`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`
+- Backend log evidence:
+  - `Per-subquestion search callbacks captured count=7`
+  - `Per-subquestion document validation start count=7 min_relevance_score=0.0 source_allowlist_count=0 min_year=None max_year=None max_workers=8`
+  - `Per-subquestion document validation sub_question=... docs_before=10 docs_after=10 rejected=0`
+  - `Runtime agent run complete output_length=1011 ...`
+- Changed container restart after implementation:
+  - `docker compose restart backend`
+  - `docker compose ps` confirmed `backend`, `frontend`, `db` up (`db` healthy)
+- Post-change log sweep:
+  - `docker compose logs --tail=120 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`

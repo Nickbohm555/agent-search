@@ -12,6 +12,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from schemas import RuntimeAgentRunRequest
+from services import document_validation_service
 from services import agent_service
 
 
@@ -283,3 +284,39 @@ def test_estimate_retrieved_doc_count_counts_ranked_lines() -> None:
     )
 
     assert agent_service._estimate_retrieved_doc_count(output) == 2
+
+
+def test_apply_document_validation_to_sub_qa_filters_documents(monkeypatch) -> None:
+    input_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="What changed in NATO policy?",
+            sub_answer="1. title=Doc A source=wiki://trusted content=Policy changed in 2025.\n2. title=Doc B source=wiki://other content=Other content.",
+            tool_call_input='{"query":"What changed in NATO policy?","limit":2}',
+            expanded_query="nato policy changes 2025",
+            sub_agent_response="Delegated summary.",
+        )
+    ]
+
+    doc_a = document_validation_service.RetrievedDocument(
+        rank=1,
+        title="Doc A",
+        source="wiki://trusted",
+        content="Policy changed in 2025.",
+    )
+    validation_result = document_validation_service.SubQuestionValidationResult(
+        total_documents=2,
+        valid_documents=[doc_a],
+        validation_results=[],
+    )
+
+    def fake_validate_subquestion_documents(*, sub_question, retrieved_output, config):
+        assert sub_question == "What changed in NATO policy?"
+        assert "Doc A" in retrieved_output and "Doc B" in retrieved_output
+        return validation_result
+
+    monkeypatch.setattr(agent_service, "validate_subquestion_documents", fake_validate_subquestion_documents)
+
+    output_sub_qa = agent_service._apply_document_validation_to_sub_qa(input_sub_qa)
+
+    assert len(output_sub_qa) == 1
+    assert output_sub_qa[0].sub_answer == "1. title=Doc A source=wiki://trusted content=Policy changed in 2025."
