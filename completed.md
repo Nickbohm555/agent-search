@@ -353,3 +353,50 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py'` -> `22 passed`
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector and why is it used in RAG systems?"}'` -> `200 OK` with unchanged `RuntimeAgentRunResponse` shape (`main_question`, `sub_qa`, `output`)
+
+---
+
+## Section 9: Co-locate RAG subagent tool instructions with tool usage in prompt
+
+**Onyx article:** Lesson 3, Rule 1 — "Co-locate instructions": keep tool-use instructions adjacent to the tool definitions so the model doesn't "hop" over unrelated text.
+
+**Single goal:** In the RAG subagent, put all retriever-usage and response-format instructions in one block adjacent to the tool description.
+
+**Details:**
+- Only the RAG subagent has the retriever (search_database). Apply co-location in _RAG_SUBAGENT_PROMPT in coordinator.py.
+- Group in one place: (1) use the retriever with query and expanded_query, (2) if relevant docs use them to answer else "nothing relevant found", (3) respond in format "{subquestion}: {answer}". Remove or relocate any other instructions that sit between these and the tool.
+
+**Tech stack and dependencies**
+- No new packages; prompt string changes in coordinator.py only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/agents/coordinator.py | Restructure _RAG_SUBAGENT_PROMPT so retriever usage and response-format instructions are in a single block. |
+
+**How to test:** Inspect the RAG subagent system prompt (create_coordinator_agent or logs); confirm tool-use and response-format instructions are adjacent with no unrelated sentences between them.
+
+### Completion notes (March 6, 2026)
+- Reworked `src/backend/agents/coordinator.py` `_RAG_SUBAGENT_PROMPT` into one contiguous `Retriever tool contract (search_database)` block that co-locates all required behavior:
+  - expanded query construction,
+  - `search_database` call shape (`query` + `expanded_query`),
+  - relevant-docs vs `nothing relevant found` handling,
+  - strict response format `{subquestion}: {answer}`.
+- Removed scattered/duplicative phrasing so retriever usage and output formatting are now adjacent with no unrelated instructions in-between.
+- Added coordinator construction log for runtime visibility:
+  - `RAG subagent prompt configured subagent=rag_retriever tool=search_database contract=co_located_retriever_and_response_format`
+- Updated `src/backend/tests/agents/test_coordinator_agent.py` assertions to validate the new co-located prompt contract and visibility log.
+
+### Useful logs
+- `HTTP/1.1 200 OK` on `GET /api/health` after backend restart.
+- Backend runtime includes expected startup and migration logs after clean rebuild.
+- Prompt visibility log (validated in tests):
+  - `RAG subagent prompt configured subagent=rag_retriever tool=search_database contract=co_located_retriever_and_response_format`
+- Frontend logs show Vite healthy on `http://localhost:5173/`.
+- DB logs show PostgreSQL ready for connections.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> `2 passed`
+- `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK`
+- `docker compose logs --tail=120 backend` / `--tail=60 frontend` / `--tail=80 db` reviewed; no blocking runtime errors.

@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 9. (move +1 after each turn)
+Current section to work on: section 10. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -288,7 +288,14 @@ Current section to work on: section 9. (move +1 after each turn)
 
 **How to test:** Inspect the RAG subagent system prompt (create_coordinator_agent or logs); confirm tool-use and response-format instructions are adjacent with no unrelated sentences between them.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py'` -> 2 passed.
+- Prompt contract assertions now verify a single co-located retriever instruction block containing:
+  - `Retriever tool contract (search_database):`
+  - `Call search_database with query=<exact subquestion> and expanded_query=<expanded query>.`
+  - `Return your response in this format: {subquestion}: {answer}`
+- Backend logs include prompt-visibility line:
+  - `RAG subagent prompt configured subagent=rag_retriever tool=search_database contract=co_located_retriever_and_response_format`
 
 ---
 

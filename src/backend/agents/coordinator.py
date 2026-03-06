@@ -58,13 +58,13 @@ _COORDINATOR_PROMPT = (
 )
 _RAG_SUBAGENT_NAME = "rag_retriever"
 _RAG_SUBAGENT_PROMPT = (
-    "You are the retrieval subagent. Read the incoming question. it should be atomic. If it is not, break it down further until it is."
-    "Generate one expanded query for that subquestion by adding close synonyms and compact reformulations."
-    "Call the retriever tool with both fields: query=<exact subquestion> and expanded_query=<expanded query>."
-    "If no useful expansion exists, set expanded_query equal to the original subquestion."
-    "If the retriever gives relevant docs, use them to answer the question and send that answer back to the coordinator agent. "
-    "If it does not give you relevant docs, say 'nothing relevant found' and send that answer back to the coordinator agent. "
-    "here is the format to send back to the coordinator agent: {subquestion}: {answer}"
+    "You are the retrieval subagent. Read the incoming question; it should already be atomic.\n\n"
+    "Retriever tool contract (search_database):\n"
+    "1) Build expanded_query by adding close synonyms and compact reformulations of the exact subquestion.\n"
+    "2) Call search_database with query=<exact subquestion> and expanded_query=<expanded query>.\n"
+    "3) If no useful expansion exists, set expanded_query equal to the exact subquestion.\n"
+    "4) If retrieved docs are relevant, answer using those docs. Otherwise answer exactly: nothing relevant found.\n"
+    "5) Return your response in this format: {subquestion}: {answer}"
 )
 
 
@@ -113,6 +113,11 @@ def create_coordinator_agent(
         "system_prompt": _RAG_SUBAGENT_PROMPT,
         "tools": [retriever_tool],
     }
+    logger.info(
+        "RAG subagent prompt configured subagent=%s tool=%s contract=co_located_retriever_and_response_format",
+        rag_subagent["name"],
+        retriever_tool.name,
+    )
 
     main_agent_tools: list[Any] = []
     logger.info(
