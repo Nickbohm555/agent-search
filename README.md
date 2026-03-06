@@ -36,6 +36,11 @@
   </tr>
 </table>
 
+# agent-search
+
+**A plug-and-play RAG SDK that turns your `model` + `vector_store` into a multi-stage, traceable answer pipeline.**  
+Ship faster with coordinator-driven decomposition, parallel per-subquestion retrieval, evidence checks, and an optional refinement loop—without rebuilding the plumbing.
+
 ```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ SYSTEM README — AGENT-SEARCH // ARCHITECTURE MAP                             ┃
