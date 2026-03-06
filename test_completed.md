@@ -651,3 +651,60 @@
   - Result: `7 passed in 0.03s`.
 
 ---
+## Test Section 14: Refinement decomposition (Section 13)
+
+**Single goal:** When refinement is taken, logs show refinement decomposition start/complete and refined sub-questions list; refined count ≥ 1.
+
+**Details:**
+- Trigger refinement (e.g. no data or weak answer). Logs must show "Refinement decomposition start", "Refinement decomposition complete" (via LLM or fallback), and "RefinedSubQuestion[1]=..." (or "Refined sub-questions prepared for Section 14").
+
+**Tech stack and dependencies**
+- refinement_decomposition_service and agent_service refinement branch.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/refinement_decomposition_service.py` | refine_subquestions. |
+| `src/backend/services/agent_service.py` | Calls refine_subquestions when refinement_needed and logs. |
+
+**How to test:**
+1. Ensure refinement path is triggered (e.g. wipe, run query that yields no answerable sub_qa).
+2. Backend logs: require `Refinement decomposition start` and `Refinement decomposition complete ... count=...` and at least one `RefinedSubQuestion[...]=...` or "Refined sub-questions prepared for Section 14 handoff count=...".
+
+**Test results:**
+- Fresh full restart/build completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Running state after fresh restart (`docker compose ps`) confirmed all services up:
+  - `backend` Up on `:8000`
+  - `frontend` Up on `:5173`
+  - `db` Up healthy on `:5432`
+  - `chrome` Up on `:9222`
+- Logs viewed for every item built/running (`docker compose logs --no-color --tail=120`):
+  - `frontend`: Vite ready at `http://localhost:5173/`
+  - `backend`: uv env created and dependencies installed; app started
+  - `db`: init + ready to accept connections
+  - `chrome`: browserless started on port 3000
+- Section 14 execution commands and outcomes:
+  - `POST /api/internal-data/wipe` => HTTP 200, body `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/agents/run` with `{"query":"What happened in policy XZQ-999 with no indexed data?"}` => HTTP 200
+- Response outcome for run:
+  - `main_question` returned correctly.
+  - `sub_qa` returned with 6 refined sub-questions (all `answerable=false` in this no-data scenario).
+  - `output` returned non-empty refined synthesis.
+- Required backend log assertions passed (`docker compose logs --no-color --tail=500 backend`):
+  - `Refinement decomposition start question_len=53 initial_answer_len=279 sub_qa_count=5`
+  - `Refinement decomposition complete via LLM count=6 model=gpt-4.1-mini`
+  - `Refinement decomposition complete reason=no_answerable_subanswers refined_subquestion_count=6`
+  - `RefinedSubQuestion[1]=Are there any official documents or announcements that mention policy XZQ-999?`
+  - `RefinedSubQuestion[2]=Has policy XZQ-999 been referenced in any related policies or regulations?`
+  - `RefinedSubQuestion[3]=What organizations or authorities are responsible for implementing policy XZQ-999?`
+  - `RefinedSubQuestion[4]=Is there any historical context or background that could explain the origin of policy XZQ-999?`
+  - `RefinedSubQuestion[5]=Could 'no indexed data' refer to a technical issue or data management practice related to policy XZQ-999?`
+  - `RefinedSubQuestion[6]=Are there any expert analyses or commentaries discussing the implications of policy XZQ-999?`
+  - `Refined sub-questions prepared for Section 14 handoff count=6`
+- Conclusion: Section 14 passed; refinement decomposition is active and emits complete refined-subquestion logging with count >= 1.
+
+---
