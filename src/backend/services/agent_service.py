@@ -842,7 +842,18 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
             _truncate_query(working_item.sub_question),
             _RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
         )
-    working_item = _apply_reranking_to_sub_qa([working_item])[0]
+    try:
+        working_item = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
+            operation_name="rerank_subquestion",
+            fn=lambda: _apply_reranking_to_sub_qa([working_item])[0],
+        )
+    except FuturesTimeoutError:
+        logger.warning(
+            "Per-subquestion reranking timeout; continuing with original document order sub_question=%s timeout_s=%s",
+            _truncate_query(working_item.sub_question),
+            _RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
+        )
     reranked_output = working_item.sub_answer
     working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
     working_item = _apply_subanswer_verification_to_sub_qa(

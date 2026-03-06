@@ -1389,3 +1389,46 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+
+## Section 9: Time guardrail — per-subquestion reranking
+
+**Single goal:** Enforce a maximum time for the reranking step applied to each sub-question.
+
+**Details:**
+- Wrap the reranking work in a timeout; on timeout, **do not fail**—keep existing document order and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `RERANK_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap reranking in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow rerank triggers timeout; normal path completes. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Updated `_run_pipeline_for_single_subquestion(...)` in `src/backend/services/agent_service.py` to execute reranking through `_run_with_timeout(...)` with operation name `rerank_subquestion` and timeout `RERANK_TIMEOUT_S`.
+- Added non-failing fallback behavior for reranking timeouts: pipeline now keeps existing document order (no rerank mutation), logs a warning, and continues to subanswer generation and verification.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout path: slow reranking triggers guardrail and preserves pre-rerank `sub_answer`.
+  - normal path: reranking within timeout applies updated reranked output.
+
+### Useful logs
+- `Runtime guardrail timeout operation=rerank_subquestion timeout_s=1`
+- `Per-subquestion reranking timeout; continuing with original document order sub_question=What changed in NATO policy? timeout_s=1`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `POST /api/agents/run` runtime check -> HTTP `200` with response keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` reviewed for visibility.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `35 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_pipeline_for_single_subquestion_skips_reranking_on_timeout -o log_cli=true --log-cli-level=WARNING'` -> `1 passed` (with rerank timeout warning logs)
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no reranking-guardrail runtime exceptions
