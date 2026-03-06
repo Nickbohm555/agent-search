@@ -666,3 +666,53 @@
 - `docker compose restart db backend frontend` -> pass.
 - `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed; no blocking errors.
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.
+
+---
+
+## Section S5: Generate-SDK shell script
+
+**Single goal:** Add a shell script that runs the OpenAPI Generator Docker command so SDK generation is a single invocation.
+
+**Details:**
+- Script takes no args (or optional spec path / output path); uses canonical spec path and output dir from S2 and S4.
+- Must be runnable from repo root or a documented cwd.
+
+**Tech stack and dependencies**
+- Docker; no new pip/npm deps.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/scripts/generate_sdk.sh` | Invokes `docker run ... openapi-generator-cli generate` with correct `-i`, `-g python`, `-o`. |
+
+**How to test:** Run `./scripts/generate_sdk.sh`; confirm SDK output directory is created/updated with generated code.
+
+### Completion notes (March 6, 2026)
+- Added `scripts/generate_sdk.sh` as an executable one-command SDK generator with canonical defaults (`openapi.json` -> `sdk/python`) and optional path overrides.
+- Added timestamped script logs for start/success/failure visibility, including explicit missing-spec guidance.
+- Updated `README.md` OpenAPI section to document the single-command path: `./scripts/generate_sdk.sh`.
+- Re-exported OpenAPI and regenerated Python SDK using the new script.
+
+### Useful logs
+- `2026-03-06T22:38:27Z INFO generate_sdk: starting image=openapitools/openapi-generator-cli lang=python spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+- `OpenAPI Generator: python (client)`
+- `writing file /local/sdk/python/openapi_client/api/agents_api.py`
+- `writing file /local/sdk/python/openapi_client/configuration.py`
+- `2026-03-06T22:38:32Z INFO generate_sdk: generation complete spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json output=/Users/nickbohm/Desktop/worktree/agent-search/sdk/python`
+- `docker compose restart` restarted `backend`, `frontend`, `db`, and `chrome`.
+- `docker compose ps` confirms `backend` up, `frontend` up, `chrome` up, and `db` healthy.
+- Runtime logs reviewed with healthy startup lines:
+  - backend: `Application startup complete.`
+  - frontend: `VITE v5.4.21 ready`
+  - db: `database system is ready to accept connections`
+  - chrome: `Running on port 3000`
+- Health endpoint check: `{"status":"ok"}` from `GET /api/health`.
+
+### Tests run
+- `uv run --project src/backend python scripts/export_openapi.py` -> pass.
+- `./scripts/generate_sdk.sh` -> pass.
+- `docker compose restart` -> pass.
+- `docker compose ps` -> pass (`db` healthy; `backend`/`frontend`/`chrome` up).
+- `docker compose logs --tail=140` -> reviewed for all running containers; no blocking errors.
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.

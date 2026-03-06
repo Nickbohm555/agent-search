@@ -256,6 +256,12 @@ docker run --rm \
   -o /local/sdk/python
 ```
 
+Generate Python SDK with the repo script (single invocation):
+
+```bash
+./scripts/generate_sdk.sh
+```
+
 ## Links
 
 ```text

@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S5. (move +1 after each turn)
+Current section to work on: section S6. (move +1 after each turn)
 
 ---
 
@@ -142,7 +142,13 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Run `./scripts/generate_sdk.sh`; confirm SDK output directory is created/updated with generated code.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- Added `scripts/generate_sdk.sh` with canonical defaults (`openapi.json` -> `sdk/python`), optional path overrides, and timestamped INFO/ERROR logs.
+- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec at `openapi.json`.
+- `./scripts/generate_sdk.sh` -> generated/updated SDK under `sdk/python` via Docker OpenAPI Generator.
+- `docker compose restart` -> restarted `backend`, `frontend`, `db`, and `chrome`; `docker compose ps` shows app services up and `db` healthy.
+- `docker compose logs --tail=140` reviewed for all running services; no blocking startup/runtime errors observed.
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.
 
 ---
 
