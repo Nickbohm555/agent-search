@@ -22,6 +22,7 @@ from services.document_validation_service import (
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
 from services.initial_answer_service import generate_initial_answer
+from services.refinement_decision_service import should_refine
 from services.subanswer_service import generate_subanswer
 from services.subanswer_verification_service import (
     SubanswerVerificationResult,
@@ -634,6 +635,22 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         initial_search_context=initial_search_context,
         sub_qa=sub_qa,
     )
+    refinement_decision = should_refine(
+        question=payload.query,
+        initial_answer=output,
+        sub_qa=sub_qa,
+    )
+    logger.info(
+        "Refinement decision computed refinement_needed=%s reason=%s sub_qa_count=%s",
+        refinement_decision.refinement_needed,
+        _truncate_query(refinement_decision.reason),
+        len(sub_qa),
+    )
+    if refinement_decision.refinement_needed:
+        logger.info(
+            "Refinement path flagged but deferred until Section 13 implementation reason=%s",
+            _truncate_query(refinement_decision.reason),
+        )
     logger.info(
         "Runtime agent run complete output_length=%s output_preview=%s",
         len(output),

@@ -258,8 +258,81 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert "Runtime agent run start" in caplog.text
     assert "Initial decomposition context built" in caplog.text
     assert "Coordinator decomposition input prepared" in caplog.text
+
+
+def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
+    class _FakeAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload
+            _ = kwargs
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "What changed in policy?", "subagent_type": "rag_retriever"},
+                            }
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What changed in policy?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="No relevant evidence found.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent could not ground an answer."),
+                    AIMessage(content="Coordinator output"),
+                ]
+            }
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **_: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **_: _FakeAgent())
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **_: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: list(documents))
+    monkeypatch.setattr(agent_service, "generate_initial_answer", lambda **_: "Initial answer with gaps")
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "No relevant docs were found.",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=False,
+            reason="subanswer_reports_insufficient_evidence",
+        ),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: type(
+            "Decision",
+            (),
+            {"refinement_needed": True, "reason": "low_answerable_ratio:0.00"},
+        )(),
+    )
+
+    with caplog.at_level(logging.INFO):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="What changed in policy?"),
+            db=_make_session(),
+        )
+
+    assert response.output == "Initial answer with gaps"
+    assert "Refinement decision computed refinement_needed=True reason=low_answerable_ratio:0.00" in caplog.text
+    assert "Refinement path flagged but deferred until Section 13 implementation" in caplog.text
     assert "SubQuestionAnswer summary count=1" in caplog.text
-    assert "SubQuestionAnswer[1]" in caplog.text and "What happened in NATO policy?" in caplog.text
+    assert "SubQuestionAnswer[1]" in caplog.text and "What changed in policy?" in caplog.text
     assert "Coordinator raw output captured" in caplog.text
     assert "Runtime agent run complete" in caplog.text
 

@@ -641,3 +641,59 @@
 - Frontend/DB logs checked (`docker compose logs --tail ... frontend db`) with no new runtime errors related to this change.
 
 **Test results:** Complete.
+
+## Section 12: Refinement decision
+
+**Single goal:** Decide if the initial answer is lacking; set “refinement needed” (and optional reason) to trigger the refinement path (Section 13).
+
+**Details:**
+- Input: user question, **initial answer (Section 11)**, and **sub_qa (Section 9)**. Both the initial answer and sub_qa are required: we evaluate the initial answer and the per-sub-question results (answerable/unanswerable, verification) together. Output: refinement_needed: bool, optional reason. LLM or rule-based (e.g. “no relevant found”, low verification). Expose to next step only; no refinement decomposition or answer here.
+
+**Tech:** LLM if used. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| New `src/backend/services/refinement_decision_service.py` or equivalent | should_refine(question, initial_answer, sub_qa) → (refinement_needed: bool, reason: str). |
+| `src/backend/services/agent_service.py` | After initial answer, call refinement decision; if refinement_needed → Section 13; else return initial answer as final. |
+
+**How to test:** Unit: initial answer “no relevant docs” → refinement_needed True; complete answer → False. Integration: weak initial answer → refinement path taken.
+
+### Implemented
+- Added `src/backend/services/refinement_decision_service.py`:
+  - Introduced `RefinementDecision` dataclass.
+  - Implemented `should_refine(question, initial_answer, sub_qa)` with rule-based checks for:
+    - empty or insufficient-evidence initial answer,
+    - missing sub-question answers,
+    - zero answerable sub-answers,
+    - low answerable ratio (configurable via `REFINEMENT_MIN_ANSWERABLE_RATIO`, default `0.5`).
+- Updated `src/backend/services/agent_service.py`:
+  - Calls `should_refine(...)` immediately after initial-answer generation.
+  - Added visibility logs for decision outcome and reason.
+  - Added explicit branch log when refinement is flagged (Section 13 handoff point).
+- Added tests:
+  - New `src/backend/tests/services/test_refinement_decision_service.py` with required true/false unit coverage.
+  - Updated `src/backend/tests/services/test_agent_service.py` with a runtime-flow test that asserts refinement-flag branch logging.
+
+### Validation and logs
+- Container refresh for code changes:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_refinement_decision_service.py tests/services/test_agent_service.py'`
+  - Result: `15 passed`
+- Integration (weak-answer scenario):
+  - `POST /api/internal-data/wipe` -> `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/agents/run` with `{"query":"What happened in policy XZQ-999 with no indexed data?"}` -> `200`
+  - Response had only unanswerable `sub_qa` items and sparse output context.
+- Backend logs confirmed Section 12 behavior:
+  - `Refinement decision computed refinement_needed=True reason=no_answerable_subanswers sub_qa_count=2`
+  - `Refinement path flagged but deferred until Section 13 implementation reason=no_answerable_subanswers`
+  - `Runtime agent run complete output_length=246 ...`
+- Container log sweep and state checks:
+  - `docker compose logs --tail=200 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`
+  - `docker compose ps` -> all services up; `db` healthy.
+
+**Test results:** Complete.
