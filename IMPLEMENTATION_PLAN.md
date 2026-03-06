@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S2. (move +1 after each turn)
+Current section to work on: section S3. (move +1 after each turn)
 
 ---
 
@@ -59,7 +59,9 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Run export script; confirm file exists at canonical path. Optionally validate with `openapi-generator validate -i <path>` or online validator.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `uv run --project src/backend python scripts/export_openapi.py` -> exported canonical spec to `openapi.json` at repo root.
+- Validation check confirms JSON OpenAPI schema contains `openapi`, `paths`, and `components`, and includes `/api/health`, `/api/agents/run`, `/api/internal-data/load`, and `/api/internal-data/wipe`.
 
 ---
 

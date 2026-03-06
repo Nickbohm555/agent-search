@@ -522,3 +522,54 @@
 - `uv run --project src/backend python scripts/export_openapi.py` -> pass, `openapi.json` generated.
 - `python - <<'PY' ...` schema verification -> pass (`openapi_version: 3.1.0`, `has_components: True`, all required `/api/*` paths present).
 - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK`.
+
+---
+
+## Section S2: Canonical OpenAPI spec file path and format
+
+**Single goal:** Define a single canonical path and format for the OpenAPI spec file in the repo so all tooling uses the same input.
+
+**Details:**
+- Spec file lives at one path (e.g. `agent-search-api.yaml` or `openapi.yaml` at repo root or in a designated folder).
+- Export script (S1) must write to this path. YAML preferred for readability; JSON acceptable.
+
+**Tech stack and dependencies**
+- None new; export script from S1.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/agent-search-api.yaml` (or chosen path) | Canonical OpenAPI 3.x spec; produced by export script. |
+
+**How to test:** Run export script; confirm file exists at canonical path. Optionally validate with `openapi-generator validate -i <path>` or online validator.
+
+### Completion notes (March 6, 2026)
+- Defined canonical OpenAPI spec artifact as `openapi.json` at repo root (OpenAPI 3.x JSON).
+- Updated `scripts/export_openapi.py` with explicit `CANONICAL_OPENAPI_REL_PATH` and canonical-path-aware logging; script now warns if `--output` overrides canonical location.
+- Updated `README.md` with a dedicated OpenAPI section documenting canonical path/format and the standard export command used by tooling.
+- Re-exported schema to canonical path and verified required endpoints/components are present.
+
+### Useful logs
+- `2026-03-06 17:31:36,049 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json canonical_output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json openapi_version=3.1.0 path_count=5 sample_paths=['/api/agents/run', '/api/health', '/api/internal-data/load', '/api/internal-data/wiki-sources', '/api/internal-data/wipe']`
+- `Container agent-search-frontend Restarting`
+- `Container agent-search-backend Restarting`
+- `Container agent-search-db Restarting`
+- Backend startup logs after restart:
+  - `INFO: Uvicorn running on http://0.0.0.0:8000`
+  - `INFO: Application startup complete.`
+- Frontend startup logs after restart:
+  - `VITE v5.4.21 ready in 620 ms`
+  - `Local: http://localhost:5173/`
+- DB restart logs after restart:
+  - `database system is ready to accept connections`
+- Health check verification:
+  - `{"status":"ok"}`
+
+### Tests run
+- `uv run --project src/backend python scripts/export_openapi.py` -> pass; canonical `openapi.json` regenerated.
+- `python - <<'PY' ...` OpenAPI verification -> pass (`openapi_version 3.1.0`, `path_count 5`, required paths present, `components` present).
+- `docker compose ps` -> backend/frontend up, db healthy.
+- `docker compose restart backend frontend db` -> pass.
+- `docker compose logs --no-color --tail=80 backend frontend db` -> inspected; services healthy after restart.
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.

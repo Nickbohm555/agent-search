@@ -219,6 +219,19 @@ Backend runs Alembic migrations at startup. Use the UI to load a wiki source, th
 
 ---
 
+## OpenAPI spec
+
+Canonical OpenAPI export artifact:
+
+- Path: `openapi.json` (repo root)
+- Format: JSON (OpenAPI 3.x)
+
+Export command:
+
+```bash
+uv run --project src/backend python scripts/export_openapi.py
+```
+
 ## Links
 
 ```text
