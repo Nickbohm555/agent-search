@@ -10,6 +10,10 @@ from tools import make_retriever_tool
 logger = logging.getLogger(__name__)
 
 _FLOW_TRACKING_FILE = "/runtime/coordinator_flow.md"
+# Decomposition output contract:
+# - Decomposition-only step must produce a list of sub-question strings.
+# - Preferred format is JSON array of strings; newline-separated questions are accepted upstream.
+# - Each question must be one concept and end with '?' after normalization.
 _DECOMPOSITION_ONLY_PROMPT = (
     "You are a decomposition planner for retrieval.\n"
     "Task: break the user question into narrow, atomic sub-questions using the provided retrieval context.\n\n"

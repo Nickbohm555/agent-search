@@ -85,6 +85,74 @@ def _normalize_sub_question(text: str) -> str:
     return f"{normalized}?"
 
 
+def _parse_decomposition_output(*, raw_output: str, query: str) -> list[str]:
+    fallback_question = _normalize_sub_question(query) or "What is the main question?"
+    text = (raw_output or "").strip()
+    if not text:
+        logger.warning("Decomposition output empty; using fallback question")
+        return [fallback_question]
+
+    candidates: list[str] = []
+
+    def _extend_candidates_from_json(value: Any) -> bool:
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    candidates.append(item.strip())
+            return True
+        if isinstance(value, dict):
+            for key in ("sub_questions", "subquestions", "questions"):
+                nested = value.get(key)
+                if isinstance(nested, list):
+                    for item in nested:
+                        if isinstance(item, str) and item.strip():
+                            candidates.append(item.strip())
+                    return True
+        return False
+
+    parsed_json: Any | None = None
+    json_parse_attempted = False
+    try:
+        json_parse_attempted = True
+        parsed = json.loads(text)
+        parsed_json = parsed
+        _extend_candidates_from_json(parsed)
+    except json.JSONDecodeError:
+        pass
+
+    if not candidates and not (
+        json_parse_attempted and parsed_json is not None and isinstance(parsed_json, (dict, list))
+    ):
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        bullet_prefix = re.compile(r"^(?:[-*]|\d+[.)])\s*")
+        for line in lines:
+            line = bullet_prefix.sub("", line).strip()
+            line = line.strip("\"'")
+            if line:
+                candidates.append(line)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        sub_question = _normalize_sub_question(candidate)
+        if not sub_question:
+            continue
+        lowered = sub_question.lower()
+        if lowered in seen:
+            continue
+        normalized.append(sub_question)
+        seen.add(lowered)
+
+    if normalized:
+        return normalized
+
+    logger.warning(
+        "Decomposition output malformed; using fallback question output_preview=%s",
+        _truncate_query(text),
+    )
+    return [fallback_question]
+
+
 def _normalize_sub_qa_questions(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
     for item in sub_qa:
         normalized = _normalize_sub_question(item.sub_question)
@@ -126,13 +194,20 @@ def _stringify_message_content(content: Any) -> str:
     return str(content)
 
 
-def _build_coordinator_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str:
+def _build_coordinator_input_message(
+    query: str,
+    initial_search_context: list[dict[str, Any]],
+    decomposition_sub_questions: list[str],
+) -> str:
     serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
+    serialized_subquestions = json.dumps(decomposition_sub_questions, ensure_ascii=True)
     return (
         "Decomposition input:\n"
         f"User question:\n{query}\n\n"
         "Initial retrieval context for decomposition (top-k from the original question):\n"
         f"{serialized_context}\n\n"
+        "Normalized decomposition output (contract-compliant list of sub-questions):\n"
+        f"{serialized_subquestions}\n\n"
         "Decomposition constraints:\n"
         "- Produce narrow sub-questions only.\n"
         "- One concept per sub-question.\n"
@@ -757,6 +832,15 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         len(decomposition_raw_output),
         _truncate_query(decomposition_raw_output),
     )
+    decomposition_sub_questions = _parse_decomposition_output(
+        raw_output=decomposition_raw_output,
+        query=payload.query,
+    )
+    logger.info(
+        "Decomposition output parsed sub_question_count=%s sub_questions=%s",
+        len(decomposition_sub_questions),
+        json.dumps(decomposition_sub_questions, ensure_ascii=True),
+    )
     agent = create_coordinator_agent(
         vector_store=vector_store,
         model=_RUNTIME_AGENT_MODEL,
@@ -772,11 +856,16 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         langfuse_callback is not None,
     )
     config = {"callbacks": callbacks}
-    coordinator_message = _build_coordinator_input_message(payload.query, initial_search_context)
+    coordinator_message = _build_coordinator_input_message(
+        payload.query,
+        initial_search_context,
+        decomposition_sub_questions,
+    )
     logger.info(
-        "Coordinator decomposition input prepared query=%s context_items=%s",
+        "Coordinator decomposition input prepared query=%s context_items=%s parsed_sub_questions=%s",
         _truncate_query(payload.query),
         len(initial_search_context),
+        len(decomposition_sub_questions),
     )
     try:
         result = agent.invoke(

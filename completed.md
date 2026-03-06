@@ -38,3 +38,45 @@
 ### Tests run
 - `docker compose exec backend uv run pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py` -> `16 passed`
 - `docker compose exec backend uv run pytest tests/api -m smoke` -> `3 deselected / 0 selected`
+
+---
+
+## Section 2: Decomposition output format contract
+
+**Onyx article:** Lesson 1 — Plan is the only context brought into the research phase; format must be consumable by the coordinator and _extract_sub_qa.
+
+**Single goal:** Define and enforce the decomposition output format so the coordinator and _extract_sub_qa can consume it. Document the contract.
+
+**Details:**
+- Sub-questions must have trailing `?`, one concept per question. Format: list of strings (e.g. JSON array or one-per-line) matching _build_coordinator_input_message and _extract_sub_qa expectations.
+- In agent_service: parse/validate decomposition LLM output into a list of sub-question strings; pass that list to the next phase (Section 3). If the LLM returns malformed output, normalize or fail clearly.
+- Document the contract in coordinator.py (near _DECOMPOSITION_ONLY_PROMPT) or in docs/section-03: "Decomposition output is a list of sub-questions, each ending with ?, one concept per question."
+
+**Tech stack and dependencies**
+- No new packages; parsing/validation and docs only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/services/agent_service.py | Parse/validate decomposition output into list of sub-questions; pass to coordinator phase. |
+| src/backend/agents/coordinator.py or docs/section-03 | Document decomposition output format contract. |
+
+**How to test:** Unit test: mock LLM returning various formats (JSON, newline-separated); assert agent_service produces a list of strings with `?`. Run a query; confirm parsed list is passed to coordinator.
+
+### Completion notes (March 6, 2026)
+- Added `_parse_decomposition_output(...)` in `agent_service` with contract enforcement for JSON arrays and newline/bullet formats.
+- Normalization now guarantees trailing `?`, removes duplicates, and falls back clearly to normalized main question on malformed/empty outputs.
+- `run_runtime_agent(...)` now parses decomposition output and passes the normalized list into `_build_coordinator_input_message(...)`.
+- Coordinator handoff message now includes `Normalized decomposition output (contract-compliant list of sub-questions)` for Section 3 consumption.
+- Added contract documentation comment near `_DECOMPOSITION_ONLY_PROMPT` in `coordinator.py`.
+
+### Useful logs
+- `Decomposition-only LLM output captured output_length=2 output_preview=[]`
+- `Decomposition output parsed sub_question_count=1 sub_questions=["What changed in NATO policy?"]`
+- `Coordinator decomposition input prepared query=What changed in NATO policy? context_items=0 parsed_sub_questions=1`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `Container agent-search-backend Restarting`
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> `20 passed`

@@ -205,7 +205,7 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
             "query": query,
             "initial_search_context": initial_search_context,
         }
-        return '["What changed in NATO policy?", "Why did NATO policy change?"]'
+        return '["What changed in NATO policy", "Why did NATO policy change?"]'
 
     monkeypatch.setattr(agent_service, "get_vector_store", fake_get_vector_store)
     monkeypatch.setattr(agent_service, "create_coordinator_agent", fake_create_coordinator_agent)
@@ -262,12 +262,16 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert "What happened in NATO policy?" in coordinator_message
     assert "Initial retrieval context for decomposition" in coordinator_message
     assert '"title": "NATO"' in coordinator_message
+    assert "Normalized decomposition output (contract-compliant list of sub-questions)" in coordinator_message
+    assert '"What changed in NATO policy?"' in coordinator_message
+    assert '"Why did NATO policy change?"' in coordinator_message
     assert "Decomposition constraints:" in coordinator_message
     assert "One concept per sub-question." in coordinator_message
     assert "Every sub-question must be a complete question ending with '?'." in coordinator_message
     assert "Runtime agent run start" in caplog.text
     assert "Initial decomposition context built" in caplog.text
     assert "Decomposition-only LLM output captured" in caplog.text
+    assert "Decomposition output parsed sub_question_count=2" in caplog.text
     assert "Coordinator decomposition input prepared" in caplog.text
 
 
@@ -386,13 +390,69 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
 
 
 def test_build_coordinator_input_message_includes_context_and_constraints_when_empty_context() -> None:
-    message = agent_service._build_coordinator_input_message("Explain VAT changes", [])
+    message = agent_service._build_coordinator_input_message(
+        "Explain VAT changes",
+        [],
+        ["What changed in VAT policy?"],
+    )
 
     assert "User question:\nExplain VAT changes" in message
     assert "Initial retrieval context for decomposition" in message
     assert "[]" in message
+    assert '["What changed in VAT policy?"]' in message
     assert "Decomposition constraints:" in message
     assert "Every sub-question must be a complete question ending with '?'." in message
+
+
+def test_parse_decomposition_output_accepts_json_array_and_normalizes_questions() -> None:
+    output = '["What changed in VAT policy", "What changed in VAT policy?", "Why did it change"]'
+
+    parsed = agent_service._parse_decomposition_output(
+        raw_output=output,
+        query="Explain VAT changes",
+    )
+
+    assert parsed == [
+        "What changed in VAT policy?",
+        "Why did it change?",
+    ]
+
+
+def test_parse_decomposition_output_accepts_newline_and_bullet_formats() -> None:
+    output = """
+    - What changed in VAT policy
+    2. Which countries updated VAT rules?
+    * When did VAT changes take effect
+    """
+
+    parsed = agent_service._parse_decomposition_output(
+        raw_output=output,
+        query="Explain VAT changes",
+    )
+
+    assert parsed == [
+        "What changed in VAT policy?",
+        "Which countries updated VAT rules?",
+        "When did VAT changes take effect?",
+    ]
+
+
+def test_parse_decomposition_output_uses_fallback_when_malformed() -> None:
+    parsed = agent_service._parse_decomposition_output(
+        raw_output='{"unexpected":"shape"}',
+        query="Explain VAT changes",
+    )
+
+    assert parsed == ["Explain VAT changes?"]
+
+
+def test_parse_decomposition_output_uses_fallback_when_json_array_is_empty() -> None:
+    parsed = agent_service._parse_decomposition_output(
+        raw_output="[]",
+        query="Explain VAT changes",
+    )
+
+    assert parsed == ["Explain VAT changes?"]
 
 
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:
