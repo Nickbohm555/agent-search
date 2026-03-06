@@ -1345,3 +1345,47 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility
+
+## Section 8: Time guardrail — per-subquestion document validation
+
+**Single goal:** Enforce a maximum time for the document validation step applied to each sub-question (e.g. each `_apply_document_validation_to_sub_qa` batch or per-item).
+
+**Details:**
+- Wrap the document validation work in a timeout; on timeout, **do not fail**—treat that sub-question as validation-skipped (keep existing docs/order) and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `DOCUMENT_VALIDATION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap document validation in timeout (per item or per batch as chosen). |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow validation triggers timeout; normal path completes. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Updated `_run_pipeline_for_single_subquestion(...)` in `src/backend/services/agent_service.py` to execute `_apply_document_validation_to_sub_qa([working_item])[0]` through `_run_with_timeout(...)` using `DOCUMENT_VALIDATION_TIMEOUT_S`.
+- Added non-failing fallback for per-item validation timeouts: on timeout, the pipeline logs a warning and continues with the existing retrieved output unchanged for that sub-question (validation skipped), then proceeds through reranking/generation/verification.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout path: slow document validation triggers timeout guardrail and the sub-question keeps original `sub_answer`.
+  - normal path: document validation within timeout applies the validated `sub_answer`.
+
+### Useful logs
+- `Runtime guardrail timeout operation=document_validation_subquestion timeout_s=1`
+- `Per-subquestion document validation timeout; continuing without validation sub_question=... timeout_s=1`
+- `Per-subquestion document validation start count=1 min_relevance_score=...`
+- `Per-subquestion pipeline item complete sub_question=... answerable=... reason=...`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `POST /api/agents/run` runtime check -> HTTP `200` with response keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` reviewed for visibility.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `33 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions

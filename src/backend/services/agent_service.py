@@ -830,7 +830,18 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
         "Per-subquestion pipeline item start sub_question=%s",
         _truncate_query(working_item.sub_question),
     )
-    working_item = _apply_document_validation_to_sub_qa([working_item])[0]
+    try:
+        working_item = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
+            operation_name="document_validation_subquestion",
+            fn=lambda: _apply_document_validation_to_sub_qa([working_item])[0],
+        )
+    except FuturesTimeoutError:
+        logger.warning(
+            "Per-subquestion document validation timeout; continuing without validation sub_question=%s timeout_s=%s",
+            _truncate_query(working_item.sub_question),
+            _RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
+        )
     working_item = _apply_reranking_to_sub_qa([working_item])[0]
     reranked_output = working_item.sub_answer
     working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
