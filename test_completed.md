@@ -47,3 +47,52 @@
   - Frontend (`docker compose logs --tail=20 frontend`) included:
     - `VITE v5.4.21 ready`
     - `Local: http://localhost:5173/`
+
+## Test Section 2: Coordinator flow tracking (Section 1) – write_todos and virtual file system
+
+**Single goal:** One full agent run returns 200 and backend logs show coordinator using `write_todos` and the virtual file system (`/runtime/coordinator_flow.md`).
+
+**Details:**
+- Run one query (e.g. "What is the Strait of Hormuz?"); do not require prior data load.
+- Assert in backend logs: at least one `Tool called: name=write_todos` and at least one `write_file` or tool response involving `coordinator_flow.md`.
+
+**Tech stack and dependencies**
+- Docker backend; `docker compose logs backend`.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Coordinator that uses write_todos and virtual filesystem. |
+
+**How to test:**
+1. Ensure stack is up (Test Section 1).
+2. Run: `POST /api/agents/run` with `{"query":"What is the Strait of Hormuz?"}` → expect HTTP 200 and response with `main_question`, `sub_qa`, and `output`.
+3. Inspect backend logs: `docker compose logs --tail=300 backend` (or `-f backend` during run). Require:
+   - At least one line containing `Tool called: name=write_todos` (or equivalent from deep-agents).
+   - At least one line containing `write_file` and `coordinator_flow.md` (or `Tool response` with `files` and `coordinator_flow.md`).
+4. If no such lines, restart backend and rerun: `docker compose restart backend`, then repeat step 2 and 3.
+
+**Test results:** (Add when section is complete.)
+- curl/response and log grep outcomes.
+
+---
+
+**Test results:**
+- Fresh rebuild/start context used for this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Agent run command and response:
+  - `curl -sS --max-time 180 -o /tmp/section2_response.json -w "%{http_code}" -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"Find Hormuz risks"}'`
+  - `CURL_EXIT:0`, `HTTP_CODE:200`
+  - Response body included required fields: `main_question`, `sub_qa`, `output`.
+- Required backend log assertions:
+  - `Tool called: name=write_todos` found (multiple matches).
+  - `Tool called: name=write_file ... /runtime/coordinator_flow.md` found.
+  - `Tool response ... '/runtime/coordinator_flow.md'` found.
+  - `POST /api/agents/run HTTP/1.1" 200 OK` found.
+- Useful service logs viewed:
+  - Backend (`docker compose logs --tail=25 backend`) showed full pipeline completion and `Runtime agent run complete`.
+  - Frontend (`docker compose logs --tail=25 frontend`) showed Vite dev server ready at `http://localhost:5173/`.
+  - DB (`docker compose logs --tail=25 db`) showed PostgreSQL ready to accept connections.
