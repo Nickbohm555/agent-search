@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from langchain_openai import ChatOpenAI
 
@@ -11,15 +12,15 @@ logger = logging.getLogger(__name__)
 
 _SUBANSWER_MODEL = os.getenv("SUBANSWER_MODEL", "gpt-4.1-mini")
 _SUBANSWER_TEMPERATURE = float(os.getenv("SUBANSWER_TEMPERATURE", "0"))
-_SUBANSWER_MAX_CONTEXT_DOCS = max(1, int(os.getenv("SUBANSWER_MAX_CONTEXT_DOCS", "3")))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+_CITATION_PATTERN = re.compile(r"\[\d+\]")
 
 
 def _build_context_block(documents: list[RetrievedDocument]) -> str:
     lines: list[str] = []
-    for index, doc in enumerate(documents[:_SUBANSWER_MAX_CONTEXT_DOCS], start=1):
+    for doc in documents:
         lines.append(
-            f"[{index}] title={doc.title} source={doc.source} content={doc.content}"
+            f"[{doc.rank}] title={doc.title} source={doc.source} content={doc.content}"
         )
     return "\n".join(lines)
 
@@ -37,6 +38,11 @@ def generate_subanswer(
     reranked_retrieved_output: str,
 ) -> str:
     documents = parse_retrieved_documents(reranked_retrieved_output)
+    logger.info(
+        "Subanswer generation parsed reranked docs sub_question=%s doc_count=%s",
+        sub_question,
+        len(documents),
+    )
     if not documents:
         logger.info(
             "Subanswer generation skipped; no parseable reranked docs sub_question=%s",
@@ -46,6 +52,11 @@ def generate_subanswer(
 
     context_block = _build_context_block(documents)
     fallback_answer = _build_fallback_subanswer(sub_question=sub_question, documents=documents)
+    logger.info(
+        "Subanswer generation context prepared sub_question=%s context_lines=%s",
+        sub_question,
+        len(context_block.splitlines()) if context_block else 0,
+    )
 
     if not _OPENAI_API_KEY:
         logger.info(
@@ -57,11 +68,13 @@ def generate_subanswer(
     try:
         llm = ChatOpenAI(model=_SUBANSWER_MODEL, temperature=_SUBANSWER_TEMPERATURE)
         prompt = (
-            "You generate a concise answer for one sub-question from provided reranked evidence.\n"
+            "You answer one sub-question using the full reranked evidence list below.\n"
             "Requirements:\n"
             "- Use only the evidence provided below.\n"
+            "- Treat each evidence line index as a citation key and cite claims with [index], e.g. [1] or [2][3].\n"
+            "- Keep citation indices from the provided evidence lines; do not invent new indices.\n"
             "- Keep it to 1-3 sentences.\n"
-            "- Include at least one source attribution in parentheses, e.g. (source: ...).\n"
+            "- Do not summarize the evidence list; directly answer the sub-question using cited evidence.\n"
             "- If evidence is insufficient, explicitly say so.\n\n"
             f"Sub-question:\n{sub_question}\n\n"
             f"Reranked evidence:\n{context_block}\n"
@@ -69,6 +82,12 @@ def generate_subanswer(
         response = llm.invoke(prompt)
         answer = (response.content or "").strip() if hasattr(response, "content") else ""
         if answer:
+            logger.info(
+                "Subanswer generation LLM success sub_question=%s answer_len=%s citation_refs=%s",
+                sub_question,
+                len(answer),
+                len(_CITATION_PATTERN.findall(answer)),
+            )
             return answer
         logger.warning(
             "Subanswer generation returned empty LLM response; using fallback sub_question=%s",

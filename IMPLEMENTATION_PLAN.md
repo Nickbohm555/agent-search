@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 7. (move +1 after each turn)
+Current section to work on: section 8. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -227,7 +227,12 @@ Current section to work on: section 7. (move +1 after each turn)
 
 **How to test:** Run a query; inspect subanswer content for citation-like references [1], [2]. Confirm sub_answer and reranked output retain numbered list for verification.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_subanswer_service.py tests/services/test_agent_service.py'` -> 22 passed.
+- Live API run logs include:
+  - `Subanswer generation parsed reranked docs sub_question=... doc_count=...`
+  - `Per-subquestion subanswer generated sub_question=... generated_len=...`
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
 
 ---
 

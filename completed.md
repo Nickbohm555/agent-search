@@ -262,3 +262,47 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/services/test_document_validation_service.py tests/services/test_agent_service.py'` -> `22 passed`
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in NATO policy?"}'` -> `200 OK`
+
+---
+
+## Section 7: Subanswer service — full document list and citation instructions (no summarization)
+
+**Onyx article:** Lesson 4 — "use LLMs to summarize web results… handicaps better models"; keep full document list for citation and verification.
+
+**Single goal:** subanswer_service receives the full document list and is instructed to cite by index [1], [2]; no summarization that drops source identity.
+
+**Details:**
+- Audit subanswer_service.generate_subanswer: input is reranked_retrieved_output (string). Ensure the prompt does not ask the model to "summarize the documents" in a way that drops indices/sources. Prefer "use the documents below to answer; cite by [1], [2]."
+- The model must have access to the full numbered list and produce answers that preserve citation ability.
+
+**Tech stack and dependencies**
+- No new packages; prompt/logic in subanswer_service only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/services/subanswer_service.py | Ensure input to the model is the full document list; answer format preserves citation ability; no summarization that drops sources. |
+
+**How to test:** Run a query; inspect subanswer content for citation-like references [1], [2]. Confirm sub_answer and reranked output retain numbered list for verification.
+
+### Completion notes (March 6, 2026)
+- Updated `src/backend/services/subanswer_service.py` to pass the full parsed reranked list into prompt context using stable rank keys (`[rank] title=... source=... content=...`) instead of truncating context.
+- Reworked subanswer prompt instructions to explicitly require citation-by-index (`[1]`, `[2]`) and forbid evidence-list summarization that drops source identity.
+- Added subanswer visibility logs for parsed document count, context line count, and citation reference count detected in successful LLM output.
+- Updated `src/backend/tests/services/test_subanswer_service.py` with:
+  - citation instruction assertion in prompt,
+  - full-list prompt coverage assertion (including later-ranked docs).
+
+### Useful logs
+- `Subanswer generation parsed reranked docs sub_question=recent changes to NATO policy? doc_count=0`
+- `Subanswer generation skipped; no parseable reranked docs sub_question=recent changes to NATO policy?`
+- `Per-subquestion subanswer generated sub_question=What is NATO policy? generated_len=49`
+- `Runtime agent run complete output_length=273 ...`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `docker compose ps` showed `backend` up, `frontend` up, and `db` healthy.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_subanswer_service.py tests/services/test_agent_service.py'` -> `22 passed`
+- `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in NATO policy?"}'` -> `200 OK` with `RuntimeAgentRunResponse` payload
