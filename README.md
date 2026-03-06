@@ -1,9 +1,23 @@
-> **SYSTEM README — AGENT-SEARCH ARCHITECTURE MAP**  
-> SDK for world-class RAG: plug in your **model** and **vector_store**; we own the flow.
+<p align="center">
+  <img src="cyber.jpg" alt="Cyberpunk city" width="720" />
+</p>
+
+```text
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ SYSTEM README — AGENT-SEARCH // ARCHITECTURE MAP                             ┃
+┃ SDK for world-class RAG: bring your `model` + `vector_store` — we own the flow┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+PALETTE: neon #00ff9f / #00ffff  •  magenta #ff00aa / #ff006e  •  dark #0d1117
+DISPLAY: best viewed in dark mode (the HUD panels below are designed for it)
+```
 
 ---
 
 ## Purpose
+
+```text
+[ PURPOSE ]
+```
 
 This project builds an **SDK** that takes your **model**, your **vector store**, and abstracts the logic for building **world-class RAG systems** using a fixed technical flow. You can build products and experiences on top of this pipeline without reimplementing decomposition, retrieval, verification, or refinement—we provide the orchestration, contracts, and traceability.
 
@@ -15,11 +29,19 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 
 ## Overview
 
+```text
+[ OVERVIEW // DATA PATHS ]
+```
+
 The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → coordinator-driven decomposition → parallel per-subquestion pipeline → initial synthesis → optional refinement → final response). A React front end and FastAPI backend expose load/wipe/run; the backend delegates decomposition and retrieval to a deep-agent coordinator and runs deterministic Python services for validation, reranking, subanswer generation, and verification. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`) and optional refinement replaces the initial answer when the pipeline decides it is insufficient.
 
 ---
 
 ## Architecture — Parts
+
+```text
+[ ARCHITECTURE // PARTS ]
+```
 
 The pipeline is documented as **14 sections** in `docs/`. Each section covers one stage of the flow. Summary:
 
@@ -40,7 +62,10 @@ The pipeline is documented as **14 sections** in `docs/`. Each section covers on
 | **13** | Refinement decomposition (refined sub-questions) | [section-13-refinement-decomposition](docs/section-13-refinement-decomposition.md) |
 | **14** | Refinement answer path (rerun retrieval + pipeline, replace output) | [section-14-refinement-answer-path](docs/section-14-refinement-answer-path.md) |
 
-*Rendered in neon green/cyan and magenta on dark for cyberpunk look.*
+```text
+HUD NOTE: Diagrams are intended to render neon green/cyan and magenta on dark.
+If your renderer ignores Mermaid theming, the layout still communicates the flow.
+```
 
 ### Flow diagram — Parts (entry → lane → synthesis → refinement)
 
@@ -87,11 +112,17 @@ flowchart TB
 
 ## Architecture — Whole System
 
+```text
+[ ARCHITECTURE // WHOLE SYSTEM ]
+```
+
 End-to-end: **User** → **Frontend** (Vite + React) → **Backend** (FastAPI) → **Agent service** orchestrates coordinator + vector store + per-subquestion pipeline and optional refinement → **Response** (`main_question`, `sub_qa[]`, `output`) back to frontend. **Ingestion** path: load request → internal data service → wiki ingestion + vector store service → Postgres/pgvector. **Answer** path: run request → initial retrieval → coordinator (decomposition + delegated retrieval) → parallel pipeline (validate → rerank → subanswer → verify) → initial answer → refinement decision → optional refinement loop → final output.
 
 **Deployment:** `frontend` (React, :5173), `backend` (FastAPI, :8000), `db` (Postgres 16 + pgvector). Optional `chrome` for remote debugging (:9222).
 
-*Rendered in neon green/cyan and magenta on dark for cyberpunk look.*
+```text
+HUD NOTE: Whole-system diagram uses the same neon palette as the parts map.
+```
 
 ### Flow diagram — Whole system
 
@@ -120,6 +151,10 @@ flowchart LR
 
 ## Tradeoffs
 
+```text
+[ TRADEOFFS // SIGNAL VS COST ]
+```
+
 | Area | Choice | Pros | Cons |
 |------|--------|------|------|
 | **Orchestration** | Coordinator (deep-agent) for decompose/delegate; deterministic Python for post-retrieval | Flexible decomposition; predictable downstream stages | Mixed control model; tracing is harder |
@@ -132,6 +167,10 @@ flowchart LR
 ---
 
 ## Quick start
+
+```text
+[ QUICK START // BOOT SEQUENCE ]
+```
 
 **Prerequisites:** Docker (and Compose), `.env` with `OPENAI_API_KEY` and any overrides for `POSTGRES_*`, `DATABASE_URL`, `VITE_API_BASE_URL`.
 
@@ -148,6 +187,10 @@ Backend runs Alembic migrations at startup. Use the UI to load a wiki source, th
 ---
 
 ## Links
+
+```text
+[ LINKS // REFERENCE CHANNELS ]
+```
 
 | Resource | Path |
 |----------|------|
