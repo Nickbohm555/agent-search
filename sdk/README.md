@@ -60,6 +60,14 @@ Run either snippet with:
 AGENT_SEARCH_BASE_URL=http://localhost:8000 python your_script.py
 ```
 
+### Runnable example script
+
+Use the checked-in example script:
+
+```bash
+AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py
+```
+
 ## Repository policy
 
 Generated files under `sdk/python` are committed to git (not ignored).  

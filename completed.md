@@ -832,3 +832,74 @@
 - `docker compose ps` -> pass (`db` healthy; `backend` and `frontend` up).
 - `docker compose logs --no-color --tail=140 backend`, `frontend`, `db` -> reviewed; no blocking errors.
 - `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
+
+---
+
+## Section S8: Minimal runnable example script using generated SDK
+
+**Single goal:** Add one runnable example script that uses the generated client to call the API.
+
+**Details:**
+- Single file (e.g. `sdk/examples/run_health.py` or `sdk/examples/run_agent.py`); uses generated client; base URL configurable via env or arg.
+- No new libraries; only the generated SDK.
+
+**Tech stack and dependencies**
+- Generated SDK from S5.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/sdk/examples/run_health.py` (or similar) | Calls one endpoint (e.g. health or agents/run) using generated client. |
+
+**How to test:** Install SDK, set base URL, run example script; confirm no import or runtime errors against running API.
+
+### Completion notes (March 6, 2026)
+- Added runnable SDK example script at `sdk/examples/run_health.py` that uses generated `openapi_client` to call `DefaultApi.health_api_health_get()`.
+- Added visibility logging in the script:
+  - startup log with selected base URL,
+  - success log with returned health status,
+  - exception logs for API and unexpected failures.
+- Added `--base-url` CLI flag support with fallback to `AGENT_SEARCH_BASE_URL` env var and default `http://localhost:8000`.
+- Updated `sdk/README.md` with a copy-paste command to run the checked-in example script.
+
+### Useful logs
+- Example script runtime logs:
+  - `2026-03-06 17:45:46,990 INFO run_health: starting health check base_url=http://localhost:8000`
+  - `2026-03-06 17:45:47,902 INFO run_health: health check succeeded status=ok`
+  - `{'status': 'ok'}`
+- Container restart output:
+  - `Container agent-search-chrome Restarting`
+  - `Container agent-search-backend Restarting`
+  - `Container agent-search-db Restarting`
+  - `Container agent-search-frontend Restarting`
+- Container state after restart:
+  - `docker compose ps` -> `agent-search-backend Up`, `agent-search-frontend Up`, `agent-search-chrome Up`, `agent-search-db Up (healthy)`.
+- Backend logs include:
+  - `Uvicorn running on http://0.0.0.0:8000`
+  - `Application startup complete.`
+  - `GET /api/health HTTP/1.1" 200 OK`
+- Frontend logs include:
+  - `VITE v5.4.21 ready`
+  - `Local: http://localhost:5173/`
+- DB logs include:
+  - `database system is ready to accept connections`
+- Health endpoint verification after startup stabilization:
+  - `HTTP/1.1 200 OK`
+  - `{"status":"ok"}`
+
+### Tests run
+- `chmod +x sdk/examples/run_health.py` -> pass.
+- `docker compose up -d db backend frontend` -> pass.
+- `python3 -m venv .venv-sdk-s8` -> pass.
+- `source .venv-sdk-s8/bin/activate && pip install --upgrade pip && pip install -e sdk/python` -> pass.
+- `AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> pass.
+- `docker compose restart` -> pass.
+- `docker compose ps` -> pass (`db` healthy; `backend`/`frontend`/`chrome` up).
+- `docker compose logs --no-color --tail=160` -> reviewed; no blocking errors.
+- `docker compose logs --no-color --tail=160 backend` -> reviewed; backend startup healthy.
+- `docker compose logs --no-color --tail=160 frontend` -> reviewed; frontend startup healthy.
+- `docker compose logs --no-color --tail=160 db` -> reviewed; db startup healthy.
+- `curl -sS -i http://localhost:8000/api/health` -> transient connection reset observed during immediate post-restart window.
+- Retry health check after stabilization:
+  - `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).

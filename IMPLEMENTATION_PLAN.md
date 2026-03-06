@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S8. (move +1 after each turn)
+Current section to work on: section S9. (move +1 after each turn)
 
 ---
 
@@ -230,7 +230,23 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Install SDK, set base URL, run example script; confirm no import or runtime errors against running API.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- Added runnable SDK example script at `sdk/examples/run_health.py` with INFO/ERROR logs and configurable base URL via `--base-url` or `AGENT_SEARCH_BASE_URL`.
+- Updated `sdk/README.md` with direct run command for the new example script.
+- Verified in a clean virtual environment:
+  - `python3 -m venv .venv-sdk-s8`
+  - `source .venv-sdk-s8/bin/activate`
+  - `pip install --upgrade pip`
+  - `pip install -e sdk/python`
+  - `AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py` -> logged success and returned `{'status': 'ok'}`.
+- Restarted application containers with `docker compose restart` and reviewed logs via:
+  - `docker compose logs --no-color --tail=160`
+  - `docker compose logs --no-color --tail=160 backend`
+  - `docker compose logs --no-color --tail=160 frontend`
+  - `docker compose logs --no-color --tail=160 db`
+- Verified post-restart service health:
+  - `docker compose ps` -> `backend`, `frontend`, and `chrome` up; `db` healthy.
+  - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}` after startup stabilization.
 
 ---
 
