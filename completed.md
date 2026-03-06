@@ -1018,3 +1018,45 @@
 - `docker compose logs --no-color --tail=200 frontend` -> reviewed; no blocking errors.
 - `docker compose logs --no-color --tail=200 db` -> reviewed; no blocking errors.
 - `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
+
+---
+
+## Section 1: Optional chat model parameter at run entry
+
+**Single goal:** Allow the run entry point to accept an optional chat model (e.g. LangChain `BaseChatModel` / OpenAI) so callers can supply their own model; when not provided, keep current env-based default.
+
+**Details:**
+- Add optional `model` parameter to `run_runtime_agent` (and any public SDK entry that calls it).
+- When provided, use it for `create_coordinator_agent(..., model=...)` and for the decomposition LLM call (`_run_decomposition_only_llm_call`); when not provided, use existing `_RUNTIME_AGENT_MODEL` / `_DECOMPOSITION_ONLY_MODEL` and current `ChatOpenAI` construction.
+- Do not change request/response schema in this section; focus on the service layer signature and coordinator/decomposition wiring.
+
+### Completion notes (March 6, 2026)
+- Updated `run_runtime_agent(...)` in `src/backend/services/agent_service.py` to accept optional `model: BaseChatModel | None = None`.
+- Threaded optional `model` to both coordinator and decomposition call paths:
+  - `create_coordinator_agent(vector_store=..., model=selected_model)` where `selected_model` is caller-provided model or existing `_RUNTIME_AGENT_MODEL` default.
+  - `_run_decomposition_only_llm_call(..., model=model)`.
+- Updated `_run_decomposition_only_llm_call(...)` to accept optional `model`; when provided, invoke that model directly; when omitted, preserve existing `ChatOpenAI` + env-default behavior and fallback behavior.
+- Added runtime logging for model selection visibility (`provided_model` and decomposition model selection log).
+- Added/updated service tests in `src/backend/tests/services/test_agent_service.py`:
+  - default path verifies decomposition model argument is `None` and coordinator keeps default model behavior.
+  - provided-model path verifies the same model object is passed to both decomposition and `create_coordinator_agent`.
+
+### Useful logs
+- Unit tests:
+  - `============================== 20 passed in 6.92s ==============================`
+- Container restart/state:
+  - `Container agent-search-backend  Restarting`
+  - `Container agent-search-backend  Started`
+  - `agent-search-backend ... Up ...`
+  - `agent-search-db ... Up ... (healthy)`
+- Health/API:
+  - `{"status":"ok"}` from `GET /api/health`
+  - Runtime log during API run: `Runtime agent run start query=What is pgvector used for? query_length=26 provided_model=False`
+  - Runtime log shows normal pipeline progression with no backend exceptions for this change.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> pass (`20 passed`).
+- `docker compose restart backend` -> pass.
+- `curl -sS http://localhost:8000/api/health` -> pass.
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (200 with `main_question`, `sub_qa`, `output` response shape).
+- `docker compose logs --tail 80 backend db frontend` -> reviewed for visibility; no change-specific blocking errors.

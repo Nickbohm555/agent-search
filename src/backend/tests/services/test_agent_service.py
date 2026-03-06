@@ -200,10 +200,11 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
         }
         return "Initial synthesized answer"
 
-    def fake_run_decomposition_only_llm_call(*, query, initial_search_context):
+    def fake_run_decomposition_only_llm_call(*, query, initial_search_context, model=None):
         captured["decomposition_input"] = {
             "query": query,
             "initial_search_context": initial_search_context,
+            "model": model,
         }
         return '["What changed in NATO policy", "Why did NATO policy change?"]'
 
@@ -253,6 +254,7 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert captured["context_docs"] == ["doc-a", "doc-b"]
     assert captured["decomposition_input"]["query"] == "What happened in NATO policy?"
     assert captured["decomposition_input"]["initial_search_context"][0]["title"] == "NATO"
+    assert captured["decomposition_input"]["model"] is None
     assert captured["initial_answer_input"]["main_question"] == "What happened in NATO policy?"
     assert captured["initial_answer_input"]["sub_qa_count"] == 1
     assert captured["initial_answer_input"]["initial_search_context"][0]["title"] == "NATO"
@@ -268,6 +270,90 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert "Decomposition-only LLM output captured" in caplog.text
     assert "Decomposition output parsed sub_question_count=2" in caplog.text
     assert "Coordinator sub-question input prepared parsed_sub_questions=2" in caplog.text
+
+
+def test_run_runtime_agent_uses_provided_model_for_coordinator_and_decomposition(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "What changed in policy X?", "subagent_type": "rag_retriever"},
+                            }
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What changed in policy X?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy X evidence.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent completed policy X."),
+                    AIMessage(content="Coordinator output"),
+                ]
+            }
+
+    class _FakeProvidedModel:
+        pass
+
+    provided_model = _FakeProvidedModel()
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "create_coordinator_agent",
+        lambda *, vector_store, model: captured.update({"coordinator_model": model}) or _FakeAgent(),
+    )
+
+    def fake_run_decomposition_only_llm_call(*, query, initial_search_context, model=None):
+        captured["decomposition_model"] = model
+        return '["What changed in policy X?"]'
+
+    monkeypatch.setattr(agent_service, "_run_decomposition_only_llm_call", fake_run_decomposition_only_llm_call)
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Initial synthesized output",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "Generated subanswer from reranked docs.",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="What changed in policy X?"),
+        db=_make_session(),
+        model=provided_model,
+    )
+
+    assert response.output == "Initial synthesized output"
+    assert captured["coordinator_model"] is provided_model
+    assert captured["decomposition_model"] is provided_model
 
 
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:

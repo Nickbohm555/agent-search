@@ -8,6 +8,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
@@ -243,9 +244,14 @@ def _build_decomposition_only_input_message(query: str, initial_search_context: 
     )
 
 
-def _run_decomposition_only_llm_call(*, query: str, initial_search_context: list[dict[str, Any]]) -> str:
+def _run_decomposition_only_llm_call(
+    *,
+    query: str,
+    initial_search_context: list[dict[str, Any]],
+    model: BaseChatModel | None = None,
+) -> str:
     fallback_question = _normalize_sub_question(query) or f"{query.strip()}?"
-    if not _OPENAI_API_KEY:
+    if model is None and not _OPENAI_API_KEY:
         logger.info(
             "Decomposition-only LLM call using fallback; OPENAI_API_KEY is not set model=%s",
             _DECOMPOSITION_ONLY_MODEL,
@@ -257,9 +263,14 @@ def _run_decomposition_only_llm_call(*, query: str, initial_search_context: list
         HumanMessage(content=_build_decomposition_only_input_message(query, initial_search_context)),
     ]
     try:
-        llm = ChatOpenAI(
+        llm = model or ChatOpenAI(
             model=_DECOMPOSITION_ONLY_MODEL,
             temperature=_DECOMPOSITION_ONLY_TEMPERATURE,
+        )
+        logger.info(
+            "Decomposition-only LLM call model selection provided_model=%s default_model=%s",
+            model is not None,
+            _DECOMPOSITION_ONLY_MODEL,
         )
         response = llm.invoke(messages)
         content = _stringify_message_content(getattr(response, "content", "")).strip()
@@ -817,12 +828,18 @@ def _seed_refined_sub_qa_from_retrieval(
     return seeded
 
 
-def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
+def run_runtime_agent(
+    payload: RuntimeAgentRunRequest,
+    db: Session,
+    model: BaseChatModel | None = None,
+) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
+    selected_model: BaseChatModel | str = model if model is not None else _RUNTIME_AGENT_MODEL
     logger.info(
-        "Runtime agent run start query=%s query_length=%s",
+        "Runtime agent run start query=%s query_length=%s provided_model=%s",
         _truncate_query(payload.query),
         len(payload.query),
+        model is not None,
     )
     vector_store = get_vector_store(
         connection=DATABASE_URL,
@@ -846,6 +863,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     decomposition_raw_output = _run_decomposition_only_llm_call(
         query=payload.query,
         initial_search_context=initial_search_context,
+        model=model,
     )
     logger.info(
         "Decomposition-only LLM output captured output_length=%s output_preview=%s",
@@ -863,7 +881,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     )
     agent = create_coordinator_agent(
         vector_store=vector_store,
-        model=_RUNTIME_AGENT_MODEL,
+        model=selected_model,
     )
     search_db_capture = SearchDatabaseCaptureCallback()
     callbacks = [AgentLoggingCallbackHandler(), search_db_capture]

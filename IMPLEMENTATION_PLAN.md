@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 1. (move +1 after each turn)
+Current section to work on: section 2. (move +1 after each turn)
 
 **Guardrail policy:** Time guardrails (Sections 3–18) **do not fail** the run. On timeout, force a return (partial result, fallback, or safe default) and continue so the pipeline stays fast and the user always gets an answer when possible.
 
@@ -32,7 +32,11 @@ Current section to work on: section 1. (move +1 after each turn)
 
 **How to test:** Unit tests: run with `model=None` (default behavior unchanged); run with a fake model and assert it is passed to `create_coordinator_agent` and used in decomposition. Restart app and run one query via API to confirm no regression.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `20 passed`
+- `docker compose restart backend` -> backend restarted successfully
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response schema
 
 ---
 
