@@ -749,6 +749,11 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         len(sub_qa),
     )
     if refinement_decision.refinement_needed:
+        logger.info(
+            "Refinement path flagged refinement_needed=%s reason=%s",
+            refinement_decision.refinement_needed,
+            _truncate_query(refinement_decision.reason),
+        )
         refined_subquestions = refine_subquestions(
             question=payload.query,
             initial_answer=output,

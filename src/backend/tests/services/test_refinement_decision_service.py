@@ -49,3 +49,21 @@ def test_should_refine_false_when_answer_is_supported() -> None:
 
     assert decision.refinement_needed is False
     assert decision.reason.startswith("sufficient_answerable_ratio:")
+
+
+def test_should_refine_true_when_initial_answer_reports_no_information_available() -> None:
+    decision = should_refine(
+        question="What happened in policy XZQ-999?",
+        initial_answer="There is no information available about policy XZQ-999 in the provided evidence.",
+        sub_qa=[
+            SubQuestionAnswer(
+                sub_question="policy XZQ-999?",
+                sub_answer="No information available.",
+                answerable=True,
+                verification_reason="grounded_in_reranked_documents",
+            )
+        ],
+    )
+
+    assert decision.refinement_needed is True
+    assert decision.reason == "initial_answer_reports_insufficient_evidence"

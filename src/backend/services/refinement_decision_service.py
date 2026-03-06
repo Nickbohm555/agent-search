@@ -8,11 +8,16 @@ from schemas import SubQuestionAnswer
 _INSUFFICIENT_ANSWER_PATTERNS = (
     "no relevant docs",
     "no relevant evidence",
+    "no relevant information",
+    "no information available",
     "insufficient evidence",
     "not enough evidence",
     "cannot determine",
     "unable to determine",
     "insufficient information",
+    "nothing relevant found",
+    "does not contain any information",
+    "does not contain information",
 )
 _MIN_ANSWERABLE_RATIO = float(os.getenv("REFINEMENT_MIN_ANSWERABLE_RATIO", "0.5"))
 

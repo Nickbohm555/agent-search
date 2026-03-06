@@ -594,3 +594,60 @@
   - `output` field present and non-empty synthesized answer.
 
 ---
+## Test Section 13: Refinement decision (Section 12)
+
+**Single goal:** Backend logs show refinement decision computed; for a weak/no-data query, refinement_needed=True and refinement path log present.
+
+**Details:**
+- Two runs: (A) With NATO data, query that may yield refinement_needed=False. (B) Wipe data (or use query with no relevant docs), run query → expect refinement_needed=True and "Refinement path flagged" or "Refinement path" in logs.
+- Logs must show "Refinement decision computed" with refinement_needed and reason.
+
+**Tech stack and dependencies**
+- refinement_decision_service and agent_service.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/refinement_decision_service.py` | should_refine(question, initial_answer, sub_qa). |
+| `src/backend/services/agent_service.py` | Calls decision and logs; branches to refinement when needed. |
+
+**How to test:**
+1. Run with good data: "What changed in NATO policy?" (NATO loaded) → logs show `Refinement decision computed refinement_needed=False ...` (or True).
+2. Wipe: `POST /api/internal-data/wipe`. Run: `POST /api/agents/run` with `{"query":"What happened in policy XZQ-999 with no indexed data?"}` → 200.
+3. Backend logs: require `Refinement decision computed refinement_needed=True reason=...` and a line indicating refinement path (e.g. "Refinement path flagged" or "refinement_needed" handoff).
+
+**Test results:** (Add when section is complete.)
+
+---
+
+**Test results:**
+- Fresh full restart/build completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Running state and health checks passed:
+  - `docker compose ps` => `backend`, `frontend`, `db` all Up (`db` healthy).
+  - `curl -i http://localhost:8000/api/health` => HTTP 200 and body `{"status":"ok"}`.
+  - `curl -o /dev/null -w "%{http_code}" http://localhost:5173` => `200`.
+- Logs viewed for built/running services:
+  - `docker compose logs --tail=80 backend`
+  - `docker compose logs --tail=40 db`
+- Section 13 Run A (with data):
+  - `POST /api/internal-data/wipe` => HTTP 200
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => HTTP 200, `{"documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200
+- Section 13 Run B (no indexed data):
+  - `POST /api/internal-data/wipe` => HTTP 200
+  - `POST /api/agents/run` with `{"query":"What happened in policy XZQ-999 with no indexed data?"}` => HTTP 200
+- Required backend log assertions passed (`docker compose logs --tail=800 backend | rg ...`):
+  - `Refinement decision computed refinement_needed=True reason=low_answerable_ratio:0.40 sub_qa_count=5`
+  - `Refinement path flagged refinement_needed=True reason=low_answerable_ratio:0.40`
+  - `Refinement decomposition complete reason=low_answerable_ratio:0.40 refined_subquestion_count=6`
+- Build/fix verification for this section:
+  - Added broader no-evidence phrase detection and refinement-path logging in backend services.
+  - Added unit tests for new phrase handling in refinement decision + subanswer verification.
+  - Executed: `docker compose exec backend sh -lc 'cd /app && uv run --with pytest pytest tests/services/test_subanswer_verification_service.py tests/services/test_refinement_decision_service.py'`
+  - Result: `7 passed in 0.03s`.
+
+---
