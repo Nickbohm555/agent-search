@@ -708,3 +708,60 @@
 - Conclusion: Section 14 passed; refinement decomposition is active and emits complete refined-subquestion logging with count >= 1.
 
 ---
+## Test Section 15: Refinement answer path (Section 14)
+
+**Single goal:** When refinement runs, logs show refined pipeline (parallel start/complete for refined sub-questions) and final response.output is the refined answer; sub_qa may include refined items.
+
+**Details:**
+- Same refinement run as Test Sections 13–14. Logs should show a second pipeline run (parallel start/complete) for refined sub-questions and synthesis; response.output is the refined final answer.
+
+**Tech stack and dependencies**
+- agent_service refinement branch reusing run_pipeline_for_subquestions and initial_answer synthesis.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Refinement retrieval, pipeline, synthesis, response override. |
+
+**How to test:**
+1. Run that triggers refinement (e.g. "What changed in policy?" with NATO loaded can sometimes refine; or use no-data scenario).
+2. Backend logs: require after refinement decision either (a) "Per-subquestion pipeline parallel start" for refined count, or (b) "Refinement" and "refined" / "Refined answer" completion log; and "Runtime agent run complete" with non-empty output.
+3. Response: `output` non-empty; if refinement executed, output should reflect refined synthesis (e.g. different from a single initial pass).
+
+**Test results:**
+- Fresh full restart/build completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Running state after restart (`docker compose ps`) confirmed:
+  - `backend` Up on `:8000`
+  - `frontend` Up on `:5173`
+  - `db` Up healthy on `:5432`
+  - `chrome` Up on `:9222`
+- Logs viewed for every built/running service:
+  - `docker compose logs --tail=120 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+- Section 15 execution commands and outcomes:
+  - `POST /api/internal-data/wipe` => `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200
+- Response assertion passed (same refinement run):
+  - `output` non-empty and refined synthesis returned:
+    - `There is no verified information available regarding recent changes in NATO policy ...`
+  - `sub_qa` returned with 6 refined sub-questions (no-data scenario, each marked `answerable=false`).
+- Required backend log assertions passed (`docker compose logs --tail=1200 backend | rg ...`):
+  - Initial pass pipeline start:
+    - `Per-subquestion pipeline parallel start count=4 configured_max_workers=4 effective_workers=4`
+  - Refinement decision and decomposition:
+    - `Refinement decision computed refinement_needed=True reason=no_answerable_subanswers sub_qa_count=4`
+    - `Refinement path flagged refinement_needed=True reason=no_answerable_subanswers`
+    - `Refinement decomposition complete reason=no_answerable_subanswers refined_subquestion_count=6`
+    - `Refined sub-questions prepared for Section 14 handoff count=6`
+  - Refined pass pipeline and completion:
+    - `Per-subquestion pipeline parallel start count=6 configured_max_workers=4 effective_workers=4`
+    - `Refinement answer path complete refined_sub_qa_count=6 refined_output_length=339`
+    - `Runtime agent run complete output_length=339 ...`
+- Conclusion: Section 15 passed; refinement branch executed a second sub-question pipeline and returned a non-empty refined final answer.
+
+---
