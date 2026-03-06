@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="cyber.jpg" alt="Cyberpunk city" width="720" />
-</p>
-
 ```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ SYSTEM README — AGENT-SEARCH // ARCHITECTURE MAP                             ┃
