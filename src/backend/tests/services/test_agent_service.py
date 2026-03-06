@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -418,3 +419,129 @@ def test_apply_subanswer_verification_to_sub_qa_sets_answerable_and_reason(monke
     assert captured["reranked_retrieved_output"].startswith("1. title=NATO")
     assert output_sub_qa[0].answerable is True
     assert output_sub_qa[0].verification_reason == "grounded_in_reranked_documents"
+
+
+def test_run_pipeline_for_subquestions_runs_in_parallel_and_preserves_order(monkeypatch) -> None:
+    input_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="Sub-question one?",
+            sub_answer="retrieved docs one",
+            tool_call_input='{"query":"Sub-question one?"}',
+        ),
+        agent_service.SubQuestionAnswer(
+            sub_question="Sub-question two?",
+            sub_answer="retrieved docs two",
+            tool_call_input='{"query":"Sub-question two?"}',
+        ),
+    ]
+
+    def fake_single_pipeline(item: agent_service.SubQuestionAnswer) -> agent_service.SubQuestionAnswer:
+        time.sleep(0.2)
+        output = item.model_copy(deep=True)
+        output.sub_answer = f"generated:{item.sub_question}"
+        output.answerable = True
+        output.verification_reason = "grounded_in_reranked_documents"
+        return output
+
+    monkeypatch.setattr(agent_service, "_run_pipeline_for_single_subquestion", fake_single_pipeline)
+    monkeypatch.setattr(agent_service, "_SUBQUESTION_PIPELINE_MAX_WORKERS", 2)
+
+    start = time.perf_counter()
+    output_sub_qa = agent_service.run_pipeline_for_subquestions(input_sub_qa)
+    elapsed = time.perf_counter() - start
+
+    assert len(output_sub_qa) == 2
+    assert output_sub_qa[0].sub_question == "Sub-question one?"
+    assert output_sub_qa[1].sub_question == "Sub-question two?"
+    assert output_sub_qa[0].sub_answer == "generated:Sub-question one?"
+    assert output_sub_qa[1].sub_answer == "generated:Sub-question two?"
+    assert all(item.answerable is True for item in output_sub_qa)
+    assert elapsed < 0.35
+
+
+def test_run_runtime_agent_populates_multiple_subquestions_with_verification(monkeypatch) -> None:
+    class _FakeAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "What changed in policy X?", "subagent_type": "rag_retriever"},
+                            },
+                            {
+                                "id": "call_task_2",
+                                "name": "task",
+                                "args": {"description": "What changed in policy Y?", "subagent_type": "rag_retriever"},
+                            },
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What changed in policy X?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy X evidence.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent completed policy X."),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_2",
+                                "name": "search_database",
+                                "args": {"query": "What changed in policy Y?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy Y evidence.", tool_call_id="call_sd_2", name="search_database"),
+                    AIMessage(content="Subagent completed policy Y."),
+                    AIMessage(content="Final output"),
+                ]
+            }
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FakeAgent())
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: f"answer:{sub_question}",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+    monkeypatch.setattr(agent_service, "_SUBQUESTION_PIPELINE_MAX_WORKERS", 2)
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="What changed in policy X and Y?"),
+        db=_make_session(),
+    )
+
+    assert response.output == "Final output"
+    assert len(response.sub_qa) == 2
+    assert [item.sub_question for item in response.sub_qa] == [
+        "What changed in policy X?",
+        "What changed in policy Y?",
+    ]
+    assert [item.sub_answer for item in response.sub_qa] == [
+        "answer:What changed in policy X?",
+        "answer:What changed in policy Y?",
+    ]
+    assert all(item.answerable for item in response.sub_qa)
+    assert all(item.verification_reason == "grounded_in_reranked_documents" for item in response.sub_qa)

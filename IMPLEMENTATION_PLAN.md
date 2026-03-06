@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 10. (move +1 after each turn)
+Current section to work on: section 11. (move +1 after each turn)
 
 ---
 
@@ -254,7 +254,7 @@ Current section to work on: section 10. (move +1 after each turn)
 
 **How to test:** Unit: sub-question + fixed reranked docs → sub-answer non-empty and on-topic. Integration: rerank → subanswer → SubQuestionAnswer.sub_answer set.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Complete.
 
 ---
 
@@ -277,7 +277,7 @@ Current section to work on: section 10. (move +1 after each turn)
 
 **How to test:** Unit: sub-answer contradicting docs → answerable False (or low score). Integration: subanswer → verification → response includes verification result.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Complete.
 
 ---
 
@@ -299,7 +299,7 @@ Current section to work on: section 10. (move +1 after each turn)
 
 **How to test:** Unit: 2+ sub-questions with mocks → both complete, results ordered/keyed; wall-clock < sequential. Integration: multiple sub-questions → all sub_qa populated, verification set.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Complete.
 
 ---
 

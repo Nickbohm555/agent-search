@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
@@ -55,6 +56,7 @@ _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
 )
 _DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
 _RERANKER_CONFIG = build_reranker_config_from_env()
+_SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
 
 
 def _truncate_query(q: str) -> str:
@@ -512,6 +514,59 @@ def _apply_subanswer_verification_to_sub_qa(
     return sub_qa
 
 
+def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestionAnswer:
+    working_item = item.model_copy(deep=True)
+    logger.info(
+        "Per-subquestion pipeline item start sub_question=%s",
+        _truncate_query(working_item.sub_question),
+    )
+    working_item = _apply_document_validation_to_sub_qa([working_item])[0]
+    working_item = _apply_reranking_to_sub_qa([working_item])[0]
+    reranked_output = working_item.sub_answer
+    working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
+    working_item = _apply_subanswer_verification_to_sub_qa(
+        [working_item],
+        reranked_output_by_sub_question={working_item.sub_question: reranked_output},
+    )[0]
+    logger.info(
+        "Per-subquestion pipeline item complete sub_question=%s answerable=%s reason=%s",
+        _truncate_query(working_item.sub_question),
+        working_item.answerable,
+        _truncate_query(working_item.verification_reason),
+    )
+    return working_item
+
+
+def run_pipeline_for_subquestions(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
+    if not sub_qa:
+        logger.info("Per-subquestion pipeline skipped; no sub-questions")
+        return []
+
+    configured_workers = max(1, _SUBQUESTION_PIPELINE_MAX_WORKERS)
+    max_workers = min(configured_workers, len(sub_qa))
+    logger.info(
+        "Per-subquestion pipeline parallel start count=%s configured_max_workers=%s effective_workers=%s",
+        len(sub_qa),
+        configured_workers,
+        max_workers,
+    )
+    output: list[SubQuestionAnswer | None] = [None] * len(sub_qa)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_run_pipeline_for_single_subquestion, item): index
+            for index, item in enumerate(sub_qa)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            output[index] = future.result()
+    processed = [item for item in output if item is not None]
+    logger.info(
+        "Per-subquestion pipeline parallel complete count=%s",
+        len(processed),
+    )
+    return processed
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -565,14 +620,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         messages if isinstance(messages, list) else [],
         search_database_calls=search_database_calls if search_database_calls else None,
     )
-    sub_qa = _apply_document_validation_to_sub_qa(sub_qa)
-    sub_qa = _apply_reranking_to_sub_qa(sub_qa)
-    reranked_output_by_sub_question = {item.sub_question: item.sub_answer for item in sub_qa}
-    sub_qa = _apply_subanswer_generation_to_sub_qa(sub_qa)
-    sub_qa = _apply_subanswer_verification_to_sub_qa(
-        sub_qa,
-        reranked_output_by_sub_question=reranked_output_by_sub_question,
-    )
+    sub_qa = run_pipeline_for_subquestions(sub_qa)
     _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(

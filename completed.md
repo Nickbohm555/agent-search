@@ -532,3 +532,56 @@
   - `SubQuestionAnswer[...] ... answerable=... verification_reason=...`
 
 **Test results:** Complete.
+## Section 10: Parallel sub-question processing
+
+**Single goal:** Run the per-subquestion pipeline (expansion -> search -> validation -> rerank -> subanswer -> verification) for all sub-questions in parallel.
+
+**Details:**
+- Given sub-questions from decomposition (Section 3), run Sections 4-9 for each sub-question in parallel (thread pool, asyncio, or task graph). No shared mutable state across sub-questions; each yields one SubQuestionAnswer with sub_answer and verification. Use minimal executor (e.g. concurrent.futures) if no orchestration yet. No initial-answer assembly or refinement here.
+
+**Tech:** concurrent.futures or asyncio (stdlib), or existing orchestration. Add new dependency to pyproject.toml if needed. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` or new `src/backend/services/subquestion_pipeline.py` | run_pipeline_for_subquestions(sub_questions, ...) -> expansion->...->verification per sub-question in parallel; return list of SubQuestionAnswer. |
+| `src/backend/services/agent_service.py` | After decomposition, invoke parallel pipeline; pass results to initial-answer generation. |
+
+**How to test:** Unit: 2+ sub-questions with mocks -> both complete, results ordered/keyed; wall-clock < sequential. Integration: multiple sub-questions -> all sub_qa populated, verification set.
+
+### Implemented
+- Added `run_pipeline_for_subquestions(...)` in `src/backend/services/agent_service.py` using `ThreadPoolExecutor` + `as_completed`.
+- Added `_run_pipeline_for_single_subquestion(...)` to run per-item validation -> rerank -> subanswer -> verification in sequence, with a deep-copied item to avoid shared mutable state.
+- Kept output deterministic by storing future results at their original index before returning.
+- Updated `run_runtime_agent(...)` to call `run_pipeline_for_subquestions(...)` instead of sequential list-wide processing.
+- Added parallelization logs:
+  - pipeline parallel start (count/configured workers/effective workers)
+  - per-item start and complete (including verification result)
+  - pipeline parallel complete.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - `test_run_pipeline_for_subquestions_runs_in_parallel_and_preserves_order`
+  - `test_run_runtime_agent_populates_multiple_subquestions_with_verification`
+
+### Validation and logs
+- Fresh full restart before work:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend test execution in container failed because `pytest` is not in backend dependencies:
+  - `docker compose exec backend uv run pytest tests/services/test_agent_service.py`
+  - Result: `error: Failed to spawn: pytest (No such file or directory)`
+- Required section tests run in backend workspace with transient pytest install via uv:
+  - `cd src/backend && uv run --with pytest pytest tests/services/test_agent_service.py`
+  - Result: `12 passed in 11.58s`
+- Container restart after code changes:
+  - `docker compose restart backend`
+  - `docker compose ps` showed `backend`, `frontend`, `chrome` up and `db` healthy.
+- Health/log checks:
+  - `curl http://localhost:8000/api/health` -> `{"status":"ok"}`
+  - `docker compose logs --tail=120 backend`
+  - `docker compose logs --tail=60 frontend`
+  - `docker compose logs --tail=60 db`
+- Backend log evidence included startup/reload with no runtime errors after final restart.
+
+**Test results:** Complete.
