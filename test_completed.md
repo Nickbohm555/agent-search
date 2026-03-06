@@ -765,3 +765,72 @@
 - Conclusion: Section 15 passed; refinement branch executed a second sub-question pipeline and returned a non-empty refined final answer.
 
 ---
+## Test Section 16: E2E in browser (Chrome DevTools / cursor-ide-browser)
+
+**Single goal:** Open frontend in a debug browser, submit a query with "Run", and verify UI shows main_question, sub_qa list, and output without console or critical network errors.
+
+**Details:**
+- Use Chrome DevTools workflow per AGENTS.md: stop Docker Chrome if needed (`docker compose stop chrome`), start app (`docker compose up -d backend frontend`), launch debug browser (`./launch-devtools.sh http://localhost:5173`), verify `curl http://127.0.0.1:9222/json/list` returns targets with webSocketDebuggerUrl. Then in browser (or cursor-ide-browser): navigate to app, take snapshot, type query into input, click Run button, wait for completion, snapshot again; verify main question text, at least one sub-question/answer visible, and output text; check console for errors.
+- Atomic UI checks: (1) Page loads. (2) Run button present and clickable. (3) After Run: main_question displayed, sub_qa section shows either a list of sub-questions/answers or "No subquestions for this run." message, output area non-empty or explicit empty state.
+
+**Tech stack and dependencies**
+- cursor-ide-browser MCP (browser_navigate, browser_snapshot, browser_fill/browser_type, browser_click, browser_console_messages) or manual Chrome with DevTools; frontend at http://localhost:5173; backend at http://localhost:8000.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` | Run form, Run button, display of main_question, sub_qa, output. |
+| `launch-devtools.sh` | Launches Chrome with remote debugging for E2E. |
+
+**How to test:**
+1. Stack up; ensure backend and frontend reachable (Test Section 1).
+2. Optional: load NATO data so run returns rich results.
+3. Launch debug browser: `./launch-devtools.sh http://localhost:5173` (from repo root). Verify: `curl -s http://127.0.0.1:9222/json/list` has entries with webSocketDebuggerUrl.
+4. In browser (or via cursor-ide-browser):
+   - Navigate to `http://localhost:5173`.
+   - Snapshot: confirm "Run Query" (or similar) and a submit button (e.g. "Run").
+   - Fill query input with e.g. "What changed in NATO policy?" and click "Run".
+   - Wait for run to finish (button returns to "Run", loading state ends).
+   - Snapshot: confirm main question text is shown; sub_qa section shows either a list of sub-questions/answers or "No subquestions for this run.".
+   - Optional: browser_console_messages (or DevTools Console) → no uncaught errors or failed /api/agents/run (e.g. 5xx).
+5. If using cursor-ide-browser: lock tab before interactions, unlock when done (see MCP server instructions).
+
+**Test results:**
+- Fresh full reset/build/start completed before section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Running state confirmed (`docker compose ps`): `backend`, `frontend`, `db (healthy)`, `chrome` all up.
+- Logs viewed for every built/running item:
+  - `docker compose logs --tail=80 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`
+  - `docker compose logs --tail=80 chrome`
+- Reachability checks passed:
+  - `curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/api/health` => `200`
+  - `curl -s http://localhost:8000/api/health` => `{"status":"ok"}`
+  - `curl -s -o /dev/null -w "%{http_code}" http://localhost:5173` => `200`
+- Optional data setup executed:
+  - `POST /api/internal-data/wipe` => `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` NATO => `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+- DevTools workflow verification:
+  - `docker compose stop chrome` then `./launch-devtools.sh http://localhost:5173`
+  - `curl http://127.0.0.1:9222/json/list` returned targets with `webSocketDebuggerUrl`.
+- E2E interaction executed with real Chrome automation (Playwright core against local Chrome binary):
+  - Opened page, verified `Run Query` heading, textarea, and `Run` button.
+  - Entered query `What is NATO?` and clicked `Run`.
+  - Waited for loading state to end and validated final readout.
+- E2E output (pass):
+  - `mainQuestion`: `What is NATO?`
+  - `finalAnswerLength`: `658` (non-empty output)
+  - `subSummaryCount`: `10` (sub_qa list visible)
+  - Console: one benign 404 static-resource message only; no critical console errors.
+  - No page exceptions.
+  - No failed `/api/agents/run` requests.
+- Backend run completion evidence:
+  - `Runtime agent run complete output_length=658 ...`
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
+- Conclusion: Section 16 passed.
+
+---
