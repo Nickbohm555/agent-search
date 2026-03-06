@@ -2,9 +2,51 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
+Current section to work on: section 1. (move +1 after each turn)
+
 ---
 
-## Section 1: Initial search for decomposition context
+## Section 1: Coordinator flow tracking via write_todos
+
+**Single goal:** The coordinator agent uses the deep-agents (LangGraph) `write_todos` planning tool to keep track of the pipeline flow so it does not lose context across steps.
+
+**Flow the coordinator coordinates (align with flow.jpg):**
+
+1. **From the user question, parallel inputs:**
+   - **Exploratory (fast & simple) search** / **full search on the original question** → results feed into decomposition context and initial-answer generation.
+   - **Decompose question into sub-questions** → produces initial sub-questions (one per concept).
+
+2. **Per initial sub-question (in parallel):** For each initial sub-question, run in order: **Expand** (query expansion) → **Search** (retrieval) → **Validate** (doc validation) → **Rerank** → **Answer** (subanswer generation) → **Check** (subanswer verification). All sub-question results feed into **Generate initial answer**.
+
+3. **Generate initial answer:** Combine initial-search results and the aggregated sub-answers into one initial answer.
+
+4. **Need refinement?** Decision: if **No** → output the initial answer as the final answer. If **Yes** → continue below.
+
+5. **Refinement path:**  
+   - **Generate new & informed sub-questions** from the initial answer and unanswerable sub-questions so the new sub-questions target gaps.  
+   - **Per refined sub-question (in parallel):** Same pipeline as step 2: Expand → Search → Validate → Rerank → Answer → Check.  
+   - **Produce & validate refined answer** from the refined sub-answers.  
+   - **Compare refined to initial answer** (e.g. for quality or final synthesis), then output the final answer.
+
+**Details:**
+- At run start, the coordinator creates or updates a plan via `write_todos` with todos that mirror the stages above (e.g. initial search, decomposition, parallel initial sub-question pipelines, initial answer, refinement decision; and when refining: refined sub-questions, refined pipelines, refined answer, compare → output).
+- The coordinator marks items in_progress and completed as it delegates and synthesizes. No change to decomposition or RAG logic; only wiring so the coordinator uses the existing `write_todos` tool with a plan aligned to this flow (see flow.jpg).
+
+**Tech:** Deep-agents/LangGraph built-in `write_todos` tool (already available on the coordinator). No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Ensure system prompt (or invoke-time input) instructs the coordinator to use `write_todos` and to seed/update the plan with the pipeline stages above. |
+
+**How to test:** Unit: mock run where coordinator receives instruction to use write_todos; assert plan items align with Sections 2–14 or agreed pipeline stages. Integration: run coordinator with a multi-step query; inspect agent state or tool calls for write_todos usage and plan content.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+## Section 2: Initial search for decomposition context
 
 **Single goal:** Run one retrieval for the user question and pass top-k results as context into decomposition.
 
@@ -29,9 +71,9 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 2: Question decomposition informed by context
+## Section 3: Question decomposition informed by context
 
-**Single goal:** Produce narrow sub-questions from the user question using initial-search context (Section 1).
+**Single goal:** Produce narrow sub-questions from the user question using initial-search context (Section 2).
 
 **Details:**
 - Input: initial-search context + user question. Output: list of sub-questions (one concept per sub-question, complete questions ending with “?”).
@@ -44,7 +86,7 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 | File | Purpose |
 |------|--------|
 | `src/backend/agents/coordinator.py` | Update system prompt/inputs so coordinator gets initial-search context and uses it for sub-questions. |
-| `src/backend/services/agent_service.py` | Pass initial-search context (Section 1) into coordinator (e.g. first HumanMessage or dedicated context field). |
+| `src/backend/services/agent_service.py` | Pass initial-search context (Section 2) into coordinator (e.g. first HumanMessage or dedicated context field). |
 
 **How to test:** Unit: fixed context + user question → decomposition returns list of strings, each ending with “?”. Integration: ambiguous question → sub-questions align with provided context.
 
@@ -52,7 +94,7 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 3: Per-subquestion query expansion
+## Section 4: Per-subquestion query expansion
 
 **Single goal:** For each sub-question, produce an expanded query (synonyms, reformulations) for retrieval.
 
@@ -74,9 +116,9 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 4: Per-subquestion search
+## Section 5: Per-subquestion search
 
-**Single goal:** Run retrieval per sub-question using the expanded query (Section 3); return ranked list of documents per sub-question.
+**Single goal:** Run retrieval per sub-question using the expanded query (Section 4); return ranked list of documents per sub-question.
 
 **Details:**
 - Input: expanded query (or sub-question if expansion skipped). Output: ordered list of docs (or IDs + snippets) per sub-question. Use existing vector store/retriever; pipeline must call it with expanded query when expansion enabled. No validation, reranking, or subanswer generation here.
@@ -96,7 +138,7 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 5: Per-subquestion document validation (parallel)
+## Section 6: Per-subquestion document validation (parallel)
 
 **Single goal:** Validate retrieved documents per sub-question (relevance/constraints); run validations in parallel across documents.
 
@@ -118,7 +160,7 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 6: Per-subquestion reranking
+## Section 7: Per-subquestion reranking
 
 **Single goal:** Rerank validated documents per sub-question so top results are best for subanswer generation.
 
@@ -140,9 +182,9 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 7: Per-subquestion subanswer generation
+## Section 8: Per-subquestion subanswer generation
 
-**Single goal:** Generate sub-answer text per sub-question from the reranked document set (Section 6).
+**Single goal:** Generate sub-answer text per sub-question from the reranked document set (Section 7).
 
 **Details:**
 - Input: sub-question + reranked docs for that sub-question. Output: one sub-answer string per sub-question. Use LLM (or existing subagent) with reranked docs as context; concise, attributed. No verification here.
@@ -153,7 +195,7 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` or new `src/backend/services/subanswer_service.py` | (sub_question, reranked_docs) → sub_answer; use Section 6 output. |
+| `src/backend/services/agent_service.py` or new `src/backend/services/subanswer_service.py` | (sub_question, reranked_docs) → sub_answer; use Section 7 output. |
 | `src/backend/agents/coordinator.py` (optional) | If RAG subagent does subanswer, ensure it receives reranked docs; else keep in dedicated service. |
 
 **How to test:** Unit: sub-question + fixed reranked docs → sub-answer non-empty and on-topic. Integration: rerank → subanswer → SubQuestionAnswer.sub_answer set.
@@ -162,7 +204,7 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 8: Per-subquestion subanswer verification
+## Section 9: Per-subquestion subanswer verification
 
 **Single goal:** Verify each sub-answer (against reranked docs or criteria); expose answerable vs not (or confidence) for refinement.
 
@@ -185,12 +227,12 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 9: Parallel sub-question processing
+## Section 10: Parallel sub-question processing
 
 **Single goal:** Run the per-subquestion pipeline (expansion → search → validation → rerank → subanswer → verification) for all sub-questions in parallel.
 
 **Details:**
-- Given sub-questions from decomposition (Section 2), run Sections 3–8 for each sub-question in parallel (thread pool, asyncio, or task graph). No shared mutable state across sub-questions; each yields one SubQuestionAnswer with sub_answer and verification. Use minimal executor (e.g. concurrent.futures) if no orchestration yet. No initial-answer assembly or refinement here.
+- Given sub-questions from decomposition (Section 3), run Sections 4–9 for each sub-question in parallel (thread pool, asyncio, or task graph). No shared mutable state across sub-questions; each yields one SubQuestionAnswer with sub_answer and verification. Use minimal executor (e.g. concurrent.futures) if no orchestration yet. No initial-answer assembly or refinement here.
 
 **Tech:** concurrent.futures or asyncio (stdlib), or existing orchestration. Add new dependency to pyproject.toml if needed. No Docker change.
 
@@ -207,9 +249,9 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 10: Initial answer generation
+## Section 11: Initial answer generation
 
-**Single goal:** Produce the initial answer from initial search results (Section 1) and sub-question answers (Section 9).
+**Single goal:** Produce the initial answer from initial search results (Section 2) and sub-question answers (Section 10).
 
 **Details:**
 - Input: user question, initial-search context, list of SubQuestionAnswer. Output: one initial answer string. LLM (coordinator or synthesizer) uses both initial docs and sub_qa. No refinement decision or refinement decomposition here.
@@ -229,35 +271,13 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ---
 
-## Section 11: Entity / relationship / term extraction
-
-**Single goal:** From initial search results (Section 1), extract entities, relationships, and terms into a structured form for refinement decomposition.
-
-**Details:**
-- Input: docs/snippets from initial search. Output: structured extraction (entities, relationship triples, key terms) in a defined schema. LLM or NER/tool. Run in parallel with sub-question processing where possible; refinement consumes it after initial answer and extraction are ready. No refinement decomposition or refinement answer here.
-
-**Tech:** LLM or NER (e.g. spacy); add dependency to pyproject.toml if needed. No Docker change unless new runtime model.
-
-**Files**
-
-| File | Purpose |
-|------|--------|
-| `src/backend/schemas/agent.py` or new schema module | ExtractionResult (e.g. entities, relationships, terms). |
-| New `src/backend/services/extraction_service.py` | extract(docs) → ExtractionResult; call after initial search, parallel to sub-question pipeline where possible. |
-| `src/backend/services/agent_service.py` | Run extraction on initial-search results; store for refinement decomposition. |
-
-**How to test:** Unit: fixed doc text → extraction returns non-empty entities/terms when present. Integration: extraction produced and passed to refinement decomposition (Section 13).
-
-**Test results:** (Add when section is complete.)
-
----
 
 ## Section 12: Refinement decision
 
-**Single goal:** Decide if the initial answer is lacking; set “refinement needed” (and optional reason) to trigger refinement path.
+**Single goal:** Decide if the initial answer is lacking; set “refinement needed” (and optional reason) to trigger the refinement path (Section 13).
 
 **Details:**
-- Input: user question, initial answer (Section 10), optionally sub_qa (answerable/unanswerable from Section 8). Output: refinement_needed: bool, optional reason. LLM or rule-based (e.g. “no relevant found”, low verification). Expose to next step only; no refinement decomposition or answer here.
+- Input: user question, **initial answer (Section 11)**, and **sub_qa (Section 9)**. Both the initial answer and sub_qa are required: we evaluate the initial answer and the per-sub-question results (answerable/unanswerable, verification) together. Output: refinement_needed: bool, optional reason. LLM or rule-based (e.g. “no relevant found”, low verification). Expose to next step only; no refinement decomposition or answer here.
 
 **Tech:** LLM if used. No new packages. No Docker change.
 
@@ -276,10 +296,10 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ## Section 13: Refinement decomposition
 
-**Single goal:** Produce refined sub-questions from question, initial answer, sub_qa (and unanswerable), and extraction (Section 11), targeting gaps and document-aligned shortcomings.
+**Single goal:** Produce a new list of refined sub-questions that target gaps and unanswerable sub-questions. Run only when refinement_needed (Section 12). Refined sub-questions are then run through the full per-subquestion pipeline in Section 14.
 
 **Details:**
-- Input: user question, initial answer, SubQuestionAnswer list (with answerable/verification), ExtractionResult. Output: list of refined sub-questions. Run only after initial answer (Section 10) and extraction (Section 11) are ready. LLM prompt uses shortcomings, unanswerable sub-questions, and extraction. No refinement answer path here.
+- Input: user question, initial answer (Section 11), SubQuestionAnswer list (Section 9; with answerable/verification). Output: list of refined sub-questions. We do not re-ask the same sub-questions; the LLM uses the initial answer and sub_qa (including which were unanswerable) to generate gap-targeting sub-questions. No retrieval or synthesis here; output feeds Section 14.
 
 **Tech:** Existing LLM. No new packages. No Docker change.
 
@@ -287,10 +307,10 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 | File | Purpose |
 |------|--------|
-| New `src/backend/services/refinement_decomposition_service.py` or equivalent | refine_subquestions(question, initial_answer, sub_qa, extraction_result) → list[str]. |
+| New `src/backend/services/refinement_decomposition_service.py` or equivalent | refine_subquestions(question, initial_answer, sub_qa) → list[str]. |
 | `src/backend/services/agent_service.py` | When refinement_needed (Section 12), call refinement decomposition; pass refined sub-questions to Section 14. |
 
-**How to test:** Unit: initial answer with gap + extraction with entities → refined sub-questions target gap or entity. Integration: refinement_needed=True → refined sub-questions passed to next step.
+**How to test:** Unit: initial answer with gap + unanswerable sub-questions → refined sub-questions target gap. Integration: refinement_needed=True → refined sub-questions passed to next step.
 
 **Test results:** (Add when section is complete.)
 
@@ -298,18 +318,18 @@ Tasks are in **recommended implementation order** (1…n). Each section = **one 
 
 ## Section 14: Refinement answer path
 
-**Single goal:** Run the sub-question pipeline (Sections 3–8) on refined sub-questions and produce the refined final answer.
+**Single goal:** Run the same per-subquestion pipeline (Sections 4–9) on the refined sub-questions from Section 13, then synthesize the refined final answer. When refinement was taken, this is the final output.
 
 **Details:**
-- Input: refined sub-questions (Section 13). Reuse same per-subquestion pipeline as Section 9; run refined sub-questions in parallel. Output: refined answer (synthesizer combining refined sub-answers and optionally initial answer). No new pipeline steps; wire refined sub-questions into existing pipeline + synthesis. API: response.output = refined answer when refinement taken (optional initial_answer in metadata).
+- Input: refined sub-questions (Section 13). Reuse the same pipeline as Section 10 (expand → search → validate → rerank → answer → check) for each refined sub-question in parallel. Output: refined answer (synthesizer combining refined sub-answers and optionally initial answer). response.output = refined answer when refinement was taken (optional initial_answer in metadata).
 
-**Tech:** Reuse pipeline and LLM from Sections 3–10. No new dependencies. No Docker change.
+**Tech:** Reuse pipeline and LLM from Sections 4–11. No new dependencies. No Docker change.
 
 **Files**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | On refinement path: call same parallel sub-question pipeline (Section 9) with refined sub-questions; synthesizer → refined answer; response.output = refined answer. |
+| `src/backend/services/agent_service.py` | On refinement path: call same parallel sub-question pipeline (Section 10) with refined sub-questions; synthesizer → refined answer; response.output = refined answer. |
 | `src/backend/schemas/agent.py` (optional) | Optional response fields for initial_answer and refined_answer if both returned to client. |
 
 **How to test:** Unit: mocks + refined sub-questions → pipeline invoked, refined answer non-empty. Integration: refinement_needed=True → final response.output is refined answer; sub_qa/metadata reflect refined sub-questions and answers.
