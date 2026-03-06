@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 13. (move +1 after each turn)
+Current section to work on: section 14. (move +1 after each turn)
 
 ---
 
@@ -354,7 +354,8 @@ Current section to work on: section 13. (move +1 after each turn)
 
 **How to test:** Unit: initial answer “no relevant docs” → refinement_needed True; complete answer → False. Integration: weak initial answer → refinement path taken.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Complete (see `completed.md` Section 12 entry for detailed logs and test evidence).
 
 ---
 
@@ -376,7 +377,16 @@ Current section to work on: section 13. (move +1 after each turn)
 
 **How to test:** Unit: initial answer with gap + unanswerable sub-questions → refined sub-questions target gap. Integration: refinement_needed=True → refined sub-questions passed to next step.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend uv run pytest tests/services/test_refinement_decomposition_service.py tests/services/test_agent_service.py` -> `15 passed`.
+- Backend smoke selector: `docker compose exec backend uv run pytest tests/api -m smoke` -> `3 deselected` (no smoke-selected tests).
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in policy?"}` -> `200`.
+- Backend logs confirmed Section 13 behavior:
+  - `Refinement decision computed refinement_needed=True reason=no_answerable_subanswers sub_qa_count=11`
+  - `Refinement decomposition start question_len=23 initial_answer_len=312 sub_qa_count=11`
+  - `Refinement decomposition complete via LLM count=6 model=gpt-4.1-mini`
+  - `RefinedSubQuestion[1]=...` through `RefinedSubQuestion[6]=...`
+  - `Refined sub-questions prepared for Section 14 handoff count=6`
 
 ---
 

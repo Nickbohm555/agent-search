@@ -22,6 +22,7 @@ from services.document_validation_service import (
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
 from services.initial_answer_service import generate_initial_answer
+from services.refinement_decomposition_service import refine_subquestions
 from services.refinement_decision_service import should_refine
 from services.subanswer_service import generate_subanswer
 from services.subanswer_verification_service import (
@@ -647,10 +648,31 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
         len(sub_qa),
     )
     if refinement_decision.refinement_needed:
-        logger.info(
-            "Refinement path flagged but deferred until Section 13 implementation reason=%s",
-            _truncate_query(refinement_decision.reason),
+        refined_subquestions = refine_subquestions(
+            question=payload.query,
+            initial_answer=output,
+            sub_qa=sub_qa,
         )
+        logger.info(
+            "Refinement decomposition complete reason=%s refined_subquestion_count=%s",
+            _truncate_query(refinement_decision.reason),
+            len(refined_subquestions),
+        )
+        for index, refined_subquestion in enumerate(refined_subquestions, start=1):
+            logger.info(
+                "RefinedSubQuestion[%s]=%s",
+                index,
+                _truncate_query(refined_subquestion),
+            )
+        if not refined_subquestions:
+            logger.warning(
+                "Refinement decomposition produced no refined sub-questions; Section 14 will have no refinement inputs"
+            )
+        else:
+            logger.info(
+                "Refined sub-questions prepared for Section 14 handoff count=%s",
+                len(refined_subquestions),
+            )
     logger.info(
         "Runtime agent run complete output_length=%s output_preview=%s",
         len(output),

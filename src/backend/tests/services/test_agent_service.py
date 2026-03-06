@@ -261,6 +261,8 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
 
 
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
+    captured: dict[str, object] = {}
+
     class _FakeAgent:
         def invoke(self, payload, **kwargs):
             _ = payload
@@ -321,6 +323,16 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
             {"refinement_needed": True, "reason": "low_answerable_ratio:0.00"},
         )(),
     )
+    def fake_refine_subquestions(*, question, initial_answer, sub_qa):
+        captured["question"] = question
+        captured["initial_answer"] = initial_answer
+        captured["sub_qa_count"] = len(sub_qa)
+        return [
+            "What primary source evidence is missing for policy changes?",
+            "Which dated policy updates can validate the claim?",
+        ]
+
+    monkeypatch.setattr(agent_service, "refine_subquestions", fake_refine_subquestions)
 
     with caplog.at_level(logging.INFO):
         response = agent_service.run_runtime_agent(
@@ -329,8 +341,13 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
         )
 
     assert response.output == "Initial answer with gaps"
+    assert captured["question"] == "What changed in policy?"
+    assert captured["initial_answer"] == "Initial answer with gaps"
+    assert captured["sub_qa_count"] == 1
     assert "Refinement decision computed refinement_needed=True reason=low_answerable_ratio:0.00" in caplog.text
-    assert "Refinement path flagged but deferred until Section 13 implementation" in caplog.text
+    assert "Refinement decomposition complete reason=low_answerable_ratio:0.00 refined_subquestion_count=2" in caplog.text
+    assert "RefinedSubQuestion[1]=What primary source evidence is missing for policy changes?" in caplog.text
+    assert "Refined sub-questions prepared for Section 14 handoff count=2" in caplog.text
     assert "SubQuestionAnswer summary count=1" in caplog.text
     assert "SubQuestionAnswer[1]" in caplog.text and "What changed in policy?" in caplog.text
     assert "Coordinator raw output captured" in caplog.text

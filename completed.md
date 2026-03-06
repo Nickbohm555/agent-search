@@ -697,3 +697,64 @@
   - `docker compose ps` -> all services up; `db` healthy.
 
 **Test results:** Complete.
+
+## Section 13: Refinement decomposition
+
+**Single goal:** Produce a new list of refined sub-questions that target gaps and unanswerable sub-questions. Run only when refinement_needed (Section 12). Refined sub-questions are then run through the full per-subquestion pipeline in Section 14.
+
+**Details:**
+- Input: user question, initial answer (Section 11), SubQuestionAnswer list (Section 9; with answerable/verification). Output: list of refined sub-questions. We do not re-ask the same sub-questions; the LLM uses the initial answer and sub_qa (including which were unanswerable) to generate gap-targeting sub-questions. No retrieval or synthesis here; output feeds Section 14.
+
+**Tech:** Existing LLM. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| New `src/backend/services/refinement_decomposition_service.py` or equivalent | refine_subquestions(question, initial_answer, sub_qa) -> list[str]. |
+| `src/backend/services/agent_service.py` | When refinement_needed (Section 12), call refinement decomposition; pass refined sub-questions to Section 14. |
+
+**How to test:** Unit: initial answer with gap + unanswerable sub-questions -> refined sub-questions target gap. Integration: refinement_needed=True -> refined sub-questions passed to next step.
+
+### Implemented
+- Added `src/backend/services/refinement_decomposition_service.py` with `refine_subquestions(...)`:
+  - LLM-first refined-subquestion generation (`gpt-4.1-mini` by default) from `question + initial_answer + sub_qa`.
+  - Strict sanitization: normalize to full questions ending in `?`, dedupe, filter out existing sub-questions, cap by `REFINEMENT_DECOMPOSITION_MAX_SUBQUESTIONS`.
+  - Deterministic fallback generation for no-key/error paths based on unanswerable sub-questions and verification reasons.
+  - Added explicit start/completion logs for both LLM and fallback execution paths.
+- Updated `src/backend/services/agent_service.py` refinement branch:
+  - Replaced Section-13 deferred branch with a real call to `refine_subquestions(...)` when `refinement_needed=True`.
+  - Added visibility logs for count + each refined sub-question and Section 14 handoff readiness.
+- Added tests:
+  - New `src/backend/tests/services/test_refinement_decomposition_service.py`.
+  - Updated `src/backend/tests/services/test_agent_service.py` to assert `refine_subquestions(...)` is called on refinement and handoff logs are emitted.
+
+### Validation and useful logs
+- Restarted changed container:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend uv run pytest tests/services/test_refinement_decomposition_service.py tests/services/test_agent_service.py`
+  - Result: `15 passed`
+- Backend smoke selector:
+  - `docker compose exec backend uv run pytest tests/api -m smoke`
+  - Result: `3 deselected` (no smoke-selected tests)
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in policy?"}` -> `200`
+- Backend log evidence:
+  - `Refinement decision computed refinement_needed=True reason=no_answerable_subanswers sub_qa_count=11`
+  - `Refinement decomposition start question_len=23 initial_answer_len=312 sub_qa_count=11`
+  - `Refinement decomposition complete via LLM count=6 model=gpt-4.1-mini`
+  - `RefinedSubQuestion[1]=What documents or sources detail the policy before the change?`
+  - `RefinedSubQuestion[2]=Are there any official statements or press releases about the policy change?`
+  - `RefinedSubQuestion[3]=What are the legal or regulatory frameworks governing the policy?`
+  - `RefinedSubQuestion[4]=Has there been any public or stakeholder feedback regarding the policy change?`
+  - `RefinedSubQuestion[5]=What are the timelines or deadlines associated with implementing the policy changes?`
+  - `RefinedSubQuestion[6]=Are there any related policies that might have influenced the changes?`
+  - `Refined sub-questions prepared for Section 14 handoff count=6`
+- Container and log checks:
+  - `docker compose ps` -> all services up; `db` healthy.
+  - `docker compose logs --tail=220 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=120 db`
+
+**Test results:** Complete.
