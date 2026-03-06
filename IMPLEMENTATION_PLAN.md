@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 1. (move +1 after each turn)
+Current section to work on: section 2. (move +1 after each turn)
 
 ---
 
@@ -42,7 +42,10 @@ Current section to work on: section 1. (move +1 after each turn)
 
 **How to test:** Unit: mock run where coordinator receives instruction to use write_todos; assert plan items align with Sections 2–14 or agreed pipeline stages. Integration: run coordinator with a multi-step query; inspect agent state or tool calls for write_todos usage and plan content.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py tests/services/test_agent_service.py'` -> `4 passed`.
+- Integration: `POST /api/agents/run` with `"What is the Strait of Hormuz?"` returned `200` and backend logs showed repeated `write_todos` tool calls with staged todo updates (initial intake/search/decompose/sub-question processing/synthesis) plus final response output.
+- Smoke command status: `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'` had no smoke-selected tests (`2 deselected`).
 
 ---
 
@@ -337,4 +340,3 @@ Current section to work on: section 1. (move +1 after each turn)
 **Test results:** (Add when section is complete.)
 
 ---
-
