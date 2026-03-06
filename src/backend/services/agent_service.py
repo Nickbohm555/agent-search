@@ -21,6 +21,10 @@ from services.document_validation_service import (
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
 from services.subanswer_service import generate_subanswer
+from services.subanswer_verification_service import (
+    SubanswerVerificationResult,
+    verify_subanswer,
+)
 from services.vector_store_service import (
     build_initial_search_context,
     get_vector_store,
@@ -382,13 +386,15 @@ def _log_sub_qa_run_end_summary(sub_qa: list[SubQuestionAnswer]) -> None:
     logger.info("SubQuestionAnswer summary count=%s", len(sub_qa))
     for index, item in enumerate(sub_qa, start=1):
         logger.info(
-            "SubQuestionAnswer[%s] sub_question=%s expanded_query=%s tool_call_input=%s sub_answer=%s sub_agent_response=%s",
+            "SubQuestionAnswer[%s] sub_question=%s expanded_query=%s tool_call_input=%s sub_answer=%s sub_agent_response=%s answerable=%s verification_reason=%s",
             index,
             _truncate_query(item.sub_question),
             _truncate_query(item.expanded_query),
             _truncate_query(item.tool_call_input),
             _truncate_query(item.sub_answer),
             _truncate_query(item.sub_agent_response),
+            item.answerable,
+            _truncate_query(item.verification_reason),
         )
 
 
@@ -483,6 +489,29 @@ def _apply_subanswer_generation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> li
     return sub_qa
 
 
+def _apply_subanswer_verification_to_sub_qa(
+    sub_qa: list[SubQuestionAnswer],
+    *,
+    reranked_output_by_sub_question: dict[str, str],
+) -> list[SubQuestionAnswer]:
+    logger.info("Per-subquestion subanswer verification start count=%s", len(sub_qa))
+    for item in sub_qa:
+        verification = verify_subanswer(
+            sub_question=item.sub_question,
+            sub_answer=item.sub_answer,
+            reranked_retrieved_output=reranked_output_by_sub_question.get(item.sub_question, ""),
+        )
+        item.answerable = verification.answerable
+        item.verification_reason = verification.reason
+        logger.info(
+            "Per-subquestion subanswer verification sub_question=%s answerable=%s reason=%s",
+            _truncate_query(item.sub_question),
+            item.answerable,
+            _truncate_query(item.verification_reason),
+        )
+    return sub_qa
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -538,7 +567,12 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     )
     sub_qa = _apply_document_validation_to_sub_qa(sub_qa)
     sub_qa = _apply_reranking_to_sub_qa(sub_qa)
+    reranked_output_by_sub_question = {item.sub_question: item.sub_answer for item in sub_qa}
     sub_qa = _apply_subanswer_generation_to_sub_qa(sub_qa)
+    sub_qa = _apply_subanswer_verification_to_sub_qa(
+        sub_qa,
+        reranked_output_by_sub_question=reranked_output_by_sub_question,
+    )
     _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(

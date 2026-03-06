@@ -11,6 +11,8 @@ class SubQuestionAnswer(BaseModel):
     tool_call_input: str = ""
     expanded_query: str = ""
     sub_agent_response: str = ""
+    answerable: bool = False
+    verification_reason: str = ""
 
 
 class RuntimeAgentRunResponse(BaseModel):

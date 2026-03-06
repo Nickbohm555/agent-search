@@ -40,6 +40,8 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
                     sub_answer="Policy X was revised in January 2026.",
                     tool_call_input='{"query":"What changed in policy X?"}',
                     sub_agent_response="I reviewed the latest policy notes and summarized the change.",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
                 )
             ],
             output=f"Echo: {payload.query}",
@@ -69,7 +71,10 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
                 "sub_question": "What changed in policy X?",
                 "sub_answer": "Policy X was revised in January 2026.",
                 "tool_call_input": '{"query":"What changed in policy X?"}',
+                "expanded_query": "",
                 "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
+                "answerable": True,
+                "verification_reason": "grounded_in_reranked_documents",
             }
         ],
         "output": "Echo: Find Hormuz risks",

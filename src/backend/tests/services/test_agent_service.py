@@ -201,6 +201,14 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
         "generate_subanswer",
         lambda *, sub_question, reranked_retrieved_output: "Generated subanswer from reranked docs.",
     )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
 
     with caplog.at_level(logging.INFO):
         response = agent_service.run_runtime_agent(
@@ -216,6 +224,8 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert response.sub_qa[0].tool_call_input == '{"query": "What happened in NATO policy?", "limit": 10}'
     assert response.sub_qa[0].expanded_query == ""
     assert response.sub_qa[0].sub_agent_response == "Final output"
+    assert response.sub_qa[0].answerable is True
+    assert response.sub_qa[0].verification_reason == "grounded_in_reranked_documents"
     assert captured["vector_store"] == "fake-vector-store"
     assert captured["collection_name"] == "agent_search_internal_data"
     assert captured["model"] == "gpt-4.1-mini"
@@ -371,3 +381,40 @@ def test_apply_subanswer_generation_to_sub_qa_uses_reranked_output(monkeypatch) 
     assert captured["sub_question"] == "What changed in NATO policy?"
     assert captured["reranked_retrieved_output"].startswith("1. title=NATO")
     assert output_sub_qa[0].sub_answer == "Policy changed in 2025 (source: wiki://nato)."
+
+
+def test_apply_subanswer_verification_to_sub_qa_sets_answerable_and_reason(monkeypatch) -> None:
+    input_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="What changed in NATO policy?",
+            sub_answer="Policy changed in 2025 (source: wiki://nato).",
+            tool_call_input='{"query":"What changed in NATO policy?","limit":1}',
+            expanded_query="nato policy changes 2025",
+            sub_agent_response="Delegated summary.",
+        )
+    ]
+    captured: dict[str, str] = {}
+
+    def fake_verify_subanswer(*, sub_question: str, sub_answer: str, reranked_retrieved_output: str):
+        captured["sub_question"] = sub_question
+        captured["sub_answer"] = sub_answer
+        captured["reranked_retrieved_output"] = reranked_retrieved_output
+        return agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        )
+
+    monkeypatch.setattr(agent_service, "verify_subanswer", fake_verify_subanswer)
+
+    output_sub_qa = agent_service._apply_subanswer_verification_to_sub_qa(
+        input_sub_qa,
+        reranked_output_by_sub_question={
+            "What changed in NATO policy?": "1. title=NATO source=wiki://nato content=Policy changed in 2025."
+        },
+    )
+
+    assert captured["sub_question"] == "What changed in NATO policy?"
+    assert captured["sub_answer"] == "Policy changed in 2025 (source: wiki://nato)."
+    assert captured["reranked_retrieved_output"].startswith("1. title=NATO")
+    assert output_sub_qa[0].answerable is True
+    assert output_sub_qa[0].verification_reason == "grounded_in_reranked_documents"

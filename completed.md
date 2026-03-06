@@ -472,3 +472,63 @@
   - `docker compose logs --tail=220 backend`
   - `docker compose logs --tail=80 frontend`
   - `docker compose logs --tail=80 db`
+
+## Section 9: Per-subquestion subanswer verification
+
+**Single goal:** Verify each sub-answer (against reranked docs or criteria); expose answerable vs not (or confidence) for refinement.
+
+**Details:**
+- Input: sub-question, sub-answer, docs for that sub-question. Output: verification per sub-question (e.g. boolean answerable or score, optional short reason). LLM or rule-based. Expose in pipeline state or SubQuestionAnswer. No refinement logic here.
+
+**Tech:** LLM if used. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/schemas/agent.py` | Optional verification fields on SubQuestionAnswer (e.g. answerable: bool, verification_reason: str). |
+| New `src/backend/services/subanswer_verification_service.py` or equivalent | verify(sub_question, sub_answer, docs) → answerable + optional reason. |
+| `src/backend/services/agent_service.py` or pipeline module | After subanswer generation, call verification; set SubQuestionAnswer.answerable (and reason). |
+
+**How to test:** Unit: sub-answer contradicting docs → answerable False (or low score). Integration: subanswer → verification → response includes verification result.
+
+### Implemented
+- Added verification fields to `src/backend/schemas/agent.py`:
+  - `answerable: bool = False`
+  - `verification_reason: str = ""`
+- Added new `src/backend/services/subanswer_verification_service.py` with deterministic verification:
+  - Marks unanswerable when the subanswer reports insufficient evidence.
+  - Marks unanswerable when no reranked docs are parseable.
+  - Computes token overlap between subanswer and reranked evidence to check grounding.
+  - Returns `SubanswerVerificationResult(answerable, reason)`.
+- Updated `src/backend/services/agent_service.py`:
+  - Wired a new stage `_apply_subanswer_verification_to_sub_qa(...)` after subanswer generation.
+  - Preserves reranked retrieval output and uses it as verification evidence.
+  - Stores verification output in `SubQuestionAnswer.answerable` and `SubQuestionAnswer.verification_reason`.
+  - Added verification visibility logs per sub-question and in run-end summary.
+- Updated tests:
+  - New: `src/backend/tests/services/test_subanswer_verification_service.py`
+  - Updated: `src/backend/tests/services/test_agent_service.py`
+  - Updated: `src/backend/tests/api/test_agent_run.py`
+
+### Validation and logs
+- Fresh full restart before work:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend tests for Section 9:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_subanswer_verification_service.py tests/services/test_agent_service.py tests/api/test_agent_run.py'`
+  - Result: `14 passed`
+- Smoke selector command:
+  - `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'`
+  - Result: `3 deselected` (no smoke-selected tests)
+- Runtime health + logs:
+  - `curl http://localhost:8000/api/health` -> `{"status":"ok"}`
+  - `docker compose ps` -> `backend`, `frontend`, `db`, `chrome` all `Up` (`db` healthy)
+  - `docker compose logs --tail=140 backend`, `--tail=80 frontend`, `--tail=80 db`
+- Backend log evidence for this section:
+  - `Per-subquestion subanswer verification start count=...`
+  - `Per-subquestion subanswer verification sub_question=... answerable=... reason=...`
+  - `SubQuestionAnswer[...] ... answerable=... verification_reason=...`
+
+**Test results:** Complete.
