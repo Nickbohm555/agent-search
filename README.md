@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/readme-hud-banner.svg" alt="AGENT-SEARCH cyberpunk HUD banner" width="100%" />
+</p>
+
 ```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ SYSTEM README — AGENT-SEARCH // ARCHITECTURE MAP                             ┃
@@ -6,6 +10,10 @@
 PALETTE: neon #00ff9f / #00ffff  •  magenta #ff00aa / #ff006e  •  dark #0d1117
 DISPLAY: best viewed in dark mode (the HUD panels below are designed for it)
 ```
+
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
 
 ---
 
@@ -21,6 +29,10 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 
 **For whom:** Developers and teams who want a production-ready RAG pipeline they can extend (e.g. different front ends, data sources, or deployment targets) rather than building from scratch.
 
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
+
 ---
 
 ## Overview
@@ -30,6 +42,10 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 ```
 
 The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → coordinator-driven decomposition → parallel per-subquestion pipeline → initial synthesis → optional refinement → final response). A React front end and FastAPI backend expose load/wipe/run; the backend delegates decomposition and retrieval to a deep-agent coordinator and runs deterministic Python services for validation, reranking, subanswer generation, and verification. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`) and optional refinement replaces the initial answer when the pipeline decides it is insufficient.
+
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
 
 ---
 
@@ -104,6 +120,10 @@ flowchart TB
     K -->|done| OUT
 ```
 
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
+
 ---
 
 ## Architecture — Whole System
@@ -143,6 +163,10 @@ flowchart LR
     OUT --> API --> FE --> U
 ```
 
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
+
 ---
 
 ## Tradeoffs
@@ -159,6 +183,10 @@ flowchart LR
 | **Concurrency** | `ThreadPoolExecutor` per subquestion | Better throughput for many subquestions | Noisier errors and log interleaving |
 | **Refinement** | Conditional on insufficiency + answerable ratio | Skips second pass when first is good enough | Threshold tuning can misclassify |
 | **Reliability** | Fallback when OpenAI unavailable | Usable output under degradation | Answer quality drops vs full LLM |
+
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
 
 ---
 
@@ -179,6 +207,10 @@ docker compose up -d
 - **DB:** Postgres 16 + pgvector on port 5432 (default credentials in `docker-compose.yml`).
 
 Backend runs Alembic migrations at startup. Use the UI to load a wiki source, then run a query to exercise the full pipeline.
+
+<p align="center">
+  <img src="assets/readme-divider.svg" alt="" width="100%" />
+</p>
 
 ---
 
