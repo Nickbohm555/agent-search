@@ -30,3 +30,10 @@
 32. Frontend tests: `docker compose exec frontend npm run test`.
 33. Frontend typecheck: `docker compose exec frontend npm run typecheck`.
 34. Frontend build check: `docker compose exec frontend npm run build`.
+35. Browser debug workflow for E2E feature testing:
+- Start app services: `docker compose up -d backend frontend`.
+- Stop Docker Chrome if it occupies debug port: `docker compose stop chrome`.
+- Launch debug browser: `./launch-devtools.sh http://localhost:5173`.
+- DevTools targets endpoint: `http://127.0.0.1:9222/json/list`.
+- Verify debug endpoint: `curl http://127.0.0.1:9222/json/list` (expect JSON with targets and `webSocketDebuggerUrl`).
+- Keep the Chrome app/process running; tab can be closed/reopened.

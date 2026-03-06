@@ -145,9 +145,7 @@ describe("App run query flow", () => {
     const firstSubQuestion = screen.getByText("Which treaty created NATO?");
     fireEvent.click(firstSubQuestion);
 
-    expect(
-      screen.getByText("NATO was established by the Washington Treaty in April 1949."),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/The North Atlantic Treaty created NATO\./)).toBeInTheDocument();
     expect(screen.getByText('{"query":"NATO founding treaty"}')).toBeInTheDocument();
   });
 

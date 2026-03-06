@@ -52,3 +52,21 @@ flowchart TB
     %% Dashed feedback links from initial/refinement decision to informed subquestions
     N -.-> GI
 ```
+
+## DevTools launcher
+
+Start Chrome (default) with remote debugging and open the app URL:
+
+```bash
+./launch-devtools.sh http://localhost:5173
+```
+
+Start Electron instead (set your app path):
+
+```bash
+ELECTRON_APP=./path-to-electron-app ./launch-devtools.sh http://localhost:5173 electron
+```
+
+DevTools endpoint:
+
+- http://127.0.0.1:9222/json/list
