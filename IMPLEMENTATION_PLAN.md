@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 8. (move +1 after each turn)
+Current section to work on: section 9. (move +1 after each turn)
 
 ---
 
@@ -223,7 +223,16 @@ Current section to work on: section 8. (move +1 after each turn)
 
 **How to test:** Unit: fixed docs + query → output order differs when non-trivial; top doc sensible. Integration: validation → rerank → order and count verified.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_subanswer_service.py tests/services/test_agent_service.py'` -> `11 passed`.
+- Unit (smoke selector): `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'` -> `3 deselected` (no smoke-selected tests).
+- Integration data prep: `POST /api/internal-data/wipe` -> `200`, then `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`.
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`, response included populated `sub_qa[*].sub_answer` generated from reranked evidence.
+- Backend logs confirmed Section 8 stage:
+  - `Per-subquestion subanswer generation start count=5`
+  - `Per-subquestion subanswer generated sub_question=... generated_len=...`
+  - `SubQuestionAnswer summary count=5`
+  - `Runtime agent run complete output_length=1434 ...`
 
 ---
 

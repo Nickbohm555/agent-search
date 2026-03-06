@@ -407,3 +407,68 @@
   - `docker compose logs --tail=120 db`
 
 **Test results:** Complete.
+
+## Section 8: Per-subquestion subanswer generation
+
+**Single goal:** Generate sub-answer text per sub-question from the reranked document set (Section 7).
+
+**Details:**
+- Input: sub-question + reranked docs for that sub-question. Output: one sub-answer string per sub-question. Use LLM (or existing subagent) with reranked docs as context; concise, attributed. No verification here.
+
+**Tech:** Existing LLM and prompts. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` or new `src/backend/services/subanswer_service.py` | (sub_question, reranked_docs) → sub_answer; use Section 7 output. |
+| `src/backend/agents/coordinator.py` (optional) | If RAG subagent does subanswer, ensure it receives reranked docs; else keep in dedicated service. |
+
+**How to test:** Unit: sub-question + fixed reranked docs → sub-answer non-empty and on-topic. Integration: rerank → subanswer → SubQuestionAnswer.sub_answer set.
+
+### Implemented
+- Added new `src/backend/services/subanswer_service.py`:
+  - `generate_subanswer(sub_question, reranked_retrieved_output)` generates concise attributed subanswers from reranked evidence.
+  - Uses `ChatOpenAI` with existing model stack when available.
+  - Added deterministic fallback path (top reranked evidence sentence + source) and explicit no-doc fallback.
+  - Added guardrail logging and fallback when `OPENAI_API_KEY` is missing.
+- Updated `src/backend/services/agent_service.py`:
+  - Added `_apply_subanswer_generation_to_sub_qa(...)` stage.
+  - Wired pipeline order to: extraction -> validation -> reranking -> subanswer generation.
+  - Added section visibility logs:
+    - `Per-subquestion subanswer generation start ...`
+    - `Per-subquestion subanswer generated ...`
+- Added/updated tests:
+  - New `src/backend/tests/services/test_subanswer_service.py` for fallback and LLM success behavior.
+  - Updated `src/backend/tests/services/test_agent_service.py` to assert subanswer generation is invoked and written to `SubQuestionAnswer.sub_answer`.
+
+### Validation and logs
+- Full reboot before implementation:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Container refresh after edits:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/services/test_subanswer_service.py tests/services/test_agent_service.py'`
+  - Result: `11 passed`
+- Smoke selector command:
+  - `docker compose exec backend sh -lc 'uv run pytest tests/api -m smoke'`
+  - Result: `3 deselected` (no smoke-selected tests)
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `200`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`
+  - Response contained populated `sub_qa[*].sub_answer` values generated from reranked evidence.
+- Backend log evidence:
+  - `Per-subquestion reranking start count=5 ...`
+  - `Per-subquestion subanswer generation start count=5`
+  - `Per-subquestion subanswer generated sub_question=... generated_len=...`
+  - `SubQuestionAnswer summary count=5`
+  - `Runtime agent run complete output_length=1434 ...`
+- Container state and log checks:
+  - `docker compose ps` -> backend/frontend/chrome up, db healthy.
+  - `docker compose logs --tail=220 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`

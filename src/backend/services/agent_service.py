@@ -20,6 +20,7 @@ from services.document_validation_service import (
     validate_subquestion_documents,
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
+from services.subanswer_service import generate_subanswer
 from services.vector_store_service import (
     build_initial_search_context,
     get_vector_store,
@@ -466,6 +467,22 @@ def _apply_reranking_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> list[SubQuest
     return sub_qa
 
 
+def _apply_subanswer_generation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
+    logger.info("Per-subquestion subanswer generation start count=%s", len(sub_qa))
+    for item in sub_qa:
+        prior_output = item.sub_answer
+        item.sub_answer = generate_subanswer(
+            sub_question=item.sub_question,
+            reranked_retrieved_output=prior_output,
+        )
+        logger.info(
+            "Per-subquestion subanswer generated sub_question=%s generated_len=%s",
+            _truncate_query(item.sub_question),
+            len(item.sub_answer),
+        )
+    return sub_qa
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -521,6 +538,7 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     )
     sub_qa = _apply_document_validation_to_sub_qa(sub_qa)
     sub_qa = _apply_reranking_to_sub_qa(sub_qa)
+    sub_qa = _apply_subanswer_generation_to_sub_qa(sub_qa)
     _log_sub_qa_run_end_summary(sub_qa)
     output = _extract_last_message_content(result)
     logger.info(

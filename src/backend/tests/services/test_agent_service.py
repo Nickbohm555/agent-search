@@ -196,6 +196,11 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
     monkeypatch.setattr(agent_service, "search_documents_for_context", fake_search_documents_for_context)
     monkeypatch.setattr(agent_service, "build_initial_search_context", fake_build_initial_search_context)
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "Generated subanswer from reranked docs.",
+    )
 
     with caplog.at_level(logging.INFO):
         response = agent_service.run_runtime_agent(
@@ -207,7 +212,7 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert response.main_question == "What happened in NATO policy?"
     assert len(response.sub_qa) == 1
     assert response.sub_qa[0].sub_question == "What happened in NATO policy?"
-    assert response.sub_qa[0].sub_answer == "Policy shifted in 2025."
+    assert response.sub_qa[0].sub_answer == "Generated subanswer from reranked docs."
     assert response.sub_qa[0].tool_call_input == '{"query": "What happened in NATO policy?", "limit": 10}'
     assert response.sub_qa[0].expanded_query == ""
     assert response.sub_qa[0].sub_agent_response == "Final output"
@@ -340,3 +345,29 @@ def test_apply_reranking_to_sub_qa_reorders_documents(monkeypatch) -> None:
 
     assert len(output_sub_qa) == 1
     assert output_sub_qa[0].sub_answer.startswith("1. title=NATO Policy Shift")
+
+
+def test_apply_subanswer_generation_to_sub_qa_uses_reranked_output(monkeypatch) -> None:
+    input_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="What changed in NATO policy?",
+            sub_answer="1. title=NATO source=wiki://nato content=Policy changed in 2025.",
+            tool_call_input='{"query":"What changed in NATO policy?","limit":1}',
+            expanded_query="nato policy changes 2025",
+            sub_agent_response="Delegated summary.",
+        )
+    ]
+    captured: dict[str, str] = {}
+
+    def fake_generate_subanswer(*, sub_question: str, reranked_retrieved_output: str) -> str:
+        captured["sub_question"] = sub_question
+        captured["reranked_retrieved_output"] = reranked_retrieved_output
+        return "Policy changed in 2025 (source: wiki://nato)."
+
+    monkeypatch.setattr(agent_service, "generate_subanswer", fake_generate_subanswer)
+
+    output_sub_qa = agent_service._apply_subanswer_generation_to_sub_qa(input_sub_qa)
+
+    assert captured["sub_question"] == "What changed in NATO policy?"
+    assert captured["reranked_retrieved_output"].startswith("1. title=NATO")
+    assert output_sub_qa[0].sub_answer == "Policy changed in 2025 (source: wiki://nato)."
