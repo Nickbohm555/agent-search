@@ -144,3 +144,52 @@
   - `docker compose logs --tail=200 db`
   - `docker compose logs --tail=200 backend`
   - `docker compose logs --tail=200 frontend`
+
+## Test Section 4: Context-aware decomposition (Section 3)
+
+**Single goal:** Same run as Section 3 produces logs showing coordinator decomposition input prepared with context, and API response contains non-empty `sub_qa` aligned with the query.
+
+**Details:**
+- Reuse data and run from Test Section 3 (or repeat wipe/load/run). Assert "Coordinator decomposition input prepared" with `context_items=5` (or > 0) and response `sub_qa` length ≥ 1 with sub-questions ending in "?".
+
+**Tech stack and dependencies**
+- Same as Test Section 3.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Context-aware decomposition instructions. |
+| `src/backend/services/agent_service.py` | Builds decomposition input with context. |
+
+**How to test:**
+1. If not already done: wipe, load NATO wiki, run with "What changed in NATO policy?" (see Test Section 3).
+2. Backend logs: require a line like `Coordinator decomposition input prepared ... context_items=5` (or positive `context_items`).
+3. From the same run’s response: `sub_qa` is present and non-empty; each `sub_question` is a string ending with `?`.
+
+**Test results:**
+- Fresh rebuild/start completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Logs viewed for all built services:
+  - `docker compose logs --tail=60 db` showed PostgreSQL init + `database system is ready to accept connections`.
+  - `docker compose logs --tail=60 backend` showed Alembic upgrade + Uvicorn startup.
+  - `docker compose logs --tail=60 frontend` showed Vite ready on `http://localhost:5173/`.
+- Section run commands/results:
+  - `POST /api/internal-data/wipe` => `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` (wiki nato) => `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200 and response with non-empty `sub_qa`.
+- Initial failure and fix:
+  - First run had some `sub_qa.sub_question` values without trailing `?`.
+  - Fixed in `src/backend/services/agent_service.py` by normalizing extracted `sub_question` values to complete question format ending with `?`.
+  - Restarted backend: `docker compose restart backend`.
+- Post-fix verification:
+  - `jq` check on `/tmp/section4_run.json`:
+    - `sub_qa_count: 6`
+    - `all_sub_questions_end_with_qmark: true`
+  - Required context logs present:
+    - `Context search complete query='What changed in NATO policy?' ... results=5`
+    - `Initial decomposition context built query=What changed in NATO policy? docs=5 ...`
+    - `Coordinator decomposition input prepared query=What changed in NATO policy? context_items=5`
+  - Backend request log confirmed: `POST /api/agents/run HTTP/1.1" 200 OK`.
