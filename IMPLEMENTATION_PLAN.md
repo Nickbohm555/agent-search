@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 8. (move +1 after each turn)
+Current section to work on: section 9. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -257,7 +257,13 @@ Current section to work on: section 8. (move +1 after each turn)
 
 **How to test:** Run a query; inspect initial answer for citation-like references or preserved source structure. Confirm API response shape unchanged.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py'` -> 22 passed.
+- Live API run logs include:
+  - `Initial answer fallback path selected source=any_subanswers count=6 citation_refs=0`
+  - `Initial answer evidence prepared answerable_sub_qa=0 total_sub_qa=6 subanswer_citation_refs=0 context_sources=0`
+  - `Initial answer generation complete via LLM answer_len=238 model=gpt-4.1-mini citation_refs=0 source_attributions=0`
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
 
 ---
 

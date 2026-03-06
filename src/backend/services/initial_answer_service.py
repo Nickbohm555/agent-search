@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 from langchain_openai import ChatOpenAI
@@ -15,6 +16,7 @@ _INITIAL_ANSWER_TEMPERATURE = float(os.getenv("INITIAL_ANSWER_TEMPERATURE", "0")
 _INITIAL_ANSWER_MAX_CONTEXT_ITEMS = max(1, int(os.getenv("INITIAL_ANSWER_MAX_CONTEXT_ITEMS", "4")))
 _INITIAL_ANSWER_MAX_SUBQAS = max(1, int(os.getenv("INITIAL_ANSWER_MAX_SUBQAS", "8")))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+_CITATION_REF_PATTERN = re.compile(r"\[(\d+)\]")
 
 
 def _format_initial_context(initial_search_context: list[dict[str, Any]]) -> str:
@@ -43,6 +45,10 @@ def _format_sub_qa(sub_qa: list[SubQuestionAnswer]) -> str:
     return "\n\n".join(lines)
 
 
+def _count_citation_refs(text: str) -> int:
+    return len(_CITATION_REF_PATTERN.findall(text or ""))
+
+
 def _build_fallback_initial_answer(
     *,
     main_question: str,
@@ -51,10 +57,20 @@ def _build_fallback_initial_answer(
 ) -> str:
     answerable_subanswers = [item.sub_answer.strip() for item in sub_qa if item.answerable and item.sub_answer.strip()]
     if answerable_subanswers:
+        logger.info(
+            "Initial answer fallback path selected source=answerable_subanswers count=%s citation_refs=%s",
+            len(answerable_subanswers),
+            sum(_count_citation_refs(answer) for answer in answerable_subanswers),
+        )
         return " ".join(answerable_subanswers[:2])
 
     any_subanswers = [item.sub_answer.strip() for item in sub_qa if item.sub_answer.strip()]
     if any_subanswers:
+        logger.info(
+            "Initial answer fallback path selected source=any_subanswers count=%s citation_refs=%s",
+            len(any_subanswers),
+            sum(_count_citation_refs(answer) for answer in any_subanswers),
+        )
         return " ".join(any_subanswers[:2])
 
     if initial_search_context:
@@ -62,6 +78,10 @@ def _build_fallback_initial_answer(
         snippet = str(top_item.get("snippet", "")).strip()
         source = str(top_item.get("source", "")).strip() or "unknown source"
         if snippet:
+            logger.info(
+                "Initial answer fallback path selected source=initial_context top_source=%s",
+                source,
+            )
             return f"Based on initial retrieval, {snippet} (source: {source})."
 
     return (
@@ -88,6 +108,15 @@ def generate_initial_answer(
         initial_search_context=initial_search_context,
         sub_qa=sub_qa,
     )
+    answerable_count = sum(1 for item in sub_qa if item.answerable)
+    subanswer_citation_refs = sum(_count_citation_refs(item.sub_answer) for item in sub_qa)
+    logger.info(
+        "Initial answer evidence prepared answerable_sub_qa=%s total_sub_qa=%s subanswer_citation_refs=%s context_sources=%s",
+        answerable_count,
+        len(sub_qa),
+        subanswer_citation_refs,
+        len(initial_search_context),
+    )
 
     if not _OPENAI_API_KEY:
         logger.info("Initial answer generation using fallback; OPENAI_API_KEY is not set")
@@ -102,7 +131,10 @@ def generate_initial_answer(
         "- Return a concise answer (2-5 sentences).\n"
         "- Prefer answerable/verified sub-question answers when present.\n"
         "- If evidence is partial, say what is uncertain.\n"
-        "- Include at least one source attribution in parentheses, e.g. (source: ...).\n\n"
+        "- Preserve citation markers from sub-question answers exactly, e.g. [1], [2][3].\n"
+        "- Do not collapse cited evidence into an uncited summary.\n"
+        "- Include at least one source attribution in parentheses, e.g. (source: ...).\n"
+        "- If initial retrieval context is used, reference its source field explicitly.\n\n"
         f"Main question:\n{main_question}\n\n"
         f"Initial retrieval context:\n{_format_initial_context(initial_search_context) or 'None'}\n\n"
         f"Sub-question answers:\n{_format_sub_qa(sub_qa) or 'None'}\n"
@@ -114,9 +146,11 @@ def generate_initial_answer(
         answer = (response.content or "").strip() if hasattr(response, "content") else ""
         if answer:
             logger.info(
-                "Initial answer generation complete via LLM answer_len=%s model=%s",
+                "Initial answer generation complete via LLM answer_len=%s model=%s citation_refs=%s source_attributions=%s",
                 len(answer),
                 _INITIAL_ANSWER_MODEL,
+                _count_citation_refs(answer),
+                answer.lower().count("(source:"),
             )
             return answer
         logger.warning("Initial answer generation returned empty LLM response; using fallback")

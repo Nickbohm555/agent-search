@@ -306,3 +306,50 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_subanswer_service.py tests/services/test_agent_service.py'` -> `22 passed`
 - `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK`
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in NATO policy?"}'` -> `200 OK` with `RuntimeAgentRunResponse` payload
+
+---
+
+## Section 8: Initial answer service — source info and no summarization
+
+**Onyx article:** Lesson 4 — Same as Section 7; keep ground truth for the final answer.
+
+**Single goal:** initial_answer_service uses sub_qa and context with source info; no summarization that drops sources.
+
+**Details:**
+- Audit initial_answer_service: it consumes sub_qa and context for generate_initial_answer. Ensure it uses source info (e.g. sub_answer text that may include [1], [2]) and does not instruct the model to summarize in a way that drops citation links.
+- API response shape unchanged; only prompt/logic so that final answer can cite or reference sources where applicable.
+
+**Tech stack and dependencies**
+- No new packages; prompt/logic in initial_answer_service only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/services/initial_answer_service.py | Use sub_qa and context with source info; no summarization that drops sources. |
+
+**How to test:** Run a query; inspect initial answer for citation-like references or preserved source structure. Confirm API response shape unchanged.
+
+### Completion notes (March 6, 2026)
+- Updated `src/backend/services/initial_answer_service.py` prompt requirements to preserve citation markers (`[1]`, `[2]`), avoid uncited summarization, and explicitly reference context `source` fields when used.
+- Added runtime visibility logs in initial answer generation:
+  - fallback path selection and citation-ref counts,
+  - prepared evidence summary (answerable sub_qa count, citation refs, context source count),
+  - final LLM output citation/source attribution counts.
+- Added citation helper and logging-safe counters used across fallback and final-answer stages.
+- Extended `src/backend/tests/services/test_initial_answer_service.py`:
+  - fallback test now asserts citation markers are preserved,
+  - new prompt-contract test asserts citation-preservation/non-summarization instructions are sent to the LLM call.
+
+### Useful logs
+- `Initial answer fallback path selected source=any_subanswers count=6 citation_refs=0`
+- `Initial answer evidence prepared answerable_sub_qa=0 total_sub_qa=6 subanswer_citation_refs=0 context_sources=0`
+- `Initial answer generation complete via LLM answer_len=238 model=gpt-4.1-mini citation_refs=0 source_attributions=0`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `docker compose logs --since=10m frontend` confirms Vite dev server healthy on `http://localhost:5173/`
+- `docker compose logs --since=10m db` confirms Postgres ready for connections.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py'` -> `22 passed`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector and why is it used in RAG systems?"}'` -> `200 OK` with unchanged `RuntimeAgentRunResponse` shape (`main_question`, `sub_qa`, `output`)
