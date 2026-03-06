@@ -167,6 +167,31 @@ def _parse_tool_input_for_query(input_str: str) -> str:
     return s
 
 
+def _parse_tool_input_for_expanded_query(input_str: str) -> str:
+    if not input_str or not isinstance(input_str, str):
+        return ""
+    s = input_str.strip()
+    if not s or not s.startswith("{"):
+        return ""
+    try:
+        data = json.loads(s)
+        if isinstance(data, dict):
+            value = data.get("expanded_query")
+            if isinstance(value, str):
+                return value.strip()
+    except json.JSONDecodeError:
+        pass
+    try:
+        data = ast.literal_eval(s)
+        if isinstance(data, dict):
+            value = data.get("expanded_query")
+            if isinstance(value, str):
+                return value.strip()
+    except (ValueError, SyntaxError):
+        pass
+    return ""
+
+
 def _extract_sub_qa(
     messages: list[BaseMessage],
     search_database_calls: list[tuple[str, str]] | None = None,
@@ -183,18 +208,21 @@ def _extract_sub_qa(
         sub_qa = []
         for i, (input_str, output_str) in enumerate(search_database_calls):
             sub_question = _parse_tool_input_for_query(input_str) or "Search"
+            expanded_query = _parse_tool_input_for_expanded_query(input_str)
             sub_agent_response = task_final_answers[i] if i < len(task_final_answers) else ""
             sub_qa.append(
                 SubQuestionAnswer(
                     sub_question=sub_question,
                     sub_answer=output_str,
                     tool_call_input=input_str if isinstance(input_str, str) else str(input_str),
+                    expanded_query=expanded_query,
                     sub_agent_response=sub_agent_response,
                 )
             )
             logger.info(
-                "Extracted sub_qa from callback sub_question=%s sub_agent_response_len=%s",
+                "Extracted sub_qa from callback sub_question=%s expanded_query=%s sub_agent_response_len=%s",
                 _truncate_query(sub_question),
+                _truncate_query(expanded_query),
                 len(sub_agent_response),
             )
         logger.info("Extracted sub_qa from search_database callback count=%s", len(sub_qa))
@@ -275,6 +303,7 @@ def _extract_sub_qa(
                     sub_question=sub_question,
                     sub_answer=sub_answer,
                     tool_call_input=tool_call_input,
+                    expanded_query=_parse_tool_input_for_expanded_query(tool_call_input),
                 )
             )
             logger.info(
@@ -316,6 +345,7 @@ def _extract_sub_qa(
                     sub_question=desc,
                     sub_answer=sub_answer,
                     tool_call_input=tool_call_input,
+                    expanded_query=_parse_tool_input_for_expanded_query(tool_call_input),
                     sub_agent_response="",
                 )
             )
@@ -333,9 +363,10 @@ def _log_sub_qa_run_end_summary(sub_qa: list[SubQuestionAnswer]) -> None:
     logger.info("SubQuestionAnswer summary count=%s", len(sub_qa))
     for index, item in enumerate(sub_qa, start=1):
         logger.info(
-            "SubQuestionAnswer[%s] sub_question=%s tool_call_input=%s sub_answer=%s sub_agent_response=%s",
+            "SubQuestionAnswer[%s] sub_question=%s expanded_query=%s tool_call_input=%s sub_answer=%s sub_agent_response=%s",
             index,
             _truncate_query(item.sub_question),
+            _truncate_query(item.expanded_query),
             _truncate_query(item.tool_call_input),
             _truncate_query(item.sub_answer),
             _truncate_query(item.sub_agent_response),

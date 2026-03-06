@@ -72,3 +72,35 @@ def test_make_retriever_tool_passes_source_filter() -> None:
             "filter": {"source": "https://en.wikipedia.org/wiki/Strait_of_Hormuz"},
         }
     ]
+
+
+def test_make_retriever_tool_uses_expanded_query_for_retrieval(caplog) -> None:
+    store = _FakeVectorStore(
+        results=[
+            Document(
+                page_content="Expanded query retrieval result",
+                metadata={"title": "Policy", "source": "wiki://policy"},
+            )
+        ],
+    )
+    retriever_tool = make_retriever_tool(store)
+
+    with caplog.at_level(logging.INFO):
+        output = retriever_tool.invoke(
+            {
+                "query": "What changed in policy?",
+                "expanded_query": "policy changes update revisions",
+                "limit": 3,
+            }
+        )
+
+    assert "Expanded query retrieval result" in output
+    assert store.calls == [
+        {
+            "query": "policy changes update revisions",
+            "k": 3,
+            "filter": None,
+        }
+    ]
+    assert "expanded_query='policy changes update revisions'" in caplog.text
+    assert "retrieval_query='policy changes update revisions'" in caplog.text

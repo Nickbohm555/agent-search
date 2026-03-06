@@ -9,6 +9,7 @@ class SubQuestionAnswer(BaseModel):
     sub_question: str
     sub_answer: str
     tool_call_input: str = ""
+    expanded_query: str = ""
     sub_agent_response: str = ""
 
 

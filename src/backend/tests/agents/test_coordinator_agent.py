@@ -85,7 +85,10 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert sub["name"] == "rag_retriever"
     assert sub["description"] == "This agent is a RAG subagent which answers each sub-question using the retriever tool."
     assert "You are the retrieval subagent." in sub["system_prompt"]
-    assert "Ask that exact subquestion to the retriever tool." in sub["system_prompt"]
+    assert "Generate one expanded query for that subquestion" in sub["system_prompt"]
+    assert "Call the retriever tool with both fields: query=<exact subquestion> and expanded_query=<expanded query>." in sub[
+        "system_prompt"
+    ]
     assert "{subquestion}: {answer}" in sub["system_prompt"]
     assert len(sub["tools"]) == 1 and sub["tools"][0].name == "search_database"
     assert store.calls == [{"query": "strait of hormuz", "k": 1, "filter": None}]

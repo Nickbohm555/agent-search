@@ -43,7 +43,11 @@ def test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages() ->
                 {
                     "id": "call_sd_1",
                     "name": "search_database",
-                    "args": {"query": "What changed in policy X?", "limit": 10},
+                    "args": {
+                        "query": "What changed in policy X?",
+                        "expanded_query": "policy x updates revisions changes",
+                        "limit": 10,
+                    },
                 }
             ],
         ),
@@ -66,7 +70,11 @@ def test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages() ->
     assert len(result) == 1
     assert result[0].sub_question == "What changed in policy X?"
     assert result[0].sub_answer == "Policy X was updated in 2024."
-    assert result[0].tool_call_input == '{"query": "What changed in policy X?", "limit": 10}'
+    assert (
+        result[0].tool_call_input
+        == '{"query": "What changed in policy X?", "expanded_query": "policy x updates revisions changes", "limit": 10}'
+    )
+    assert result[0].expanded_query == "policy x updates revisions changes"
     assert result[0].sub_agent_response == "Subagent final response for delegated policy question."
 
 
@@ -111,6 +119,7 @@ def test_extract_sub_qa_uses_last_ai_message_as_sub_agent_response() -> None:
     result = agent_service._extract_sub_qa(messages)
 
     assert len(result) == 1
+    assert result[0].expanded_query == ""
     assert result[0].sub_agent_response == "Final subagent answer for this delegated question."
 
 
@@ -199,6 +208,7 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert response.sub_qa[0].sub_question == "What happened in NATO policy?"
     assert response.sub_qa[0].sub_answer == "Policy shifted in 2025."
     assert response.sub_qa[0].tool_call_input == '{"query": "What happened in NATO policy?", "limit": 10}'
+    assert response.sub_qa[0].expanded_query == ""
     assert response.sub_qa[0].sub_agent_response == "Final output"
     assert captured["vector_store"] == "fake-vector-store"
     assert captured["collection_name"] == "agent_search_internal_data"

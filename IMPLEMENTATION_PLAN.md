@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 4. (move +1 after each turn)
+Current section to work on: section 5. (move +1 after each turn)
 
 ---
 
@@ -103,7 +103,14 @@ Current section to work on: section 4. (move +1 after each turn)
 
 **How to test:** Unit: fixed context + user question → decomposition returns list of strings, each ending with “?”. Integration: ambiguous question → sub-questions align with provided context.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/tools/test_retriever_tool.py tests/agents/test_coordinator_agent.py tests/services/test_agent_service.py'` -> `9 passed`.
+- Integration data prep: `POST /api/internal-data/wipe` -> `200`, then `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`.
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200` and response `sub_qa[*]` included `expanded_query` values populated from per-subquestion expansion.
+- Backend logs confirmed expanded-query retrieval path:
+  - `Tool called: name=search_database input={'query': ..., 'expanded_query': ...}`
+  - `Retriever tool search_database query='...' expanded_query='...' retrieval_query='...' ...`
+  - `Extracted sub_qa from callback sub_question=... expanded_query=...`
 
 ---
 

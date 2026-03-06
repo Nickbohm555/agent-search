@@ -97,6 +97,71 @@
 
 **Test results:** Complete.
 
+## Section 4: Per-subquestion query expansion
+
+**Single goal:** For each sub-question, produce an expanded query (synonyms, reformulations) for retrieval.
+
+**Details:**
+- Input: one sub-question. Output: one expanded query (or small set; if multiple, downstream defines combination, e.g. union). Expansion = LLM or rule/keyword-based. No retrieval or reranking changes here.
+
+**Tech:** LLM if used; no new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` or new `src/backend/services/query_expansion_service.py` | sub_question → expanded_query; call from per-subquestion pipeline. |
+| `src/backend/schemas/agent.py` (optional) | Optional expanded_query on SubQuestionAnswer or pipeline state for observability. |
+
+**How to test:** Unit: sub-question → expanded query non-empty (or equals original if no-op). Integration: one sub-question through pipeline → search uses expanded query.
+
+### Implemented
+- Updated `src/backend/agents/coordinator.py` subagent prompt so each delegated sub-question must produce one `expanded_query` and call the retriever with both `query` and `expanded_query`.
+- Updated `src/backend/tools/retriever_tool.py`:
+  - Added optional `expanded_query` argument to `search_database`.
+  - Retrieval now uses `expanded_query` when present, falling back to `query` when absent.
+  - Added detailed retrieval logs: `query`, `expanded_query`, and effective `retrieval_query`.
+- Updated `src/backend/schemas/agent.py`:
+  - Added `expanded_query: str = ""` to `SubQuestionAnswer` for visibility.
+- Updated `src/backend/services/agent_service.py`:
+  - Added parser to extract `expanded_query` from tool-call input payload.
+  - Wired extracted value into `SubQuestionAnswer` construction paths.
+  - Extended run-end summary logs to include `expanded_query` per sub-question.
+- Added/updated tests:
+  - `src/backend/tests/tools/test_retriever_tool.py`: verifies expanded query is used as retrieval query.
+  - `src/backend/tests/agents/test_coordinator_agent.py`: verifies prompt requires `query` + `expanded_query` tool inputs.
+  - `src/backend/tests/services/test_agent_service.py`: verifies `expanded_query` extraction and response population.
+
+### Validation and logs
+- Full fresh restart before edits:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend restarted after code changes:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/tools/test_retriever_tool.py tests/agents/test_coordinator_agent.py tests/services/test_agent_service.py'`
+  - Result: `9 passed`
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `200`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `200`, `documents_loaded=1`, `chunks_created=14`
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` -> `200`
+  - Response included `sub_qa[*].expanded_query` populated per sub-question.
+- Backend log evidence (expanded-query path active):
+  - `Tool called: name=search_database input={'query': ..., 'expanded_query': ...}`
+  - `Retriever tool search_database query='...' expanded_query='...' retrieval_query='...' limit=10 filter=None result_count=10`
+  - `Extracted sub_qa from callback sub_question=... expanded_query=...`
+  - `SubQuestionAnswer[1] sub_question=... expanded_query=...`
+  - `Runtime agent run complete output_length=1518 ...`
+- Container checks and log sweep:
+  - `docker compose ps` -> all services up (`db` healthy)
+  - `docker compose logs --tail=220 backend`
+  - `docker compose logs --tail=120 frontend`
+  - `docker compose logs --tail=120 db`
+
+**Test results:** Complete.
+
 ## Section 3: Question decomposition informed by context
 
 **Single goal:** Produce narrow sub-questions from the user question using initial-search context (Section 2).

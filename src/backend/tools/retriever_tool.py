@@ -32,6 +32,7 @@ def make_retriever_tool(vector_store: Any) -> BaseTool:
     @tool
     def search_database(
         query: str,
+        expanded_query: str | None = None,
         limit: int = 10,
         wiki_source_filter: str | None = None,
     ) -> str:
@@ -39,16 +40,20 @@ def make_retriever_tool(vector_store: Any) -> BaseTool:
 
         Args:
             query: Natural language question to search for.
+            expanded_query: Optional query expansion (synonyms/reformulation) derived from the sub-question.
             limit: Maximum number of matching chunks to return.
             wiki_source_filter: Optional wiki source identifier or URL to filter by metadata.source.
         The retriever tool is used to answer sub-questions by the coordinator agent.
         """
         safe_limit = max(1, limit)
+        retrieval_query = (expanded_query or "").strip() or query
         filter_payload = {"source": wiki_source_filter} if wiki_source_filter else None
-        results = vector_store.similarity_search(query, k=safe_limit, filter=filter_payload)
+        results = vector_store.similarity_search(retrieval_query, k=safe_limit, filter=filter_payload)
         logger.info(
-            "Retriever tool search_database query=%r limit=%s filter=%s result_count=%s",
+            "Retriever tool search_database query=%r expanded_query=%r retrieval_query=%r limit=%s filter=%s result_count=%s",
             query,
+            expanded_query,
+            retrieval_query,
             safe_limit,
             filter_payload,
             len(results),

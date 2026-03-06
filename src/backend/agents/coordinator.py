@@ -46,7 +46,10 @@ _COORDINATOR_PROMPT = (
 _RAG_SUBAGENT_NAME = "rag_retriever"
 _RAG_SUBAGENT_PROMPT = (
     "You are the retrieval subagent. Read the incoming question. it should be atomic. If it is not, break it down further until it is."
-    "Ask that exact subquestion to the retriever tool. If it gives you relevant docs, use them to answer the question and send that answer back to the coordinator agent. "
+    "Generate one expanded query for that subquestion by adding close synonyms and compact reformulations."
+    "Call the retriever tool with both fields: query=<exact subquestion> and expanded_query=<expanded query>."
+    "If no useful expansion exists, set expanded_query equal to the original subquestion."
+    "If the retriever gives relevant docs, use them to answer the question and send that answer back to the coordinator agent. "
     "If it does not give you relevant docs, say 'nothing relevant found' and send that answer back to the coordinator agent. "
     "here is the format to send back to the coordinator agent: {subquestion}: {answer}"
 )
