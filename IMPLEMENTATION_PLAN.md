@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S3. (move +1 after each turn)
+Current section to work on: section S4. (move +1 after each turn)
 
 ---
 
@@ -84,7 +84,12 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Run validation; fix spec or export if it fails until validation passes.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec at `openapi.json` with OpenAPI `3.1.0`.
+- `./scripts/validate_openapi.sh` -> OpenAPI Generator validation passed (`No validation issues detected.`).
+- `docker compose restart db backend frontend` -> all required services restarted cleanly.
+- `docker compose ps` -> `db` healthy; `backend` and `frontend` up.
+- `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, and `docker compose logs --tail=120 db` reviewed with no startup/runtime errors after restart.
 
 ---
 

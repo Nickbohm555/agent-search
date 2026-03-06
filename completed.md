@@ -573,3 +573,46 @@
 - `docker compose restart backend frontend db` -> pass.
 - `docker compose logs --no-color --tail=80 backend frontend db` -> inspected; services healthy after restart.
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`.
+
+---
+
+## Section S3: Validate exported OpenAPI spec
+
+**Single goal:** Add a repeatable way to validate the canonical OpenAPI spec (syntax and structure).
+
+**Details:**
+- Use OpenAPI Generator’s validate command (e.g. via Docker) or a documented validator; no new app code required.
+- Document the validation command in README or script comment.
+
+**Tech stack and dependencies**
+- Docker (for `openapi-generator validate`) or another validator; no new app dependencies.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| Optional: one-line in `scripts/validate_openapi.sh` or in docs | Runs validation against canonical spec file. |
+
+**How to test:** Run validation; fix spec or export if it fails until validation passes.
+
+**Test results:** Completed on March 6, 2026.
+- `uv run --project src/backend python scripts/export_openapi.py` -> refreshed canonical spec at `openapi.json` with OpenAPI `3.1.0`.
+- `./scripts/validate_openapi.sh` -> OpenAPI Generator validation passed (`No validation issues detected.`).
+- `docker compose restart db backend frontend` -> all required services restarted cleanly.
+- `docker compose ps` -> `db` healthy; `backend` and `frontend` up.
+- `docker compose logs --tail=120 backend`, `docker compose logs --tail=120 frontend`, and `docker compose logs --tail=120 db` reviewed with no startup/runtime errors after restart.
+
+### Completion notes (March 6, 2026)
+- Added repeatable validator script at `scripts/validate_openapi.sh` using `openapitools/openapi-generator-cli` Docker image.
+- Added README documentation for both the scripted validation command and the direct Docker equivalent.
+- Validator script emits timestamped start/pass log lines for operational visibility.
+
+### Useful logs
+- `2026-03-06 17:33:52,214 INFO scripts.export_openapi: OpenAPI export complete output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json canonical_output=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json openapi_version=3.1.0 path_count=5 sample_paths=['/api/agents/run', '/api/health', '/api/internal-data/load', '/api/internal-data/wiki-sources', '/api/internal-data/wipe']`
+- `2026-03-06T22:33:58Z INFO validate_openapi: starting validation spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json`
+- `Validating spec (/local/openapi.json)`
+- `No validation issues detected.`
+- `2026-03-06T22:34:21Z INFO validate_openapi: validation passed spec=/Users/nickbohm/Desktop/worktree/agent-search/openapi.json`
+- Backend logs: `Application startup complete.` and `GET /api/health ... 200 OK` after restart.
+- Frontend logs: `VITE v5.4.21 ready` and `Local: http://localhost:5173/` after restart.
+- DB logs after restart end in: `database system is ready to accept connections`.

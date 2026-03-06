@@ -232,6 +232,18 @@ Export command:
 uv run --project src/backend python scripts/export_openapi.py
 ```
 
+Validation command:
+
+```bash
+./scripts/validate_openapi.sh
+```
+
+Direct Docker equivalent:
+
+```bash
+docker run --rm -v "$(pwd):/local" openapitools/openapi-generator-cli validate -i /local/openapi.json
+```
+
 ## Links
 
 ```text
