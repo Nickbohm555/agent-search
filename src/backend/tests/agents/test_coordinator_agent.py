@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from deepagents.backends import StateBackend
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 
@@ -39,11 +40,12 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
             tool_output = self._tool.invoke({"query": "strait of hormuz", "limit": 1})
             return {"messages": [SimpleNamespace(content=f"Answer based on retrieval: {tool_output}")]}
 
-    def fake_create_deep_agent(*, model, tools, system_prompt, subagents):
+    def fake_create_deep_agent(*, model, tools, system_prompt, subagents, backend):
         captured["model"] = model
         captured["tools"] = tools
         captured["system_prompt"] = system_prompt
         captured["subagents"] = subagents
+        captured["backend"] = backend
         # Retriever is on the subagent only; main agent has no tools.
         retriever = subagents[0]["tools"][0]
         return _FakeDeepAgent(retriever)
@@ -60,22 +62,52 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert hasattr(agent, "invoke")
     assert captured["model"] == "fake-model"
     assert captured["tools"] == []
-    assert "Break the user query into focused subquestions" in str(captured["system_prompt"])
+    assert captured["backend"] == StateBackend
+    assert "Call write_todos at the beginning to seed all pipeline stages" in str(captured["system_prompt"])
+    assert "Use read_file and write_file" in str(captured["system_prompt"])
+    assert "/runtime/coordinator_flow.md" in str(captured["system_prompt"])
+    assert "For each initial sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check." in str(
+        captured["system_prompt"]
+    )
+    assert "For each refined sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check." in str(
+        captured["system_prompt"]
+    )
     assert len(captured["subagents"]) == 1
     sub = captured["subagents"][0]
     assert sub["name"] == "rag_retriever"
-    assert sub["description"] == "Runs semantic retrieval against internal wiki chunks."
-    assert sub["system_prompt"] == (
-        "You are the retrieval subagent. For each assigned sub-question, use the search_database "
-        "tool to run similarity search over internal data. Answer that sub-question concisely "
-        "using only retrieved content, and clearly indicate when the retrieval does not contain "
-        "enough evidence. When you have finished answering the sub-question, send that answer as "
-        "your final message and do not make any further tool calls after providing the answer."
-    )
+    assert sub["description"] == "This agent is a RAG subagent which answers each sub-question using the retriever tool."
+    assert "You are the retrieval subagent." in sub["system_prompt"]
+    assert "Ask that exact subquestion to the retriever tool." in sub["system_prompt"]
+    assert "{subquestion}: {answer}" in sub["system_prompt"]
     assert len(sub["tools"]) == 1 and sub["tools"][0].name == "search_database"
     assert store.calls == [{"query": "strait of hormuz", "k": 1, "filter": None}]
     assert "Answer based on retrieval:" in result["messages"][-1].content
     assert "Hormuz shipping chokepoint summary." in result["messages"][-1].content
     assert "Coordinator agent invoke start subagent=rag_retriever" in caplog.text
-    assert "Retriever tool search_database" in caplog.text
+    assert "backend=StateBackend" in caplog.text
     assert "final_message_only=true" in caplog.text
+
+
+def test_create_coordinator_agent_accepts_backend_override() -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeDeepAgent:
+        def invoke(self, payload):
+            return {"messages": [SimpleNamespace(content="ok")]}
+
+    def fake_create_deep_agent(*, model, tools, system_prompt, subagents, backend):
+        captured["backend"] = backend
+        return _FakeDeepAgent()
+
+    class _CustomBackend:
+        pass
+
+    agent = create_coordinator_agent(
+        vector_store=_FakeVectorStore(),
+        model="fake-model",
+        create_deep_agent_fn=fake_create_deep_agent,
+        backend_factory=_CustomBackend,
+    )
+
+    assert hasattr(agent, "invoke")
+    assert captured["backend"] == _CustomBackend
