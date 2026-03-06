@@ -433,3 +433,54 @@
 - Response assertion passed:
   - `/tmp/section9_run.json` contains non-empty `sub_qa[*].sub_answer` (multiple populated entries).
 
+
+## Test Section 10: Per-subquestion subanswer verification (Section 9)
+
+**Single goal:** Logs show verification stage; response sub_qa include answerable and verification_reason.
+
+**Details:**
+- Same run. Logs must show "Per-subquestion subanswer verification start" and "Per-subquestion subanswer verification sub_question=... answerable=... reason=...". Response `sub_qa[*]` must include `answerable` (boolean) and `verification_reason` (string).
+
+**Tech stack and dependencies**
+- subanswer_verification_service and agent_service pipeline.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/subanswer_verification_service.py` | Verifies subanswers. |
+| `src/backend/services/agent_service.py` | Applies verification and sets SubQuestionAnswer fields. |
+| `src/backend/schemas/agent.py` | answerable, verification_reason on SubQuestionAnswer. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Per-subquestion subanswer verification start` and at least one `Per-subquestion subanswer verification ... answerable=... reason=...`.
+3. Response: every `sub_qa` item has `answerable` and `verification_reason` (or default empty string).
+
+**Test results:** (Add when section is complete.)
+
+---
+
+**Test results:**
+- Fresh restart/build/start completed before section execution:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d db backend frontend`
+- Logs viewed for all built services after startup:
+  - `docker compose logs --tail=40 db`
+  - `docker compose logs --tail=80 backend`
+  - `docker compose logs --tail=40 frontend`
+- Section 10 run inputs/results:
+  - `POST /api/internal-data/wipe` => `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP `200`
+- Required backend verification log assertions passed (`docker compose logs backend | rg "Per-subquestion subanswer verification"`):
+  - `Per-subquestion subanswer verification start count=1`
+  - `Per-subquestion subanswer verification sub_question=What factors influenced changes in NATO policy after the Cold War? answerable=True reason=grounded_in_reranked_documents`
+  - `Per-subquestion subanswer verification sub_question=NATO policy shifts in response to recent global security threats? answerable=True reason=grounded_in_reranked_documents`
+  - `Per-subquestion subanswer verification sub_question=major treaties or agreements that influenced NATO policy changes? answerable=True reason=grounded_in_reranked_documents`
+  - `Per-subquestion subanswer verification sub_question=key military or strategic interventions that marked a policy change in NATO? answerable=True reason=grounded_in_reranked_documents`
+  - `Per-subquestion subanswer verification sub_question=NATO mission evolution after Soviet Union dissolution? answerable=True reason=grounded_in_reranked_documents`
+- Response field assertion passed:
+  - `/tmp/section10_run.json` had `sub_qa_count=5`.
+  - Every `sub_qa` item included `answerable: true` and `verification_reason: "grounded_in_reranked_documents"`.
