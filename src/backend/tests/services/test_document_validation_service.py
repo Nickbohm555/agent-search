@@ -73,3 +73,27 @@ def test_validate_subquestion_documents_runs_in_parallel(monkeypatch) -> None:
     assert result.total_documents == 4
     assert len(result.valid_documents) == 4
     assert elapsed < 0.35
+
+
+def test_format_retrieved_documents_preserves_numbered_identity_contract() -> None:
+    documents = [
+        document_validation_service.RetrievedDocument(
+            rank=4,
+            title="NATO Policy Update",
+            source="wiki://nato/update",
+            content="Policy changed in 2025.",
+        ),
+        document_validation_service.RetrievedDocument(
+            rank=9,
+            title="NATO Readiness",
+            source="wiki://nato/readiness",
+            content="Readiness commitments expanded.",
+        ),
+    ]
+
+    formatted = document_validation_service.format_retrieved_documents(documents)
+
+    assert formatted.splitlines() == [
+        "1. title=NATO Policy Update source=wiki://nato/update content=Policy changed in 2025.",
+        "2. title=NATO Readiness source=wiki://nato/readiness content=Readiness commitments expanded.",
+    ]

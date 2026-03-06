@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 _RETRIEVED_LINE_PATTERN = re.compile(r"^\d+\.\s+title=(.*?)\s+source=(.*?)\s+content=(.*)$")
 _WORD_PATTERN = re.compile(r"[a-z0-9]+")
 _YEAR_PATTERN = re.compile(r"\b(?:19|20)\d{2}\b")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -88,12 +90,23 @@ def parse_retrieved_documents(retrieved_output: str) -> list[RetrievedDocument]:
 
 
 def format_retrieved_documents(documents: list[RetrievedDocument]) -> str:
+    """Serialize documents using the stable citation contract.
+
+    Contract shape (one line per document):
+    ``{index}. title={title} source={source} content={content}``
+    """
     if not documents:
         return "No relevant documents found."
-    return "\n".join(
+    formatted = "\n".join(
         f"{idx}. title={doc.title} source={doc.source} content={doc.content}"
         for idx, doc in enumerate(documents, start=1)
     )
+    logger.info(
+        "Document validation formatter emitted citation contract document_count=%s contract=%s",
+        len(documents),
+        "index.title.source.content",
+    )
+    return formatted
 
 
 def _tokenize(value: str) -> set[str]:

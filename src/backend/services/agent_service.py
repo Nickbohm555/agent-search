@@ -16,6 +16,7 @@ from agents import create_coordinator_agent, get_decomposition_only_prompt
 from db import DATABASE_URL
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
 from services.document_validation_service import (
+    RetrievedDocument,
     build_document_validation_config_from_env,
     format_retrieved_documents,
     parse_retrieved_documents,
@@ -172,18 +173,44 @@ def _estimate_retrieved_doc_count(search_output: str) -> int:
     return len(re.findall(r"^\d+\.\s", search_output, flags=re.MULTILINE))
 
 
+def _estimate_citation_contract_line_count(search_output: str) -> int:
+    if not isinstance(search_output, str) or not search_output.strip():
+        return 0
+    return len(
+        re.findall(
+            r"^\d+\.\s+title=.*?\s+source=.*?\s+content=.*$",
+            search_output,
+            flags=re.MULTILINE,
+        )
+    )
+
+
 def _format_retrieved_documents_for_pipeline(documents: list[Any]) -> str:
     if not documents:
         return "No relevant documents found."
 
-    lines: list[str] = []
+    normalized_documents: list[RetrievedDocument] = []
     for index, result in enumerate(documents, start=1):
         metadata = result.metadata if hasattr(result, "metadata") and isinstance(result.metadata, dict) else {}
         title = str(metadata.get("title") or metadata.get("wiki_page") or "Unknown title")
         source = str(metadata.get("source") or metadata.get("wiki_url") or "Unknown source")
         content = str(getattr(result, "page_content", "")).strip()
-        lines.append(f"{index}. title={title} source={source} content={content}")
-    return "\n".join(lines)
+        normalized_documents.append(
+            RetrievedDocument(
+                rank=index,
+                title=title,
+                source=source,
+                content=content,
+            )
+        )
+    formatted = format_retrieved_documents(normalized_documents)
+    logger.info(
+        "Pipeline retrieval formatter emitted citation contract document_count=%s contract_lines=%s contract=%s",
+        len(normalized_documents),
+        _estimate_citation_contract_line_count(formatted),
+        "index.title.source.content",
+    )
+    return formatted
 
 
 def _stringify_message_content(content: Any) -> str:
@@ -584,7 +611,7 @@ def _apply_document_validation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> lis
                 _truncate_query(item.sub_question),
             )
         logger.info(
-            "Per-subquestion document validation sub_question=%s docs_before=%s docs_after=%s rejected=%s",
+            "Per-subquestion document validation sub_question=%s docs_before=%s docs_after=%s rejected=%s contract_lines=%s",
             _truncate_query(item.sub_question),
             validation_result.total_documents,
             len(validation_result.valid_documents) if validation_result.total_documents > 0 else "n/a",
@@ -593,6 +620,7 @@ def _apply_document_validation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> lis
                 if validation_result.total_documents > 0
                 else "n/a"
             ),
+            _estimate_citation_contract_line_count(item.sub_answer),
         )
     return sub_qa
 
@@ -625,12 +653,13 @@ def _apply_reranking_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> list[SubQuest
         reranked_documents = [entry.document for entry in reranked]
         item.sub_answer = format_retrieved_documents(reranked_documents)
         logger.info(
-            "Per-subquestion reranking sub_question=%s query=%s docs_before=%s docs_after=%s top_document=%s",
+            "Per-subquestion reranking sub_question=%s query=%s docs_before=%s docs_after=%s top_document=%s contract_lines=%s",
             _truncate_query(item.sub_question),
             _truncate_query(rerank_query),
             len(parsed_documents),
             len(reranked_documents),
             _truncate_query(reranked_documents[0].title if reranked_documents else "n/a"),
+            _estimate_citation_contract_line_count(item.sub_answer),
         )
     return sub_qa
 

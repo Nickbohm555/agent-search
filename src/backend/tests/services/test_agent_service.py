@@ -485,6 +485,31 @@ def test_estimate_retrieved_doc_count_counts_ranked_lines() -> None:
     assert agent_service._estimate_retrieved_doc_count(output) == 2
 
 
+def test_format_retrieved_documents_for_pipeline_preserves_citation_contract_shape() -> None:
+    class _Doc:
+        def __init__(self, metadata: dict[str, str], page_content: str):
+            self.metadata = metadata
+            self.page_content = page_content
+
+    output = agent_service._format_retrieved_documents_for_pipeline(
+        [
+            _Doc(
+                metadata={"title": "NATO Policy", "source": "wiki://nato/policy"},
+                page_content="Policy changed in 2025.",
+            ),
+            _Doc(
+                metadata={"wiki_page": "Fallback Title", "wiki_url": "wiki://fallback"},
+                page_content="Fallback source fields are used.",
+            ),
+        ]
+    )
+
+    assert output.splitlines() == [
+        "1. title=NATO Policy source=wiki://nato/policy content=Policy changed in 2025.",
+        "2. title=Fallback Title source=wiki://fallback content=Fallback source fields are used.",
+    ]
+
+
 def test_apply_document_validation_to_sub_qa_filters_documents(monkeypatch) -> None:
     input_sub_qa = [
         agent_service.SubQuestionAnswer(

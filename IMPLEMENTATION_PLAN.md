@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 6. (move +1 after each turn)
+Current section to work on: section 7. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -197,7 +197,12 @@ Current section to work on: section 6. (move +1 after each turn)
 
 **How to test:** Run a query; inspect sub_qa[].sub_answer and reranked output for numbered lines with title= and source=.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/services/test_document_validation_service.py tests/services/test_agent_service.py'` -> 22 passed.
+- Live API run logs include:
+  - `Per-subquestion document validation ... contract_lines=0` (runtime visibility added for citation-contract line preservation).
+  - `Per-subquestion reranking ... contract_lines=...` (rerank stage now reports citation-contract line count).
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
 
 ---
 

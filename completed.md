@@ -213,3 +213,52 @@
 ### Tests run
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/tools/test_retriever_tool.py'` -> `3 passed`
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+
+---
+
+## Section 6: Pipeline preserves document identity (validation and rerank)
+
+**Onyx article:** Lesson 4 — Tool design: preserve document identity through the pipeline so verification and citations can use the same structure.
+
+**Single goal:** Ensure document_validation_service and agent_service preserve the numbered title/source/content format through the pipeline; no step drops indices or sources.
+
+**Details:**
+- format_retrieved_documents (document_validation_service) and any format_retrieved_documents in the reranker path must not drop title/source. Output same shape as retriever_tool (numbered lines).
+- agent_service._format_retrieved_documents_for_pipeline: ensure same shape for refinement path. SubQuestionAnswer.sub_answer and reranked output should retain numbered document list where needed for verification.
+
+**Tech stack and dependencies**
+- No new packages; document_validation_service and agent_service formatting only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/services/document_validation_service.py | Ensure format_retrieved_documents preserves numbered format. |
+| src/backend/services/agent_service.py | _format_retrieved_documents_for_pipeline: same shape for refinement path. |
+
+**How to test:** Run a query; inspect sub_qa[].sub_answer and reranked output for numbered lines with title= and source=.
+
+### Completion notes (March 6, 2026)
+- Updated `src/backend/services/agent_service.py` to reuse `document_validation_service.format_retrieved_documents(...)` in `_format_retrieved_documents_for_pipeline(...)` via normalized `RetrievedDocument` instances, so refinement/retrieval formatting now shares the same citation contract serializer.
+- Added contract visibility logging in pipeline formatting and per-stage validation/rerank logs:
+  - `Pipeline retrieval formatter emitted citation contract ...`
+  - `Per-subquestion document validation ... contract_lines=...`
+  - `Per-subquestion reranking ... contract_lines=...`
+- Added `format_retrieved_documents(...)` citation-contract docstring and formatter logs in `src/backend/services/document_validation_service.py`.
+- Added tests to prove identity contract preservation:
+  - `test_format_retrieved_documents_preserves_numbered_identity_contract`
+  - `test_format_retrieved_documents_for_pipeline_preserves_citation_contract_shape`
+
+### Useful logs
+- `Runtime agent run start query=What changed in NATO policy? query_length=28`
+- `Retriever tool search_database ... result_count=0 citation_contract=index.title.source.content`
+- `Per-subquestion document validation sub_question=What changed in NATO policy? docs_before=0 docs_after=n/a rejected=n/a contract_lines=0`
+- `Per-subquestion reranking skipped; no parseable retrieved docs sub_question=What changed in NATO policy?`
+- `Refinement retrieval complete count=6`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `docker compose ps` shows `db` healthy and `backend/frontend/chrome` up.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/services/test_document_validation_service.py tests/services/test_agent_service.py'` -> `22 passed`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in NATO policy?"}'` -> `200 OK`
