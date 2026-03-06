@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 4. (move +1 after each turn)
+Current section to work on: section 5. (move +1 after each turn)
 
 **Guardrail policy:** Time guardrails (Sections 3–18) **do not fail** the run. On timeout, force a return (partial result, fallback, or safe default) and continue so the pipeline stays fast and the user always gets an answer when possible.
 
@@ -61,7 +61,12 @@ Current section to work on: section 4. (move +1 after each turn)
 
 **How to test:** Unit tests: run with `vector_store=None` (default behavior unchanged); run with a fake vector_store and assert it is used for initial search and coordinator. Restart app and run one query via API to confirm no regression.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `25 passed`
+- `docker compose restart backend` -> backend restarted successfully
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with response shape unchanged (`main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=80 frontend`, `docker compose logs --tail=80 db` -> reviewed for visibility; no change-specific backend exceptions
 
 ---
 
@@ -110,7 +115,12 @@ Current section to work on: section 4. (move +1 after each turn)
 
 **How to test:** Unit test: mock slow `get_vector_store` and assert timeout raises; test normal path still returns store. Restart app and run one query.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `25 passed`
+- `docker compose restart backend` -> backend restarted successfully
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with response shape unchanged (`main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=80 frontend`, `docker compose logs --tail=80 db` -> reviewed for visibility; no change-specific backend exceptions
 
 ---
 

@@ -1156,3 +1156,59 @@
   - `docker compose logs --tail=120 backend`
   - `docker compose logs --tail=80 frontend`
   - `docker compose logs --tail=80 db`
+
+---
+
+## Section 4: Time guardrail — vector store acquisition
+
+**Single goal:** Enforce a maximum time for obtaining the vector store when not provided by the caller (i.e. for the `get_vector_store(...)` path).
+
+**Details:**
+- When `run_runtime_agent` calls `get_vector_store(...)`, wrap that call in a timeout; on timeout, **do not fail**—return a safe fallback (e.g. return early from run with a short “unavailable” message, or retry once with shorter timeout) so the API still returns a response.
+- Use the timeout value from Section 3 (e.g. `VECTOR_STORE_ACQUISITION_TIMEOUT_S`).
+- When caller provides `vector_store`, skip this step; no guardrail applied.
+
+**Tech stack and dependencies**
+- Python stdlib `concurrent.futures` or equivalent; no new pip packages.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap `get_vector_store` in timeout when vector_store not provided. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout triggers and normal completion. |
+
+**How to test:** Unit test: mock slow `get_vector_store` and assert timeout raises; test normal path still returns store. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Added `_run_with_timeout(...)` in `src/backend/services/agent_service.py` using stdlib `concurrent.futures` and wired it into the default `get_vector_store(...)` path.
+- Added a section-4 guardrail in `run_runtime_agent(...)`:
+  - Applies timeout only when `vector_store` is not provided.
+  - On timeout, logs warning visibility and short-circuits with a safe `RuntimeAgentRunResponse` fallback message instead of failing.
+  - Keeps provided-vector-store path unchanged (no timeout wrapper applied).
+- Added visibility log lines for timeout guardrail operation (`operation=vector_store_acquisition`) and short-circuit behavior.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout case (slow `get_vector_store`) returns fallback response and skips coordinator.
+  - normal case (fast `get_vector_store`) proceeds through full runtime path.
+
+### Useful logs
+- Unit tests:
+  - `============================== 25 passed in 4.95s ==============================`
+- Backend restart/state:
+  - `Container agent-search-backend  Restarting`
+  - `Container agent-search-backend  Started`
+  - `docker compose ps` showed `backend`, `frontend`, `db` up (`db` healthy).
+- Health/API:
+  - `{"status":"ok"}` from `GET /api/health`
+  - `POST /api/agents/run` returned HTTP `200` with unchanged response shape.
+- Runtime/containers:
+  - Backend logs include normal runtime progression and no change-specific backend traceback for this section.
+  - Frontend logs show Vite dev server ready on `http://localhost:5173/`.
+  - DB logs show startup/checkpoint activity; historical warnings observed (`there is already a transaction in progress`) but no new section-4 blocker.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> pass (`25 passed`).
+- `docker compose restart backend` -> pass.
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`).
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`).
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=80 frontend`, `docker compose logs --tail=80 db` -> reviewed for visibility.

@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -58,6 +58,9 @@ _DECOMPOSITION_ONLY_TEMPERATURE = float(os.getenv("DECOMPOSITION_ONLY_TEMPERATUR
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _MAIN_AGENT_TASK_TOOL_NAME = "task"
 _SEARCH_DATABASE_TOOL_NAME = "search_database"
+_VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE = (
+    "Knowledge base retrieval is temporarily unavailable. Please try again in a moment."
+)
 
 
 _QUERY_LOG_MAX = 200
@@ -288,6 +291,23 @@ def _stringify_message_content(content: Any) -> str:
     if content is None:
         return ""
     return str(content)
+
+
+def _run_with_timeout(*, timeout_s: int, operation_name: str, fn: Any) -> Any:
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(fn)
+    try:
+        return future.result(timeout=timeout_s)
+    except FuturesTimeoutError:
+        future.cancel()
+        logger.warning(
+            "Runtime guardrail timeout operation=%s timeout_s=%s",
+            operation_name,
+            timeout_s,
+        )
+        raise
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _build_coordinator_input_message(decomposition_sub_questions: list[str]) -> str:
@@ -931,11 +951,26 @@ def run_runtime_agent(
     )
     selected_vector_store = vector_store
     if selected_vector_store is None:
-        selected_vector_store = get_vector_store(
-            connection=DATABASE_URL,
-            collection_name=_VECTOR_COLLECTION_NAME,
-            embeddings=get_embedding_model(),
-        )
+        try:
+            selected_vector_store = _run_with_timeout(
+                timeout_s=_RUNTIME_TIMEOUT_CONFIG.vector_store_acquisition_timeout_s,
+                operation_name="vector_store_acquisition",
+                fn=lambda: get_vector_store(
+                    connection=DATABASE_URL,
+                    collection_name=_VECTOR_COLLECTION_NAME,
+                    embeddings=get_embedding_model(),
+                ),
+            )
+        except FuturesTimeoutError:
+            logger.warning(
+                "Runtime agent short-circuiting due to vector store timeout query=%s",
+                _truncate_query(payload.query),
+            )
+            return RuntimeAgentRunResponse(
+                main_question=payload.query,
+                sub_qa=[],
+                output=_VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE,
+            )
         logger.info(
             "Runtime agent vector store selected source=default collection_name=%s",
             _VECTOR_COLLECTION_NAME,

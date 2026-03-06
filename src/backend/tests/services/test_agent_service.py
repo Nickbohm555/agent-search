@@ -549,6 +549,160 @@ def test_run_runtime_agent_uses_provided_vector_store_for_search_coordinator_and
     assert captured["search_calls"][1]["vector_store"] is provided_vector_store
 
 
+def test_run_runtime_agent_times_out_while_acquiring_default_vector_store(monkeypatch, caplog) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=1,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    def slow_get_vector_store(**kwargs):
+        _ = kwargs
+        time.sleep(1.2)
+        return "slow-vector-store"
+
+    monkeypatch.setattr(agent_service, "get_vector_store", slow_get_vector_store)
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(
+        agent_service,
+        "create_coordinator_agent",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("coordinator should not be created on timeout")),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="Will this timeout?"),
+            db=_make_session(),
+        )
+
+    assert response.main_question == "Will this timeout?"
+    assert response.sub_qa == []
+    assert response.output == agent_service._VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE
+    assert "Runtime guardrail timeout operation=vector_store_acquisition timeout_s=1" in caplog.text
+    assert "Runtime agent short-circuiting due to vector store timeout" in caplog.text
+
+
+def test_run_runtime_agent_acquires_default_vector_store_without_timeout(monkeypatch) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=2,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FakeAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "What changed in policy X?", "subagent_type": "rag_retriever"},
+                            }
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What changed in policy X?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy X evidence.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent completed policy X."),
+                    AIMessage(content="Coordinator output"),
+                ]
+            }
+
+    def fast_get_vector_store(**kwargs):
+        _ = kwargs
+        time.sleep(0.1)
+        return "fast-vector-store"
+
+    monkeypatch.setattr(agent_service, "get_vector_store", fast_get_vector_store)
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["What changed in policy X?"]',
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "create_coordinator_agent",
+        lambda *, vector_store, model: captured.update({"vector_store": vector_store}) or _FakeAgent(),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Initial synthesized output",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "Generated subanswer from reranked docs.",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="What changed in policy X?"),
+        db=_make_session(),
+    )
+
+    assert response.output == "Initial synthesized output"
+    assert captured["vector_store"] == "fast-vector-store"
+
+
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
     answer_calls: list[dict[str, object]] = []
