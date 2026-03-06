@@ -1,80 +1,132 @@
-# Section 1 Architecture: Coordinator flow tracking via `write_todos` and virtual file system
+# Section 1 Architecture: Coordinator Flow Tracking via `write_todos` and Virtual File System
 
 ## Purpose
-This section ensures the coordinator agent does not lose pipeline state while running a multi-stage question-answering workflow. It does this by forcing explicit plan/state tracking through deep-agents tools (`write_todos`, `read_file`, `write_file`, `edit_file`) backed by a virtual file system state backend.
+Keep long multi-stage agent runs coherent by forcing the coordinator to persist plan state in two places:
+- `write_todos` (structured stage checklist)
+- deep-agents virtual filesystem file `/runtime/coordinator_flow.md` (narrative flow state)
+
+This prevents stage loss across decomposition, sub-question delegation, and refinement paths.
 
 ## Components
-- Coordinator factory: `create_coordinator_agent(...)` in `src/backend/agents/coordinator.py`.
-- Coordinator system prompt: `_COORDINATOR_PROMPT` defines mandatory planning + flow-tracking behavior.
-- Runtime state backend: `StateBackend` from `deepagents.backends` (default backend for agent state + virtual files).
-- Flow tracking file path: `/runtime/coordinator_flow.md` (constant `_FLOW_TRACKING_FILE`).
-- Subagent wiring: single `rag_retriever` subagent with retriever tool; coordinator delegates via `task()`.
-- Runtime orchestrator that invokes coordinator: `run_runtime_agent(...)` in `src/backend/services/agent_service.py`.
-- API entrypoint: `POST /api/agents/run` in `src/backend/routers/agent.py`.
-- Behavioral tests: `src/backend/tests/agents/test_coordinator_agent.py`.
+- API entrypoint: `POST /api/agents/run` in [`src/backend/routers/agent.py`](/Users/nickbohm/Desktop/worktree/agent-search/src/backend/routers/agent.py)
+- Runtime orchestrator: `run_runtime_agent(...)` in [`src/backend/services/agent_service.py`](/Users/nickbohm/Desktop/worktree/agent-search/src/backend/services/agent_service.py)
+- Coordinator factory: `create_coordinator_agent(...)` in [`src/backend/agents/coordinator.py`](/Users/nickbohm/Desktop/worktree/agent-search/src/backend/agents/coordinator.py)
+- Deep-agents backend: `StateBackend` (virtual filesystem state)
+- Subagent retrieval tool: `search_database(...)` from [`src/backend/tools/retriever_tool.py`](/Users/nickbohm/Desktop/worktree/agent-search/src/backend/tools/retriever_tool.py)
+- Observability callbacks: [`src/backend/utils/agent_callbacks.py`](/Users/nickbohm/Desktop/worktree/agent-search/src/backend/utils/agent_callbacks.py)
+
+## Flow Diagram
+```text
++---------------------------------------------------------------+
+| Client                                                        |
+|  - POST /api/agents/run { query }                             |
++-------------------------------+-------------------------------+
+                                |
+                                v
++---------------------------------------------------------------+
+| FastAPI Router (`runtime_agent_run`)                          |
+|  +---------------------------------------------------------+  |
+|  | Service call: run_runtime_agent(payload, db)            |  |
+|  +---------------------------------------------------------+  |
++-------------------------------+-------------------------------+
+                                |
+                                v
++---------------------------------------------------------------+
+| Agent Service (`run_runtime_agent`)                           |
+|  +---------------------------------------------------------+  |
+|  | create_coordinator_agent(vector_store, model)           |  |
+|  +---------------------------+-----------------------------+  |
+|                              |                                |
++------------------------------|--------------------------------+
+                               v
++---------------------------------------------------------------+
+| Coordinator (`create_coordinator_agent`)                      |
+|  +---------------------------------------------------------+  |
+|  | System prompt contract:                                  |  |
+|  |  - call `write_todos` at start and transitions          |  |
+|  |  - create `/runtime/coordinator_flow.md` with write_file|  |
+|  |  - update using read_file + edit_file                   |  |
+|  +---------------------------------------------------------+  |
+|  +---------------------------------------------------------+  |
+|  | deep-agents backend = `StateBackend` (virtual FS state) |  |
+|  +---------------------------------------------------------+  |
++-------------------------------+-------------------------------+
+                                |
+                                v
++---------------------------------------------------------------+
+| Deep Agent Runtime                                             |
+|  +--------------------------+  +----------------------------+ |
+|  | Planner tools            |  | Subagent (`rag_retriever`) | |
+|  | - write_todos            |  | - task() delegated         | |
+|  | - read_file/write_file   |  | - calls `search_database`  | |
+|  | - edit_file              |  | - returns sub-answer       | |
+|  +--------------------------+  +----------------------------+ |
++-------------------------------+-------------------------------+
+                                |
+                                v
++---------------------------------------------------------------+
+| Agent Service post-invoke                                      |
+|  - callback logs tool calls/results                            |
+|  - extract `sub_qa` from task + tool outputs                   |
+|  - continue into later sections                                |
++---------------------------------------------------------------+
+```
 
 ## Data Flow
-### Inputs
-- External input: API request body `RuntimeAgentRunRequest` with `query` (`src/backend/schemas/agent.py`).
-- Internal contextual input: `run_runtime_agent(...)` builds decomposition context and embeds it in the coordinator input message as JSON (`_build_coordinator_input_message`).
+Inputs:
+- HTTP payload: `RuntimeAgentRunRequest.query`
+- Retrieval context from vector search (built before coordinator invocation)
 
-### Transformations and movement
-1. API layer receives `POST /api/agents/run` and passes payload to `run_runtime_agent(...)`.
-2. Service layer creates coordinator by calling `create_coordinator_agent(vector_store, model)`.
-3. `create_coordinator_agent(...)` builds a deep-agents runnable with:
-- `system_prompt=_COORDINATOR_PROMPT` (includes explicit requirements to call `write_todos` and maintain `/runtime/coordinator_flow.md`).
-- `backend=StateBackend` (unless explicitly overridden).
-- Subagent list containing `rag_retriever`.
-4. `run_runtime_agent(...)` invokes the coordinator runnable with a `HumanMessage` that includes:
-- User question.
-- “Initial retrieval context for decomposition” JSON block.
-- Subquestion formatting constraints.
-5. During execution, the coordinator uses deep-agents tools (per prompt contract):
-- `write_todos` to represent stage status.
-- `write_file` once to create `/runtime/coordinator_flow.md`.
-- `read_file` + `edit_file` to update flow state over time.
-6. State is persisted in the deep-agents virtual file system attached to `StateBackend`, so plan/file state survives across tool calls/turn transitions within the run.
-7. Coordinator delegates sub-questions via `task()` to `rag_retriever`; results eventually return to `run_runtime_agent(...)` as message history + final output.
+Transformations and movement:
+1. `run_runtime_agent(...)` serializes decomposition context + user question into one coordinator `HumanMessage`.
+2. `create_coordinator_agent(...)` builds deep-agent runtime with:
+- main coordinator prompt that enforces `write_todos` + virtual-file updates
+- `StateBackend` for persisted in-run filesystem state
+- one retrieval subagent with `search_database`
+3. During `agent.invoke(...)`, deep-agents emits tool calls:
+- planner flow state: `write_todos`, `write_file`/`read_file`/`edit_file` on `/runtime/coordinator_flow.md`
+- delegated retrieval: subagent `search_database(query, expanded_query, ...)`
+4. `AgentLoggingCallbackHandler` logs tool inputs/outputs; `SearchDatabaseCaptureCallback` captures retrieval input-output pairs for deterministic extraction.
+5. Service converts message/tool traces into `sub_qa` records (sub-question, raw retrieval output, expanded query, subagent response), then hands off to later pipeline sections.
 
-### Outputs
-- Coordinator side effects: structured todo state + flow markdown file content inside virtual FS state.
-- Service response: `RuntimeAgentRunResponse` containing `main_question`, `sub_qa`, and `output`.
-- Operational observability: coordinator construction/invoke logs include backend name and flow file path.
+Outputs:
+- Intermediate: in-memory deep-agent state containing todo status and virtual file content
+- Intermediate: extracted `sub_qa` list for downstream pipeline stages
+- External response eventually includes final `RuntimeAgentRunResponse`
 
-## Key Interfaces and APIs
-- `create_coordinator_agent(vector_store, model, *, create_deep_agent_fn=None, backend_factory=None) -> Any`
-- Deep-agents backend contract: accepts `StateBackend` class as `backend` argument during runnable creation.
-- Runtime API route: `POST /api/agents/run` (`runtime_agent_run(...)`).
-- Request/response schemas:
-- `RuntimeAgentRunRequest { query: str }`
-- `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
+## Key Interfaces / APIs
+- `POST /api/agents/run` -> `RuntimeAgentRunResponse`
+- `create_coordinator_agent(vector_store, model, create_deep_agent_fn=None, backend_factory=None)`
+- deep-agents `create_deep_agent(...)` called with `backend=StateBackend`
+- retriever tool API:
+`search_database(query: str, expanded_query: str | None = None, limit: int = 10, wiki_source_filter: str | None = None) -> str`
 
-## Fit With Adjacent Sections
-- Upstream dependency: the initial context search path in `run_runtime_agent(...)` provides decomposition context embedded into coordinator input.
-- Downstream dependency: coordinator-produced sub-question work feeds later per-subquestion stages (expand/search/validate/rerank/answer/check), initial answer generation, and refinement stages.
-- This section is the control-plane layer: it does not perform ranking/verification itself, but it enforces consistent stage tracking so downstream data-plane steps remain coordinated.
+## How It Fits Adjacent Sections
+- Upstream dependency from Section 2/3 work: coordinator receives initial retrieval context in its first input message.
+- Downstream dependency for Sections 4-14: coordinator delegation and captured subagent retrieval traces seed `sub_qa`, which is the input contract for validation, reranking, answering, verification, initial synthesis, and refinement loops.
+- If Section 1 flow tracking fails, later sections still may run but lose reliable stage visibility and traceability.
 
 ## Tradeoffs
-### Chosen design
-- Prompt-enforced workflow tracking (`write_todos` + virtual file updates) with `StateBackend` default.
+1. Dual tracking (`write_todos` + `/runtime/coordinator_flow.md`)
+- Chosen: better human-readable + structured progress states.
+- Alternative: `write_todos` only.
+- Pros: redundancy improves recoverability and debugging.
+- Cons: extra token/tool overhead and risk of divergence between two state representations.
 
-### Benefits
-- Durable, inspectable run-state: flow file + todos provide explicit execution trace.
-- Better long-horizon reliability: reduces coordinator drift across many pipeline stages.
-- Tool-level observability: logs and callback traces can confirm state-tracking behavior.
+2. Virtual filesystem via `StateBackend`
+- Chosen: state is managed inside deep-agents runtime, avoiding ad-hoc external file writes.
+- Alternative: persist flow state in Postgres.
+- Pros: simple integration, no schema/migration work, aligned with agent tooling.
+- Cons: state is run-scoped; cross-run analytics/auditing are weaker than DB persistence.
 
-### Costs
-- Prompt coupling: correctness depends on agent following prompt/tool instructions.
-- Additional token/tool overhead: frequent todo/file operations add latency and cost.
-- Backend dependence: design assumes deep-agents `StateBackend` semantics and available file tools.
+3. Prompt-level enforcement for tool behavior
+- Chosen: encode guardrails in system prompt (create once with `write_file`, then `read_file + edit_file`).
+- Alternative: hard runtime validator that rejects invalid tool sequences.
+- Pros: fast to implement and adaptable.
+- Cons: relies on model compliance; not a strict guarantee under all prompts.
 
-### Alternatives considered/rejected
-- In-memory only tracking inside model context:
-- Pro: lower tool overhead.
-- Con: higher risk of state loss in long workflows; poor inspectability.
-- Server-side explicit state machine (outside agent tools):
-- Pro: deterministic control and stronger guarantees.
-- Con: less agent flexibility; more implementation complexity and tighter orchestration code.
-- Persistent database-backed run logs as the primary control state:
-- Pro: durable across process restarts and easier historical analytics.
-- Con: heavier write path and more schema/transaction complexity for iterative agent planning.
+4. Single retrieval subagent under coordinator
+- Chosen: coordinator delegates retrieval via `task()` to one RAG subagent.
+- Alternative: coordinator uses retriever directly.
+- Pros: separation of planning vs retrieval execution.
+- Cons: added message hops and extraction complexity when reconstructing `sub_qa`.
