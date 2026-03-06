@@ -79,9 +79,11 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert "For each initial sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check." in str(
         captured["system_prompt"]
     )
-    assert "For each refined sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check." in str(
+    assert "Confirm delegation complete and subagent responses are gathered for handoff." in str(
         captured["system_prompt"]
     )
+    assert "Do not synthesize or output the final answer to the main question." in str(captured["system_prompt"])
+    assert "Delegation complete; subanswers collected." in str(captured["system_prompt"])
     assert len(captured["subagents"]) == 1
     sub = captured["subagents"][0]
     assert sub["name"] == "rag_retriever"

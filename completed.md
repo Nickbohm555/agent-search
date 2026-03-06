@@ -126,3 +126,49 @@
 - `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> `20 passed`
 - `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK`
+
+---
+
+## Section 4: Coordinator only delegates and gathers (no final answer synthesis)
+
+**Onyx article:** Lesson 2 — "Deep frying is unhealthy": "The Orchestrator just gathers context. It doesn't meaningfully transform or reinterpret information"; orchestrator gathers, doesn't synthesize the final answer.
+
+**Single goal:** The coordinator does not synthesize the final answer from subanswers; agent_service owns final answer generation via generate_initial_answer.
+
+**Details:**
+- In _COORDINATOR_PROMPT, remove or replace "After you have subanswers, use them to answer the main question with one concise answer." The coordinator only delegates via task() and gathers subagent responses.
+- agent_service already uses generate_initial_answer(main_question, initial_search_context, sub_qa) for the API response; coordinator_output is only for logging. API response shape unchanged.
+- If the framework expects a final assistant message from the coordinator, use a short summary like "Delegation complete; subanswers collected."
+
+**Tech stack and dependencies**
+- No new packages; prompt change in coordinator.py only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| src/backend/agents/coordinator.py | Remove final-answer synthesis from _COORDINATOR_PROMPT; coordinator only delegates and reports completion. |
+
+**How to test:** Run a query; confirm API response still comes from generate_initial_answer and shape is unchanged. Confirm coordinator's last message does not contain the main answer. test_agent_service assertions on RuntimeAgentRunResponse still pass.
+
+### Completion notes (March 6, 2026)
+- Updated `_COORDINATOR_PROMPT` flow stages so coordinator ends at delegation/gather completion handoff and no longer claims ownership of final answer synthesis.
+- Replaced synthesis instruction with explicit completion behavior:
+  - coordinator only delegates and gathers subagent outputs,
+  - must not synthesize the final main-question answer,
+  - must end with a short status message (`Delegation complete; subanswers collected.`).
+- Added an explicit flow-file sequencing guardrail in prompt instructions: call `read_file` first, create with `write_file` if missing, then use `edit_file`.
+- Updated `src/backend/tests/agents/test_coordinator_agent.py` expectations to assert delegate/gather-only completion semantics.
+
+### Useful logs
+- `Coordinator raw output captured output_length=42 output_preview=Delegation complete; subanswers collected.`
+- `Initial answer generation start question_len=17 context_items=0 sub_qa_count=1`
+- `Initial answer generation complete via LLM answer_len=373 model=gpt-4.1-mini`
+- `Runtime agent run complete output_length=523 output_preview=Pgvector is a PostgreSQL extension ...`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+- `docker compose ps` showed `backend` up, `db` healthy, `frontend` up after backend restart.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> `20 passed`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector?"}'` -> `200 OK` with unchanged `RuntimeAgentRunResponse` shape (`main_question`, `sub_qa`, `output`)

@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 4. (move +1 after each turn)
+Current section to work on: section 5. (move +1 after each turn)
 
 **Onyx article references:** The "Onyx article" line in each section points to [Onyx: Building the best Deep Research](https://onyx.app/blog/building-the-best-deep-research) for human reading only. Do not read or fetch the article as part of implementation.
 
@@ -132,7 +132,13 @@ Current section to work on: section 4. (move +1 after each turn)
 
 **How to test:** Run a query; confirm API response still comes from generate_initial_answer and shape is unchanged. Confirm coordinator's last message does not contain the main answer. test_agent_service assertions on RuntimeAgentRunResponse still pass.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- `docker compose exec backend sh -lc 'cd /app && uv pip install pytest && uv run python -m pytest tests/services/test_agent_service.py tests/agents/test_coordinator_agent.py'` -> 20 passed.
+- Live API run logs include:
+  - `Coordinator raw output captured output_length=42 output_preview=Delegation complete; subanswers collected.`
+  - `Initial answer generation complete via LLM ...`
+  - `Runtime agent run complete output_length=523 ...`
+  - `POST /api/agents/run HTTP/1.1" 200 OK`
 
 ---
 
