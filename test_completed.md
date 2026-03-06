@@ -193,3 +193,47 @@
     - `Initial decomposition context built query=What changed in NATO policy? docs=5 ...`
     - `Coordinator decomposition input prepared query=What changed in NATO policy? context_items=5`
   - Backend request log confirmed: `POST /api/agents/run HTTP/1.1" 200 OK`.
+
+## Test Section 5: Per-subquestion query expansion (Section 4)
+
+**Single goal:** Backend logs show retriever tool called with `expanded_query`, and API response includes `expanded_query` per sub-question.
+
+**Details:**
+- Use same data/run (NATO, "What changed in NATO policy?"). Logs must show `search_database` (or Retriever tool) with `expanded_query` and `retrieval_query`; response `sub_qa[*].expanded_query` non-empty where applicable.
+
+**Tech stack and dependencies**
+- Retriever tool and coordinator subagent prompt.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tools/retriever_tool.py` | Accepts and uses expanded_query. |
+| `src/backend/services/agent_service.py` | Extracts and exposes expanded_query in sub_qa. |
+
+**How to test:**
+1. Same run as Test Sections 3–4 (or repeat wipe/load/run).
+2. Backend logs: require at least one line containing `Retriever tool search_database` with both `expanded_query=` and `retrieval_query=` (or `Tool called: name=search_database` with `expanded_query`).
+3. Response: for at least one item in `sub_qa`, `expanded_query` is a non-empty string.
+
+**Test results:**
+- Fresh full restart/build completed before the section run:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Startup logs viewed for all built services:
+  - `docker compose logs --tail=80 db` showed PostgreSQL init + `database system is ready to accept connections`.
+  - `docker compose logs --tail=80 backend` showed Alembic upgrade + Uvicorn startup.
+  - `docker compose logs --tail=80 frontend` showed Vite ready at `http://localhost:5173/`.
+- Section 5 execution commands and API outcomes:
+  - `POST /api/internal-data/wipe` => `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` (wiki nato) => `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200 with populated `sub_qa` and `output`.
+- Required backend log assertions passed (`docker compose logs --tail=500 backend`):
+  - `Retriever tool search_database ... expanded_query=... retrieval_query=...` found multiple times.
+  - Example log lines observed:
+    - `Retriever tool search_database query="NATO's original purpose and strategic role during the Cold War" expanded_query='NATO initial purpose Cold War strategic role NATO policy focus Cold War strategic objectives NATO early mission Cold War' retrieval_query='NATO initial purpose Cold War strategic role NATO policy focus Cold War strategic objectives NATO early mission Cold War' ...`
+    - `Retriever tool search_database query='NATO policy changes after the dissolution of the Soviet Union' expanded_query="Changes in NATO policy after the collapse of the Soviet Union including adaptations in NATO's purpose, tasks, and missions post-USSR dissolution" retrieval_query="Changes in NATO policy after the collapse of the Soviet Union including adaptations in NATO's purpose, tasks, and missions post-USSR dissolution" ...`
+- Response assertion passed:
+  - `jq '.sub_qa | map(select((.expanded_query // "") | length > 0)) | length' /tmp/section5_run_response.json` => `5`
+  - This confirms `expanded_query` is non-empty for at least one `sub_qa` item (and in this run, 5 items).
