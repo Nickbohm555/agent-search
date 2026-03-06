@@ -1,1 +1,1 @@
-Current section to work on: section 6
+Current section to work on: section 7
