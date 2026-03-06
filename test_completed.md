@@ -237,3 +237,48 @@
 - Response assertion passed:
   - `jq '.sub_qa | map(select((.expanded_query // "") | length > 0)) | length' /tmp/section5_run_response.json` => `5`
   - This confirms `expanded_query` is non-empty for at least one `sub_qa` item (and in this run, 5 items).
+
+## Test Section 6: Per-subquestion search (Section 5)
+
+**Single goal:** Logs show per-subquestion search callbacks captured and per-subquestion search result with docs_retrieved count; response sub_qa contain sub_answer or retrieval content.
+
+**Details:**
+- Same run. Logs must show "Per-subquestion search callbacks captured count=" and "Per-subquestion search result" with `docs_retrieved=` (e.g. 10). Response `sub_qa` should have content in `sub_answer` or equivalent after pipeline.
+
+**Tech stack and dependencies**
+- agent_service callback capture and retriever tool.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Captures per-subquestion search and logs docs_retrieved. |
+| `src/backend/tools/retriever_tool.py` | Per-subquestion retrieval. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Per-subquestion search callbacks captured count=` (number ≥ 1) and at least one `Per-subquestion search result ... docs_retrieved=` (e.g. `docs_retrieved=10`).
+3. Response: `sub_qa` entries have non-empty content (e.g. `sub_answer` or retrieved text) after full pipeline.
+
+**Test results:**
+- Fresh full restart/build/start completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Logs viewed for all built services:
+  - `docker compose logs --tail=120 backend` (saved to `/tmp/section6_backend_logs.txt`)
+  - `docker compose logs --tail=120 frontend` (saved to `/tmp/section6_frontend_logs.txt`)
+  - `docker compose logs --tail=120 db` (saved to `/tmp/section6_db_logs.txt`)
+- Section 6 execution commands and outcomes:
+  - `POST /api/internal-data/wipe` => `HTTP 200`, body: `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => `HTTP 200`, body: `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => `HTTP 200`
+- Required backend log assertions passed:
+  - `Per-subquestion search callbacks captured count=5`
+  - `Per-subquestion search result ... docs_retrieved=10` found for each sub-question (5 entries), including:
+    - `sub_question=NATO policy changes ... docs_retrieved=10`
+    - `sub_question=What operational changes did NATO make in the 21st century? ... docs_retrieved=10`
+- Response content assertions passed (`/tmp/section6_run.json`):
+  - `sub_qa_count: 5`
+  - `non_empty_sub_answer_count: 5`
+  - `output_len: 557`
