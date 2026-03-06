@@ -539,3 +539,58 @@
   - Backend showed per-subquestion item start/complete logs and subanswer generation/verification for multiple items.
   - Frontend logs remained healthy with Vite ready at `http://localhost:5173/`.
   - DB logs showed ready state and active transaction warnings only, no fatal errors.
+## Test Section 12: Initial answer generation (Section 11)
+
+**Single goal:** Logs show initial answer generation start and complete; response.output is non-empty synthesized answer.
+
+**Details:**
+- Same run. Logs must show "Initial answer generation start" (question_len, context_items, sub_qa_count) and "Initial answer generation complete" (e.g. via LLM or fallback). Response `output` must be a non-empty string.
+
+**Tech stack and dependencies**
+- initial_answer_service and agent_service.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/initial_answer_service.py` | Synthesizes initial answer. |
+| `src/backend/services/agent_service.py` | Calls synthesis and sets response.output. |
+
+**How to test:**
+1. Same run (NATO, "What changed in NATO policy?").
+2. Backend logs: require `Initial answer generation start` and `Initial answer generation complete`.
+3. Response: `output` is present and non-empty; optionally "Coordinator raw output captured" in logs.
+
+**Test results:** (Add when section is complete.)
+
+---
+
+
+**Test results:**
+- Fresh full restart/build completed before this section:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Running state after restart (`docker compose ps`):
+  - `backend` Up (`0.0.0.0:8000->8000/tcp`)
+  - `frontend` Up (`0.0.0.0:5173->5173/tcp`)
+  - `db` Up healthy (`0.0.0.0:5432->5432/tcp`)
+  - `chrome` Up (`0.0.0.0:9222->3000/tcp`)
+- Logs viewed for every built/running service:
+  - `docker compose logs --tail=80 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`
+- Section 12 API execution:
+  - `POST /api/internal-data/wipe` => HTTP 200, body `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` => HTTP 200, body `{"status":"success","source_type":"wiki","documents_loaded":1,"chunks_created":14}`
+  - `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` => HTTP 200
+- Required backend log assertions passed (`docker compose logs --tail=500 backend`):
+  - `Initial answer generation start question_len=28 context_items=5 sub_qa_count=8`
+  - `Initial answer generation complete via LLM answer_len=562 model=gpt-4.1-mini`
+- Optional log assertion passed:
+  - `Coordinator raw output captured output_length=610 ...`
+- Response assertion passed:
+  - `/tmp/section12_run.json` size `20671` bytes
+  - `output` field present and non-empty synthesized answer.
+
+---
