@@ -1007,11 +1007,25 @@ def run_runtime_agent(
             _truncate_query(payload.query),
             _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
         )
-    decomposition_raw_output = _run_decomposition_only_llm_call(
-        query=payload.query,
-        initial_search_context=initial_search_context,
-        model=model,
-    )
+    try:
+        decomposition_raw_output = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+            operation_name="decomposition_llm_call",
+            fn=lambda: _run_decomposition_only_llm_call(
+                query=payload.query,
+                initial_search_context=initial_search_context,
+                model=model,
+            ),
+        )
+    except FuturesTimeoutError:
+        fallback_sub_question = _normalize_sub_question(payload.query) or "What is the main question?"
+        decomposition_raw_output = json.dumps([fallback_sub_question], ensure_ascii=True)
+        logger.warning(
+            "Decomposition LLM timeout; continuing with fallback sub-question query=%s timeout_s=%s fallback=%s",
+            _truncate_query(payload.query),
+            _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+            _truncate_query(fallback_sub_question),
+        )
     logger.info(
         "Decomposition-only LLM output captured output_length=%s output_preview=%s",
         len(decomposition_raw_output),

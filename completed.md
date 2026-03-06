@@ -1256,3 +1256,46 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`)
 - `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+
+## Section 6: Time guardrail — decomposition LLM call
+
+**Single goal:** Enforce a maximum time for the decomposition-only LLM call (`_run_decomposition_only_llm_call`).
+
+**Details:**
+- Wrap `_run_decomposition_only_llm_call` in a timeout; on timeout, **do not fail**—use fallback (e.g. single normalized question from user query) and continue so the pipeline still runs.
+- Use config from Section 3 (e.g. `DECOMPOSITION_LLM_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap _run_decomposition_only_llm_call in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout (fallback or error) and normal path. |
+
+**How to test:** Unit test: slow LLM mock triggers timeout; normal path returns parsed sub-questions. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Updated `run_runtime_agent(...)` in `src/backend/services/agent_service.py` to execute `_run_decomposition_only_llm_call(...)` through `_run_with_timeout(...)` with `DECOMPOSITION_LLM_TIMEOUT_S`.
+- Added non-failing timeout fallback behavior: when decomposition exceeds timeout, runtime now logs a warning and uses a single normalized fallback sub-question derived from the original user query.
+- Kept decomposition parse flow unchanged by serializing timeout fallback into the same JSON-array shape consumed by `_parse_decomposition_output(...)`.
+- Added two tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout path: slow decomposition call triggers guardrail and coordinator input uses fallback normalized sub-question.
+  - normal path: decomposition call within timeout preserves returned decomposition output and coordinator receives it.
+
+### Useful logs
+- `Runtime guardrail timeout operation=decomposition_llm_call timeout_s=1`
+- `Decomposition LLM timeout; continuing with fallback sub-question query=... timeout_s=1 fallback=...`
+- `Runtime timeout config loaded vector_store=20s initial_search=20s decomposition_llm=60s coordinator_invoke=90s ... refined_answer=60s`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `29 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200` with `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
