@@ -1432,3 +1432,46 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no reranking-guardrail runtime exceptions
+
+## Section 10: Time guardrail — per-subquestion subanswer generation
+
+**Single goal:** Enforce a maximum time for the subanswer generation step (LLM call per sub-question).
+
+**Details:**
+- Wrap the subanswer generation call in a timeout; on timeout, **do not fail**—use fallback text (e.g. “Answer not available in time”) or mark unanswerable and continue so the pipeline returns an answer.
+- Use config from Section 3 (e.g. `SUBANSWER_GENERATION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap subanswer generation in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow subanswer triggers timeout; normal path completes. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Updated `_run_pipeline_for_single_subquestion(...)` in `src/backend/services/agent_service.py` to execute `_apply_subanswer_generation_to_sub_qa([working_item])[0]` through `_run_with_timeout(...)` with operation name `subanswer_generation_subquestion` and timeout `SUBANSWER_GENERATION_TIMEOUT_S`.
+- Added non-failing timeout fallback behavior for subanswer generation: when the subanswer generation step times out, the pipeline now sets subanswer text to `Answer not available in time.` and continues to verification/synthesis.
+- Added timeout visibility logs for subanswer generation fallback with sub-question and timeout seconds.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout path: slow subanswer generation triggers guardrail and fallback text is used.
+  - normal path: subanswer generation within timeout applies generated subanswer.
+
+### Useful logs
+- `Runtime guardrail timeout operation=subanswer_generation_subquestion timeout_s=1`
+- `Per-subquestion subanswer generation timeout; continuing with fallback text sub_question=... timeout_s=1`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> HTTP `200` with keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `37 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility

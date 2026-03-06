@@ -61,6 +61,7 @@ _SEARCH_DATABASE_TOOL_NAME = "search_database"
 _VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE = (
     "Knowledge base retrieval is temporarily unavailable. Please try again in a moment."
 )
+_SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT = "Answer not available in time."
 
 
 _QUERY_LOG_MAX = 200
@@ -855,7 +856,19 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
             _RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
         )
     reranked_output = working_item.sub_answer
-    working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
+    try:
+        working_item = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
+            operation_name="subanswer_generation_subquestion",
+            fn=lambda: _apply_subanswer_generation_to_sub_qa([working_item])[0],
+        )
+    except FuturesTimeoutError:
+        working_item.sub_answer = _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT
+        logger.warning(
+            "Per-subquestion subanswer generation timeout; continuing with fallback text sub_question=%s timeout_s=%s",
+            _truncate_query(working_item.sub_question),
+            _RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
+        )
     working_item = _apply_subanswer_verification_to_sub_qa(
         [working_item],
         reranked_output_by_sub_question={working_item.sub_question: reranked_output},
