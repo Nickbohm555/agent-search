@@ -262,6 +262,7 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
 
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
+    answer_calls: list[dict[str, object]] = []
 
     class _FakeAgent:
         def invoke(self, payload, **kwargs):
@@ -300,7 +301,18 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
     monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
     monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **_: [])
     monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: list(documents))
-    monkeypatch.setattr(agent_service, "generate_initial_answer", lambda **_: "Initial answer with gaps")
+
+    def fake_generate_initial_answer(*, main_question, initial_search_context, sub_qa):
+        answer_calls.append(
+            {
+                "main_question": main_question,
+                "context_items": len(initial_search_context),
+                "sub_qa_count": len(sub_qa),
+            }
+        )
+        return "Initial answer with gaps" if len(answer_calls) == 1 else "Refined synthesized answer"
+
+    monkeypatch.setattr(agent_service, "generate_initial_answer", fake_generate_initial_answer)
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
@@ -340,16 +352,24 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
             db=_make_session(),
         )
 
-    assert response.output == "Initial answer with gaps"
+    assert response.output == "Refined synthesized answer"
+    assert [item.sub_question for item in response.sub_qa] == [
+        "What primary source evidence is missing for policy changes?",
+        "Which dated policy updates can validate the claim?",
+    ]
     assert captured["question"] == "What changed in policy?"
     assert captured["initial_answer"] == "Initial answer with gaps"
     assert captured["sub_qa_count"] == 1
+    assert len(answer_calls) == 2
+    assert answer_calls[0]["sub_qa_count"] == 1
+    assert answer_calls[1]["sub_qa_count"] == 2
     assert "Refinement decision computed refinement_needed=True reason=low_answerable_ratio:0.00" in caplog.text
     assert "Refinement decomposition complete reason=low_answerable_ratio:0.00 refined_subquestion_count=2" in caplog.text
     assert "RefinedSubQuestion[1]=What primary source evidence is missing for policy changes?" in caplog.text
     assert "Refined sub-questions prepared for Section 14 handoff count=2" in caplog.text
-    assert "SubQuestionAnswer summary count=1" in caplog.text
-    assert "SubQuestionAnswer[1]" in caplog.text and "What changed in policy?" in caplog.text
+    assert "Refinement answer path complete refined_sub_qa_count=2" in caplog.text
+    assert "SubQuestionAnswer summary count=2" in caplog.text
+    assert "SubQuestionAnswer[1]" in caplog.text and "What primary source evidence is missing for policy changes?" in caplog.text
     assert "Coordinator raw output captured" in caplog.text
     assert "Runtime agent run complete" in caplog.text
 
@@ -560,6 +580,34 @@ def test_run_pipeline_for_subquestions_runs_in_parallel_and_preserves_order(monk
     assert output_sub_qa[1].sub_answer == "generated:Sub-question two?"
     assert all(item.answerable is True for item in output_sub_qa)
     assert elapsed < 0.35
+
+
+def test_seed_refined_sub_qa_from_retrieval_builds_retrieved_payloads(monkeypatch) -> None:
+    class _Doc:
+        def __init__(self, title: str, source: str, content: str):
+            self.metadata = {"title": title, "source": source}
+            self.page_content = content
+
+    def fake_search_documents_for_context(*, vector_store, query, k, score_threshold):
+        _ = vector_store, score_threshold
+        return [_Doc(title=f"{query} Title", source="wiki://refined", content=f"Evidence for {query}")]
+
+    monkeypatch.setattr(agent_service, "search_documents_for_context", fake_search_documents_for_context)
+    monkeypatch.setattr(agent_service, "_REFINEMENT_RETRIEVAL_K", 3)
+    monkeypatch.setattr(agent_service, "_SUBQUESTION_PIPELINE_MAX_WORKERS", 2)
+
+    seeded = agent_service._seed_refined_sub_qa_from_retrieval(
+        vector_store="fake-vector-store",
+        refined_subquestions=["Refined Q1?", "Refined Q2?"],
+    )
+
+    assert len(seeded) == 2
+    assert seeded[0].sub_question == "Refined Q1?"
+    assert seeded[1].sub_question == "Refined Q2?"
+    assert seeded[0].sub_answer.startswith("1. title=Refined Q1? Title source=wiki://refined")
+    assert seeded[1].sub_answer.startswith("1. title=Refined Q2? Title source=wiki://refined")
+    assert seeded[0].tool_call_input == '{"query": "Refined Q1?", "limit": 3}'
+    assert seeded[1].tool_call_input == '{"query": "Refined Q2?", "limit": 3}'
 
 
 def test_run_runtime_agent_populates_multiple_subquestions_with_verification(monkeypatch) -> None:

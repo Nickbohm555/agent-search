@@ -60,6 +60,7 @@ _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
 _DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
 _RERANKER_CONFIG = build_reranker_config_from_env()
 _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
+_REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
 
 
 def _truncate_query(q: str) -> str:
@@ -70,6 +71,20 @@ def _estimate_retrieved_doc_count(search_output: str) -> int:
     if not isinstance(search_output, str) or not search_output.strip():
         return 0
     return len(re.findall(r"^\d+\.\s", search_output, flags=re.MULTILINE))
+
+
+def _format_retrieved_documents_for_pipeline(documents: list[Any]) -> str:
+    if not documents:
+        return "No relevant documents found."
+
+    lines: list[str] = []
+    for index, result in enumerate(documents, start=1):
+        metadata = result.metadata if hasattr(result, "metadata") and isinstance(result.metadata, dict) else {}
+        title = str(metadata.get("title") or metadata.get("wiki_page") or "Unknown title")
+        source = str(metadata.get("source") or metadata.get("wiki_url") or "Unknown source")
+        content = str(getattr(result, "page_content", "")).strip()
+        lines.append(f"{index}. title={title} source={source} content={content}")
+    return "\n".join(lines)
 
 
 def _stringify_message_content(content: Any) -> str:
@@ -570,6 +585,67 @@ def run_pipeline_for_subquestions(sub_qa: list[SubQuestionAnswer]) -> list[SubQu
     return processed
 
 
+def _seed_refined_sub_qa_from_retrieval(
+    *,
+    vector_store: Any,
+    refined_subquestions: list[str],
+) -> list[SubQuestionAnswer]:
+    if not refined_subquestions:
+        logger.info("Refinement retrieval skipped; no refined sub-questions")
+        return []
+
+    configured_workers = max(1, _SUBQUESTION_PIPELINE_MAX_WORKERS)
+    max_workers = min(configured_workers, len(refined_subquestions))
+    logger.info(
+        "Refinement retrieval start count=%s k=%s configured_max_workers=%s effective_workers=%s",
+        len(refined_subquestions),
+        _REFINEMENT_RETRIEVAL_K,
+        configured_workers,
+        max_workers,
+    )
+
+    output: list[SubQuestionAnswer | None] = [None] * len(refined_subquestions)
+
+    def _retrieve(index_and_question: tuple[int, str]) -> tuple[int, SubQuestionAnswer]:
+        index, sub_question = index_and_question
+        documents = search_documents_for_context(
+            vector_store=vector_store,
+            query=sub_question,
+            k=_REFINEMENT_RETRIEVAL_K,
+            score_threshold=None,
+        )
+        retrieved_output = _format_retrieved_documents_for_pipeline(documents)
+        docs_retrieved = len(documents)
+        logger.info(
+            "Refinement retrieval item sub_question=%s docs_retrieved=%s",
+            _truncate_query(sub_question),
+            docs_retrieved,
+        )
+        return (
+            index,
+            SubQuestionAnswer(
+                sub_question=sub_question,
+                sub_answer=retrieved_output,
+                tool_call_input=json.dumps({"query": sub_question, "limit": _REFINEMENT_RETRIEVAL_K}),
+                expanded_query="",
+                sub_agent_response="",
+            ),
+        )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_retrieve, (index, question)): index
+            for index, question in enumerate(refined_subquestions)
+        }
+        for future in as_completed(futures):
+            index, item = future.result()
+            output[index] = item
+
+    seeded = [item for item in output if item is not None]
+    logger.info("Refinement retrieval complete count=%s", len(seeded))
+    return seeded
+
+
 def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
     logger.info(
@@ -673,6 +749,24 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
                 "Refined sub-questions prepared for Section 14 handoff count=%s",
                 len(refined_subquestions),
             )
+            refined_seed_sub_qa = _seed_refined_sub_qa_from_retrieval(
+                vector_store=vector_store,
+                refined_subquestions=refined_subquestions,
+            )
+            refined_sub_qa = run_pipeline_for_subquestions(refined_seed_sub_qa)
+            _log_sub_qa_run_end_summary(refined_sub_qa)
+            refined_output = generate_initial_answer(
+                main_question=payload.query,
+                initial_search_context=initial_search_context,
+                sub_qa=refined_sub_qa,
+            )
+            logger.info(
+                "Refinement answer path complete refined_sub_qa_count=%s refined_output_length=%s",
+                len(refined_sub_qa),
+                len(refined_output),
+            )
+            output = refined_output
+            sub_qa = refined_sub_qa
     logger.info(
         "Runtime agent run complete output_length=%s output_preview=%s",
         len(output),

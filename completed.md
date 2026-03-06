@@ -758,3 +758,61 @@
   - `docker compose logs --tail=120 db`
 
 **Test results:** Complete.
+
+## Section 14: Refinement answer path
+
+**Single goal:** Run the same per-subquestion pipeline (Sections 4–9) on the refined sub-questions from Section 13, then synthesize the refined final answer. When refinement was taken, this is the final output.
+
+**Details:**
+- Input: refined sub-questions (Section 13). Reuse the same pipeline as Section 10 (expand -> search -> validate -> rerank -> answer -> check) for each refined sub-question in parallel. Output: refined answer (synthesizer combining refined sub-answers and optionally initial answer). response.output = refined answer when refinement was taken (optional initial_answer in metadata).
+
+**Tech:** Reuse pipeline and LLM from Sections 4–11. No new dependencies. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | On refinement path: call same parallel sub-question pipeline (Section 10) with refined sub-questions; synthesizer -> refined answer; response.output = refined answer. |
+| `src/backend/schemas/agent.py` (optional) | Optional response fields for initial_answer and refined_answer if both returned to client. |
+
+**How to test:** Unit: mocks + refined sub-questions -> pipeline invoked, refined answer non-empty. Integration: refinement_needed=True -> final response.output is refined answer; sub_qa/metadata reflect refined sub-questions and answers.
+
+### Implemented
+- Updated `src/backend/services/agent_service.py`:
+  - Added `_seed_refined_sub_qa_from_retrieval(...)` to retrieve docs for refined sub-questions in parallel and seed `SubQuestionAnswer` entries.
+  - Added `_format_retrieved_documents_for_pipeline(...)` so refined retrieval uses the same parseable format as retriever tool output.
+  - Wired refinement branch to run Section 14 end-to-end:
+    - refined sub-question retrieval
+    - existing parallel sub-question pipeline (`run_pipeline_for_subquestions`)
+    - refined synthesis via `generate_initial_answer(...)`
+    - final response override (`response.output` and `response.sub_qa`) with refined results when refinement executes.
+  - Added explicit visibility logs for refinement retrieval and refinement answer completion.
+- Updated `src/backend/tests/services/test_agent_service.py`:
+  - Added `test_seed_refined_sub_qa_from_retrieval_builds_retrieved_payloads`.
+  - Updated refinement-path runtime test to assert second-stage synthesis runs and final output uses refined synthesis.
+
+### Validation and useful logs
+- Restarted changed container:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv run python -m pytest tests/services/test_agent_service.py'`
+  - Result: `14 passed`
+- Backend smoke selector:
+  - `docker compose exec backend sh -lc 'uv run python -m pytest tests/api -m smoke'`
+  - Result: `3 deselected` (no smoke-selected tests)
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `{"status":"success","documents_loaded":1,"chunks_created":14}`
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in policy?"}` -> `200`
+  - Response returned populated `sub_qa` and synthesized `output`.
+- Backend logs (tail) included:
+  - `Per-subquestion pipeline parallel start count=5 configured_max_workers=4 effective_workers=4`
+  - `Per-subquestion pipeline parallel complete count=5`
+  - `Initial answer generation start question_len=23 context_items=5 sub_qa_count=5`
+  - `Refinement decision computed refinement_needed=False reason=sufficient_answerable_ratio:1.00 sub_qa_count=5`
+  - `Runtime agent run complete output_length=586 ...`
+- Frontend logs (tail) showed Vite dev server healthy (`VITE v5.4.21 ready`).
+- DB logs (tail) showed DB healthy; no runtime errors tied to Section 14 changes.
+
+**Test results:** Complete.

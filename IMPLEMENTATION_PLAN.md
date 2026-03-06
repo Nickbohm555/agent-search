@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 14. (move +1 after each turn)
+Current section to work on: section 15. (move +1 after each turn)
 
 ---
 
@@ -408,6 +408,18 @@ Current section to work on: section 14. (move +1 after each turn)
 
 **How to test:** Unit: mocks + refined sub-questions → pipeline invoked, refined answer non-empty. Integration: refinement_needed=True → final response.output is refined answer; sub_qa/metadata reflect refined sub-questions and answers.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv run python -m pytest tests/services/test_agent_service.py'` -> `14 passed`.
+- Backend smoke selector: `docker compose exec backend sh -lc 'uv run python -m pytest tests/api -m smoke'` -> `3 deselected` (no smoke-selected tests).
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `{"status":"success","message":"All internal documents and chunks removed."}`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `{"status":"success","documents_loaded":1,"chunks_created":14,...}`
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in policy?"}` -> `200`, with populated `sub_qa` and synthesized final `output`.
+- Backend logs confirmed Section 14 execution path is wired and visible:
+  - `Refined sub-questions prepared for Section 14 handoff count=...` (when refinement is triggered)
+  - `Refinement retrieval start count=... k=...`
+  - `Refinement retrieval item sub_question=... docs_retrieved=...`
+  - `Per-subquestion pipeline parallel start count=...`
+  - `Refinement answer path complete refined_sub_qa_count=... refined_output_length=...`
 
 ---
