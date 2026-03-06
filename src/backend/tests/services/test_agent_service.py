@@ -1125,6 +1125,175 @@ def test_run_runtime_agent_uses_decomposition_output_when_call_completes_within_
     assert '"Custom decomposition question?"' in captured["coordinator_message"]
 
 
+def test_run_runtime_agent_uses_fallback_sub_qa_on_coordinator_timeout(monkeypatch, caplog) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=1,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    class _SlowAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            time.sleep(1.2)
+            return {"messages": [AIMessage(content="Late coordinator output")]}
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Explain policy x?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _SlowAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Initial synthesized output",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: f"generated:{sub_question}",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="Explain policy x"),
+            db=_make_session(),
+        )
+
+    assert response.output == "Initial synthesized output"
+    assert len(response.sub_qa) == 1
+    assert response.sub_qa[0].sub_question == "Explain policy x?"
+    assert response.sub_qa[0].sub_answer == "generated:Explain policy x?"
+    assert "Runtime guardrail timeout operation=coordinator_invoke timeout_s=1" in caplog.text
+    assert "Coordinator invoke timeout; continuing with fallback sub_qa" in caplog.text
+
+
+def test_run_runtime_agent_uses_coordinator_result_when_invoke_completes_within_timeout(monkeypatch) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=2,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    class _FastAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            time.sleep(0.1)
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "Coordinator question?", "subagent_type": "rag_retriever"},
+                            }
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "Coordinator question?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Coordinator evidence.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent completed coordinator question."),
+                    AIMessage(content="Coordinator output"),
+                ]
+            }
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Decomposition-only question?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FastAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Initial synthesized output",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: f"generated:{sub_question}",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="Explain policy x"),
+        db=_make_session(),
+    )
+
+    assert response.output == "Initial synthesized output"
+    assert len(response.sub_qa) == 1
+    assert response.sub_qa[0].sub_question == "Coordinator question?"
+    assert response.sub_qa[0].sub_answer == "generated:Coordinator question?"
+
+
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
     answer_calls: list[dict[str, object]] = []

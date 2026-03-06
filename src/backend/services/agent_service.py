@@ -323,6 +323,28 @@ def _build_coordinator_input_message(decomposition_sub_questions: list[str]) -> 
     )
 
 
+def _build_fallback_sub_qa_from_decomposition(decomposition_sub_questions: list[str]) -> list[SubQuestionAnswer]:
+    fallback_sub_qa: list[SubQuestionAnswer] = []
+    for item in decomposition_sub_questions:
+        normalized = _normalize_sub_question(item)
+        if not normalized:
+            continue
+        fallback_sub_qa.append(
+            SubQuestionAnswer(
+                sub_question=normalized,
+                sub_answer="No relevant documents found.",
+                tool_call_input="{}",
+                expanded_query="",
+                sub_agent_response="",
+            )
+        )
+    logger.info(
+        "Coordinator timeout fallback sub_qa seeded from decomposition count=%s",
+        len(fallback_sub_qa),
+    )
+    return fallback_sub_qa
+
+
 def _build_decomposition_only_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str:
     serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
     return (
@@ -1061,10 +1083,24 @@ def run_runtime_agent(
         len(decomposition_sub_questions),
         json.dumps(decomposition_sub_questions, ensure_ascii=True),
     )
+    coordinator_timed_out = False
     try:
-        result = agent.invoke(
-            {"messages": [HumanMessage(content=coordinator_message)]},
-            config=config,
+        result = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.coordinator_invoke_timeout_s,
+            operation_name="coordinator_invoke",
+            fn=lambda: agent.invoke(
+                {"messages": [HumanMessage(content=coordinator_message)]},
+                config=config,
+            ),
+        )
+    except FuturesTimeoutError:
+        coordinator_timed_out = True
+        result = {"messages": []}
+        logger.warning(
+            "Coordinator invoke timeout; continuing with fallback sub_qa query=%s timeout_s=%s decomposition_sub_question_count=%s",
+            _truncate_query(payload.query),
+            _RUNTIME_TIMEOUT_CONFIG.coordinator_invoke_timeout_s,
+            len(decomposition_sub_questions),
         )
     finally:
         flush_langfuse_callback_handler(langfuse_callback)
@@ -1078,14 +1114,29 @@ def run_runtime_agent(
         messages if isinstance(messages, list) else [],
         search_database_calls=search_database_calls if search_database_calls else None,
     )
+    if coordinator_timed_out and not sub_qa:
+        sub_qa = _build_fallback_sub_qa_from_decomposition(decomposition_sub_questions)
+    elif coordinator_timed_out and sub_qa:
+        logger.info(
+            "Coordinator timeout fallback not needed; using partial captured sub_qa count=%s",
+            len(sub_qa),
+        )
     sub_qa = run_pipeline_for_subquestions(sub_qa)
     _log_sub_qa_run_end_summary(sub_qa)
-    coordinator_output = _extract_last_message_content(result)
-    logger.info(
-        "Coordinator raw output captured output_length=%s output_preview=%s",
-        len(coordinator_output),
-        coordinator_output[:200] + "..." if len(coordinator_output) > 200 else coordinator_output,
-    )
+    coordinator_output = ""
+    try:
+        coordinator_output = _extract_last_message_content(result)
+    except ValueError:
+        logger.warning(
+            "Coordinator raw output unavailable; continuing with synthesized answer from sub_qa query=%s",
+            _truncate_query(payload.query),
+        )
+    else:
+        logger.info(
+            "Coordinator raw output captured output_length=%s output_preview=%s",
+            len(coordinator_output),
+            coordinator_output[:200] + "..." if len(coordinator_output) > 200 else coordinator_output,
+        )
     output = generate_initial_answer(
         main_question=payload.query,
         initial_search_context=initial_search_context,

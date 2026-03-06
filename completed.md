@@ -1299,3 +1299,49 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200` with `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+
+## Section 7: Time guardrail — coordinator agent invoke
+
+**Single goal:** Enforce a maximum time for the coordinator agent invocation (agent.invoke with sub-questions and retriever tool).
+
+**Details:**
+- Wrap `agent.invoke(...)` in a timeout; on timeout, **do not fail**—use whatever messages/sub_qa were captured so far (or build minimal sub_qa from decomposition only) and continue to synthesis so the user still gets an answer.
+- Use config from Section 3 (e.g. `COORDINATOR_INVOKE_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap coordinator agent.invoke in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow invoke triggers timeout; normal path returns messages and sub_qa. Restart app and run one query.
+
+### Completion notes (March 6, 2026)
+- Updated `run_runtime_agent(...)` in `src/backend/services/agent_service.py` to execute coordinator `agent.invoke(...)` via `_run_with_timeout(...)` using `COORDINATOR_INVOKE_TIMEOUT_S`.
+- Added non-failing timeout fallback behavior: on coordinator timeout, runtime now continues with partial captured callback data when present, otherwise seeds minimal `sub_qa` from decomposition output.
+- Added fallback helper `_build_fallback_sub_qa_from_decomposition(...)` for decomposition-derived minimal `sub_qa` when no coordinator messages are available.
+- Added safe coordinator-output handling: if no final coordinator message exists (timeout path), runtime logs and continues synthesis from `sub_qa` without failing.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - timeout path: slow coordinator invoke triggers guardrail and fallback `sub_qa` is used.
+  - normal path: coordinator invoke within timeout preserves coordinator-derived `sub_qa` behavior.
+
+### Useful logs
+- `Runtime guardrail timeout operation=coordinator_invoke timeout_s=1`
+- `Coordinator invoke timeout; continuing with fallback sub_qa query=... timeout_s=1 decomposition_sub_question_count=...`
+- `Coordinator timeout fallback sub_qa seeded from decomposition count=...`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `POST /api/agents/run` runtime check -> `keys=['main_question','output','sub_qa']`, non-empty `sub_qa`, HTTP `200`
+- `docker compose ps` -> backend/frontend/db all up; db healthy
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` reviewed; no new change-specific backend exceptions
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `31 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility
