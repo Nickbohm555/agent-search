@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -71,6 +72,73 @@ _DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
 _RERANKER_CONFIG = build_reranker_config_from_env()
 _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
 _REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
+
+
+@dataclass(frozen=True)
+class RuntimeTimeoutConfig:
+    vector_store_acquisition_timeout_s: int
+    initial_search_timeout_s: int
+    decomposition_llm_timeout_s: int
+    coordinator_invoke_timeout_s: int
+    document_validation_timeout_s: int
+    rerank_timeout_s: int
+    subanswer_generation_timeout_s: int
+    subanswer_verification_timeout_s: int
+    subquestion_pipeline_total_timeout_s: int
+    initial_answer_timeout_s: int
+    refinement_decision_timeout_s: int
+    refinement_decomposition_timeout_s: int
+    refinement_retrieval_timeout_s: int
+    refinement_pipeline_total_timeout_s: int
+    refined_answer_timeout_s: int
+
+
+def _read_timeout_seconds(env_key: str, default: int) -> int:
+    raw_value = os.getenv(env_key, "").strip()
+    if not raw_value:
+        return default
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning(
+            "Invalid timeout env value; using default env_key=%s value=%s default=%s",
+            env_key,
+            raw_value,
+            default,
+        )
+        return default
+    if parsed <= 0:
+        logger.warning(
+            "Non-positive timeout env value; using default env_key=%s value=%s default=%s",
+            env_key,
+            parsed,
+            default,
+        )
+        return default
+    return parsed
+
+
+def build_runtime_timeout_config_from_env() -> RuntimeTimeoutConfig:
+    return RuntimeTimeoutConfig(
+        vector_store_acquisition_timeout_s=_read_timeout_seconds("VECTOR_STORE_ACQUISITION_TIMEOUT_S", 20),
+        initial_search_timeout_s=_read_timeout_seconds("INITIAL_SEARCH_TIMEOUT_S", 20),
+        decomposition_llm_timeout_s=_read_timeout_seconds("DECOMPOSITION_LLM_TIMEOUT_S", 60),
+        coordinator_invoke_timeout_s=_read_timeout_seconds("COORDINATOR_INVOKE_TIMEOUT_S", 90),
+        document_validation_timeout_s=_read_timeout_seconds("DOCUMENT_VALIDATION_TIMEOUT_S", 20),
+        rerank_timeout_s=_read_timeout_seconds("RERANK_TIMEOUT_S", 20),
+        subanswer_generation_timeout_s=_read_timeout_seconds("SUBANSWER_GENERATION_TIMEOUT_S", 60),
+        subanswer_verification_timeout_s=_read_timeout_seconds("SUBANSWER_VERIFICATION_TIMEOUT_S", 30),
+        subquestion_pipeline_total_timeout_s=_read_timeout_seconds("SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S", 120),
+        initial_answer_timeout_s=_read_timeout_seconds("INITIAL_ANSWER_TIMEOUT_S", 60),
+        refinement_decision_timeout_s=_read_timeout_seconds("REFINEMENT_DECISION_TIMEOUT_S", 30),
+        refinement_decomposition_timeout_s=_read_timeout_seconds("REFINEMENT_DECOMPOSITION_TIMEOUT_S", 60),
+        refinement_retrieval_timeout_s=_read_timeout_seconds("REFINEMENT_RETRIEVAL_TIMEOUT_S", 30),
+        refinement_pipeline_total_timeout_s=_read_timeout_seconds("REFINEMENT_PIPELINE_TOTAL_TIMEOUT_S", 120),
+        refined_answer_timeout_s=_read_timeout_seconds("REFINED_ANSWER_TIMEOUT_S", 60),
+    )
+
+
+_RUNTIME_TIMEOUT_CONFIG = build_runtime_timeout_config_from_env()
 
 
 def _truncate_query(q: str) -> str:
@@ -842,6 +910,24 @@ def run_runtime_agent(
         len(payload.query),
         model is not None,
         vector_store is not None,
+    )
+    logger.info(
+        "Runtime timeout config loaded vector_store=%ss initial_search=%ss decomposition_llm=%ss coordinator_invoke=%ss document_validation=%ss rerank=%ss subanswer_generation=%ss subanswer_verification=%ss subquestion_pipeline_total=%ss initial_answer=%ss refinement_decision=%ss refinement_decomposition=%ss refinement_retrieval=%ss refinement_pipeline_total=%ss refined_answer=%ss",
+        _RUNTIME_TIMEOUT_CONFIG.vector_store_acquisition_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.coordinator_invoke_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.subanswer_verification_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.subquestion_pipeline_total_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.initial_answer_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.refinement_decision_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.refinement_decomposition_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.refinement_retrieval_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.refinement_pipeline_total_timeout_s,
+        _RUNTIME_TIMEOUT_CONFIG.refined_answer_timeout_s,
     )
     selected_vector_store = vector_store
     if selected_vector_store is None:

@@ -1112,3 +1112,47 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`).
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`).
 - `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific blocking errors.
+
+---
+
+## Section 3: Time guardrail configuration
+
+**Single goal:** Introduce a single place (env or config) that defines timeout seconds for each RAG step so every guardrail can be configured without code changes.
+
+**Details:**
+- Define named timeout keys (e.g. `INITIAL_SEARCH_TIMEOUT_S`, `DECOMPOSITION_LLM_TIMEOUT_S`, `COORDINATOR_INVOKE_TIMEOUT_S`, etc.) and read from env with sensible defaults (e.g. 30–120s for LLM steps, 10–30s for retrieval).
+- No actual timeout enforcement in this section; only add the configuration and document it (e.g. in `.env.example` or docs).
+
+**Tech stack and dependencies**
+- No new packages; `os.getenv` or existing config pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` or a small `config.py` / env module | Declare and read timeout env vars for all steps. |
+| `.env.example` or `docs/` | Document new env vars and default values. |
+
+**How to test:** Assert that timeout values are read correctly in tests (e.g. default present, override from env when set). No runtime behavior change yet.
+
+### Completion notes (March 6, 2026)
+- Added centralized `RuntimeTimeoutConfig` in `src/backend/services/agent_service.py` with a single builder (`build_runtime_timeout_config_from_env`) covering all timeout keys needed for Sections 4–18.
+- Added robust timeout env parsing via `_read_timeout_seconds(...)` with fallback-to-default behavior and warning logs for invalid/non-positive values.
+- Added `_RUNTIME_TIMEOUT_CONFIG` load point and runtime visibility log at run start to show configured timeout values without changing runtime behavior.
+- Documented all timeout env vars and defaults in `.env.example`.
+- Added unit tests validating default timeout values and env overrides/fallback handling.
+
+### Useful logs
+- `Runtime timeout config loaded vector_store=20s initial_search=20s decomposition_llm=60s coordinator_invoke=90s ... refined_answer=60s`
+- `Invalid timeout env value; using default env_key=REFINED_ANSWER_TIMEOUT_S value=abc default=60`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `docker compose logs --tail=120 backend` included normal startup lines and no new traceback after restart.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `23 passed`
+- `docker compose ps` -> `backend`, `frontend`, `db` up (`db` healthy)
+- Log checks run for all services:
+  - `docker compose logs --tail=120 backend`
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`

@@ -27,6 +27,84 @@ def _make_session() -> Session:
     return Session(engine)
 
 
+def test_build_runtime_timeout_config_from_env_defaults(monkeypatch) -> None:
+    keys = [
+        "VECTOR_STORE_ACQUISITION_TIMEOUT_S",
+        "INITIAL_SEARCH_TIMEOUT_S",
+        "DECOMPOSITION_LLM_TIMEOUT_S",
+        "COORDINATOR_INVOKE_TIMEOUT_S",
+        "DOCUMENT_VALIDATION_TIMEOUT_S",
+        "RERANK_TIMEOUT_S",
+        "SUBANSWER_GENERATION_TIMEOUT_S",
+        "SUBANSWER_VERIFICATION_TIMEOUT_S",
+        "SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S",
+        "INITIAL_ANSWER_TIMEOUT_S",
+        "REFINEMENT_DECISION_TIMEOUT_S",
+        "REFINEMENT_DECOMPOSITION_TIMEOUT_S",
+        "REFINEMENT_RETRIEVAL_TIMEOUT_S",
+        "REFINEMENT_PIPELINE_TOTAL_TIMEOUT_S",
+        "REFINED_ANSWER_TIMEOUT_S",
+    ]
+    for key in keys:
+        monkeypatch.delenv(key, raising=False)
+
+    config = agent_service.build_runtime_timeout_config_from_env()
+
+    assert config.vector_store_acquisition_timeout_s == 20
+    assert config.initial_search_timeout_s == 20
+    assert config.decomposition_llm_timeout_s == 60
+    assert config.coordinator_invoke_timeout_s == 90
+    assert config.document_validation_timeout_s == 20
+    assert config.rerank_timeout_s == 20
+    assert config.subanswer_generation_timeout_s == 60
+    assert config.subanswer_verification_timeout_s == 30
+    assert config.subquestion_pipeline_total_timeout_s == 120
+    assert config.initial_answer_timeout_s == 60
+    assert config.refinement_decision_timeout_s == 30
+    assert config.refinement_decomposition_timeout_s == 60
+    assert config.refinement_retrieval_timeout_s == 30
+    assert config.refinement_pipeline_total_timeout_s == 120
+    assert config.refined_answer_timeout_s == 60
+
+
+def test_build_runtime_timeout_config_from_env_overrides_and_invalid_values(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("VECTOR_STORE_ACQUISITION_TIMEOUT_S", "11")
+    monkeypatch.setenv("INITIAL_SEARCH_TIMEOUT_S", "12")
+    monkeypatch.setenv("DECOMPOSITION_LLM_TIMEOUT_S", "13")
+    monkeypatch.setenv("COORDINATOR_INVOKE_TIMEOUT_S", "14")
+    monkeypatch.setenv("DOCUMENT_VALIDATION_TIMEOUT_S", "15")
+    monkeypatch.setenv("RERANK_TIMEOUT_S", "16")
+    monkeypatch.setenv("SUBANSWER_GENERATION_TIMEOUT_S", "17")
+    monkeypatch.setenv("SUBANSWER_VERIFICATION_TIMEOUT_S", "18")
+    monkeypatch.setenv("SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S", "19")
+    monkeypatch.setenv("INITIAL_ANSWER_TIMEOUT_S", "20")
+    monkeypatch.setenv("REFINEMENT_DECISION_TIMEOUT_S", "21")
+    monkeypatch.setenv("REFINEMENT_DECOMPOSITION_TIMEOUT_S", "22")
+    monkeypatch.setenv("REFINEMENT_RETRIEVAL_TIMEOUT_S", "23")
+    monkeypatch.setenv("REFINEMENT_PIPELINE_TOTAL_TIMEOUT_S", "24")
+    monkeypatch.setenv("REFINED_ANSWER_TIMEOUT_S", "abc")
+
+    with caplog.at_level(logging.WARNING):
+        config = agent_service.build_runtime_timeout_config_from_env()
+
+    assert config.vector_store_acquisition_timeout_s == 11
+    assert config.initial_search_timeout_s == 12
+    assert config.decomposition_llm_timeout_s == 13
+    assert config.coordinator_invoke_timeout_s == 14
+    assert config.document_validation_timeout_s == 15
+    assert config.rerank_timeout_s == 16
+    assert config.subanswer_generation_timeout_s == 17
+    assert config.subanswer_verification_timeout_s == 18
+    assert config.subquestion_pipeline_total_timeout_s == 19
+    assert config.initial_answer_timeout_s == 20
+    assert config.refinement_decision_timeout_s == 21
+    assert config.refinement_decomposition_timeout_s == 22
+    assert config.refinement_retrieval_timeout_s == 23
+    assert config.refinement_pipeline_total_timeout_s == 24
+    assert config.refined_answer_timeout_s == 60
+    assert "Invalid timeout env value; using default env_key=REFINED_ANSWER_TIMEOUT_S" in caplog.text
+
+
 def test_extract_sub_qa_extracts_all_fields_from_tool_and_followup_messages() -> None:
     messages = [
         AIMessage(
