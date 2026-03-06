@@ -770,3 +770,65 @@
 - `docker compose ps` -> pass (`db` healthy; `backend` and `frontend` up).
 - `docker compose logs --tail=140 backend`, `docker compose logs --tail=140 frontend`, `docker compose logs --tail=140 db` -> reviewed; no blocking startup/runtime errors.
 - `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).
+
+## Section S7: SDK install and usage documentation
+
+**Single goal:** Document how to install the generated SDK and call one endpoint (e.g. health or agents run).
+
+**Details:**
+- Install steps (e.g. `pip install -e sdk/python` or from generated folder).
+- Minimal code example: import client, set base URL, call one method. No new code deliverable; docs only.
+
+**Tech stack and dependencies**
+- Generated SDK’s own dependencies only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `agent-search/sdk/README.md` or main `README.md` | Install instructions and minimal usage example (copy-pasteable). |
+
+**How to test:** Follow the doc in a clean venv; confirm install and one successful call (against running API or mock).
+
+### Completion notes (March 6, 2026)
+- Updated `sdk/README.md` with copy-pasteable SDK installation instructions using a clean virtual environment and editable install from `sdk/python`.
+- Added minimal runnable usage examples for:
+  - health endpoint (`DefaultApi.health_api_health_get`),
+  - agents run endpoint (`AgentsApi.run_agent_api_agents_run_post`).
+- Documented configurable base URL via `AGENT_SEARCH_BASE_URL` (default `http://localhost:8000`).
+- Validated docs by executing the install flow and running a live health call through the generated SDK.
+
+### Useful logs
+- Virtualenv install output:
+  - `Successfully installed ... openapi_client-1.0.0 ...`
+- SDK runtime validation output:
+  - `HEALTH_RESPONSE {'status': 'ok'}`
+- Container restart output:
+  - `Container agent-search-frontend Restarting`
+  - `Container agent-search-backend Restarting`
+  - `Container agent-search-db Restarting`
+- `docker compose ps` after restart:
+  - `agent-search-db ... Up ... (healthy)`
+  - `agent-search-backend ... Up`
+  - `agent-search-frontend ... Up`
+- Backend logs after restart include:
+  - `Uvicorn running on http://0.0.0.0:8000`
+  - `Application startup complete.`
+- Frontend logs after restart include:
+  - `VITE v5.4.21 ready`
+  - `Local: http://localhost:5173/`
+- DB logs after restart include:
+  - `database system is ready to accept connections`
+- Post-restart health check:
+  - `HTTP/1.1 200 OK`
+  - `{"status":"ok"}`
+
+### Tests run
+- `docker compose up -d db backend frontend` -> pass.
+- `python3 -m venv .venv-sdk-s7` -> pass.
+- `source .venv-sdk-s7/bin/activate && pip install --upgrade pip && pip install -e sdk/python` -> pass.
+- `AGENT_SEARCH_BASE_URL=http://localhost:8000 python - <<'PY' ... DefaultApi.health_api_health_get() ... PY` -> pass (`HEALTH_RESPONSE {'status': 'ok'}`).
+- `docker compose restart db backend frontend` -> pass.
+- `docker compose ps` -> pass (`db` healthy; `backend` and `frontend` up).
+- `docker compose logs --no-color --tail=140 backend`, `frontend`, `db` -> reviewed; no blocking errors.
+- `curl -sS -i http://localhost:8000/api/health` -> pass (`HTTP/1.1 200 OK`, `{"status":"ok"}`).

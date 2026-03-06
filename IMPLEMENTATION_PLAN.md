@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section S7. (move +1 after each turn)
+Current section to work on: section S8. (move +1 after each turn)
 
 ---
 
@@ -171,7 +171,20 @@ Steps below turn the agent-search FastAPI API into a generated, schema-driven SD
 
 **How to test:** Run generate script; confirm output is at the documented path; confirm git state matches policy.
 
-**Test results:** (Add when section is complete.)
+**Test results:** Completed on March 6, 2026.
+- Added SDK install and usage documentation to `sdk/README.md` with copy-pasteable setup (`python3 -m venv`, `pip install -e sdk/python`) and minimal endpoint-call examples.
+- Verified the install flow in a clean virtual environment:
+  - `python3 -m venv .venv-sdk-s7`
+  - `source .venv-sdk-s7/bin/activate`
+  - `pip install --upgrade pip`
+  - `pip install -e sdk/python`
+- Verified one successful SDK call against the running API:
+  - `AGENT_SEARCH_BASE_URL=http://localhost:8000 python - <<'PY' ... health_api_health_get() ... PY` -> `HEALTH_RESPONSE {'status': 'ok'}`.
+- Restarted required app services: `docker compose restart db backend frontend`.
+- Verified runtime state and logs:
+  - `docker compose ps` -> `db` healthy; `backend` and `frontend` up.
+  - `docker compose logs --no-color --tail=140 backend`, `frontend`, `db` reviewed; no blocking startup/runtime errors.
+  - Post-restart health check `curl -sS -i http://localhost:8000/api/health` -> `HTTP/1.1 200 OK` with `{"status":"ok"}`.
 
 ---
 
