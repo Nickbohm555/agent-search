@@ -2,7 +2,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 3. (move +1 after each turn)
+Current section to work on: section 4. (move +1 after each turn)
 
 ---
 
@@ -73,7 +73,14 @@ Current section to work on: section 3. (move +1 after each turn)
 
 **How to test:** Unit: mock retriever → assert returned context is passed to decomposition. Integration: full agent request → decomposition receives non-empty context when store has relevant docs.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- Unit: `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py tests/services/test_agent_service.py'` -> `6 passed`.
+- Integration data prep: `POST /api/internal-data/wipe` -> `200`, then `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `documents_loaded=1`, `chunks_created=14`.
+- Integration run: `POST /api/agents/run` with `{"query":"What changed in policy?"}` -> `200` and response included multiple decomposition-driven sub-questions plus final answer.
+- Backend logs confirmed Section 3 wiring:
+  - `Initial decomposition context built query=What changed in policy? docs=5 k=5 score_threshold=None`
+  - `Coordinator decomposition input prepared query=What changed in policy? context_items=5`
+  - `Runtime agent run complete output_length=2042 ...`
 
 ---
 

@@ -96,3 +96,64 @@
   - `docker compose ps` (all services up; db healthy)
 
 **Test results:** Complete.
+
+## Section 3: Question decomposition informed by context
+
+**Single goal:** Produce narrow sub-questions from the user question using initial-search context (Section 2).
+
+**Details:**
+- Input: initial-search context + user question. Output: list of sub-questions (one concept per sub-question, complete questions ending with “?”).
+- Decomposition = LLM (coordinator prompt) or dedicated function; deliverable = context-aware sub-questions only. No query expansion, reranking, or refinement here.
+
+**Tech:** Existing LLM and coordinator. No new packages. No Docker change.
+
+**Files**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Update system prompt/inputs so coordinator gets initial-search context and uses it for sub-questions. |
+| `src/backend/services/agent_service.py` | Pass initial-search context (Section 2) into coordinator (e.g. first HumanMessage or dedicated context field). |
+
+**How to test:** Unit: fixed context + user question → decomposition returns list of strings, each ending with “?”. Integration: ambiguous question → sub-questions align with provided context.
+
+### Implemented
+- Strengthened coordinator decomposition instructions in `src/backend/agents/coordinator.py`:
+  - Explicitly treat `Initial retrieval context for decomposition` in the user message as grounding input.
+  - Require narrow, context-aware sub-questions with one concept per question.
+  - Require `task()` delegation to preserve question form (`?` suffix) and keep decomposition stage mandatory.
+  - Added flow-file update guardrail to prefer `read_file + edit_file` after initial file creation for clearer tool behavior.
+- Updated coordinator input construction in `src/backend/services/agent_service.py`:
+  - Always sends a structured decomposition payload (`User question` + serialized initial context, even when empty).
+  - Includes explicit decomposition constraints in the runtime message.
+  - Added runtime logging: `Coordinator decomposition input prepared ...`.
+- Added/updated unit tests:
+  - `src/backend/tests/agents/test_coordinator_agent.py` checks prompt contract for context-aware decomposition and delegation constraints.
+  - `src/backend/tests/services/test_agent_service.py` checks coordinator input payload constraints and empty-context behavior.
+
+### Validation and logs
+- Full fresh restart before implementation:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend restart after code changes:
+  - `docker compose restart backend`
+- Unit tests:
+  - `docker compose exec backend sh -lc 'uv pip install pytest && uv run pytest tests/agents/test_coordinator_agent.py tests/services/test_agent_service.py'`
+  - Result: `6 passed`
+- Integration data prep:
+  - `POST /api/internal-data/wipe` -> `200`
+  - `POST /api/internal-data/load` with `{"source_type":"wiki","wiki":{"source_id":"nato"}}` -> `200`, `documents_loaded=1`, `chunks_created=14`
+- Integration run:
+  - `POST /api/agents/run` with `{"query":"What changed in policy?"}` -> `200`
+  - Response included decomposition-driven NATO-focused sub-question pipeline and final synthesized output.
+- Backend log excerpts:
+  - `Runtime agent run start query=What changed in policy? query_length=23`
+  - `Initial decomposition context built query=What changed in policy? docs=5 k=5 score_threshold=None`
+  - `Coordinator decomposition input prepared query=What changed in policy? context_items=5`
+  - `Runtime agent run complete output_length=2042 ...`
+- Container checks/logs:
+  - `docker compose ps` -> all services up, `db` healthy.
+  - `docker compose logs --tail=80 frontend`
+  - `docker compose logs --tail=80 db`
+
+**Test results:** Complete.

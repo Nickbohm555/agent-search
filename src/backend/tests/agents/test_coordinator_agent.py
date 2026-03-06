@@ -65,7 +65,15 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert captured["backend"] == StateBackend
     assert "Call write_todos at the beginning to seed all pipeline stages" in str(captured["system_prompt"])
     assert "Use read_file and write_file" in str(captured["system_prompt"])
+    assert "Create /runtime/coordinator_flow.md once with write_file, then use read_file + edit_file for updates." in str(
+        captured["system_prompt"]
+    )
+    assert "Do not call write_file on an existing file path." in str(captured["system_prompt"])
     assert "/runtime/coordinator_flow.md" in str(captured["system_prompt"])
+    assert "Initial retrieval context for decomposition" in str(captured["system_prompt"])
+    assert "Use that context to derive context-aware initial sub-questions" in str(captured["system_prompt"])
+    assert "always end each sub-question with '?'" in str(captured["system_prompt"])
+    assert "When delegating with task(), pass the exact sub-question in description" in str(captured["system_prompt"])
     assert "For each initial sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check." in str(
         captured["system_prompt"]
     )

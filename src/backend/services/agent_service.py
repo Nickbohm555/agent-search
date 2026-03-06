@@ -55,14 +55,17 @@ def _stringify_message_content(content: Any) -> str:
 
 
 def _build_coordinator_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str:
-    if not initial_search_context:
-        return query
     serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
     return (
+        "Decomposition input:\n"
         f"User question:\n{query}\n\n"
         "Initial retrieval context for decomposition (top-k from the original question):\n"
         f"{serialized_context}\n\n"
-        "Use this context when decomposing the question into atomic sub-questions."
+        "Decomposition constraints:\n"
+        "- Produce narrow sub-questions only.\n"
+        "- One concept per sub-question.\n"
+        "- Every sub-question must be a complete question ending with '?'.\n"
+        "- Prefer entities and concepts surfaced in the provided context."
     )
 
 
@@ -373,6 +376,11 @@ def run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAg
     callbacks = [AgentLoggingCallbackHandler(), search_db_capture]
     config = {"callbacks": callbacks}
     coordinator_message = _build_coordinator_input_message(payload.query, initial_search_context)
+    logger.info(
+        "Coordinator decomposition input prepared query=%s context_items=%s",
+        _truncate_query(payload.query),
+        len(initial_search_context),
+    )
     result = agent.invoke(
         {"messages": [HumanMessage(content=coordinator_message)]},
         config=config,

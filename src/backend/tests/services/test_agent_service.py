@@ -208,12 +208,27 @@ def test_run_runtime_agent_returns_last_message_output_and_logs(monkeypatch, cap
     assert captured["context_search"]["k"] == agent_service._INITIAL_SEARCH_CONTEXT_K
     assert captured["context_docs"] == ["doc-a", "doc-b"]
     coordinator_message = captured["payload"]["messages"][0].content
+    assert "Decomposition input:" in coordinator_message
     assert "User question:" in coordinator_message
     assert "What happened in NATO policy?" in coordinator_message
     assert "Initial retrieval context for decomposition" in coordinator_message
     assert '"title": "NATO"' in coordinator_message
+    assert "Decomposition constraints:" in coordinator_message
+    assert "One concept per sub-question." in coordinator_message
+    assert "Every sub-question must be a complete question ending with '?'." in coordinator_message
     assert "Runtime agent run start" in caplog.text
     assert "Initial decomposition context built" in caplog.text
+    assert "Coordinator decomposition input prepared" in caplog.text
     assert "SubQuestionAnswer summary count=1" in caplog.text
     assert "SubQuestionAnswer[1]" in caplog.text and "What happened in NATO policy?" in caplog.text
     assert "Runtime agent run complete" in caplog.text
+
+
+def test_build_coordinator_input_message_includes_context_and_constraints_when_empty_context() -> None:
+    message = agent_service._build_coordinator_input_message("Explain VAT changes", [])
+
+    assert "User question:\nExplain VAT changes" in message
+    assert "Initial retrieval context for decomposition" in message
+    assert "[]" in message
+    assert "Decomposition constraints:" in message
+    assert "Every sub-question must be a complete question ending with '?'." in message
