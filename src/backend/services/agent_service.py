@@ -1258,11 +1258,27 @@ def run_runtime_agent(
             _RUNTIME_TIMEOUT_CONFIG.initial_answer_timeout_s,
             len(output),
         )
-    refinement_decision = should_refine(
-        question=payload.query,
-        initial_answer=output,
-        sub_qa=sub_qa,
-    )
+    try:
+        refinement_decision = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.refinement_decision_timeout_s,
+            operation_name="refinement_decision",
+            fn=lambda: should_refine(
+                question=payload.query,
+                initial_answer=output,
+                sub_qa=sub_qa,
+            ),
+        )
+    except FuturesTimeoutError:
+        refinement_decision = type(
+            "RefinementDecision",
+            (),
+            {"refinement_needed": False, "reason": "refinement_decision_timed_out"},
+        )()
+        logger.warning(
+            "Refinement decision timeout; continuing without refinement query=%s timeout_s=%s",
+            _truncate_query(payload.query),
+            _RUNTIME_TIMEOUT_CONFIG.refinement_decision_timeout_s,
+        )
     logger.info(
         "Refinement decision computed refinement_needed=%s reason=%s sub_qa_count=%s",
         refinement_decision.refinement_needed,

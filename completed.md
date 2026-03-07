@@ -1594,3 +1594,45 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 13 change-specific runtime exceptions
+
+## Section 14: Time guardrail — refinement decision
+
+**Single goal:** Enforce a maximum time for the refinement decision step (`should_refine`).
+
+**Details:**
+- Wrap `should_refine(...)` in a timeout; on timeout, **do not fail**—treat as no refinement (safe default: return initial answer) and continue.
+- Use config from Section 3 (e.g. `REFINEMENT_DECISION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap should_refine in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow should_refine triggers timeout; normal path returns decision. Restart app and run one query.
+
+### Completion notes (March 7, 2026)
+- Wrapped `should_refine(...)` in `run_runtime_agent(...)` with `_run_with_timeout(...)` using operation name `refinement_decision` and timeout `REFINEMENT_DECISION_TIMEOUT_S`.
+- Added non-failing refinement-decision timeout fallback that forces `refinement_needed=False` with reason `refinement_decision_timed_out`, so output remains the initial answer path.
+- Added explicit warning log for refinement-decision timeout fallback and retained decision summary logging for observability.
+- Added test `test_run_runtime_agent_skips_refinement_when_decision_times_out` to verify timeout fallback behavior and timeout logs.
+
+### Useful logs
+- `Runtime guardrail timeout operation=refinement_decision timeout_s=1`
+- `Refinement decision timeout; continuing without refinement query=Why did policy X change? timeout_s=1`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `POST /api/agents/run` runtime check -> HTTP `200` with response keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` reviewed for visibility.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `44 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_skips_refinement_when_decision_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 14 change-specific runtime exceptions
