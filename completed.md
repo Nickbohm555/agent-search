@@ -1507,3 +1507,44 @@
 - Backend timeout guardrail log (unit test): `Runtime guardrail timeout operation=subanswer_verification_subquestion timeout_s=1`
 - Backend fallback log (unit test): `Per-subquestion subanswer verification timeout; continuing with default unanswerable status`
 - Backend runtime check logs include per-item verification lines: `Per-subquestion subanswer verification sub_question=... answerable=False reason=...`
+## Section 12: Time guardrail — entire per-subquestion pipeline
+
+**Single goal:** Enforce a maximum total time for `run_pipeline_for_subquestions` (all sub-questions, parallel) so the whole lane is capped even if individual steps pass.
+
+**Details:**
+- Wrap `run_pipeline_for_subquestions(sub_qa)` in a timeout; on timeout, **do not fail**—return whatever sub_qa items completed so far and treat the rest as skipped/unanswerable so synthesis still runs and the user gets an answer.
+- Use config from Section 3 (e.g. `SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern; coordinate with ThreadPoolExecutor usage.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap run_pipeline_for_subquestions in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout (partial results) and normal path. |
+
+**How to test:** Unit test: pipeline that would exceed limit returns partial results or error; normal path returns full sub_qa. Restart app and run one query.
+
+### Completion notes (March 7, 2026)
+- Added total pipeline timeout handling via `run_pipeline_for_subquestions_with_timeout(...)` and kept `run_pipeline_for_subquestions(...)` as a no-timeout wrapper for compatibility.
+- Implemented partial-result fallback for timed-out sub-questions with preserved ordering and explicit timeout status (`verification_reason=subquestion_pipeline_timed_out`, `answerable=false`).
+- Wired `run_runtime_agent(...)` to apply `SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S` on the main per-subquestion pipeline lane.
+- Added runtime and unit tests for both timeout partial fallback and normal completion behavior.
+
+### Useful logs
+- `Per-subquestion pipeline total timeout; returning partial results completed=1 skipped=1 timeout_s=1`
+- `Per-subquestion pipeline parallel complete count=2 timeout_s=1`
+- `Runtime timeout config loaded ... subquestion_pipeline_total=120s ...`
+- `INFO: ... "GET /api/health HTTP/1.1" 200 OK`
+- `INFO: ... "POST /api/agents/run HTTP/1.1" 200 OK`
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `41 passed`
+- `docker compose restart backend` -> backend restarted successfully
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response schema
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 12 change-specific runtime exceptions
+
+---

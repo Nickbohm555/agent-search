@@ -1294,6 +1294,110 @@ def test_run_runtime_agent_uses_coordinator_result_when_invoke_completes_within_
     assert response.sub_qa[0].sub_answer == "generated:Coordinator question?"
 
 
+def test_run_runtime_agent_continues_with_partial_sub_qa_on_total_pipeline_timeout(monkeypatch, caplog) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=1,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    class _FastAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {"messages": [AIMessage(content="Coordinator output")]}
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Slow sub-question?", "Fast sub-question?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FastAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "_extract_sub_qa",
+        lambda *args, **kwargs: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Slow sub-question?",
+                sub_answer="1. title=Doc Slow source=wiki://slow content=slow evidence",
+                tool_call_input='{"query":"Slow sub-question?"}',
+            ),
+            agent_service.SubQuestionAnswer(
+                sub_question="Fast sub-question?",
+                sub_answer="1. title=Doc Fast source=wiki://fast content=fast evidence",
+                tool_call_input='{"query":"Fast sub-question?"}',
+            ),
+        ],
+    )
+
+    def fake_single_pipeline(item: agent_service.SubQuestionAnswer) -> agent_service.SubQuestionAnswer:
+        output = item.model_copy(deep=True)
+        if output.sub_question == "Slow sub-question?":
+            time.sleep(1.2)
+            output.sub_answer = "generated:slow"
+            output.answerable = True
+            output.verification_reason = "grounded_in_reranked_documents"
+            return output
+        time.sleep(0.1)
+        output.sub_answer = "generated:fast"
+        output.answerable = True
+        output.verification_reason = "grounded_in_reranked_documents"
+        return output
+
+    monkeypatch.setattr(agent_service, "_run_pipeline_for_single_subquestion", fake_single_pipeline)
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Initial synthesized output",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: type(
+            "Decision",
+            (),
+            {"refinement_needed": False, "reason": "enough_confidence"},
+        )(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="Explain policy x"),
+            db=_make_session(),
+        )
+
+    assert response.output == "Initial synthesized output"
+    assert len(response.sub_qa) == 2
+    assert response.sub_qa[0].sub_question == "Slow sub-question?"
+    assert response.sub_qa[0].sub_answer.startswith("1. title=Doc Slow")
+    assert response.sub_qa[0].answerable is False
+    assert response.sub_qa[0].verification_reason == "subquestion_pipeline_timed_out"
+    assert response.sub_qa[1].sub_question == "Fast sub-question?"
+    assert response.sub_qa[1].sub_answer == "generated:fast"
+    assert response.sub_qa[1].answerable is True
+    assert "Per-subquestion pipeline total timeout; returning partial results" in caplog.text
+
+
 def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch, caplog) -> None:
     captured: dict[str, object] = {}
     answer_calls: list[dict[str, object]] = []
@@ -1689,6 +1793,56 @@ def test_run_pipeline_for_subquestions_runs_in_parallel_and_preserves_order(monk
     assert output_sub_qa[1].sub_answer == "generated:Sub-question two?"
     assert all(item.answerable is True for item in output_sub_qa)
     assert elapsed < 0.35
+
+
+def test_run_pipeline_for_subquestions_with_timeout_returns_partial_and_marks_skipped(
+    monkeypatch, caplog
+) -> None:
+    input_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="Slow sub-question?",
+            sub_answer="1. title=Doc Slow source=wiki://slow content=slow evidence",
+            tool_call_input='{"query":"Slow sub-question?"}',
+        ),
+        agent_service.SubQuestionAnswer(
+            sub_question="Fast sub-question?",
+            sub_answer="1. title=Doc Fast source=wiki://fast content=fast evidence",
+            tool_call_input='{"query":"Fast sub-question?"}',
+        ),
+    ]
+
+    def fake_single_pipeline(item: agent_service.SubQuestionAnswer) -> agent_service.SubQuestionAnswer:
+        output = item.model_copy(deep=True)
+        if output.sub_question == "Slow sub-question?":
+            time.sleep(1.2)
+            output.sub_answer = "generated:slow"
+            output.answerable = True
+            output.verification_reason = "grounded_in_reranked_documents"
+            return output
+        time.sleep(0.1)
+        output.sub_answer = "generated:fast"
+        output.answerable = True
+        output.verification_reason = "grounded_in_reranked_documents"
+        return output
+
+    monkeypatch.setattr(agent_service, "_run_pipeline_for_single_subquestion", fake_single_pipeline)
+    monkeypatch.setattr(agent_service, "_SUBQUESTION_PIPELINE_MAX_WORKERS", 2)
+
+    with caplog.at_level(logging.WARNING):
+        output_sub_qa = agent_service.run_pipeline_for_subquestions_with_timeout(
+            sub_qa=input_sub_qa,
+            total_timeout_s=1,
+        )
+
+    assert len(output_sub_qa) == 2
+    assert output_sub_qa[0].sub_question == "Slow sub-question?"
+    assert output_sub_qa[0].sub_answer.startswith("1. title=Doc Slow")
+    assert output_sub_qa[0].answerable is False
+    assert output_sub_qa[0].verification_reason == "subquestion_pipeline_timed_out"
+    assert output_sub_qa[1].sub_question == "Fast sub-question?"
+    assert output_sub_qa[1].sub_answer == "generated:fast"
+    assert output_sub_qa[1].answerable is True
+    assert "Per-subquestion pipeline total timeout; returning partial results" in caplog.text
 
 
 def test_run_pipeline_for_single_subquestion_skips_document_validation_on_timeout(monkeypatch, caplog) -> None:

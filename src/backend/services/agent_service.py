@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed, wait
 from dataclasses import dataclass
 from typing import Any
 
@@ -63,6 +63,7 @@ _VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE = (
 )
 _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT = "Answer not available in time."
 _SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON = "verification_timed_out"
+_SUBQUESTION_PIPELINE_TIMEOUT_FALLBACK_REASON = "subquestion_pipeline_timed_out"
 
 
 _QUERY_LOG_MAX = 200
@@ -897,6 +898,21 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
 
 
 def run_pipeline_for_subquestions(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
+    return run_pipeline_for_subquestions_with_timeout(sub_qa=sub_qa, total_timeout_s=None)
+
+
+def _build_subquestion_pipeline_timeout_fallback(item: SubQuestionAnswer) -> SubQuestionAnswer:
+    fallback_item = item.model_copy(deep=True)
+    fallback_item.answerable = False
+    fallback_item.verification_reason = _SUBQUESTION_PIPELINE_TIMEOUT_FALLBACK_REASON
+    return fallback_item
+
+
+def run_pipeline_for_subquestions_with_timeout(
+    *,
+    sub_qa: list[SubQuestionAnswer],
+    total_timeout_s: int | None,
+) -> list[SubQuestionAnswer]:
     if not sub_qa:
         logger.info("Per-subquestion pipeline skipped; no sub-questions")
         return []
@@ -915,13 +931,34 @@ def run_pipeline_for_subquestions(sub_qa: list[SubQuestionAnswer]) -> list[SubQu
             executor.submit(_run_pipeline_for_single_subquestion, item): index
             for index, item in enumerate(sub_qa)
         }
-        for future in as_completed(futures):
-            index = futures[future]
-            output[index] = future.result()
+
+        if total_timeout_s is None:
+            for future in as_completed(futures):
+                index = futures[future]
+                output[index] = future.result()
+        else:
+            done, pending = wait(set(futures.keys()), timeout=total_timeout_s)
+            for future in done:
+                index = futures[future]
+                output[index] = future.result()
+            if pending:
+                for future in pending:
+                    future.cancel()
+                for future in pending:
+                    index = futures[future]
+                    output[index] = _build_subquestion_pipeline_timeout_fallback(sub_qa[index])
+                logger.warning(
+                    "Per-subquestion pipeline total timeout; returning partial results completed=%s skipped=%s timeout_s=%s",
+                    len(done),
+                    len(pending),
+                    total_timeout_s,
+                )
+
     processed = [item for item in output if item is not None]
     logger.info(
-        "Per-subquestion pipeline parallel complete count=%s",
+        "Per-subquestion pipeline parallel complete count=%s timeout_s=%s",
         len(processed),
+        total_timeout_s,
     )
     return processed
 
@@ -1170,7 +1207,10 @@ def run_runtime_agent(
             "Coordinator timeout fallback not needed; using partial captured sub_qa count=%s",
             len(sub_qa),
         )
-    sub_qa = run_pipeline_for_subquestions(sub_qa)
+    sub_qa = run_pipeline_for_subquestions_with_timeout(
+        sub_qa=sub_qa,
+        total_timeout_s=_RUNTIME_TIMEOUT_CONFIG.subquestion_pipeline_total_timeout_s,
+    )
     _log_sub_qa_run_end_summary(sub_qa)
     coordinator_output = ""
     try:
