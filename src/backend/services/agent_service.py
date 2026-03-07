@@ -1291,11 +1291,23 @@ def run_runtime_agent(
             refinement_decision.refinement_needed,
             _truncate_query(refinement_decision.reason),
         )
-        refined_subquestions = refine_subquestions(
-            question=payload.query,
-            initial_answer=output,
-            sub_qa=sub_qa,
-        )
+        try:
+            refined_subquestions = _run_with_timeout(
+                timeout_s=_RUNTIME_TIMEOUT_CONFIG.refinement_decomposition_timeout_s,
+                operation_name="refinement_decomposition",
+                fn=lambda: refine_subquestions(
+                    question=payload.query,
+                    initial_answer=output,
+                    sub_qa=sub_qa,
+                ),
+            )
+        except FuturesTimeoutError:
+            refined_subquestions = []
+            logger.warning(
+                "Refinement decomposition timeout; continuing with initial answer query=%s timeout_s=%s",
+                _truncate_query(payload.query),
+                _RUNTIME_TIMEOUT_CONFIG.refinement_decomposition_timeout_s,
+            )
         logger.info(
             "Refinement decomposition complete reason=%s refined_subquestion_count=%s",
             _truncate_query(refinement_decision.reason),

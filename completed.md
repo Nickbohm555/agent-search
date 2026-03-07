@@ -1636,3 +1636,45 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 14 change-specific runtime exceptions
+
+## Section 15: Time guardrail — refinement decomposition
+
+**Single goal:** Enforce a maximum time for refinement decomposition (`refine_subquestions`).
+
+**Details:**
+- Wrap `refine_subquestions(...)` in a timeout; on timeout, **do not fail**—use empty list (no refined sub-questions) and return initial answer as final output so the user still gets a response.
+- Use config from Section 3 (e.g. `REFINEMENT_DECOMPOSITION_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap refine_subquestions in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow refine_subquestions triggers timeout; normal path returns list. Restart app and run one query that triggers refinement.
+
+### Completion notes (March 7, 2026)
+- Wrapped `refine_subquestions(...)` in `run_runtime_agent(...)` via `_run_with_timeout(...)` with operation name `refinement_decomposition` and timeout `REFINEMENT_DECOMPOSITION_TIMEOUT_S`.
+- Added non-failing fallback on timeout: refined sub-questions default to an empty list, which keeps the initial answer as final output.
+- Added warning-level timeout log for visibility and retained refinement decomposition summary logs.
+- Added test `test_run_runtime_agent_skips_refinement_when_decomposition_times_out` to verify timeout fallback and log emission.
+
+### Useful logs
+- `Runtime guardrail timeout operation=refinement_decomposition timeout_s=1`
+- `Refinement decomposition timeout; continuing with initial answer query=Why did policy X change? timeout_s=1`
+- `Refinement decomposition complete reason=needs_refinement refined_subquestion_count=0`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `POST /api/agents/run` runtime check -> HTTP `200` with response keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` reviewed for visibility.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `45 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 15 change-specific runtime exceptions
