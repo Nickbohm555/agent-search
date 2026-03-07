@@ -1294,6 +1294,174 @@ def test_run_runtime_agent_uses_coordinator_result_when_invoke_completes_within_
     assert response.sub_qa[0].sub_answer == "generated:Coordinator question?"
 
 
+def test_run_runtime_agent_uses_partial_fallback_when_initial_answer_times_out(monkeypatch, caplog) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=1,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FastAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {"messages": [AIMessage(content="Coordinator output")]}
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Subquestion A?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FastAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "_extract_sub_qa",
+        lambda *args, **kwargs: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Subquestion A?",
+                sub_answer="Partial evidence from subanswer A.",
+                tool_call_input='{"query":"Subquestion A?"}',
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "run_pipeline_for_subquestions_with_timeout",
+        lambda *, sub_qa, total_timeout_s: sub_qa,
+    )
+
+    def slow_generate_initial_answer(*, main_question, initial_search_context, sub_qa):
+        _ = main_question, initial_search_context, sub_qa
+        time.sleep(1.2)
+        return "This should not be returned"
+
+    monkeypatch.setattr(agent_service, "generate_initial_answer", slow_generate_initial_answer)
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: captured.update({"decision_initial_answer": initial_answer}) or type(
+            "Decision",
+            (),
+            {"refinement_needed": False, "reason": "fallback_used"},
+        )(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="Why did policy X change?"),
+            db=_make_session(),
+        )
+
+    assert response.output.startswith(agent_service._INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX)
+    assert "Partial evidence from subanswer A." in response.output
+    assert captured["decision_initial_answer"] == response.output
+    assert "Runtime guardrail timeout operation=initial_answer_generation timeout_s=1" in caplog.text
+    assert "Initial answer generation timeout; continuing with partial fallback" in caplog.text
+
+
+def test_run_runtime_agent_uses_generated_initial_answer_when_within_timeout(monkeypatch) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=original_config.subquestion_pipeline_total_timeout_s,
+            initial_answer_timeout_s=2,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=original_config.refinement_pipeline_total_timeout_s,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    captured: dict[str, object] = {}
+
+    class _FastAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {"messages": [AIMessage(content="Coordinator output")]}
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Subquestion A?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FastAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "_extract_sub_qa",
+        lambda *args, **kwargs: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Subquestion A?",
+                sub_answer="Evidence A",
+                tool_call_input='{"query":"Subquestion A?"}',
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "run_pipeline_for_subquestions_with_timeout",
+        lambda *, sub_qa, total_timeout_s: sub_qa,
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_initial_answer",
+        lambda *, main_question, initial_search_context, sub_qa: "Generated initial answer",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: captured.update({"decision_initial_answer": initial_answer}) or type(
+            "Decision",
+            (),
+            {"refinement_needed": False, "reason": "enough_confidence"},
+        )(),
+    )
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="Why did policy X change?"),
+        db=_make_session(),
+    )
+
+    assert response.output == "Generated initial answer"
+    assert captured["decision_initial_answer"] == "Generated initial answer"
+
+
 def test_run_runtime_agent_continues_with_partial_sub_qa_on_total_pipeline_timeout(monkeypatch, caplog) -> None:
     original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
     monkeypatch.setattr(

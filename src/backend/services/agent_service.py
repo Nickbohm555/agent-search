@@ -61,6 +61,7 @@ _SEARCH_DATABASE_TOOL_NAME = "search_database"
 _VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE = (
     "Knowledge base retrieval is temporarily unavailable. Please try again in a moment."
 )
+_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX = "Answer generation timed out; partial context only."
 _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT = "Answer not available in time."
 _SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON = "verification_timed_out"
 _SUBQUESTION_PIPELINE_TIMEOUT_FALLBACK_REASON = "subquestion_pipeline_timed_out"
@@ -908,6 +909,14 @@ def _build_subquestion_pipeline_timeout_fallback(item: SubQuestionAnswer) -> Sub
     return fallback_item
 
 
+def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> str:
+    partial_answers = [item.sub_answer.strip() for item in sub_qa if isinstance(item.sub_answer, str) and item.sub_answer.strip()]
+    if not partial_answers:
+        return _INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX
+    joined = " ".join(partial_answers)
+    return f"{_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX} {joined}"
+
+
 def run_pipeline_for_subquestions_with_timeout(
     *,
     sub_qa: list[SubQuestionAnswer],
@@ -1226,11 +1235,29 @@ def run_runtime_agent(
             len(coordinator_output),
             coordinator_output[:200] + "..." if len(coordinator_output) > 200 else coordinator_output,
         )
-    output = generate_initial_answer(
-        main_question=payload.query,
-        initial_search_context=initial_search_context,
-        sub_qa=sub_qa,
-    )
+    try:
+        output = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.initial_answer_timeout_s,
+            operation_name="initial_answer_generation",
+            fn=lambda: generate_initial_answer(
+                main_question=payload.query,
+                initial_search_context=initial_search_context,
+                sub_qa=sub_qa,
+            ),
+        )
+        logger.info(
+            "Initial answer generation completed within timeout timeout_s=%s output_length=%s",
+            _RUNTIME_TIMEOUT_CONFIG.initial_answer_timeout_s,
+            len(output),
+        )
+    except FuturesTimeoutError:
+        output = _build_initial_answer_timeout_fallback(sub_qa)
+        logger.warning(
+            "Initial answer generation timeout; continuing with partial fallback query=%s timeout_s=%s fallback_length=%s",
+            _truncate_query(payload.query),
+            _RUNTIME_TIMEOUT_CONFIG.initial_answer_timeout_s,
+            len(output),
+        )
     refinement_decision = should_refine(
         question=payload.query,
         initial_answer=output,

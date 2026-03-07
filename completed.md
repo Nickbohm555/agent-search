@@ -1548,3 +1548,49 @@
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 12 change-specific runtime exceptions
 
 ---
+
+## Section 13: Time guardrail — initial answer generation
+
+**Single goal:** Enforce a maximum time for generating the initial answer from context and sub_qa (`generate_initial_answer`).
+
+**Details:**
+- Wrap `generate_initial_answer(...)` in a timeout; on timeout, **do not fail**—return a fallback string (e.g. concatenate available subanswers or “Answer generation timed out; partial context only”) so the API still returns a response.
+- Use config from Section 3 (e.g. `INITIAL_ANSWER_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap generate_initial_answer in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow generate_initial_answer triggers timeout; normal path returns output. Restart app and run one query.
+
+### Completion notes (March 7, 2026)
+- Wrapped initial answer synthesis in `run_runtime_agent(...)` using `_run_with_timeout(...)` with operation name `initial_answer_generation` and timeout `INITIAL_ANSWER_TIMEOUT_S`.
+- Added non-failing fallback builder `_build_initial_answer_timeout_fallback(...)` and fallback prefix constant `_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX`.
+- On timeout, runtime now returns a partial fallback answer that includes available subanswers (when present) and continues through the normal response path.
+- Added explicit visibility logs for both successful in-time initial answer generation and timeout fallback behavior.
+- Added two tests in `src/backend/tests/services/test_agent_service.py`:
+  - `test_run_runtime_agent_uses_partial_fallback_when_initial_answer_times_out`
+  - `test_run_runtime_agent_uses_generated_initial_answer_when_within_timeout`
+
+### Useful logs
+- `Runtime guardrail timeout operation=initial_answer_generation timeout_s=1`
+- `Initial answer generation timeout; continuing with partial fallback query=Why did policy X change? timeout_s=1 fallback_length=85`
+- `Initial answer generation completed within timeout timeout_s=60 output_length=...`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `POST /api/agents/run` runtime check -> HTTP `200` with response keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` reviewed for visibility.
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `43 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_uses_partial_fallback_when_initial_answer_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 13 change-specific runtime exceptions
