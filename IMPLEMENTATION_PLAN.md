@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 18. (move +1 after each turn)
+Current section to work on: section 19. (move +1 after each turn)
 
 **Guardrail policy:** Time guardrails (Sections 3–18) **do not fail** the run. On timeout, force a return (partial result, fallback, or safe default) and continue so the pipeline stays fast and the user always gets an answer when possible.
 
@@ -529,6 +529,13 @@ Current section to work on: section 18. (move +1 after each turn)
 
 **How to test:** Unit test: slow refined answer generation triggers timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_keeps_initial_answer_when_refined_answer_generation_times_out tests/services/test_agent_service.py::test_run_runtime_agent_refinement_pipeline_completes_within_timeout tests/services/test_agent_service.py::test_run_runtime_agent_flags_refinement_path_when_decision_true -q'` -> `3 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `49 passed`
+- `docker compose restart backend` -> backend restarted successfully
+- `docker compose ps` -> `backend`, `frontend`, and `db` all running (`backend` restarted; `db` healthy)
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in policy?"}'` -> `200 OK`, refinement path executed, and response schema remained unchanged (`main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=260 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; backend includes `Refinement answer generation completed within timeout timeout_s=60 ...` with no Section 18 runtime exceptions
 
 ---

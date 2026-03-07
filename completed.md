@@ -1766,3 +1766,48 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 17 change-specific runtime exceptions
+
+## Section 18: Time guardrail — refined answer generation
+
+**Single goal:** Enforce a maximum time for generating the refined final answer (second `generate_initial_answer` call in the refinement path).
+
+**Details:**
+- Wrap the refined-answer `generate_initial_answer(...)` call in a timeout; on timeout, **do not fail**—keep initial answer as final output so the user always gets a response.
+- Use config from Section 3 (e.g. same `INITIAL_ANSWER_TIMEOUT_S` or `REFINED_ANSWER_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap refined generate_initial_answer in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow refined answer generation triggers timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
+
+### Completion notes (March 7, 2026)
+- Wrapped the refinement-path `generate_initial_answer(...)` call with `_run_with_timeout(...)` using operation name `refined_answer_generation` and `REFINED_ANSWER_TIMEOUT_S`.
+- Added timeout fallback behavior for refined synthesis: on timeout, retain the already-generated initial answer as final output while still returning refined `sub_qa` details.
+- Added explicit observability logs for both in-time refined answer generation and timeout fallback.
+- Added `test_run_runtime_agent_keeps_initial_answer_when_refined_answer_generation_times_out` for timeout fallback behavior.
+- Updated refinement normal-path assertions to validate the new success log message.
+
+### Useful logs
+- `Runtime guardrail timeout operation=refined_answer_generation timeout_s=1`
+- `Refined answer generation timeout; keeping initial answer query=Why did policy X change? timeout_s=1 initial_output_length=14`
+- `Refinement answer generation completed within timeout timeout_s=60 refined_sub_qa_count=6 refined_output_length=274`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in policy?"}'` -> HTTP `200` with response keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=260 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 18 runtime exceptions
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_keeps_initial_answer_when_refined_answer_generation_times_out tests/services/test_agent_service.py::test_run_runtime_agent_refinement_pipeline_completes_within_timeout tests/services/test_agent_service.py::test_run_runtime_agent_flags_refinement_path_when_decision_true -q'` -> `3 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `49 passed`
+- `docker compose restart backend` -> pass
+- `docker compose ps` -> `backend`, `frontend`, and `db` running (`db` healthy)
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in policy?"}'` -> pass (HTTP `200`; refinement path exercised; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=260 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility

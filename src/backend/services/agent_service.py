@@ -1377,17 +1377,30 @@ def run_runtime_agent(
                 total_timeout_s=_RUNTIME_TIMEOUT_CONFIG.refinement_pipeline_total_timeout_s,
             )
             _log_sub_qa_run_end_summary(refined_sub_qa)
-            refined_output = generate_initial_answer(
-                main_question=payload.query,
-                initial_search_context=initial_search_context,
-                sub_qa=refined_sub_qa,
-            )
-            logger.info(
-                "Refinement answer path complete refined_sub_qa_count=%s refined_output_length=%s",
-                len(refined_sub_qa),
-                len(refined_output),
-            )
-            output = refined_output
+            try:
+                refined_output = _run_with_timeout(
+                    timeout_s=_RUNTIME_TIMEOUT_CONFIG.refined_answer_timeout_s,
+                    operation_name="refined_answer_generation",
+                    fn=lambda: generate_initial_answer(
+                        main_question=payload.query,
+                        initial_search_context=initial_search_context,
+                        sub_qa=refined_sub_qa,
+                    ),
+                )
+                logger.info(
+                    "Refinement answer generation completed within timeout timeout_s=%s refined_sub_qa_count=%s refined_output_length=%s",
+                    _RUNTIME_TIMEOUT_CONFIG.refined_answer_timeout_s,
+                    len(refined_sub_qa),
+                    len(refined_output),
+                )
+                output = refined_output
+            except FuturesTimeoutError:
+                logger.warning(
+                    "Refined answer generation timeout; keeping initial answer query=%s timeout_s=%s initial_output_length=%s",
+                    _truncate_query(payload.query),
+                    _RUNTIME_TIMEOUT_CONFIG.refined_answer_timeout_s,
+                    len(output),
+                )
             sub_qa = refined_sub_qa
     logger.info(
         "Runtime agent run complete output_length=%s output_preview=%s",
