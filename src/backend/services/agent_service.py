@@ -1328,10 +1328,45 @@ def run_runtime_agent(
                 "Refined sub-questions prepared for Section 14 handoff count=%s",
                 len(refined_subquestions),
             )
-            refined_seed_sub_qa = _seed_refined_sub_qa_from_retrieval(
-                vector_store=selected_vector_store,
-                refined_subquestions=refined_subquestions,
-            )
+            try:
+                refined_seed_sub_qa = _run_with_timeout(
+                    timeout_s=_RUNTIME_TIMEOUT_CONFIG.refinement_retrieval_timeout_s,
+                    operation_name="refinement_retrieval",
+                    fn=lambda: _seed_refined_sub_qa_from_retrieval(
+                        vector_store=selected_vector_store,
+                        refined_subquestions=refined_subquestions,
+                    ),
+                )
+                logger.info(
+                    "Refinement retrieval completed within timeout timeout_s=%s seeded_count=%s",
+                    _RUNTIME_TIMEOUT_CONFIG.refinement_retrieval_timeout_s,
+                    len(refined_seed_sub_qa),
+                )
+            except FuturesTimeoutError:
+                refined_seed_sub_qa = []
+                logger.warning(
+                    "Refinement retrieval timeout; continuing with initial answer query=%s timeout_s=%s",
+                    _truncate_query(payload.query),
+                    _RUNTIME_TIMEOUT_CONFIG.refinement_retrieval_timeout_s,
+                )
+            if not refined_seed_sub_qa:
+                logger.warning(
+                    "Refinement retrieval produced no seeded sub-questions; keeping initial answer output"
+                )
+                logger.info(
+                    "Refinement answer path skipped due to empty seeded retrieval results refined_subquestion_count=%s",
+                    len(refined_subquestions),
+                )
+                logger.info(
+                    "Runtime agent run complete output_length=%s output_preview=%s",
+                    len(output),
+                    output[:200] + "..." if len(output) > 200 else output,
+                )
+                return RuntimeAgentRunResponse(
+                    main_question=payload.query,
+                    sub_qa=sub_qa,
+                    output=output,
+                )
             refined_sub_qa = run_pipeline_for_subquestions(refined_seed_sub_qa)
             _log_sub_qa_run_end_summary(refined_sub_qa)
             refined_output = generate_initial_answer(

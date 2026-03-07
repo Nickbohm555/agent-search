@@ -4,7 +4,7 @@
 
 Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
 
-Current section to work on: section 16. (move +1 after each turn)
+Current section to work on: section 17. (move +1 after each turn)
 
 **Guardrail policy:** Time guardrails (Sections 3–18) **do not fail** the run. On timeout, force a return (partial result, fallback, or safe default) and continue so the pipeline stays fast and the user always gets an answer when possible.
 
@@ -470,7 +470,13 @@ Current section to work on: section 16. (move +1 after each turn)
 
 **How to test:** Unit test: slow refinement retrieval triggers timeout; normal path returns seeded sub_qa. Restart app and run one query that triggers refinement.
 
-**Test results:** (Add when section is complete.)
+**Test results:**
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `46 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_skips_refinement_when_retrieval_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed` with refinement retrieval timeout guardrail logs
+- `docker compose restart backend` -> backend restarted successfully
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 16 change-specific runtime exceptions
 
 ---
 

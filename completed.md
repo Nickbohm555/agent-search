@@ -1678,3 +1678,49 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 15 change-specific runtime exceptions
+
+## Section 16: Time guardrail — refinement retrieval
+
+**Single goal:** Enforce a maximum time for refinement retrieval (`_seed_refined_sub_qa_from_retrieval`).
+
+**Details:**
+- Wrap `_seed_refined_sub_qa_from_retrieval(...)` in a timeout; on timeout, **do not fail**—return partial list or empty and continue (use initial answer as final if refinement path yields nothing).
+- Use config from Section 3 (e.g. `REFINEMENT_RETRIEVAL_TIMEOUT_S`).
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap _seed_refined_sub_qa_from_retrieval in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: slow refinement retrieval triggers timeout; normal path returns seeded sub_qa. Restart app and run one query that triggers refinement.
+
+### Completion notes (March 7, 2026)
+- Wrapped refinement retrieval seeding in `run_runtime_agent(...)` with `_run_with_timeout(...)` using operation name `refinement_retrieval` and timeout `REFINEMENT_RETRIEVAL_TIMEOUT_S`.
+- Added non-failing refinement retrieval timeout fallback: on timeout, seeded refined sub-questions become empty and the service keeps the initial answer path.
+- Added explicit guard for empty seeded refinement retrieval results (timeout or empty retrieval) to skip refinement pipeline/synthesis and keep the initial answer output.
+- Added timeout visibility logs and completion logs for successful in-time refinement retrieval.
+- Added unit test `test_run_runtime_agent_skips_refinement_when_retrieval_times_out` validating timeout logs and no refinement pipeline execution on timeout.
+
+### Useful logs
+- `Runtime guardrail timeout operation=refinement_retrieval timeout_s=1`
+- `Refinement retrieval timeout; continuing with initial answer query=Why did policy X change? timeout_s=1`
+- `Refinement retrieval produced no seeded sub-questions; keeping initial answer output`
+- `Refinement retrieval start count=6 k=10 configured_max_workers=4 effective_workers=4`
+- `Refinement retrieval complete count=6`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> HTTP `200` with keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `46 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_skips_refinement_when_retrieval_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 16 change-specific runtime exceptions
