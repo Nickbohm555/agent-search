@@ -1367,7 +1367,15 @@ def run_runtime_agent(
                     sub_qa=sub_qa,
                     output=output,
                 )
-            refined_sub_qa = run_pipeline_for_subquestions(refined_seed_sub_qa)
+            logger.info(
+                "Refinement per-subquestion pipeline start count=%s total_timeout_s=%s",
+                len(refined_seed_sub_qa),
+                _RUNTIME_TIMEOUT_CONFIG.refinement_pipeline_total_timeout_s,
+            )
+            refined_sub_qa = run_pipeline_for_subquestions_with_timeout(
+                sub_qa=refined_seed_sub_qa,
+                total_timeout_s=_RUNTIME_TIMEOUT_CONFIG.refinement_pipeline_total_timeout_s,
+            )
             _log_sub_qa_run_end_summary(refined_sub_qa)
             refined_output = generate_initial_answer(
                 main_question=payload.query,

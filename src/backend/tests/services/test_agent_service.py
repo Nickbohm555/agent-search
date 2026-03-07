@@ -1752,6 +1752,247 @@ def test_run_runtime_agent_skips_refinement_when_retrieval_times_out(monkeypatch
     assert "Refinement retrieval produced no seeded sub-questions; keeping initial answer output" in caplog.text
 
 
+def test_run_runtime_agent_refinement_pipeline_timeout_returns_partial(monkeypatch, caplog) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=5,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=1,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    class _FastAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {"messages": [AIMessage(content="Coordinator output")]}
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Subquestion A?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FastAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "_extract_sub_qa",
+        lambda *args, **kwargs: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Subquestion A?",
+                sub_answer="Initial evidence",
+                tool_call_input='{"query":"Subquestion A?"}',
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: type(
+            "Decision",
+            (),
+            {"refinement_needed": True, "reason": "needs_refinement"},
+        )(),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "refine_subquestions",
+        lambda *, question, initial_answer, sub_qa: ["Refined slow?", "Refined fast?"],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "_seed_refined_sub_qa_from_retrieval",
+        lambda *, vector_store, refined_subquestions: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Refined slow?",
+                sub_answer="Slow evidence",
+                tool_call_input='{"query":"Refined slow?"}',
+            ),
+            agent_service.SubQuestionAnswer(
+                sub_question="Refined fast?",
+                sub_answer="Fast evidence",
+                tool_call_input='{"query":"Refined fast?"}',
+            ),
+        ],
+    )
+
+    def fake_single_pipeline(item: agent_service.SubQuestionAnswer) -> agent_service.SubQuestionAnswer:
+        output = item.model_copy(deep=True)
+        if output.sub_question == "Subquestion A?":
+            time.sleep(0.1)
+            output.sub_answer = "Initial processed answer"
+            output.answerable = True
+            output.verification_reason = "grounded_in_reranked_documents"
+            return output
+        if output.sub_question == "Refined slow?":
+            time.sleep(1.2)
+            output.sub_answer = "Refined slow processed"
+            output.answerable = True
+            output.verification_reason = "grounded_in_reranked_documents"
+            return output
+        time.sleep(0.1)
+        output.sub_answer = "Refined fast processed"
+        output.answerable = True
+        output.verification_reason = "grounded_in_reranked_documents"
+        return output
+
+    monkeypatch.setattr(agent_service, "_run_pipeline_for_single_subquestion", fake_single_pipeline)
+
+    def fake_generate_initial_answer(*, main_question, initial_search_context, sub_qa):
+        _ = main_question, initial_search_context
+        if sub_qa and sub_qa[0].sub_question.startswith("Refined"):
+            return "Refined answer after partial pipeline"
+        return "Initial answer"
+
+    monkeypatch.setattr(agent_service, "generate_initial_answer", fake_generate_initial_answer)
+
+    with caplog.at_level(logging.WARNING):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="Why did policy X change?"),
+            db=_make_session(),
+        )
+
+    assert response.output == "Refined answer after partial pipeline"
+    assert len(response.sub_qa) == 2
+    assert response.sub_qa[0].sub_question == "Refined slow?"
+    assert response.sub_qa[0].answerable is False
+    assert response.sub_qa[0].verification_reason == "subquestion_pipeline_timed_out"
+    assert response.sub_qa[1].sub_question == "Refined fast?"
+    assert response.sub_qa[1].answerable is True
+    assert response.sub_qa[1].verification_reason == "grounded_in_reranked_documents"
+    assert "Per-subquestion pipeline total timeout; returning partial results" in caplog.text
+
+
+def test_run_runtime_agent_refinement_pipeline_completes_within_timeout(monkeypatch, caplog) -> None:
+    original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
+    monkeypatch.setattr(
+        agent_service,
+        "_RUNTIME_TIMEOUT_CONFIG",
+        agent_service.RuntimeTimeoutConfig(
+            vector_store_acquisition_timeout_s=original_config.vector_store_acquisition_timeout_s,
+            initial_search_timeout_s=original_config.initial_search_timeout_s,
+            decomposition_llm_timeout_s=original_config.decomposition_llm_timeout_s,
+            coordinator_invoke_timeout_s=original_config.coordinator_invoke_timeout_s,
+            document_validation_timeout_s=original_config.document_validation_timeout_s,
+            rerank_timeout_s=original_config.rerank_timeout_s,
+            subanswer_generation_timeout_s=original_config.subanswer_generation_timeout_s,
+            subanswer_verification_timeout_s=original_config.subanswer_verification_timeout_s,
+            subquestion_pipeline_total_timeout_s=5,
+            initial_answer_timeout_s=original_config.initial_answer_timeout_s,
+            refinement_decision_timeout_s=original_config.refinement_decision_timeout_s,
+            refinement_decomposition_timeout_s=original_config.refinement_decomposition_timeout_s,
+            refinement_retrieval_timeout_s=original_config.refinement_retrieval_timeout_s,
+            refinement_pipeline_total_timeout_s=2,
+            refined_answer_timeout_s=original_config.refined_answer_timeout_s,
+        ),
+    )
+
+    class _FastAgent:
+        def invoke(self, payload, **kwargs):
+            _ = payload, kwargs
+            return {"messages": [AIMessage(content="Coordinator output")]}
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **kwargs: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: [])
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda *, query, initial_search_context, model=None: '["Subquestion A?"]',
+    )
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **kwargs: _FastAgent())
+    monkeypatch.setattr(
+        agent_service,
+        "_extract_sub_qa",
+        lambda *args, **kwargs: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Subquestion A?",
+                sub_answer="Initial evidence",
+                tool_call_input='{"query":"Subquestion A?"}',
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "should_refine",
+        lambda *, question, initial_answer, sub_qa: type(
+            "Decision",
+            (),
+            {"refinement_needed": True, "reason": "needs_refinement"},
+        )(),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "refine_subquestions",
+        lambda *, question, initial_answer, sub_qa: ["Refined first?", "Refined second?"],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "_seed_refined_sub_qa_from_retrieval",
+        lambda *, vector_store, refined_subquestions: [
+            agent_service.SubQuestionAnswer(
+                sub_question="Refined first?",
+                sub_answer="First evidence",
+                tool_call_input='{"query":"Refined first?"}',
+            ),
+            agent_service.SubQuestionAnswer(
+                sub_question="Refined second?",
+                sub_answer="Second evidence",
+                tool_call_input='{"query":"Refined second?"}',
+            ),
+        ],
+    )
+
+    def fake_single_pipeline(item: agent_service.SubQuestionAnswer) -> agent_service.SubQuestionAnswer:
+        output = item.model_copy(deep=True)
+        time.sleep(0.1)
+        output.sub_answer = f"processed::{output.sub_question}"
+        output.answerable = True
+        output.verification_reason = "grounded_in_reranked_documents"
+        return output
+
+    monkeypatch.setattr(agent_service, "_run_pipeline_for_single_subquestion", fake_single_pipeline)
+
+    def fake_generate_initial_answer(*, main_question, initial_search_context, sub_qa):
+        _ = main_question, initial_search_context
+        if sub_qa and sub_qa[0].sub_question.startswith("Refined"):
+            return "Refined answer complete"
+        return "Initial answer"
+
+    monkeypatch.setattr(agent_service, "generate_initial_answer", fake_generate_initial_answer)
+
+    with caplog.at_level(logging.INFO):
+        response = agent_service.run_runtime_agent(
+            RuntimeAgentRunRequest(query="Why did policy X change?"),
+            db=_make_session(),
+        )
+
+    assert response.output == "Refined answer complete"
+    assert [item.sub_question for item in response.sub_qa] == ["Refined first?", "Refined second?"]
+    assert all(item.answerable is True for item in response.sub_qa)
+    assert all(item.verification_reason == "grounded_in_reranked_documents" for item in response.sub_qa)
+    assert "Refinement per-subquestion pipeline start count=2 total_timeout_s=2" in caplog.text
+    assert "Per-subquestion pipeline total timeout; returning partial results" not in caplog.text
+
+
 def test_run_runtime_agent_continues_with_partial_sub_qa_on_total_pipeline_timeout(monkeypatch, caplog) -> None:
     original_config = agent_service._RUNTIME_TIMEOUT_CONFIG
     monkeypatch.setattr(

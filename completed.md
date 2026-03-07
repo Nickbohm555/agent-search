@@ -1724,3 +1724,45 @@
 - `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
 - `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
 - `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 16 change-specific runtime exceptions
+
+## Section 17: Time guardrail — refinement pipeline run
+
+**Single goal:** Enforce a maximum time for the refinement path’s per-subquestion pipeline run (second `run_pipeline_for_subquestions` on refined sub_qa).
+
+**Details:**
+- Reuse the same whole-pipeline timeout as Section 12, or define `REFINEMENT_PIPELINE_TOTAL_TIMEOUT_S`; wrap the refinement pipeline call in that timeout; on timeout, **do not fail**—return partial refined results or keep initial answer as final so the user still gets a response.
+
+**Tech stack and dependencies**
+- Python stdlib; same timeout pattern.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Wrap refinement run_pipeline_for_subquestions in timeout. |
+| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+
+**How to test:** Unit test: refinement pipeline timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
+
+### Completion notes (March 7, 2026)
+- Updated the refinement branch in `run_runtime_agent(...)` to call `run_pipeline_for_subquestions_with_timeout(...)` with `total_timeout_s=_RUNTIME_TIMEOUT_CONFIG.refinement_pipeline_total_timeout_s`.
+- Added explicit refinement pipeline start log showing refined item count and configured total timeout.
+- Added `test_run_runtime_agent_refinement_pipeline_timeout_returns_partial` to verify partial refined results are returned when refinement pipeline times out.
+- Added `test_run_runtime_agent_refinement_pipeline_completes_within_timeout` to verify normal refinement path behavior under timeout budget.
+
+### Useful logs
+- `Refinement per-subquestion pipeline start count=2 total_timeout_s=2`
+- `Per-subquestion pipeline total timeout; returning partial results completed=1 skipped=1 timeout_s=1`
+- `Refinement answer path complete refined_sub_qa_count=6 refined_output_length=232`
+- `docker compose restart backend` -> `Container agent-search-backend Restarting` / `Started`
+- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> HTTP `200` with keys `main_question`, `sub_qa`, `output`
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility
+
+### Tests run
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `48 passed`
+- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_refinement_pipeline_timeout_returns_partial -o log_cli=true --log-cli-level=INFO'` -> `1 passed`
+- `docker compose restart backend` -> pass
+- `curl -sS http://localhost:8000/api/health` -> pass (`{"status":"ok"}`)
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> pass (HTTP `200`; response keys `main_question`, `sub_qa`, `output`)
+- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 17 change-specific runtime exceptions
