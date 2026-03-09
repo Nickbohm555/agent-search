@@ -1413,3 +1413,62 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 23
+
+## Section 23: Dataset curation workflow - generation and human review
+
+**Single goal:** Build reproducible question generation and review workflow.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Generate question candidates from public corpora via OpenAI.
+- Require human approval and provenance metadata before dataset freeze.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): optional `typer` or argparse.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/benchmarks/tools/generate_questions.py` | Candidate generation utility. |
+| `src/backend/benchmarks/tools/review_queue.py` | Review/approval workflow utility. |
+| `src/backend/benchmarks/datasets/internal_v1/provenance.jsonl` | Provenance ledger. |
+
+**How to test:** Run unit tests for review transitions and export.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `benchmarks.tools.generate_questions` with deterministic candidate IDs, OpenAI-backed generation path (via `langchain_openai`), strict JSON output validation, JSONL review queue export, and generation visibility logs.
+- Added `benchmarks.tools.review_queue` with explicit review state transitions (`pending_review` -> `approved`/`rejected`), immutable provenance ledger append events, and dataset freeze export that blocks while pending candidates exist.
+- Added benchmark unit tests covering candidate generation, review transition/provenance behavior, export ordering/schema, and pending-review freeze guardrail.
+- Added `src/backend/benchmarks/datasets/internal_v1/provenance.jsonl` ledger file for review events.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose restart backend`
+- `docker compose exec backend uv run --with pytest pytest tests/benchmarks/test_dataset_curation_workflow.py -q`
+- `docker compose ps`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS -i http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/benchmarks/test_dataset_curation_workflow.py .... [100%]
+pytest: 4 passed in 0.04s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
