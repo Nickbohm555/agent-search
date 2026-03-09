@@ -13,7 +13,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from schemas import DecomposeNodeInput, RuntimeAgentRunRequest
+from schemas import DecomposeNodeInput, ExpandNodeInput, ExpandNodeOutput, RuntimeAgentRunRequest
 from schemas.decomposition import DecompositionPlan
 from services import document_validation_service
 from services import agent_service
@@ -2598,6 +2598,63 @@ def test_run_decomposition_node_uses_fallback_on_timeout(monkeypatch, caplog) ->
 
     assert output.decomposition_sub_questions == ["Explain VAT changes?"]
     assert "Decomposition LLM timeout; continuing with fallback sub-question" in caplog.text
+
+
+def test_run_expand_node_emits_bounded_query_list(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent_service,
+        "expand_queries_for_subquestion",
+        lambda **_: ["What changed in VAT policy?", "VAT policy updates 2025", "VAT changes by region"],
+    )
+
+    output = agent_service.run_expand_node(
+        node_input=ExpandNodeInput(
+            main_question="Explain VAT changes",
+            sub_question="What changed in VAT policy?",
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-expand"),
+        ),
+    )
+
+    assert output.expanded_queries == [
+        "What changed in VAT policy?",
+        "VAT policy updates 2025",
+        "VAT changes by region",
+    ]
+
+
+def test_apply_expand_node_output_to_graph_state_updates_artifacts_and_compat_fields() -> None:
+    state = agent_service.build_agent_graph_state(
+        main_question="Explain VAT changes",
+        decomposition_sub_questions=["What changed in VAT policy?"],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in VAT policy?",
+                sub_answer="Sub answer.",
+                expanded_query="",
+            )
+        ],
+        final_answer="Sub answer.",
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-expand-state"),
+    )
+
+    updated = agent_service.apply_expand_node_output_to_graph_state(
+        state=state,
+        sub_question="What changed in VAT policy?",
+        node_output=ExpandNodeOutput(
+            expanded_queries=[
+                "What changed in VAT policy?",
+                "VAT policy updates 2025",
+                "VAT changes by region",
+            ]
+        ),
+    )
+
+    assert updated.sub_question_artifacts[0].expanded_queries == [
+        "What changed in VAT policy?",
+        "VAT policy updates 2025",
+        "VAT changes by region",
+    ]
+    assert updated.sub_qa[0].expanded_query == "VAT policy updates 2025"
 
 
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:

@@ -60,3 +60,43 @@ docker compose logs --tail=160 backend
 docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k decomposition
 -> 12 passed, 45 deselected in 4.04s
 ```
+
+## Section 3: Build expansion node - query list generation per sub-question
+
+**Single goal:** Add a graph node that expands each sub-question into a bounded query list.
+
+**Details completed:**
+- Added explicit backend dependency declarations for expansion flow in `src/backend/pyproject.toml` and lock refresh in `src/backend/uv.lock` (`langchain`, `langchain-classic`).
+- Added `src/backend/services/query_expansion_service.py` with a `MultiQueryRetriever`-backed expansion wrapper.
+- Implemented normalization and bounds in expansion service: trim/collapse whitespace, dedupe, drop empties, max query count, max query length.
+- Implemented deterministic fallback to original sub-question when expansion cannot run (missing API key) or fails.
+- Added expansion graph node in `src/backend/services/agent_service.py`: `run_expand_node(...)` with structured logging.
+- Added graph-state update helper `apply_expand_node_output_to_graph_state(...)` to persist `expanded_queries` per sub-question artifact and keep compatibility `SubQuestionAnswer.expanded_query` populated.
+- Added tests in `src/backend/tests/services/test_query_expansion_service.py` for normalization and fallback behavior.
+- Added tests in `src/backend/tests/services/test_agent_service.py` for expansion node output and graph-state update behavior.
+- Updated docs in `README.md` and `src/frontend/public/run-flow.html` to include expansion node/runtime references.
+
+### Useful logs
+
+```text
+docker compose build && docker compose up -d
+-> backend/frontend rebuilt and started
+-> backend recreated with new dependency graph (langchain-classic installed)
+
+curl http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=120 backend
+-> Alembic migration context started
+-> Uvicorn startup complete
+-> GET /api/health 200 OK
+
+docker compose logs --tail=120 frontend
+-> Vite dev server ready at http://localhost:5173/
+
+docker compose logs --tail=120 db
+-> PostgreSQL ready to accept connections
+
+docker compose exec backend uv run pytest tests/services/test_query_expansion_service.py tests/services/test_agent_service.py -k "expand_queries_for_subquestion or run_expand_node or apply_expand_node_output_to_graph_state or run_decomposition_node"
+-> 7 passed, 55 deselected in ~2s
+```

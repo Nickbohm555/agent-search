@@ -179,6 +179,8 @@ run_runtime_agent() internals
   4) run_decomposition_node(...)
      -> _run_decomposition_only_llm_call(...)
      -> _parse_decomposition_output(...)
+  5) run_expand_node(...)  // graph-node query expansion contract
+     -> expand_queries_for_subquestion(...)  // MultiQueryRetriever + normalization/fallback
   6) create_coordinator_agent(...)
   7) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
   8) _extract_sub_qa(messages, search_database_calls)
@@ -256,7 +258,7 @@ run_runtime_agent() internals
           style="width: 100%; max-width: 980px; border: 1px solid var(--line); border-radius: 10px; background: #fff; display: block; margin-bottom: 14px;"
         />
 
-        <h3>Step-to-Diagram Mapping (Orders 1-15)</h3>
+        <h3>Step-to-Diagram Mapping (Orders 1-16)</h3>
         <table>
           <thead>
             <tr>

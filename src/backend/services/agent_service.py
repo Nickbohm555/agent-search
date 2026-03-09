@@ -22,6 +22,8 @@ from schemas import (
     CitationSourceRow,
     DecomposeNodeInput,
     DecomposeNodeOutput,
+    ExpandNodeInput,
+    ExpandNodeOutput,
     GraphRunMetadata,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
@@ -38,6 +40,11 @@ from services.document_validation_service import (
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
 from services.initial_answer_service import generate_initial_answer
+from services.query_expansion_service import (
+    QueryExpansionConfig,
+    build_query_expansion_config_from_env,
+    expand_queries_for_subquestion,
+)
 from services.refinement_decomposition_service import refine_subquestions
 from services.refinement_decision_service import should_refine
 from services.subanswer_service import generate_subanswer
@@ -91,6 +98,7 @@ _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
 )
 _DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
 _RERANKER_CONFIG = build_reranker_config_from_env()
+_QUERY_EXPANSION_CONFIG = build_query_expansion_config_from_env()
 _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
 _REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
 
@@ -1070,6 +1078,48 @@ def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentR
     return response
 
 
+def _select_compat_expanded_query(*, sub_question: str, expanded_queries: list[str]) -> str:
+    for query in expanded_queries:
+        if query.strip() and query.casefold() != sub_question.casefold():
+            return query
+    return ""
+
+
+def apply_expand_node_output_to_graph_state(
+    *,
+    state: AgentGraphState,
+    sub_question: str,
+    node_output: ExpandNodeOutput,
+) -> AgentGraphState:
+    next_state = state.model_copy(deep=True)
+    artifact = next(
+        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        None,
+    )
+    if artifact is None:
+        artifact = SubQuestionArtifacts(sub_question=sub_question)
+        next_state.sub_question_artifacts.append(artifact)
+    artifact.expanded_queries = list(node_output.expanded_queries)
+
+    compat_expanded_query = _select_compat_expanded_query(
+        sub_question=sub_question,
+        expanded_queries=node_output.expanded_queries,
+    )
+    for item in next_state.sub_qa:
+        if item.sub_question == sub_question:
+            item.expanded_query = compat_expanded_query
+            break
+
+    logger.info(
+        "Expansion node state update sub_question=%s expanded_query_count=%s compat_expanded_query=%s run_id=%s",
+        _truncate_query(sub_question),
+        len(node_output.expanded_queries),
+        _truncate_query(compat_expanded_query),
+        next_state.run_metadata.run_id,
+    )
+    return next_state
+
+
 def run_decomposition_node(
     *,
     node_input: DecomposeNodeInput,
@@ -1122,6 +1172,37 @@ def run_decomposition_node(
         node_input.run_metadata.run_id,
     )
     return DecomposeNodeOutput(decomposition_sub_questions=decomposition_sub_questions)
+
+
+def run_expand_node(
+    *,
+    node_input: ExpandNodeInput,
+    model: BaseChatModel | None = None,
+    config: QueryExpansionConfig | None = None,
+) -> ExpandNodeOutput:
+    effective_config = config or _QUERY_EXPANSION_CONFIG
+    logger.info(
+        "Expansion node start sub_question=%s max_queries=%s max_query_length=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(node_input.sub_question),
+        effective_config.max_queries,
+        effective_config.max_query_length,
+        node_input.run_metadata.run_id,
+        node_input.run_metadata.trace_id,
+        node_input.run_metadata.correlation_id,
+    )
+    expanded_queries = expand_queries_for_subquestion(
+        sub_question=node_input.sub_question,
+        model=model,
+        config=effective_config,
+    )
+    logger.info(
+        "Expansion node complete sub_question=%s expanded_query_count=%s expanded_queries=%s run_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(expanded_queries),
+        json.dumps(expanded_queries, ensure_ascii=True),
+        node_input.run_metadata.run_id,
+    )
+    return ExpandNodeOutput(expanded_queries=expanded_queries)
 
 
 def run_pipeline_for_subquestions_with_timeout(

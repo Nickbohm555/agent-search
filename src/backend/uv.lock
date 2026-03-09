@@ -14,6 +14,8 @@ dependencies = [
     { name = "alembic" },
     { name = "deepagents" },
     { name = "fastapi" },
+    { name = "langchain" },
+    { name = "langchain-classic" },
     { name = "langchain-community" },
     { name = "langchain-openai" },
     { name = "langchain-text-splitters" },
@@ -31,6 +33,8 @@ requires-dist = [
     { name = "alembic", specifier = "==1.15.1" },
     { name = "deepagents", specifier = ">=0.4.0" },
     { name = "fastapi", specifier = "==0.115.12" },
+    { name = "langchain", specifier = ">=1.2.0" },
+    { name = "langchain-classic", specifier = ">=1.0.0" },
     { name = "langchain-community", specifier = "==0.3.31" },
     { name = "langchain-openai", specifier = ">=0.3.0" },
     { name = "langchain-text-splitters", specifier = ">=1.1.1" },
@@ -841,6 +845,24 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/30/4e/7c1ffac126f5e62b0b9066f331f91ae69361e73476fd3ca1b19f8d8a3cc3/langchain_anthropic-1.3.4.tar.gz", hash = "sha256:000ed4c2d6fb8842b4ffeed22a74a3e84f9e9bcb63638e4abbb4a1d8ffa07211", size = 671858, upload-time = "2026-02-24T13:54:01.738Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/cf/b7c7b7270efbb3db2edbf14b09ba9110a41628f3a85a11cae9527a35641c/langchain_anthropic-1.3.4-py3-none-any.whl", hash = "sha256:cd112dcc8049aef09f58b3c4338b2c9db5ee98105e08664954a4e40d8bf120b9", size = 47454, upload-time = "2026-02-24T13:54:00.53Z" },
+]
+
+[[package]]
+name = "langchain-classic"
+version = "1.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "langchain-text-splitters" },
+    { name = "langsmith" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/21/6f/59da67274d8ceea16d0610142af33e348a24750894f08c0688de01504ff2/langchain_classic-1.0.2.tar.gz", hash = "sha256:bbf686613d0051905794f2646ecb6a79fa398db399750a4af039107d93054335", size = 10533928, upload-time = "2026-03-06T20:19:46.176Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/4b/20f040567a0e97b28649b7190967190f3df5188984c80873bcbe69585168/langchain_classic-1.0.2-py3-none-any.whl", hash = "sha256:ae3480f488d2cf778f75e59ce0316b336fe2bcd4f8828aeb1aef1e2f26987d7f", size = 1041471, upload-time = "2026-03-06T20:19:44.568Z" },
 ]
 
 [[package]]
