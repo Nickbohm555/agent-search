@@ -708,3 +708,69 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 12
+
+## Section 12: Search node extraction - protocol-backed retrieval module
+
+**Single goal:** Extract retrieval/merge/dedupe logic into protocol-backed node.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Use `VectorStoreProtocol` only.
+- Preserve provenance output used for citations/debug.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/nodes/search.py` | Search node implementation. |
+| `src/backend/tests/sdk/test_node_search.py` | Search node tests. |
+
+**How to test:** Run search node tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.runtime.nodes.search.run_search_node` with extracted retrieval/merge/dedupe behavior.
+- Enforced protocol boundary in search node via `assert_vector_store_compatible` and `VectorStoreProtocol` typing.
+- Preserved search provenance payload structure (`query`, `query_index`, `query_rank`, `document_identity`, `document_id`, `source`, `deduped`).
+- Delegated `services.agent_service.run_search_node` to runtime node as compatibility wrapper.
+- Added SDK-level tests in `tests/sdk/test_node_search.py` for dedupe/merge behavior, empty-query skip behavior, and protocol incompatibility rejection.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d && docker compose ps`
+- `docker compose restart backend && docker compose ps`
+- `docker compose exec backend uv run pytest tests/sdk/test_node_search.py` (failed: `pytest` missing)
+- `docker compose exec backend uv run pytest tests/services/test_agent_service.py -k test_run_search_node_merges_and_dedupes_multi_query_results` (failed: `pytest` missing)
+- `docker compose exec backend uv run python -m pytest --version` (failed: `No module named pytest`)
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_node_search.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/services/test_agent_service.py -k test_run_search_node_merges_and_dedupes_multi_query_results"`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+uv: error: Failed to spawn: `pytest` (No such file or directory)
+python: No module named pytest
+pytest: tests/sdk/test_node_search.py ... [100%]
+pytest: 3 passed in 1.56s
+pytest: tests/services/test_agent_service.py . [100%]
+pytest: 1 passed, 51 deselected in 1.62s
+```

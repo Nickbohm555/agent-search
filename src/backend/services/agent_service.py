@@ -1010,100 +1010,17 @@ def run_search_node(
     vector_store: Any,
     k_fetch: int | None = None,
 ) -> SearchNodeOutput:
-    effective_k_fetch = max(1, k_fetch or _SEARCH_NODE_K_FETCH)
-    normalized_queries = _normalize_search_queries(
-        sub_question=node_input.sub_question,
-        expanded_queries=node_input.expanded_queries,
-    )
-    logger.info(
-        "Search node start sub_question=%s expanded_query_count=%s normalized_query_count=%s k_fetch=%s run_id=%s trace_id=%s correlation_id=%s",
-        _truncate_query(node_input.sub_question),
-        len(node_input.expanded_queries),
-        len(normalized_queries),
-        effective_k_fetch,
-        node_input.run_metadata.run_id,
-        node_input.run_metadata.trace_id,
-        node_input.run_metadata.correlation_id,
-    )
-    if not normalized_queries:
-        logger.warning(
-            "Search node skipped; no valid queries sub_question=%s run_id=%s",
-            _truncate_query(node_input.sub_question),
-            node_input.run_metadata.run_id,
-        )
-        return SearchNodeOutput()
+    from agent_search.runtime.nodes.search import run_search_node as run_runtime_search_node
 
-    documents_by_query = search_documents_for_queries(
+    return run_runtime_search_node(
+        node_input=node_input,
         vector_store=vector_store,
-        queries=normalized_queries,
-        k=effective_k_fetch,
+        k_fetch=k_fetch,
         score_threshold=_SEARCH_NODE_SCORE_THRESHOLD,
-    )
-    merged_rows: list[CitationSourceRow] = []
-    retrieval_provenance: list[dict[str, Any]] = []
-    seen_document_identities: dict[str, int] = {}
-
-    def _extract_score(document: Any) -> float | None:
-        if document is None:
-            return None
-        metadata = getattr(document, "metadata", {}) or {}
-        score = metadata.get("score")
-        return float(score) if isinstance(score, (int, float)) else None
-
-    for query_index, query in enumerate(normalized_queries, start=1):
-        docs_for_query = documents_by_query.get(query, [])
-        for query_rank, document in enumerate(docs_for_query, start=1):
-            row = _build_citation_row_from_document(document=document, rank=len(merged_rows) + 1)
-            row.score = _extract_score(document)
-            document_identity = _build_document_identity(
-                document_id=row.document_id,
-                source=row.source,
-                content=row.content,
-            )
-            deduped = document_identity in seen_document_identities
-            retrieval_provenance.append(
-                {
-                    "query": query,
-                    "query_index": query_index,
-                    "query_rank": query_rank,
-                    "document_identity": document_identity,
-                    "document_id": row.document_id,
-                    "source": row.source,
-                    "deduped": deduped,
-                }
-            )
-            if deduped:
-                existing_index = seen_document_identities[document_identity]
-                existing_row = merged_rows[existing_index]
-                existing_score = existing_row.score if existing_row.score is not None else float("-inf")
-                candidate_score = row.score if row.score is not None else float("-inf")
-                if candidate_score > existing_score:
-                    existing_row.score = row.score
-                continue
-            seen_document_identities[document_identity] = len(merged_rows)
-            row.rank = len(merged_rows) + 1
-            row.citation_index = len(merged_rows) + 1
-            merged_rows.append(row)
-
-    if _SEARCH_NODE_MERGED_CAP and len(merged_rows) > _SEARCH_NODE_MERGED_CAP:
-        merged_rows = merged_rows[:_SEARCH_NODE_MERGED_CAP]
-        for index, row in enumerate(merged_rows, start=1):
-            row.rank = index
-            row.citation_index = index
-
-    citation_rows_by_index = {item.citation_index: item for item in merged_rows}
-    logger.info(
-        "Search node complete sub_question=%s query_count=%s raw_candidates=%s merged_candidates=%s run_id=%s",
-        _truncate_query(node_input.sub_question),
-        len(normalized_queries),
-        sum(len(documents_by_query.get(query, [])) for query in normalized_queries),
-        len(merged_rows),
-        node_input.run_metadata.run_id,
-    )
-    return SearchNodeOutput(
-        retrieved_docs=merged_rows,
-        retrieval_provenance=retrieval_provenance,
-        citation_rows_by_index=citation_rows_by_index,
+        merged_cap=_SEARCH_NODE_MERGED_CAP,
+        search_documents_for_queries_fn=search_documents_for_queries,
+        assert_vector_store_compatible_fn=lambda store: store,
+        truncate_query_fn=_truncate_query,
     )
 
 
