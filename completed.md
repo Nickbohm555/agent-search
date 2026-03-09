@@ -646,3 +646,65 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 11
+
+## Section 11: Expansion node extraction - isolated runtime node module
+
+**Single goal:** Extract query expansion node without behavior change.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Preserve bounds, dedupe, fallback behavior.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/nodes/expand.py` | Expansion node. |
+| `src/backend/tests/sdk/test_node_expand.py` | Expansion tests. |
+
+**How to test:** Run expansion node tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.runtime.nodes.expand` as an isolated expansion-node module with runtime start/complete logs and dependency-injection hooks for parity testing.
+- Updated `services.agent_service.run_expand_node` to delegate to the runtime node while preserving existing config defaults and query expansion behavior.
+- Exported `run_expansion_node` from `agent_search.runtime.nodes`.
+- Added `tests/sdk/test_node_expand.py` to validate expansion node output passthrough and explicit config forwarding.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_node_expand.py`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k 'run_expand_node_emits_bounded_query_list or apply_expand_node_output_to_graph_state_updates_artifacts_and_compat_fields'`
+- `docker compose restart backend`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_node_expand.py .. [100%]
+pytest: 2 passed in 1.97s
+pytest: tests/services/test_agent_service.py .. [100%]
+pytest: 2 passed, 50 deselected in 2.01s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```

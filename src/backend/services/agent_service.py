@@ -2000,30 +2000,17 @@ def run_expand_node(
     config: QueryExpansionConfig | None = None,
     callbacks: list[Any] | None = None,
 ) -> ExpandNodeOutput:
-    effective_config = config or _QUERY_EXPANSION_CONFIG
-    logger.info(
-        "Expansion node start sub_question=%s max_queries=%s max_query_length=%s run_id=%s trace_id=%s correlation_id=%s",
-        _truncate_query(node_input.sub_question),
-        effective_config.max_queries,
-        effective_config.max_query_length,
-        node_input.run_metadata.run_id,
-        node_input.run_metadata.trace_id,
-        node_input.run_metadata.correlation_id,
-    )
-    expanded_queries = expand_queries_for_subquestion(
-        sub_question=node_input.sub_question,
+    from agent_search.runtime.nodes.expand import run_expansion_node as run_runtime_expansion_node
+
+    return run_runtime_expansion_node(
+        node_input=node_input,
         model=model,
-        config=effective_config,
+        config=config,
         callbacks=callbacks,
+        default_config=_QUERY_EXPANSION_CONFIG,
+        expand_queries_fn=expand_queries_for_subquestion,
+        truncate_query_fn=_truncate_query,
     )
-    logger.info(
-        "Expansion node complete sub_question=%s expanded_query_count=%s expanded_queries=%s run_id=%s",
-        _truncate_query(node_input.sub_question),
-        len(expanded_queries),
-        json.dumps(expanded_queries, ensure_ascii=True),
-        node_input.run_metadata.run_id,
-    )
-    return ExpandNodeOutput(expanded_queries=expanded_queries)
 
 
 def run_pipeline_for_subquestions_with_timeout(
