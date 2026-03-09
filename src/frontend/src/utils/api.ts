@@ -65,6 +65,46 @@ export interface RuntimeAgentRunResponse {
   sub_qa: SubQuestionAnswer[];
 }
 
+export type AgentStageName =
+  | "decompose"
+  | "expand"
+  | "search"
+  | "rerank"
+  | "answer"
+  | "final";
+
+export type AgentStageRuntimeStatus = "pending" | "in_progress" | "completed" | "error";
+
+export interface AgentRunStageMetadata {
+  stage: string;
+  status: string;
+  sub_question: string;
+  lane_index: number;
+  lane_total: number;
+  emitted_at?: number | null;
+}
+
+export interface RuntimeAgentRunAsyncStartResponse {
+  job_id: string;
+  run_id: string;
+  status: string;
+}
+
+export interface RuntimeAgentRunAsyncStatusResponse {
+  job_id: string;
+  run_id: string;
+  status: string;
+  message: string;
+  stage: string;
+  stages: AgentRunStageMetadata[];
+  decomposition_sub_questions: string[];
+  sub_qa: SubQuestionAnswer[];
+  output: string;
+  result?: RuntimeAgentRunResponse | null;
+  error?: string | null;
+  cancel_requested: boolean;
+}
+
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_INTERNAL_DATA_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -168,6 +208,43 @@ export async function runAgent(query: string): Promise<ApiResult<RuntimeAgentRun
   });
 }
 
+export async function startAgentRun(query: string): Promise<ApiResult<RuntimeAgentRunAsyncStartResponse>> {
+  return requestJson<RuntimeAgentRunAsyncStartResponse>("/api/agents/run-async", {
+    method: "POST",
+    payload: { query },
+    validate: (v): v is RuntimeAgentRunAsyncStartResponse =>
+      isObject(v) &&
+      typeof v.job_id === "string" &&
+      typeof v.run_id === "string" &&
+      typeof v.status === "string",
+    timeoutMs: AGENT_RUN_TIMEOUT_MS,
+  });
+}
+
+export async function getAgentRunStatus(jobId: string): Promise<ApiResult<RuntimeAgentRunAsyncStatusResponse>> {
+  return requestJson<RuntimeAgentRunAsyncStatusResponse>(`/api/agents/run-status/${jobId}`, {
+    method: "GET",
+    validate: (v): v is RuntimeAgentRunAsyncStatusResponse =>
+      isObject(v) &&
+      typeof v.job_id === "string" &&
+      typeof v.run_id === "string" &&
+      typeof v.status === "string" &&
+      typeof v.message === "string" &&
+      typeof v.stage === "string" &&
+      Array.isArray(v.stages) &&
+      v.stages.every(isAgentRunStageMetadata) &&
+      Array.isArray(v.decomposition_sub_questions) &&
+      v.decomposition_sub_questions.every((item) => typeof item === "string") &&
+      Array.isArray(v.sub_qa) &&
+      v.sub_qa.every(isSubQuestionAnswer) &&
+      typeof v.output === "string" &&
+      (v.result === undefined || v.result === null || validateRuntimeAgentRunResponse(v.result)) &&
+      (v.error === undefined || v.error === null || typeof v.error === "string") &&
+      typeof v.cancel_requested === "boolean",
+    timeoutMs: AGENT_RUN_TIMEOUT_MS,
+  });
+}
+
 function parseTimeoutMs(value: unknown, fallbackMs: number): number {
   if (typeof value !== "string" || value.trim().length === 0) return fallbackMs;
   const parsed = Number(value);
@@ -200,6 +277,18 @@ function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
     typeof value.sub_answer === "string" &&
     isOptionalString(value.tool_call_input) &&
     isOptionalString(value.sub_agent_response)
+  );
+}
+
+function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata {
+  return (
+    isObject(value) &&
+    typeof value.stage === "string" &&
+    typeof value.status === "string" &&
+    typeof value.sub_question === "string" &&
+    typeof value.lane_index === "number" &&
+    typeof value.lane_total === "number" &&
+    (value.emitted_at === undefined || value.emitted_at === null || typeof value.emitted_at === "number")
   );
 }
 

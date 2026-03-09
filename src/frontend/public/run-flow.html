@@ -131,7 +131,7 @@
         <h2>High-Level Path</h2>
         <div>
           <span class="badge">Frontend: <code>App.tsx::handleRun</code></span>
-          <span class="badge">API client: <code>runAgent()</code></span>
+          <span class="badge">API client: <code>startAgentRun()</code> + <code>getAgentRunStatus()</code></span>
           <span class="badge">Backend route: <code>POST /api/agents/run</code></span>
           <span class="badge">Async route: <code>POST /api/agents/run-async</code></span>
           <span class="badge">Status route: <code>GET /api/agents/run-status/{job_id}</code></span>
@@ -182,9 +182,15 @@
         <div class="mono-block">UI click/submit
   -> src/frontend/src/App.tsx
      handleRun(event)
-       -> runAgent(submittedQuery)
-          -> requestJson("/api/agents/run", { method:"POST", payload:{ query }, timeoutMs })
-             -> fetch("http://localhost:8000/api/agents/run", ...)
+       -> startAgentRun(submittedQuery)
+          -> requestJson("/api/agents/run-async", { method:"POST", payload:{ query }, timeoutMs })
+             -> fetch("http://localhost:8000/api/agents/run-async", ...)
+       -> poll getAgentRunStatus(jobId)
+          -> requestJson("/api/agents/run-status/{job_id}", { method:"GET", timeoutMs })
+             -> fetch("http://localhost:8000/api/agents/run-status/{job_id}", ...)
+       -> update timeline rail:
+          decompose -> expand -> search -> rerank -> answer -> final
+          statuses: pending / in_progress / completed / error
 
 Backend
   -> src/backend/routers/agent.py
@@ -222,26 +228,32 @@ run_runtime_agent() internals
             <tr>
               <td>1</td>
               <td><code>App.tsx::handleRun</code></td>
-              <td>Prevents default form submit, trims query, sets <code>runState="loading"</code>, clears answer/readout.</td>
+              <td>Prevents default form submit, trims query, sets <code>runState="loading"</code>, resets timeline + readout state.</td>
               <td>In: textarea text. Out: local React state update.</td>
             </tr>
             <tr>
               <td>2</td>
-              <td><code>utils/api.ts::runAgent</code></td>
-              <td>Calls <code>requestJson</code> with POST payload and long timeout (default 10 min).</td>
-              <td>In: <code>{ query: string }</code>. Out: <code>ApiResult&lt;RuntimeAgentRunResponse&gt;</code>.</td>
+              <td><code>utils/api.ts::startAgentRun</code></td>
+              <td>Calls <code>requestJson</code> with POST payload to <code>/api/agents/run-async</code>.</td>
+              <td>In: <code>{ query: string }</code>. Out: <code>job_id</code>, <code>run_id</code>, <code>status</code>.</td>
             </tr>
             <tr>
               <td>3</td>
-              <td><code>utils/api.ts::requestJson</code></td>
-              <td>Runs <code>fetch</code> against <code>API_BASE_URL + /api/agents/run</code>, validates JSON shape.</td>
+              <td><code>utils/api.ts::getAgentRunStatus</code></td>
+              <td>Polls <code>/api/agents/run-status/{job_id}</code> every second and validates async status payload.</td>
               <td>Base URL from <code>VITE_API_BASE_URL</code> or <code>http://localhost:8000</code>.</td>
             </tr>
             <tr>
               <td>4</td>
+              <td><code>App.tsx::computeStageStatuses</code></td>
+              <td>Maps backend stage values (<code>subquestions_ready</code>, <code>synthesize_final</code>) into canonical rail stages.</td>
+              <td>Out: stage statuses (<code>pending</code>, <code>in_progress</code>, <code>completed</code>, <code>error</code>).</td>
+            </tr>
+            <tr>
+              <td>5</td>
               <td><code>App.tsx::handleRun</code> success/error branch</td>
-              <td>On success: stores <code>output</code> + <code>sub_qa</code>. On failure: sets error state/message.</td>
-              <td>UI renders final answer and expandable subquestion rows.</td>
+              <td>On success stores final <code>output</code> + <code>sub_qa</code>; on failure sets error state/message.</td>
+              <td>UI renders timeline rail and final readout panel.</td>
             </tr>
           </tbody>
         </table>

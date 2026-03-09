@@ -530,3 +530,69 @@ Host fallback attempt:
 cd src/backend && uv run python -m pytest tests/api/test_agent_run.py
 -> failed: onnxruntime wheel unavailable for macOS x86_64 (environment constraint)
 ```
+
+## Section 12: Frontend run timeline shell - progressive container and stage rail
+
+**Single goal:** Add a reusable progressive run shell that displays ordered stages for the full flow.
+
+**Details completed:**
+- Added async agent run contracts in `src/frontend/src/utils/api.ts` for:
+  - `startAgentRun` (`POST /api/agents/run-async`)
+  - `getAgentRunStatus` (`GET /api/agents/run-status/{job_id}`)
+  - Timeline-oriented types (`AgentStageName`, `AgentStageRuntimeStatus`, async status payload + stage metadata).
+- Reworked run flow in `src/frontend/src/App.tsx` to use async start + polling instead of synchronous `runAgent`, while preserving final readout rendering.
+- Added reusable timeline shell with canonical stage order:
+  - `decompose -> expand -> search -> rerank -> answer -> final`
+  - Status mapping: `pending`, `in_progress`, `completed`, `error`
+  - Backend stage adapters for `subquestions_ready -> decompose` and `synthesize_final -> final`.
+- Added frontend visibility logging for run lifecycle:
+  - run requested/start, stage updates during polling, completion, and failure.
+- Added stage rail styles in `src/frontend/src/styles.css` for all timeline statuses and stage dots.
+- Updated tests in `src/frontend/src/App.test.tsx`:
+  - verifies ordered stage rail rendering
+  - verifies progressive status updates while polling
+  - verifies async final result rendering and failure handling.
+- Updated docs:
+  - `README.md` run flow section now documents async frontend start/poll behavior and stage rail mapping.
+  - `src/frontend/public/run-flow.html` updated with async call chain and timeline shell details.
+
+### Useful logs
+
+```text
+Full fresh restart before implementation:
+docker compose down -v --rmi all
+-> stopped/removed containers, volumes, and project images
+
+docker compose build
+-> backend/frontend built successfully
+
+docker compose up -d && docker compose ps
+-> backend/frontend/db/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+Required frontend tests/checks:
+docker compose exec frontend npm run test
+-> PASS (5 passed)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite production build complete)
+
+Changed container restart + runtime logs:
+docker compose restart frontend && docker compose ps
+-> frontend restarted successfully; all services up
+
+docker compose logs --tail=120 frontend
+-> vite ready at http://localhost:5173/
+-> page reloads observed for run-flow docs updates
+
+docker compose logs --tail=120 backend
+-> uvicorn startup complete; no runtime errors
+
+docker compose logs --tail=120 db
+-> PostgreSQL ready to accept connections; no DB errors
+```

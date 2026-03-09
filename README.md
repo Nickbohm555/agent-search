@@ -197,9 +197,15 @@ This section migrates the runtime logic formerly documented in `src/frontend/pub
 UI click/submit
   -> src/frontend/src/App.tsx
      handleRun(event)
-       -> runAgent(submittedQuery)
-          -> requestJson("/api/agents/run", { method:"POST", payload:{ query }, timeoutMs })
-             -> fetch("http://localhost:8000/api/agents/run", ...)
+       -> startAgentRun(submittedQuery)
+          -> requestJson("/api/agents/run-async", { method:"POST", payload:{ query }, timeoutMs })
+             -> fetch("http://localhost:8000/api/agents/run-async", ...)
+       -> poll getAgentRunStatus(jobId)
+          -> requestJson("/api/agents/run-status/{job_id}", { method:"GET", timeoutMs })
+             -> fetch("http://localhost:8000/api/agents/run-status/{job_id}", ...)
+       -> update stage rail:
+          decompose -> expand -> search -> rerank -> answer -> final
+          statuses: pending / in_progress / completed / error
 
 Backend
   -> src/backend/routers/agent.py
@@ -211,10 +217,11 @@ Backend
 
 | Step | Function | What happens | Data in/out |
 |------|----------|--------------|-------------|
-| 1 | `App.tsx::handleRun` | Prevent default submit, trim query, set `runState="loading"`, clear previous output. | In: textarea text. Out: React state updates. |
-| 2 | `utils/api.ts::runAgent` | Calls `requestJson` with `POST` and long timeout (10 min default). | In: `{ query }`. Out: `ApiResult<RuntimeAgentRunResponse>`. |
-| 3 | `utils/api.ts::requestJson` | Calls `fetch` against `API_BASE_URL + /api/agents/run`. | Base URL: `VITE_API_BASE_URL` or `http://localhost:8000`. |
-| 4 | `App.tsx::handleRun` success/error branch | Success stores `output` + `sub_qa`; failure sets UI error state. | UI renders final answer and subquestion details. |
+| 1 | `App.tsx::handleRun` | Prevent default submit, trim query, set `runState="loading"`, reset timeline + readout state. | In: textarea text. Out: React state updates. |
+| 2 | `utils/api.ts::startAgentRun` | Calls `requestJson` with `POST /api/agents/run-async`. | In: `{ query }`. Out: `job_id` + `run_id`. |
+| 3 | `utils/api.ts::getAgentRunStatus` | Polls `GET /api/agents/run-status/{job_id}` every second until terminal status. | Out: stage, status, partial/final payloads. |
+| 4 | `App.tsx::computeStageStatuses` | Maps backend stage names (`subquestions_ready`, `synthesize_final`, etc.) to canonical UI rail stages. | Out: per-stage status (`pending`, `in_progress`, `completed`, `error`). |
+| 5 | `App.tsx::handleRun` success/error branch | On success stores final `output` + `sub_qa`; on failure sets error state/message. | UI renders stage rail and final readout. |
 
 ### Backend HTTP entry
 
@@ -225,6 +232,7 @@ Backend
 - Async start endpoint: `POST /api/agents/run-async` returns `{ job_id, run_id, status }`.
 - Async status endpoint: `GET /api/agents/run-status/{job_id}` returns staged progress including `stage`, `stages[]`, `decomposition_sub_questions`, and partial `sub_qa`/`output`.
 - Async cancel endpoint: `POST /api/agents/run-cancel/{job_id}` sets cancellation requested for running jobs.
+- Frontend section 12 timeline shell: ordered rail is `decompose -> expand -> search -> rerank -> answer -> final`, with visible state transitions based on async status polling.
 
 ### Runtime pipeline map (orders 1-18)
 

@@ -260,6 +260,86 @@ strong {
   text-shadow: 0 0 8px rgba(255, 77, 109, 0.6);
 }
 
+.stage-rail-panel p {
+  margin-top: 0;
+}
+
+.stage-rail {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.stage-rail-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(29, 242, 255, 0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(9, 12, 29, 0.62);
+}
+
+.stage-name {
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.88rem;
+}
+
+.stage-status {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+}
+
+.stage-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.stage-dot-pending {
+  background: var(--idle);
+  opacity: 0.75;
+}
+
+.stage-dot-in_progress {
+  background: var(--panel-border);
+  box-shadow: 0 0 8px rgba(29, 242, 255, 0.7);
+}
+
+.stage-dot-completed {
+  background: var(--ok);
+  box-shadow: 0 0 8px rgba(65, 255, 122, 0.55);
+}
+
+.stage-dot-error {
+  background: var(--err);
+  box-shadow: 0 0 8px rgba(255, 77, 109, 0.55);
+}
+
+.stage-status-pending {
+  color: var(--idle);
+}
+
+.stage-status-in_progress {
+  color: var(--panel-border);
+}
+
+.stage-status-completed {
+  color: var(--ok);
+}
+
+.stage-status-error {
+  color: var(--err);
+}
+
 @media (max-width: 640px) {
   #root {
     padding: 14px;

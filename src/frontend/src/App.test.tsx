@@ -51,8 +51,7 @@ describe("App run query flow", () => {
     vi.restoreAllMocks();
   });
 
-  it("posts query to /api/agents/run and renders returned output", async () => {
-    let resolveRunRequest: ((value: Response) => void) | undefined;
+  it("shows ordered stage rail and progressive status updates while polling", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -61,10 +60,53 @@ describe("App run query flow", () => {
           headers: { "Content-Type": "application/json" },
         }),
       )
-      .mockReturnValueOnce(
-        new Promise<Response>((resolve) => {
-          resolveRunRequest = resolve;
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-1", run_id: "run-1", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
         }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-1",
+            run_id: "run-1",
+            status: "running",
+            message: "Stage completed: subquestions_ready",
+            stage: "subquestions_ready",
+            stages: [],
+            decomposition_sub_questions: ["First subquestion?"],
+            sub_qa: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-1",
+            run_id: "run-1",
+            status: "success",
+            message: "Completed.",
+            stage: "synthesize_final",
+            stages: [],
+            decomposition_sub_questions: ["First subquestion?"],
+            sub_qa: [],
+            output: "NATO is a military alliance.",
+            result: {
+              main_question: "What is NATO?",
+              sub_qa: [],
+              output: "NATO is a military alliance.",
+            },
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -75,24 +117,22 @@ describe("App run query flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
+    expect(await screen.findByText("Run status: Stage completed: subquestions_ready")).toBeInTheDocument();
+    expect(getStageStatusText("decompose")).toContain("in_progress");
+    expect(getStageStatusText("search")).toContain("pending");
 
-    resolveRunRequest?.(
-      new Response(JSON.stringify({ output: "NATO is a military alliance." }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-
-    expect(await screen.findByRole("heading", { name: "Main question" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Final answer" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Subquestions & subanswers" })).toBeInTheDocument();
-    expect(await screen.findByText("NATO is a military alliance.")).toBeInTheDocument();
-    expect(screen.getByText("No subquestions for this run.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+    });
+    expect(getStageStatusText("decompose")).toContain("completed");
+    expect(getStageStatusText("final")).toContain("completed");
+    expect(screen.getByText("NATO is a military alliance.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Main question" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
-        "http://localhost:8000/api/agents/run",
+        "http://localhost:8000/api/agents/run-async",
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -100,9 +140,21 @@ describe("App run query flow", () => {
         }),
       );
     });
+
+    const stageLabels = screen.getAllByText(/decompose|expand|search|rerank|answer|final/, {
+      selector: ".stage-name",
+    });
+    expect(stageLabels.map((item) => item.textContent)).toEqual([
+      "decompose",
+      "expand",
+      "search",
+      "rerank",
+      "answer",
+      "final",
+    ]);
   });
 
-  it("renders main question and expandable subquestion details from enriched response shape", async () => {
+  it("renders main question and expandable subquestion details from async final result", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -114,8 +166,26 @@ describe("App run query flow", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            output: "NATO was formed in 1949.",
-            main_question: "When and why was NATO formed?",
+            job_id: "job-2",
+            run_id: "run-2",
+            status: "running",
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-2",
+            run_id: "run-2",
+            status: "success",
+            message: "Completed.",
+            stage: "synthesize_final",
+            stages: [],
+            decomposition_sub_questions: ["Which treaty created NATO?"],
             sub_qa: [
               {
                 sub_question: "Which treaty created NATO?",
@@ -124,6 +194,21 @@ describe("App run query flow", () => {
                 tool_call_input: "{\"query\":\"NATO founding treaty\"}",
               },
             ],
+            output: "NATO was formed in 1949.",
+            result: {
+              output: "NATO was formed in 1949.",
+              main_question: "When and why was NATO formed?",
+              sub_qa: [
+                {
+                  sub_question: "Which treaty created NATO?",
+                  sub_answer: "The North Atlantic Treaty created NATO.",
+                  sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
+                  tool_call_input: "{\"query\":\"NATO founding treaty\"}",
+                },
+              ],
+            },
+            error: null,
+            cancel_requested: false,
           }),
           {
             status: 200,
@@ -177,3 +262,10 @@ describe("App run query flow", () => {
     expect(await screen.findByText("Request failed with status 500")).toBeInTheDocument();
   });
 });
+
+function getStageStatusText(stageName: string): string {
+  const stageLabel = screen.getByText(stageName);
+  const stageItem = stageLabel.closest("li");
+  expect(stageItem).toBeTruthy();
+  return stageItem?.textContent ?? "";
+}

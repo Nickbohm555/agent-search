@@ -1,13 +1,16 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  AgentStageName,
+  AgentStageRuntimeStatus,
   RequestState,
   RuntimeAgentRunResponse,
   WikiSourceOption,
   cancelInternalDataLoad,
+  getAgentRunStatus,
   getInternalDataLoadStatus,
   listWikiSources,
+  startAgentRun,
   startInternalDataLoad,
-  runAgent,
   wipeInternalData,
 } from "./utils/api";
 import { DEFAULT_WIKI_SOURCES } from "./utils/constants";
@@ -20,6 +23,7 @@ function runSymbol(state: RequestState): string {
 }
 
 export default function App() {
+  const orderedStages: AgentStageName[] = ["decompose", "expand", "search", "rerank", "answer", "final"];
   const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>(DEFAULT_WIKI_SOURCES);
   const [wikiSourceId, setWikiSourceId] = useState(DEFAULT_WIKI_SOURCES[0]?.source_id ?? "");
   const [loadState, setLoadState] = useState<RequestState>("idle");
@@ -33,6 +37,17 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
+  const [runJobId, setRunJobId] = useState<string | null>(null);
+  const [runStatusMessage, setRunStatusMessage] = useState("Not started.");
+  const [runCurrentStage, setRunCurrentStage] = useState("");
+  const [stageStatuses, setStageStatuses] = useState<Record<AgentStageName, AgentStageRuntimeStatus>>({
+    decompose: "pending",
+    expand: "pending",
+    search: "pending",
+    rerank: "pending",
+    answer: "pending",
+    final: "pending",
+  });
   const [answer, setAnswer] = useState("");
   const [lastRunResponse, setLastRunResponse] = useState<RuntimeAgentRunResponse | null>(null);
 
@@ -174,32 +189,106 @@ export default function App() {
     const submitted = query.trim();
     setSubmittedQuery(submitted);
     setRunState("loading");
+    setRunJobId(null);
+    setRunStatusMessage("Submitting run...");
+    setRunCurrentStage("");
+    setStageStatuses({
+      decompose: "pending",
+      expand: "pending",
+      search: "pending",
+      rerank: "pending",
+      answer: "pending",
+      final: "pending",
+    });
     setAnswer("");
     setLastRunResponse(null);
-    console.info("Run query started.", { submittedQuery: submitted });
+    console.info("Async run query requested.", { submittedQuery: submitted });
 
-    const result = await runAgent(submitted);
-    if (result.ok) {
-      setRunState("success");
-      setAnswer(result.data.output);
-      setLastRunResponse(result.data);
-      const subQuestionsWithDetails = (result.data.sub_qa ?? []).filter(
-        (item) =>
-          (item.sub_answer?.trim() ?? "").length > 0 ||
-          (item.tool_call_input?.trim() ?? "").length > 0,
-      ).length;
-      console.info("Run query completed.", {
+    const startResult = await startAgentRun(submitted);
+    if (!startResult.ok) {
+      setRunState("error");
+      setRunStatusMessage(startResult.error.message);
+      setAnswer(startResult.error.message);
+      console.error("Async run query failed to start.", {
         submittedQuery: submitted,
-        hasMainQuestion: Boolean(result.data.main_question.trim()),
-        subQuestionCount: result.data.sub_qa.length,
-        subQuestionsWithDetails,
+        error: startResult.error.message,
       });
       return;
     }
 
-    setRunState("error");
-    setAnswer(result.error.message);
-    console.error("Run query failed.", { submittedQuery: submitted, error: result.error.message });
+    const jobId = startResult.data.job_id;
+    setRunJobId(jobId);
+    setRunStatusMessage("Run started.");
+    console.info("Async run started.", { submittedQuery: submitted, jobId, runId: startResult.data.run_id });
+
+    const poll = async () => {
+      const statusResult = await getAgentRunStatus(jobId);
+      if (!statusResult.ok) {
+        setRunState("error");
+        setRunStatusMessage(statusResult.error.message);
+        setAnswer(statusResult.error.message);
+        setRunJobId(null);
+        console.error("Async run status polling failed.", {
+          submittedQuery: submitted,
+          jobId,
+          error: statusResult.error.message,
+        });
+        return;
+      }
+
+      const status = statusResult.data;
+      setRunCurrentStage(status.stage);
+      setRunStatusMessage(status.message || `Run status: ${status.status}`);
+      const nextStatuses = computeStageStatuses(orderedStages, status.stage, status.status);
+      setStageStatuses(nextStatuses);
+      console.info("Async run stage update.", {
+        submittedQuery: submitted,
+        jobId,
+        backendStage: status.stage,
+        backendStatus: status.status,
+        stageStatuses: nextStatuses,
+      });
+
+      if (status.status === "success") {
+        const response = status.result ?? {
+          main_question: submitted,
+          sub_qa: status.sub_qa,
+          output: status.output,
+        };
+        setRunState("success");
+        setLastRunResponse(response);
+        setAnswer(response.output);
+        setRunStatusMessage(status.message || "Completed.");
+        setRunJobId(null);
+        console.info("Async run completed.", {
+          submittedQuery: submitted,
+          jobId,
+          hasMainQuestion: Boolean(response.main_question.trim()),
+          subQuestionCount: response.sub_qa.length,
+          outputLength: response.output.length,
+        });
+        return;
+      }
+
+      if (status.status === "error" || status.status === "cancelled") {
+        setRunState("error");
+        const failureMessage = status.error || status.message || `Run ${status.status}.`;
+        setRunStatusMessage(failureMessage);
+        setAnswer(failureMessage);
+        setRunJobId(null);
+        console.error("Async run finished with non-success status.", {
+          submittedQuery: submitted,
+          jobId,
+          backendStatus: status.status,
+          error: status.error,
+        });
+        return;
+      }
+
+      setTimeout(poll, 1000);
+    };
+
+    poll();
   }
 
   return (
@@ -276,6 +365,24 @@ export default function App() {
             </span>
           </div>
         </form>
+        <p>Run status: {runStatusMessage}</p>
+        {runJobId ? <p>Run job id: {runJobId}</p> : null}
+      </section>
+
+      <section className="panel stage-rail-panel">
+        <h2>Run Timeline</h2>
+        <p>
+          Current stage: {toDisplayStageName(runCurrentStage) || "Not started"}
+        </p>
+        <ol className="stage-rail" aria-label="Run stage timeline">
+          {orderedStages.map((stage) => (
+            <li key={stage} className={`stage-rail-item stage-${stageStatuses[stage]}`}>
+              <span className={`stage-dot stage-dot-${stageStatuses[stage]}`} aria-hidden="true" />
+              <span className="stage-name">{stage}</span>
+              <span className={`stage-status stage-status-${stageStatuses[stage]}`}>{stageStatuses[stage]}</span>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section className="panel final-readout-panel">
@@ -323,6 +430,57 @@ export default function App() {
       </section>
     </main>
   );
+}
+
+function mapBackendStageToCanonical(stage: string): AgentStageName | null {
+  if (stage === "subquestions_ready" || stage === "decompose") return "decompose";
+  if (stage === "expand") return "expand";
+  if (stage === "search") return "search";
+  if (stage === "rerank") return "rerank";
+  if (stage === "answer") return "answer";
+  if (stage === "synthesize_final" || stage === "final") return "final";
+  return null;
+}
+
+function computeStageStatuses(
+  orderedStages: AgentStageName[],
+  backendStage: string,
+  backendStatus: string,
+): Record<AgentStageName, AgentStageRuntimeStatus> {
+  const mappedStage = mapBackendStageToCanonical(backendStage);
+  const mappedIndex = mappedStage ? orderedStages.indexOf(mappedStage) : -1;
+  const result = orderedStages.reduce<Record<AgentStageName, AgentStageRuntimeStatus>>(
+    (acc, stage) => ({ ...acc, [stage]: "pending" }),
+    {} as Record<AgentStageName, AgentStageRuntimeStatus>,
+  );
+
+  if (mappedIndex < 0) {
+    return result;
+  }
+
+  for (let index = 0; index < mappedIndex; index += 1) {
+    result[orderedStages[index]] = "completed";
+  }
+
+  if (backendStatus === "error" || backendStatus === "cancelled") {
+    result[orderedStages[mappedIndex]] = "error";
+    return result;
+  }
+
+  if (backendStatus === "success") {
+    result[orderedStages[mappedIndex]] = "completed";
+    return result;
+  }
+
+  result[orderedStages[mappedIndex]] = "in_progress";
+  return result;
+}
+
+function toDisplayStageName(stage: string): string {
+  const mapped = mapBackendStageToCanonical(stage);
+  if (mapped) return mapped;
+  if (!stage.trim()) return "";
+  return stage;
 }
 
 function mergeWikiSourcesWithFallback(apiSources: WikiSourceOption[]): WikiSourceOption[] {
