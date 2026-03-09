@@ -1138,6 +1138,7 @@ health: HTTP/1.1 200 OK {"status":"ok"}
 - `docker compose logs --tail=200 backend`
 - `docker compose logs --tail=120 frontend`
 - `docker compose logs --tail=120 db`
+- `docker compose exec backend uv run python - <<'PY' ... BenchmarkRunStatusResponse(...).model_dump(mode='json')['objective'] ... PY`
 
 **Useful logs (excerpt):**
 ```text
@@ -1148,6 +1149,7 @@ backend: Uvicorn running on http://0.0.0.0:8000
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
+manual-status-objective: {'primary_kpi': 'correctness', 'secondary_kpi': 'latency', 'execution_mode': 'manual_only', 'targets': {'min_correctness': 0.75, 'max_latency_ms_p95': 30000, 'max_cost_usd': 5.0}}
 ```
 
 ## Completed - 2026-03-09 - Section 19
@@ -1216,4 +1218,71 @@ backend: Uvicorn running on http://0.0.0.0:8000
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
+```
+
+## Completed - 2026-03-09 - Section 20
+
+## Section 20: Benchmark charter - correctness and latency targets
+
+**Single goal:** Define benchmark objective contract used by APIs, runner, and UI.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Primary KPI correctness, secondary KPI latency.
+- v1 thresholds: correctness >= 0.75 and p95 latency <= 30,000ms.
+- Manual-only benchmark execution.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `spec.md` | Benchmark requirement source of truth. |
+| `src/backend/schemas/benchmark.py` | Threshold models used by API/UI. |
+
+**How to test:** Validate threshold block appears in benchmark run status response.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added explicit benchmark objective contract models in `src/backend/schemas/benchmark.py`: `BenchmarkKPI`, `BenchmarkExecutionMode`, and `BenchmarkObjective`.
+- Updated `BenchmarkTargets` default correctness threshold from `0.70` to `0.75` while keeping latency p95 threshold at `30000ms` and cost tracking separate.
+- Added `objective` to `BenchmarkRunStatusResponse` with a default objective block so status payload serialization always includes KPI priority, manual-only execution mode, and thresholds.
+- Updated schema exports in `src/backend/schemas/__init__.py` and synced `spec.md` charter wording to the objective model.
+- Extended `tests/contracts/test_public_contracts.py` to freeze the new status schema field and assert objective threshold block serialization in a status response payload.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=200 frontend`
+- `docker compose logs --tail=200 db`
+- `docker compose exec backend uv run pytest tests/contracts/test_public_contracts.py` (failed: pytest not present in uv run env)
+- `docker compose exec backend uv run --with pytest pytest tests/contracts/test_public_contracts.py`
+- `docker compose restart backend`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose ps`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/contracts/test_public_contracts.py ........ [100%]
+pytest: 8 passed in 1.52s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
 ```

@@ -21,10 +21,26 @@ class BenchmarkRunStatus(str, Enum):
     cancelled = "cancelled"
 
 
+class BenchmarkKPI(str, Enum):
+    correctness = "correctness"
+    latency = "latency"
+
+
+class BenchmarkExecutionMode(str, Enum):
+    manual_only = "manual_only"
+
+
 class BenchmarkTargets(BaseModel):
-    min_correctness: float = Field(default=0.7, ge=0.0, le=1.0)
+    min_correctness: float = Field(default=0.75, ge=0.0, le=1.0)
     max_latency_ms_p95: int = Field(default=30000, gt=0)
     max_cost_usd: float = Field(default=5.0, ge=0.0)
+
+
+class BenchmarkObjective(BaseModel):
+    primary_kpi: BenchmarkKPI = BenchmarkKPI.correctness
+    secondary_kpi: BenchmarkKPI = BenchmarkKPI.latency
+    execution_mode: BenchmarkExecutionMode = BenchmarkExecutionMode.manual_only
+    targets: BenchmarkTargets = Field(default_factory=BenchmarkTargets)
 
 
 class BenchmarkRunCreateRequest(BaseModel):
@@ -67,6 +83,7 @@ class BenchmarkRunStatusResponse(BaseModel):
     status: BenchmarkRunStatus
     dataset_id: str = Field(min_length=1)
     modes: list[BenchmarkMode] = Field(default_factory=list)
+    objective: BenchmarkObjective = Field(default_factory=BenchmarkObjective)
     targets: BenchmarkTargets | None = None
     mode_summaries: list[BenchmarkModeSummary] = Field(default_factory=list)
     completed_questions: int = Field(default=0, ge=0)

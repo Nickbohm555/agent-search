@@ -18,14 +18,14 @@
 | File | Purpose |
 |------|--------|
 | spec.md | Canonical benchmark charter and fixed v1 constraints. |
-| src/backend/schemas/benchmark.py | Add objective schema (`BenchmarkTargets`) used by APIs and UI. |
+| src/backend/schemas/benchmark.py | Add objective schema (`BenchmarkObjective` + `BenchmarkTargets`) used by APIs and UI. |
 
 **How to test:**
 - Unit test schema defaults and threshold serialization.
 - Manual: run benchmark status endpoint and verify thresholds are present.
 
-**Test results:** (Add when section is complete.)
-- Not implemented yet.
+**Test results:**
+- Implemented in implementation plan section 20 with schema defaults and status response objective serialization coverage.
 
 ---
 

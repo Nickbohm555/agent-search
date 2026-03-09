@@ -10,7 +10,10 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from schemas import (
+    BenchmarkExecutionMode,
+    BenchmarkKPI,
     BenchmarkMode,
+    BenchmarkObjective,
     BenchmarkRunCreateRequest,
     BenchmarkRunStatusResponse,
     RuntimeAgentRunAsyncCancelResponse,
@@ -72,6 +75,7 @@ def test_benchmark_run_status_response_schema_is_frozen() -> None:
         "status",
         "dataset_id",
         "modes",
+        "objective",
         "targets",
         "mode_summaries",
         "completed_questions",
@@ -82,3 +86,26 @@ def test_benchmark_run_status_response_schema_is_frozen() -> None:
         "error",
     }
     assert schema["required"] == ["run_id", "status", "dataset_id"]
+
+
+def test_benchmark_status_objective_defaults_are_frozen() -> None:
+    objective = BenchmarkObjective()
+    assert objective.primary_kpi is BenchmarkKPI.correctness
+    assert objective.secondary_kpi is BenchmarkKPI.latency
+    assert objective.execution_mode is BenchmarkExecutionMode.manual_only
+    assert objective.targets.min_correctness == 0.75
+    assert objective.targets.max_latency_ms_p95 == 30000
+
+
+def test_benchmark_status_response_includes_objective_threshold_block() -> None:
+    response = BenchmarkRunStatusResponse(
+        run_id="run-1",
+        status="queued",
+        dataset_id="internal_v1",
+    )
+    payload = response.model_dump(mode="json")
+    assert payload["objective"]["primary_kpi"] == "correctness"
+    assert payload["objective"]["secondary_kpi"] == "latency"
+    assert payload["objective"]["execution_mode"] == "manual_only"
+    assert payload["objective"]["targets"]["min_correctness"] == 0.75
+    assert payload["objective"]["targets"]["max_latency_ms_p95"] == 30000

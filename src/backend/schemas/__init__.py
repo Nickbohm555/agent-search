@@ -26,8 +26,11 @@ from .agent import (
     SynthesizeFinalNodeOutput,
 )
 from .benchmark import (
+    BenchmarkExecutionMode,
+    BenchmarkKPI,
     BenchmarkMode,
     BenchmarkModeSummary,
+    BenchmarkObjective,
     BenchmarkRunCancelResponse,
     BenchmarkRunCreateRequest,
     BenchmarkRunCreateResponse,
@@ -81,6 +84,9 @@ __all__ = [
     "SynthesizeFinalNodeOutput",
     "BenchmarkMode",
     "BenchmarkModeSummary",
+    "BenchmarkKPI",
+    "BenchmarkExecutionMode",
+    "BenchmarkObjective",
     "BenchmarkRunCancelResponse",
     "BenchmarkRunCreateRequest",
     "BenchmarkRunCreateResponse",
