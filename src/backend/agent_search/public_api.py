@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 import logging
 import time
-from typing import Any, cast
+from typing import Any
 
 from agent_search.config import RuntimeConfig
 from agent_search.errors import (
@@ -13,6 +13,7 @@ from agent_search.errors import (
     SDKRetrievalError,
     SDKTimeoutError,
 )
+from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from schemas import (
     RuntimeAgentRunRequest,
@@ -22,7 +23,6 @@ from schemas import (
     RuntimeAgentRunResponse,
 )
 from services.agent_jobs import cancel_agent_run_job, get_agent_run_job, start_agent_run_job
-from services.agent_service import run_runtime_agent
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,6 @@ def run(
     try:
         response = run_runtime_agent(
             RuntimeAgentRunRequest(query=query),
-            db=cast(Any, None),
             model=model,
             vector_store=compatible_vector_store,
         )

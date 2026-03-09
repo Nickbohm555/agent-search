@@ -963,3 +963,64 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 16
+
+## Section 16: SDK sync runtime wiring - end-to-end sync path
+
+**Single goal:** Wire public SDK sync API to extracted runtime graph.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Use extracted runtime modules only.
+- Require caller-provided `model` and `vector_store`.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/public_api.py` | Sync execution wiring. |
+| `src/backend/agent_search/runtime/runner.py` | Sync orchestration entry. |
+| `src/backend/tests/sdk/test_sdk_run_e2e.py` | Sync E2E tests. |
+
+**How to test:** Run SDK sync E2E tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Rewired `agent_search.public_api.run` to call `agent_search.runtime.runner.run_runtime_agent` instead of legacy `services.agent_service.run_runtime_agent`.
+- Preserved required SDK inputs (`model` and `vector_store`) and existing SDK error mapping/logging behavior.
+- Added SDK sync E2E coverage in `tests/sdk/test_sdk_run_e2e.py` to verify the end-to-end path `public_api.run -> runtime.runner` uses caller-provided dependencies and runtime orchestration output mapping.
+- Updated `tests/sdk/test_public_api.py` to match the new sync runtime call signature.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d && docker compose ps`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_sdk_run_e2e.py tests/sdk/test_public_api.py tests/sdk/test_errors.py tests/sdk/test_vectorstore_protocol.py`
+- `docker compose restart backend && docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=220 backend`
+- `docker compose logs --tail=100 frontend`
+- `docker compose logs --tail=100 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_sdk_run_e2e.py . [  6%]
+pytest: tests/sdk/test_public_api.py ... [ 26%]
+pytest: tests/sdk/test_errors.py ...... [ 66%]
+pytest: tests/sdk/test_vectorstore_protocol.py ..... [100%]
+pytest: 15 passed in 1.45s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

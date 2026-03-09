@@ -29,9 +29,8 @@ def test_run_sync_signature_requires_query_vector_store_and_model() -> None:
 def test_run_sync_returns_runtime_response_model(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run_runtime_agent(payload, db, model, vector_store):
+    def fake_run_runtime_agent(payload, model, vector_store):
         captured["query"] = payload.query
-        captured["db"] = db
         captured["model"] = model
         captured["vector_store"] = vector_store
         return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
@@ -51,7 +50,6 @@ def test_run_sync_returns_runtime_response_model(monkeypatch) -> None:
     assert response.output == "ok"
     assert captured == {
         "query": "sdk contract query",
-        "db": None,
         "model": sentinel_model,
         "vector_store": sentinel_vector_store,
     }
