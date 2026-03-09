@@ -2665,3 +2665,79 @@ Benchmarks router wipe completed deleted_runs=0
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 42
+
+## Section 42: Manual benchmark operator CLI - run and export
+
+**Single goal:** Provide CLI commands for manual benchmark runs and artifact export.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Add run command with dataset/mode flags.
+- Add export command for JSON results.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): optional `typer`; argparse acceptable.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/benchmarks/run.py` | Benchmark run CLI entrypoint. |
+| `src/backend/benchmarks/export.py` | Benchmark export CLI entrypoint. |
+| `README.md` | CLI usage documentation. |
+
+**How to test:** Run CLI help and manual smoke run/export.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `benchmarks/run.py` argparse CLI with required `--dataset-id` and repeatable `--mode` flags, plus optional `--run-id`, `--metadata key=value`, `--max-questions` (subset/smoke support), model/vector-store overrides, and `--dry-run` planning output.
+- Reused existing runtime services (`BenchmarkRunner`, `get_vector_store`, `get_embedding_model`, `ChatOpenAI`) so CLI executes the same benchmark pipeline and persistence contracts as API jobs.
+- Added `benchmarks/export.py` argparse CLI that exports benchmark artifacts to JSON by `--run-id` or latest run, including run metadata, status summary, and raw persisted result rows.
+- Added explicit operator visibility logs for CLI request/execute/complete stages in both commands.
+- Updated README with backend-container command examples for benchmark run and export workflows.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run python benchmarks/run.py --help`
+- `docker compose exec backend uv run python benchmarks/export.py --help`
+- `docker compose exec backend uv run python benchmarks/run.py --dataset-id internal_v1 --mode baseline_retrieve_then_answer --max-questions 1 --metadata operator=manual_cli_smoke --metadata section=42`
+- `docker compose exec backend uv run python benchmarks/export.py --run-id benchmark-run-eb45ac1f-93e8-44a3-99d1-11bf5bba182a --output benchmarks/exports/section42-smoke.json`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=80 frontend`
+- `docker compose logs --no-color --tail=80 db`
+- `curl -sS http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+run.py --help:
+usage: run.py [-h] --dataset-id DATASET_ID --mode {baseline_retrieve_then_answer,agentic_default,agentic_no_rerank,agentic_single_query_no_decompose} ...
+
+export.py --help:
+usage: export.py [-h] [--run-id RUN_ID] [--output OUTPUT]
+
+run smoke summary:
+{"completed_results": 1, "dataset_id": "internal_v1__subset_1", "mode_count": 1, "question_count": 1, "run_id": "benchmark-run-eb45ac1f-93e8-44a3-99d1-11bf5bba182a", "selected_question_count": 1, "source_dataset_id": "internal_v1"}
+
+export smoke summary:
+{"mode_count": 1, "output_path": "benchmarks/exports/section42-smoke.json", "result_count": 1, "run_id": "benchmark-run-eb45ac1f-93e8-44a3-99d1-11bf5bba182a", "status": "completed"}
+
+backend:
+Benchmark run cli completed run_id=benchmark-run-eb45ac1f-93e8-44a3-99d1-11bf5bba182a dataset_id=internal_v1__subset_1 completed_results=1
+Benchmark export cli wrote JSON run_id=benchmark-run-eb45ac1f-93e8-44a3-99d1-11bf5bba182a output_path=benchmarks/exports/section42-smoke.json mode_count=1 result_count=1
+
+health:
+{"status":"ok"}
+```

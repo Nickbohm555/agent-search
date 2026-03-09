@@ -149,6 +149,31 @@ docker compose exec frontend npm run typecheck
 docker compose exec frontend npm run build
 ```
 
+## Benchmark Operator CLI
+
+Run benchmark modes from the backend container:
+
+```bash
+docker compose exec backend uv run python benchmarks/run.py \
+  --dataset-id internal_v1 \
+  --mode baseline_retrieve_then_answer \
+  --max-questions 1
+```
+
+Export benchmark JSON artifacts (latest run by default):
+
+```bash
+docker compose exec backend uv run python benchmarks/export.py
+```
+
+Export a specific run to a custom path:
+
+```bash
+docker compose exec backend uv run python benchmarks/export.py \
+  --run-id benchmark-run-123 \
+  --output benchmarks/exports/benchmark-run-123.json
+```
+
 ## OpenAPI / SDK
 
 - OpenAPI artifact: `openapi.json`
