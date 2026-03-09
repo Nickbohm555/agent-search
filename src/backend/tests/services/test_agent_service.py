@@ -31,6 +31,7 @@ from schemas import (
 )
 from schemas.decomposition import DecompositionPlan
 from agent_search.runtime import runner as runtime_runner
+from services import agent_jobs
 from services import document_validation_service
 from services import agent_service
 from services import reranker_service
@@ -72,7 +73,7 @@ def test_build_runtime_timeout_config_from_env_defaults(monkeypatch) -> None:
     assert config.initial_search_timeout_s == 20
     assert config.decomposition_llm_timeout_s == 60
     assert config.document_validation_timeout_s == 20
-    assert config.rerank_timeout_s == 20
+    assert config.rerank_timeout_s == 1
     assert config.subanswer_generation_timeout_s == 60
     assert config.subanswer_verification_timeout_s == 30
     assert config.subquestion_pipeline_total_timeout_s == 120
@@ -1340,6 +1341,73 @@ def test_run_runtime_agent_wrapper_delegates_to_runtime_runner(monkeypatch) -> N
     assert response.sub_qa[0].sub_question == "Wrapper sub-question?"
 
 
+def test_agent_jobs_start_wrapper_delegates_to_runtime_jobs(monkeypatch) -> None:
+    payload = RuntimeAgentRunRequest(query="Start wrapper delegation?")
+    captured: dict[str, object] = {}
+
+    class _Status:
+        job_id = "job-123"
+        run_id = "run-123"
+        status = "running"
+
+    def fake_start(payload_arg, *, model=None, vector_store=None):
+        captured["query"] = payload_arg.query
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        return _Status()
+
+    monkeypatch.setattr(agent_jobs, "runtime_start_agent_run_job", fake_start)
+
+    status = agent_jobs.start_agent_run_job(payload, model="model-z", vector_store="store-z")
+
+    assert captured == {
+        "query": "Start wrapper delegation?",
+        "model": "model-z",
+        "vector_store": "store-z",
+    }
+    assert status.job_id == "job-123"
+    assert status.run_id == "run-123"
+    assert status.status == "running"
+
+
+def test_agent_jobs_get_wrapper_delegates_to_runtime_jobs(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _Status:
+        job_id = "job-456"
+        run_id = "run-456"
+        status = "success"
+
+    def fake_get(job_id):
+        captured["job_id"] = job_id
+        return _Status()
+
+    monkeypatch.setattr(agent_jobs, "runtime_get_agent_run_job", fake_get)
+
+    status = agent_jobs.get_agent_run_job("job-456")
+
+    assert captured == {"job_id": "job-456"}
+    assert status is not None
+    assert status.job_id == "job-456"
+    assert status.run_id == "run-456"
+    assert status.status == "success"
+
+
+def test_agent_jobs_cancel_wrapper_delegates_to_runtime_jobs(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_cancel(job_id):
+        captured["job_id"] = job_id
+        return True
+
+    monkeypatch.setattr(agent_jobs, "runtime_cancel_agent_run_job", fake_cancel)
+
+    cancelled = agent_jobs.cancel_agent_run_job("job-789")
+
+    assert cancelled is True
+    assert captured == {"job_id": "job-789"}
+
+
 def test_estimate_retrieved_doc_count_counts_ranked_lines() -> None:
     output = (
         "1. title=Alpha source=wiki://alpha content=A\n"
@@ -2157,7 +2225,7 @@ def test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_gr
     monkeypatch.setattr(
         agent_service,
         "expand_queries_for_subquestion",
-        lambda *, sub_question, model, config: list(expansions_by_sub_question[sub_question]),
+        lambda *, sub_question, model, config, callbacks=None: list(expansions_by_sub_question[sub_question]),
     )
     monkeypatch.setattr(
         agent_service,
@@ -2320,7 +2388,7 @@ def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expa
     monkeypatch.setattr(
         agent_service,
         "rerank_documents",
-        lambda *, query, documents, config: [
+        lambda *, query, documents, config, callbacks=None: [
             reranker_service.RerankedDocumentScore(
                 document=document_validation_service.RetrievedDocument(
                     rank=index,

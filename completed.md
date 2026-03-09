@@ -1149,3 +1149,71 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 19
+
+## Section 19: Legacy runtime cleanup - single orchestration implementation
+
+**Single goal:** Remove duplicate orchestration paths outside SDK runtime.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Keep service wrappers thin.
+- Ensure backend and internal callers share same runtime path.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Thin SDK wrapper only. |
+| `src/backend/services/agent_jobs.py` | Delegate to SDK jobs manager. |
+| `src/backend/tests/services/test_agent_service.py` | Single-path behavior tests. |
+
+**How to test:** Run service tests and verify no duplicate path usage.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Replaced legacy `services/agent_jobs.py` orchestration implementation with a compatibility wrapper that delegates `start/get/cancel` directly to `agent_search.runtime.jobs`.
+- Kept and validated `services/agent_service.run_runtime_agent` as a thin wrapper to `agent_search.runtime.runner.run_runtime_agent`.
+- Added service-level delegation tests for `agent_jobs` wrappers and retained wrapper delegation coverage for `agent_service`.
+- Fixed pre-existing `test_agent_service.py` incompatibilities surfaced by full service test execution (timeout default expectation and monkeypatched callback signatures) so the required service suite now passes.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `docker compose exec backend uv pip install pytest`
+- `docker compose exec backend uv run pytest tests/services/test_agent_service.py -k "runtime_runner_executes_without_db_dependency or run_runtime_agent_wrapper_delegates_to_runtime_runner or agent_jobs_"`
+- `docker compose exec backend uv run pytest tests/services/test_agent_service.py`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=100 frontend`
+- `docker compose logs --tail=100 db`
+- `curl -sS http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_agent_service.py ................................... [ 63%]
+pytest: ....................                                                     [100%]
+pytest: 55 passed in 7.08s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```
