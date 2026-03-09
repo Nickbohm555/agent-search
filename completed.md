@@ -231,3 +231,70 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 5
+
+## Section 5: SDK error taxonomy - explicit consumer-facing exceptions
+
+**Single goal:** Add deterministic SDK exception types.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Define configuration, retrieval, model, and timeout exceptions.
+- Map internal errors to public SDK exception hierarchy.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/errors.py` | SDK exception hierarchy. |
+| `src/backend/agent_search/public_api.py` | Boundary exception mapping. |
+| `src/backend/tests/sdk/test_errors.py` | Exception contract tests. |
+
+**How to test:** Run SDK error-path tests.
+
+**Test results:** (Add when section is complete.)
+- Pending.
+
+---
+
+**Completion notes:**
+- Added public SDK exception taxonomy in `agent_search.errors`: `SDKError`, `SDKConfigurationError`, `SDKRetrievalError`, `SDKModelError`, and `SDKTimeoutError`.
+- Added deterministic boundary exception mapping in `agent_search.public_api` across sync run, async run, status, and cancel SDK entrypoints.
+- Added failure-path visibility logs for mapped error class and original error class at each SDK boundary.
+- Added SDK error-path tests in `tests/sdk/test_errors.py` and updated existing SDK contract tests to assert SDK configuration exceptions.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS -i --retry 5 --retry-connrefused --retry-delay 1 http://localhost:8000/api/health`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_errors.py tests/sdk/test_public_api.py tests/sdk/test_public_api_async.py tests/contracts/test_public_contracts.py"`
+- `docker compose restart backend`
+- `docker compose logs --tail=180 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_errors.py ...... [ 28%]
+pytest: tests/sdk/test_public_api.py ... [ 42%]
+pytest: tests/sdk/test_public_api_async.py ...... [ 71%]
+pytest: tests/contracts/test_public_contracts.py ...... [100%]
+pytest: 21 passed in 1.58s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

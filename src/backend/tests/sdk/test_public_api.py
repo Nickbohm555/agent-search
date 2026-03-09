@@ -9,6 +9,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agent_search import public_api
+from agent_search.errors import SDKConfigurationError
 from schemas import RuntimeAgentRunResponse
 
 
@@ -51,10 +52,10 @@ def test_run_sync_returns_runtime_response_model(monkeypatch) -> None:
     }
 
 
-def test_run_sync_raises_when_model_is_none() -> None:
+def test_run_sync_raises_configuration_error_when_model_is_none() -> None:
     try:
         public_api.run("q", model=None, vector_store=object())
-    except TypeError as exc:
+    except SDKConfigurationError as exc:
         assert str(exc) == "model is required and cannot be None"
     else:
-        raise AssertionError("Expected TypeError for missing model")
+        raise AssertionError("Expected SDKConfigurationError for missing model")

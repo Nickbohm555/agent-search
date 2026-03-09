@@ -10,6 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agent_search import public_api
+from agent_search.errors import SDKConfigurationError
 from schemas import AgentRunStageMetadata, RuntimeAgentRunResponse, SubQuestionAnswer
 
 
@@ -92,23 +93,23 @@ def test_cancel_run_returns_success_shape(monkeypatch) -> None:
     assert response.model_dump() == {"status": "success", "message": "Cancellation requested."}
 
 
-def test_get_run_status_raises_value_error_for_missing_job(monkeypatch) -> None:
+def test_get_run_status_raises_configuration_error_for_missing_job(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "get_agent_run_job", lambda _job_id: None)
 
     try:
         public_api.get_run_status("missing-job")
-    except ValueError as exc:
+    except SDKConfigurationError as exc:
         assert str(exc) == "Job not found."
     else:
-        raise AssertionError("Expected ValueError for missing job")
+        raise AssertionError("Expected SDKConfigurationError for missing job")
 
 
-def test_cancel_run_raises_value_error_when_not_found_or_finished(monkeypatch) -> None:
+def test_cancel_run_raises_configuration_error_when_not_found_or_finished(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "cancel_agent_run_job", lambda _job_id: False)
 
     try:
         public_api.cancel_run("missing-job")
-    except ValueError as exc:
+    except SDKConfigurationError as exc:
         assert str(exc) == "Job not found or already finished."
     else:
-        raise AssertionError("Expected ValueError for uncancellable job")
+        raise AssertionError("Expected SDKConfigurationError for uncancellable job")

@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 import logging
 import time
 from typing import Any, cast
 
+from agent_search.errors import (
+    SDKConfigurationError,
+    SDKError,
+    SDKModelError,
+    SDKRetrievalError,
+    SDKTimeoutError,
+)
 from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
@@ -15,6 +23,23 @@ from services.agent_jobs import cancel_agent_run_job, get_agent_run_job, start_a
 from services.agent_service import run_runtime_agent
 
 logger = logging.getLogger(__name__)
+
+
+def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
+    if isinstance(exc, SDKError):
+        return exc
+    if isinstance(exc, (TimeoutError, FuturesTimeoutError)):
+        return SDKTimeoutError(f"{operation} timed out.")
+
+    message = str(exc).lower()
+    if any(token in message for token in ("vector", "retriev", "document search", "similarity search")):
+        return SDKRetrievalError(f"{operation} failed during retrieval.")
+    if any(token in message for token in ("model", "llm", "openai", "completion", "chat")):
+        return SDKModelError(f"{operation} failed during model execution.")
+    if any(token in message for token in ("config", "invalid", "missing", "required", "argument", "job not found")):
+        return SDKConfigurationError(f"{operation} failed due to invalid SDK input or configuration.")
+
+    return SDKError(f"{operation} failed.")
 
 
 def run(
@@ -33,17 +58,26 @@ def run(
     )
     if model is None:
         logger.error("SDK sync run rejected missing model")
-        raise TypeError("model is required and cannot be None")
+        raise SDKConfigurationError("model is required and cannot be None")
     if vector_store is None:
         logger.error("SDK sync run rejected missing vector_store")
-        raise TypeError("vector_store is required and cannot be None")
+        raise SDKConfigurationError("vector_store is required and cannot be None")
 
-    response = run_runtime_agent(
-        RuntimeAgentRunRequest(query=query),
-        db=cast(Any, None),
-        model=model,
-        vector_store=vector_store,
-    )
+    try:
+        response = run_runtime_agent(
+            RuntimeAgentRunRequest(query=query),
+            db=cast(Any, None),
+            model=model,
+            vector_store=vector_store,
+        )
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_sdk_error(operation="run", exc=exc)
+        logger.exception(
+            "SDK sync run failed mapped_error=%s original_error=%s",
+            type(mapped).__name__,
+            type(exc).__name__,
+        )
+        raise mapped from exc
     logger.info(
         "SDK sync run completed sub_qa_count=%s output_len=%s",
         len(response.sub_qa),
@@ -68,13 +102,22 @@ def run_async(
     )
     if model is None:
         logger.error("SDK async run rejected missing model")
-        raise TypeError("model is required and cannot be None")
+        raise SDKConfigurationError("model is required and cannot be None")
     if vector_store is None:
         logger.error("SDK async run rejected missing vector_store")
-        raise TypeError("vector_store is required and cannot be None")
+        raise SDKConfigurationError("vector_store is required and cannot be None")
 
-    # Async runtime currently resolves dependencies in service layer.
-    job = start_agent_run_job(RuntimeAgentRunRequest(query=query))
+    try:
+        # Async runtime currently resolves dependencies in service layer.
+        job = start_agent_run_job(RuntimeAgentRunRequest(query=query))
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_sdk_error(operation="run_async", exc=exc)
+        logger.exception(
+            "SDK async run failed mapped_error=%s original_error=%s",
+            type(mapped).__name__,
+            type(exc).__name__,
+        )
+        raise mapped from exc
     response = RuntimeAgentRunAsyncStartResponse(job_id=job.job_id, run_id=job.run_id, status=job.status)
     logger.info(
         "SDK async run queued job_id=%s run_id=%s status=%s",
@@ -87,10 +130,20 @@ def run_async(
 
 def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
     logger.info("SDK async status requested job_id=%s", job_id)
-    job = get_agent_run_job(job_id)
-    if job is None:
-        logger.error("SDK async status failed job_id=%s not found", job_id)
-        raise ValueError("Job not found.")
+    try:
+        job = get_agent_run_job(job_id)
+        if job is None:
+            logger.error("SDK async status failed job_id=%s not found", job_id)
+            raise SDKConfigurationError("Job not found.")
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_sdk_error(operation="get_run_status", exc=exc)
+        logger.exception(
+            "SDK async status failed mapped_error=%s original_error=%s job_id=%s",
+            type(mapped).__name__,
+            type(exc).__name__,
+            job_id,
+        )
+        raise mapped from exc
 
     now = time.time()
     started_at = getattr(job, "started_at", None)
@@ -129,10 +182,20 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
 
 def cancel_run(job_id: str) -> RuntimeAgentRunAsyncCancelResponse:
     logger.info("SDK async cancel requested job_id=%s", job_id)
-    cancelled = cancel_agent_run_job(job_id)
-    if not cancelled:
-        logger.error("SDK async cancel failed job_id=%s not found_or_finished", job_id)
-        raise ValueError("Job not found or already finished.")
+    try:
+        cancelled = cancel_agent_run_job(job_id)
+        if not cancelled:
+            logger.error("SDK async cancel failed job_id=%s not found_or_finished", job_id)
+            raise SDKConfigurationError("Job not found or already finished.")
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_sdk_error(operation="cancel_run", exc=exc)
+        logger.exception(
+            "SDK async cancel failed mapped_error=%s original_error=%s job_id=%s",
+            type(mapped).__name__,
+            type(exc).__name__,
+            job_id,
+        )
+        raise mapped from exc
     response = RuntimeAgentRunAsyncCancelResponse(status="success", message="Cancellation requested.")
     logger.info("SDK async cancel accepted job_id=%s", job_id)
     return response
