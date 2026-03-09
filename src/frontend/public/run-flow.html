@@ -206,6 +206,12 @@
           citation-grounding consistency, and include baseline slices against the runtime stack
           (<code>MultiQueryRetriever</code> expansion + <code>flashrank</code> rerank).
         </p>
+        <p class="small">
+          Section 21 adds efficiency evaluations focused on token/cost impact: tests compare naive large-context
+          retrieval windows against reranked <code>top_n</code> context, require that gold evidence remains in the
+          final cited context, and record operating targets of <code>k_fetch=6..8</code> with
+          <code>top_n=2..3</code> for strong token-budget reduction.
+        </p>
       </div>
 
       <div class="panel">

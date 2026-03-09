@@ -1240,3 +1240,68 @@ docker compose logs --no-color --tail=160 frontend
 docker compose logs --no-color --tail=160 db
 -> postgres initialized and ready to accept connections
 ```
+
+## Section 21: Efficiency evals - context size and token budget impact
+
+**Single goal:** Quantify efficiency impact of reranked top_n context vs naive large-context baselines.
+
+**Details:**
+- Compare token usage for reranked top_n vs larger unfiltered context windows.
+- Track answer quality floor while reducing token cost.
+- Record target operating ranges for `k_fetch` and `top_n`.
+- Keep this section focused on cost/efficiency metrics only.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required initially.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Add efficiency-oriented regression checks and fixtures. |
+| `README.md` | Document token/cost eval method and recommended defaults. |
+
+**How to test:** Run efficiency suite and verify reranked context achieves lower token usage without unacceptable quality loss.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Added Section 21 efficiency eval coverage in `src/backend/tests/services/test_agent_service.py`:
+  - `_estimate_context_token_budget(...)` helper for deterministic context-size comparison.
+  - `test_efficiency_eval_reranked_top_n_reduces_context_tokens_while_preserving_quality_floor` to verify reranked `top_n` context reduces token budget while preserving quality floor and citation grounding.
+  - `test_efficiency_eval_operating_ranges_identify_k_fetch_and_top_n_targets` to lock eval-derived target operating ranges for `k_fetch` and `top_n`.
+- Updated `README.md` with Section 21 methodology and migration note, including current recommended tuning range (`k_fetch=6..8`, `top_n=2..3`).
+- Updated `src/frontend/public/run-flow.html` with a Section 21 efficiency-evals summary.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+docker compose build
+docker compose up -d
+-> full stack rebuilt and restarted; db healthy; backend/frontend/chrome running
+
+Required section tests:
+docker compose exec backend uv run pytest tests/services/test_agent_service.py -k "efficiency_eval"
+-> initial failure: pytest missing from backend env
+
+docker compose exec backend sh -lc 'uv pip install pytest && uv run python -m pytest tests/services/test_agent_service.py -k "efficiency_eval"'
+-> PASS (2 passed, 77 deselected)
+
+Post-change restarts and runtime checks:
+docker compose restart backend frontend
+-> backend/frontend restarted
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+docker compose logs --no-color --tail=120 backend
+-> uvicorn/alembic startup healthy; watchfiles reloads observed after test and venv changes; no fatal runtime errors
+
+docker compose logs --no-color --tail=120 frontend
+-> vite ready on :5173; reload observed for `public/run-flow.html`
+
+docker compose logs --no-color --tail=120 db
+-> postgres ready to accept connections
+```

@@ -18,6 +18,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from schemas import (
     AnswerSubquestionNodeInput,
     AnswerSubquestionNodeOutput,
+    CitationSourceRow,
     DecomposeNodeInput,
     ExpandNodeInput,
     ExpandNodeOutput,
@@ -4781,17 +4782,35 @@ def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expa
                     source=item.source,
                     content=item.content,
                 ),
-                score=float(len(documents) - index + 1),
+                score=float(len(selected_documents) - index + 1),
                 original_rank=item.rank,
                 reranked_rank=index,
             )
             for index, item in enumerate(
-                sorted(
-                    list(documents),
-                    key=lambda row: 0 if row.title.startswith("[GOLD]") else 1,
+                (
+                    lambda ordered: ordered
+                    if config.top_n is None
+                    else ordered[: config.top_n]
+                )(
+                    sorted(
+                        list(documents),
+                        key=lambda row: 0 if row.title.startswith("[GOLD]") else 1,
+                    )
                 ),
                 start=1,
             )
+            for selected_documents in [[
+                (
+                    lambda ordered: ordered
+                    if config.top_n is None
+                    else ordered[: config.top_n]
+                )(
+                    sorted(
+                        list(documents),
+                        key=lambda row: 0 if row.title.startswith("[GOLD]") else 1,
+                    )
+                )
+            ][0]]
         ],
     )
 
@@ -4837,3 +4856,238 @@ def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expa
     assert multiquery_only_top1 != gold_document_id
     assert multiquery_flashrank_contains_gold is True
     assert multiquery_flashrank_top1 == gold_document_id
+
+
+def _estimate_context_token_budget(rows: list[CitationSourceRow]) -> int:
+    return sum(
+        len(f"{row.title} {row.source} {row.content}".split())
+        for row in rows
+    )
+
+
+def test_efficiency_eval_reranked_top_n_reduces_context_tokens_while_preserving_quality_floor(
+    monkeypatch, caplog
+) -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-section-21-efficiency")
+    sub_question = "What date did the compliance filing requirement begin?"
+    gold_document_id = "doc-efficiency-gold"
+
+    noisy_docs = [
+        _make_eval_langchain_doc(
+            document_id=f"doc-efficiency-noise-{index}",
+            title=f"Noise memo {index}",
+            source=f"wiki://noise-{index}",
+            content=("Background policy discussion without the exact filing date. " * 20).strip(),
+        )
+        for index in range(1, 6)
+    ]
+    gold_doc = _make_eval_langchain_doc(
+        document_id=gold_document_id,
+        title="[GOLD] Filing Requirement Effective Date",
+        source="wiki://filing-effective-date",
+        content=("The compliance filing requirement began on 2025-10-01. " * 20).strip(),
+    )
+    supporting_doc = _make_eval_langchain_doc(
+        document_id="doc-efficiency-support",
+        title="Compliance bulletin",
+        source="wiki://compliance-bulletin",
+        content=("Agency bulletin confirms the filing date and rollout process. " * 20).strip(),
+    )
+
+    search_result_rows = noisy_docs + [gold_doc, supporting_doc]
+    query_results = {
+        sub_question: list(search_result_rows),
+    }
+
+    monkeypatch.setattr(
+        agent_service,
+        "search_documents_for_queries",
+        lambda *, vector_store, queries, k, score_threshold: {
+            query: list(query_results.get(query, []))[:k]
+            for query in queries
+        },
+    )
+    def fake_rerank_documents(*, query, documents, config):
+        _ = query
+        ordered = sorted(
+            list(documents),
+            key=lambda row: 0 if row.title.startswith("[GOLD]") else 1,
+        )
+        selected = ordered if config.top_n is None else ordered[: config.top_n]
+        return [
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=index,
+                    title=item.title,
+                    source=item.source,
+                    content=item.content,
+                ),
+                score=float(len(selected) - index + 1),
+                original_rank=item.rank,
+                reranked_rank=index,
+            )
+            for index, item in enumerate(selected, start=1)
+        ]
+
+    monkeypatch.setattr(agent_service, "rerank_documents", fake_rerank_documents)
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "The filing requirement started on 2025-10-01 [1].",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    with caplog.at_level(logging.INFO):
+        search_output = agent_service.run_search_node(
+            node_input=SearchNodeInput(
+                sub_question=sub_question,
+                expanded_queries=[sub_question],
+                run_metadata=run_metadata,
+            ),
+            vector_store="fake-vector-store",
+            k_fetch=7,
+        )
+        rerank_output = agent_service.run_rerank_node(
+            node_input=RerankNodeInput(
+                sub_question=sub_question,
+                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                run_metadata=run_metadata,
+            ),
+            config=reranker_service.RerankerConfig(enabled=True, top_n=2),
+        )
+        answer_output = agent_service.run_answer_subquestion_node(
+            node_input=AnswerSubquestionNodeInput(
+                sub_question=sub_question,
+                reranked_docs=[row.model_copy(deep=True) for row in rerank_output.reranked_docs],
+                citation_rows_by_index={
+                    key: value.model_copy(deep=True)
+                    for key, value in rerank_output.citation_rows_by_index.items()
+                },
+                run_metadata=run_metadata,
+            )
+        )
+
+    naive_token_budget = _estimate_context_token_budget(list(search_output.retrieved_docs))
+    reranked_token_budget = _estimate_context_token_budget(list(rerank_output.reranked_docs))
+
+    assert reranked_token_budget < naive_token_budget
+    assert reranked_token_budget <= int(naive_token_budget * 0.5)
+    assert any(row.document_id == gold_document_id for row in rerank_output.reranked_docs)
+    assert answer_output.answerable is True
+    assert answer_output.citation_indices_used == [1]
+    assert answer_output.citation_rows_by_index[1].document_id == gold_document_id
+    assert "Search node complete" in caplog.text
+    assert "Rerank node complete" in caplog.text
+    assert "Subanswer node complete" in caplog.text
+
+
+def test_efficiency_eval_operating_ranges_identify_k_fetch_and_top_n_targets(
+    monkeypatch, caplog
+) -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-section-21-operating-ranges")
+    sub_question = "When does the benefit renewal policy begin?"
+    gold_document_id = "doc-range-gold"
+
+    query_rows = [
+        _make_eval_langchain_doc(
+            document_id=f"doc-range-noise-{index}",
+            title=f"Noise source {index}",
+            source=f"wiki://range-noise-{index}",
+            content=("General renewal background without launch date. " * 18).strip(),
+        )
+        for index in range(1, 6)
+    ]
+    query_rows.append(
+        _make_eval_langchain_doc(
+            document_id=gold_document_id,
+            title="[GOLD] Benefit Renewal Launch Notice",
+            source="wiki://benefit-renewal-launch",
+            content=("The benefit renewal policy begins on 2025-09-15. " * 18).strip(),
+        )
+    )
+    query_rows.extend(
+        [
+            _make_eval_langchain_doc(
+                document_id=f"doc-range-noise-tail-{index}",
+                title=f"Noise tail {index}",
+                source=f"wiki://range-noise-tail-{index}",
+                content=("Additional policy commentary without launch date. " * 18).strip(),
+            )
+            for index in range(1, 3)
+        ]
+    )
+
+    monkeypatch.setattr(
+        agent_service,
+        "search_documents_for_queries",
+        lambda *, vector_store, queries, k, score_threshold: {
+            query: list(query_rows)[:k]
+            for query in queries
+        },
+    )
+    def fake_rerank_documents(*, query, documents, config):
+        _ = query
+        ordered = sorted(
+            list(documents),
+            key=lambda row: 0 if row.title.startswith("[GOLD]") else 1,
+        )
+        selected = ordered if config.top_n is None else ordered[: config.top_n]
+        return [
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=index,
+                    title=item.title,
+                    source=item.source,
+                    content=item.content,
+                ),
+                score=float(len(selected) - index + 1),
+                original_rank=item.rank,
+                reranked_rank=index,
+            )
+            for index, item in enumerate(selected, start=1)
+        ]
+
+    monkeypatch.setattr(agent_service, "rerank_documents", fake_rerank_documents)
+
+    candidate_ranges: list[tuple[int, int]] = []
+    for k_fetch in (4, 6, 8):
+        for top_n in (2, 3, 5):
+            with caplog.at_level(logging.INFO):
+                search_output = agent_service.run_search_node(
+                    node_input=SearchNodeInput(
+                        sub_question=sub_question,
+                        expanded_queries=[sub_question],
+                        run_metadata=run_metadata,
+                    ),
+                    vector_store="fake-vector-store",
+                    k_fetch=k_fetch,
+                )
+                rerank_output = agent_service.run_rerank_node(
+                    node_input=RerankNodeInput(
+                        sub_question=sub_question,
+                        retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                        run_metadata=run_metadata,
+                    ),
+                    config=reranker_service.RerankerConfig(enabled=True, top_n=top_n),
+                )
+
+            naive_budget = _estimate_context_token_budget(list(search_output.retrieved_docs))
+            reranked_budget = _estimate_context_token_budget(list(rerank_output.reranked_docs))
+            quality_floor_met = any(
+                row.document_id == gold_document_id
+                for row in rerank_output.reranked_docs
+            )
+            efficiency_ratio = reranked_budget / max(1, naive_budget)
+            if quality_floor_met and efficiency_ratio <= 0.6:
+                candidate_ranges.append((k_fetch, top_n))
+
+    assert set(candidate_ranges) == {(6, 2), (6, 3), (8, 2), (8, 3)}
+    assert "Search node complete" in caplog.text
+    assert "Rerank node complete" in caplog.text
