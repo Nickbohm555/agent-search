@@ -1605,3 +1605,71 @@ backend: Application startup complete.
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 26
+
+## Section 26: Benchmark DB outputs - per-question result table
+
+**Single goal:** Add persistent per-question/per-mode result storage.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Add `benchmark_results` keyed by `(run_id, mode, question_id)`.
+- Persist answer payload, citations, latency, tokens, execution errors.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): Alembic migration.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/models.py` | `BenchmarkResult` model. |
+| `src/backend/alembic/versions/003_add_benchmark_results_table.py` | Migration file. |
+| `src/backend/tests/db/test_benchmark_results_schema.py` | Schema/constraint tests. |
+
+**How to test:** Run migration and DB tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkResult` ORM model to `src/backend/models.py` with uniqueness on `(run_id, mode, question_id)`, FK cascade to `benchmark_runs`, and persisted fields for answer payload, citations, latency, token usage, and execution errors.
+- Added `BenchmarkRun.results` relationship for run-level access to per-question result rows.
+- Added Alembic migration `003_add_benchmark_results_table.py` with table creation, indexes, unique constraint, and migration lifecycle logs for upgrade/downgrade visibility.
+- Added DB schema tests in `tests/db/test_benchmark_results_schema.py` covering expected columns, uniqueness enforcement, and cascade delete behavior.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+- `docker compose restart backend`
+- `docker compose logs --no-color --tail=200 backend`
+- `docker compose exec backend uv run alembic current`
+- `docker compose exec backend uv run alembic upgrade head`
+- `docker compose exec backend uv run --with pytest python -m pytest tests/db/test_benchmark_results_schema.py tests/db/test_benchmark_run_metadata_schema.py`
+- `docker compose logs --no-color --tail=200 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=160 db`
+
+**Useful logs (excerpt):**
+```text
+alembic current: 003_benchmark_results (head)
+alembic: Running upgrade 002_benchmark_run_metadata -> 003_benchmark_results
+pytest: tests/db/test_benchmark_results_schema.py .. [ 50%]
+pytest: tests/db/test_benchmark_run_metadata_schema.py .. [100%]
+pytest: 4 passed in 0.85s
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+db: duplicate key value violates unique constraint "uq_benchmark_results_run_mode_question" (expected by uniqueness test)
+```

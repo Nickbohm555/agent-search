@@ -73,6 +73,12 @@ class BenchmarkRun(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    results = relationship(
+        "BenchmarkResult",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class BenchmarkRunMode(Base):
@@ -97,3 +103,38 @@ class BenchmarkRunMode(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     run = relationship("BenchmarkRun", back_populates="modes")
+
+
+class BenchmarkResult(Base):
+    __tablename__ = "benchmark_results"
+    __table_args__ = (
+        UniqueConstraint("run_id", "mode", "question_id", name="uq_benchmark_results_run_mode_question"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(
+        String(128),
+        ForeignKey("benchmark_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode = Column(String(64), nullable=False)
+    question_id = Column(String(128), nullable=False)
+    answer_payload = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
+    citations = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    latency_ms = Column(Integer, nullable=True)
+    token_usage = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
+    execution_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    run = relationship("BenchmarkRun", back_populates="results")
