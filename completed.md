@@ -2180,3 +2180,65 @@ backend: Application startup complete.
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 35
+
+## Section 35: Advanced evaluator scaffolding docs - deferred DRB parity path
+
+**Single goal:** Document and scaffold the upgrade path from simple v1 evaluators to full DRB-style parity later.
+
+**Why:** This keeps v1 evaluation simple while creating compatibility scaffolding for future DeepResearchBench-style expansion without rework.
+
+
+**Details:**
+- Add explicit deferred-scope docs for future RACE/FACT-equivalent evaluators and pairwise/multi-judge expansion.
+- Provide stub interfaces and TODO markers so advanced evaluators can be added without changing existing run APIs.
+- Add one smoke parity check that validates export shape only (not full evaluator parity).
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `docs/benchmark/ADVANCED_EVALUATION_PLAN.md` | Deferred roadmap for DRB-style advanced evaluators. |
+| `src/backend/benchmarks/drb/parity_runner.py` | Export-shape parity runner stub for future expansion. |
+| `src/backend/tests/e2e/test_drb_export_parity_smoke.py` | Smoke test for DRB-inspired export compatibility. |
+
+**How to test:** Run export parity smoke test and verify documented deferred-scope checklist exists.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added deferred roadmap in `docs/benchmark/ADVANCED_EVALUATION_PLAN.md` with explicit future scope for RACE/FACT-equivalent evaluators, pairwise/multi-judge expansion, and a checklist for additive rollout.
+- Implemented `benchmarks.drb.parity_runner` scaffold that reuses the existing DRB export contract, validates required export fields only (`id`, `prompt`, `article`), and logs parity smoke execution start/finish.
+- Added `DRBAdvancedEvaluator` protocol plus deferred runner hook and TODO markers so advanced evaluators can be introduced without changing benchmark run APIs.
+- Added `tests/e2e/test_drb_export_parity_smoke.py` to assert export-shape parity behavior and parity smoke logging.
+- Updated `benchmarks.drb.__init__` exports to expose parity smoke and deferred evaluator hooks.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose ps`
+- `docker compose exec backend uv run --with pytest pytest tests/e2e/test_drb_export_parity_smoke.py`
+- `docker compose restart backend`
+- `rg -n "Deferred implementation checklist|RACE|FACT|pairwise|multi-judge" docs/benchmark/ADVANCED_EVALUATION_PLAN.md`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/e2e/test_drb_export_parity_smoke.py . [100%]
+pytest: 1 passed in 0.02s
+health: HTTP/1.1 200 OK {"status":"ok"}
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```
