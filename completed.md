@@ -1916,3 +1916,66 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+## Completed - 2026-03-09 - Section 31
+
+## Section 31: DeepResearchBench compatibility export - minimal v1 I/O bridge
+
+**Single goal:** Add a lightweight export bridge so benchmark artifacts can be emitted in a DeepResearchBench-inspired format.
+
+**Why:** This keeps v1 evaluation simple while creating compatibility scaffolding for future DeepResearchBench-style expansion without rework.
+
+
+**Details:**
+- Support export records with DRB-inspired required fields (`id`, `prompt`, `article`) from internal benchmark results.
+- Keep internal dataset/result schema unchanged and map through an export adapter.
+- Scope is export compatibility only; no DRB evaluator execution in v1.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/benchmarks/drb/io_contract.py` | DRB-inspired schema mapping and validators. |
+| `src/backend/benchmarks/drb/export_raw_data.py` | Export utility for DRB-inspired raw data artifacts. |
+| `src/backend/tests/benchmarks/test_drb_io_contract.py` | I/O compatibility and validation tests. |
+
+**How to test:** Run DRB I/O tests and validate exported records include required fields.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added DRB compatibility contract models in `benchmarks/drb/io_contract.py` with strict required-field validation for `id`, `prompt`, and `article`.
+- Added internal-result mapping adapter `map_internal_result_to_drb_record` that converts benchmark result rows into DRB-inspired records without changing internal schemas.
+- Added DRB JSONL exporter in `benchmarks/drb/export_raw_data.py` with export summary output and visibility logs for start, skip, and completion paths.
+- Added targeted benchmark tests in `tests/benchmarks/test_drb_io_contract.py` for contract enforcement, mapping behavior, and JSONL export required-field output.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run pytest tests/benchmarks/test_drb_io_contract.py` (failed: `pytest` missing in base env)
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/benchmarks/test_drb_io_contract.py"`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=100 frontend`
+- `docker compose logs --tail=100 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/benchmarks/test_drb_io_contract.py ... [100%]
+pytest: 3 passed in 0.02s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
+
