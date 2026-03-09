@@ -1,17 +1,17 @@
 import sys
-from types import SimpleNamespace
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from agent_search.errors import SDKConfigurationError
 from db import get_db
 from routers.agent import router as agent_router
 
@@ -29,12 +29,15 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
     from routers import agent as agent_router_module
 
     captured: dict[str, object] = {}
+    sentinel_vector_store = object()
+    sentinel_model = object()
 
-    def fake_run_runtime_agent(payload, db):
-        captured["query"] = payload.query
-        assert isinstance(db, Session)
+    def fake_sdk_run(query, *, vector_store, model):
+        captured["query"] = query
+        captured["vector_store"] = vector_store
+        captured["model"] = model
         return RuntimeAgentRunResponse(
-            main_question=payload.query,
+            main_question=query,
             sub_qa=[
                 SubQuestionAnswer(
                     sub_question="What changed in policy X?",
@@ -45,10 +48,11 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
                     verification_reason="grounded_in_reranked_documents",
                 )
             ],
-            output=f"Echo: {payload.query}",
+            output=f"Echo: {query}",
         )
 
-    monkeypatch.setattr(agent_router_module, "run_runtime_agent", fake_run_runtime_agent)
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (sentinel_vector_store, sentinel_model))
+    monkeypatch.setattr(agent_router_module, "sdk_run", fake_sdk_run)
 
     app = FastAPI()
     app.include_router(agent_router)
@@ -81,17 +85,29 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "output": "Echo: Find Hormuz risks",
         "final_citations": [],
     }
-    assert captured["query"] == "Find Hormuz risks"
+    assert captured == {
+        "query": "Find Hormuz risks",
+        "vector_store": sentinel_vector_store,
+        "model": sentinel_model,
+    }
 
 
 def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
     from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse
 
-    def fake_start_agent_run_job(payload):
-        assert payload.query == "Show me async flow"
-        return SimpleNamespace(job_id="job-123", run_id="run-123", status="running")
+    captured: dict[str, object] = {}
+    sentinel_vector_store = object()
+    sentinel_model = object()
 
-    monkeypatch.setattr(agent_router_module, "start_agent_run_job", fake_start_agent_run_job)
+    def fake_sdk_run_async(query, *, vector_store, model):
+        captured["query"] = query
+        captured["vector_store"] = vector_store
+        captured["model"] = model
+        return RuntimeAgentRunAsyncStartResponse(job_id="job-123", run_id="run-123", status="running")
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (sentinel_vector_store, sentinel_model))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
 
     app = FastAPI()
     app.include_router(agent_router)
@@ -104,15 +120,20 @@ def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
         "run_id": "run-123",
         "status": "running",
     }
+    assert captured == {
+        "query": "Show me async flow",
+        "vector_store": sentinel_vector_store,
+        "model": sentinel_model,
+    }
 
 
 def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch) -> None:
     from routers import agent as agent_router_module
-    from schemas import AgentRunStageMetadata, SubQuestionAnswer
+    from schemas import AgentRunStageMetadata, RuntimeAgentRunAsyncStatusResponse, SubQuestionAnswer
 
-    def fake_get_agent_run_job(job_id):
+    def fake_sdk_get_run_status(job_id):
         assert job_id == "job-123"
-        return SimpleNamespace(
+        return RuntimeAgentRunAsyncStatusResponse(
             job_id="job-123",
             run_id="run-123",
             status="running",
@@ -140,9 +161,12 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
             result=None,
             error=None,
             cancel_requested=False,
+            started_at=None,
+            finished_at=None,
+            elapsed_ms=None,
         )
 
-    monkeypatch.setattr(agent_router_module, "get_agent_run_job", fake_get_agent_run_job)
+    monkeypatch.setattr(agent_router_module, "sdk_get_run_status", fake_sdk_get_run_status)
 
     app = FastAPI()
     app.include_router(agent_router)
@@ -191,11 +215,11 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
 
 def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypatch) -> None:
     from routers import agent as agent_router_module
-    from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+    from schemas import RuntimeAgentRunAsyncStatusResponse, RuntimeAgentRunResponse, SubQuestionAnswer
 
-    def fake_get_agent_run_job(job_id):
+    def fake_sdk_get_run_status(job_id):
         assert job_id == "job-456"
-        return SimpleNamespace(
+        return RuntimeAgentRunAsyncStatusResponse(
             job_id="job-456",
             run_id="run-456",
             status="completed",
@@ -225,9 +249,10 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
             cancel_requested=False,
             started_at=100.0,
             finished_at=101.5,
+            elapsed_ms=1500,
         )
 
-    monkeypatch.setattr(agent_router_module, "get_agent_run_job", fake_get_agent_run_job)
+    monkeypatch.setattr(agent_router_module, "sdk_get_run_status", fake_sdk_get_run_status)
 
     app = FastAPI()
     app.include_router(agent_router)
@@ -282,8 +307,13 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
 
 def test_post_run_cancel_returns_success(monkeypatch) -> None:
     from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncCancelResponse
 
-    monkeypatch.setattr(agent_router_module, "cancel_agent_run_job", lambda _job_id: True)
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_cancel_run",
+        lambda _job_id: RuntimeAgentRunAsyncCancelResponse(status="success", message="Cancellation requested."),
+    )
 
     app = FastAPI()
     app.include_router(agent_router)
@@ -292,3 +322,39 @@ def test_post_run_cancel_returns_success(monkeypatch) -> None:
     response = client.post("/api/agents/run-cancel/job-123")
     assert response.status_code == 200
     assert response.json() == {"status": "success", "message": "Cancellation requested."}
+
+
+def test_get_run_status_not_found_maps_to_404(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_get_run_status",
+        lambda _job_id: (_ for _ in ()).throw(SDKConfigurationError("Job not found.")),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.get("/api/agents/run-status/missing-job")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Job not found."}
+
+
+def test_post_run_cancel_not_found_maps_to_404(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_cancel_run",
+        lambda _job_id: (_ for _ in ()).throw(SDKConfigurationError("Job not found or already finished.")),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-cancel/missing-job")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Job not found or already finished."}

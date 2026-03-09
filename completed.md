@@ -1085,3 +1085,67 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 18
+
+## Section 18: Backend endpoint delegation - SDK-only runtime path
+
+**Single goal:** Delegate backend sync/async agent routes to SDK public API.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- `/api/agents/run` delegates to SDK sync.
+- Async start/status/cancel routes delegate to SDK async lifecycle.
+- Preserve current payload contracts.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/routers/agent.py` | SDK delegation for all agent routes. |
+| `src/backend/tests/api/test_agent_run.py` | Delegation parity tests. |
+
+**How to test:** Run backend agent API tests for sync+async.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Updated `routers/agent.py` to delegate all agent endpoints to `agent_search.public_api` (`sdk_run`, `sdk_run_async`, `sdk_get_run_status`, `sdk_cancel_run`).
+- Added router-level runtime dependency resolver for SDK calls using existing backend vector store and model configuration.
+- Preserved async status/cancel 404 response contracts by mapping SDK configuration errors to the existing route-level HTTP exceptions.
+- Added delegation-parity API tests to assert sync/async SDK delegation inputs and response-shape stability, including 404 mapping tests for status/cancel missing jobs.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=200 frontend`
+- `docker compose logs --tail=200 db`
+- `docker compose exec backend uv run --with pytest pytest tests/api/test_agent_run.py`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health` (first attempt failed during restart; second attempt succeeded)
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/api/test_agent_run.py ....... [100%]
+pytest: 7 passed in 1.97s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
