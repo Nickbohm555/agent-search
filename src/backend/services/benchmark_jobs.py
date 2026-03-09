@@ -11,14 +11,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from langchain_openai import ChatOpenAI
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from db import DATABASE_URL, SessionLocal
 from models import BenchmarkQualityScore, BenchmarkResult, BenchmarkRetrievalMetric, BenchmarkRun, BenchmarkRunMode
 from schemas import (
     BenchmarkMode,
-    BenchmarkModeSummary,
     BenchmarkObjective,
     BenchmarkResultQualityScore,
     BenchmarkResultRetrievalDiagnostics,
@@ -31,6 +30,7 @@ from schemas import (
     BenchmarkRunStatusResponse,
 )
 from services.benchmark_runner import BenchmarkRunner
+from services.benchmark_summary_service import BenchmarkSummaryService
 from services.vector_store_service import get_vector_store
 from utils.embeddings import get_embedding_model
 
@@ -147,53 +147,11 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
     mode_rows = db.scalars(select(BenchmarkRunMode).where(BenchmarkRunMode.run_id == run_id)).all()
     mode_values = [row.mode for row in mode_rows]
     parsed_modes = [BenchmarkMode(mode) for mode in mode_values if mode in BenchmarkMode._value2member_map_]
-
-    total_questions = (
-        db.scalar(select(func.count()).select_from(BenchmarkResult).where(BenchmarkResult.run_id == run_id))
-        or 0
+    summary_bundle = BenchmarkSummaryService().build_run_summary(
+        db=db,
+        run=run,
+        parsed_modes=parsed_modes,
     )
-    completed_questions = (
-        db.scalar(
-            select(func.count()).select_from(BenchmarkResult).where(
-                BenchmarkResult.run_id == run_id,
-                BenchmarkResult.execution_error.is_(None),
-            )
-        )
-        or 0
-    )
-
-    mode_summaries: list[BenchmarkModeSummary] = []
-    for mode in parsed_modes:
-        mode_total = (
-            db.scalar(
-                select(func.count()).select_from(BenchmarkResult).where(
-                    BenchmarkResult.run_id == run_id,
-                    BenchmarkResult.mode == mode.value,
-                )
-            )
-            or 0
-        )
-        mode_completed = (
-            db.scalar(
-                select(func.count()).select_from(BenchmarkResult).where(
-                    BenchmarkResult.run_id == run_id,
-                    BenchmarkResult.mode == mode.value,
-                    BenchmarkResult.execution_error.is_(None),
-                )
-            )
-            or 0
-        )
-        correctness_rate = (mode_completed / mode_total) if mode_total > 0 else None
-        mode_summaries.append(
-            BenchmarkModeSummary(
-                mode=mode,
-                completed_questions=mode_completed,
-                total_questions=mode_total,
-                correctness_rate=correctness_rate,
-                avg_latency_ms=None,
-                p95_latency_ms=None,
-            )
-        )
 
     quality_rows = db.scalars(select(BenchmarkQualityScore).where(BenchmarkQualityScore.run_id == run_id)).all()
     quality_by_key = {(row.mode, row.question_id): row for row in quality_rows}
@@ -269,14 +227,16 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
         )
 
     logger.info(
-        "Benchmark run status resolved run_id=%s status=%s mode_count=%s completed=%s total=%s quality_scores=%s retrieval_metrics=%s",
+        "Benchmark run status resolved run_id=%s status=%s mode_count=%s completed=%s total=%s quality_scores=%s retrieval_metrics=%s run_passed=%s mode_pass_fail=%s",
         run_id,
         run.status,
         len(parsed_modes),
-        completed_questions,
-        total_questions,
+        summary_bundle.completed_questions,
+        summary_bundle.total_questions,
         len(quality_rows),
         len(retrieval_rows),
+        summary_bundle.run_passed,
+        summary_bundle.mode_pass_fail,
     )
     return BenchmarkRunStatusResponse(
         run_id=run.run_id,
@@ -285,10 +245,10 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
         modes=parsed_modes,
         objective=BenchmarkObjective(),
         targets=None,
-        mode_summaries=mode_summaries,
+        mode_summaries=summary_bundle.mode_summaries,
         results=results,
-        completed_questions=completed_questions,
-        total_questions=total_questions,
+        completed_questions=summary_bundle.completed_questions,
+        total_questions=summary_bundle.total_questions,
         created_at=_epoch_or_none(run.created_at),
         started_at=_epoch_or_none(run.started_at),
         finished_at=_epoch_or_none(run.finished_at),

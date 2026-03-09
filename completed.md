@@ -2451,3 +2451,70 @@ backend: Application startup complete.
 frontend: VITE v5.4.21 ready.
 db: database system is ready to accept connections.
 ```
+
+## Completed - 2026-03-09 - Section 39
+
+## Section 39: Benchmark aggregation service - run and mode summaries
+
+**Single goal:** Compute run-level and mode-level summary metrics.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Aggregate correctness and latency percentiles.
+- Produce deterministic pass/fail summaries.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_metrics_service.py` | Aggregation logic. |
+| `src/backend/services/benchmark_summary_service.py` | Summary payload assembly. |
+| `src/backend/tests/services/test_benchmark_metrics_service.py` | Aggregation tests. |
+
+**How to test:** Run metric aggregation tests and SQL spot checks.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkMetricsService` with deterministic run/mode aggregation for `correctness_rate`, `avg_latency_ms`, and nearest-rank `p95_latency_ms`, plus deterministic pass/fail gating against run SLO thresholds.
+- Added `BenchmarkSummaryService` to assemble run-level and mode-level summary bundles from DB rows, including internal `run_passed` and per-mode pass/fail map for operator visibility.
+- Refactored `get_benchmark_run_status` in `benchmark_jobs.py` to consume the new summary service rather than inline aggregation logic, preserving existing API response shape while improving metric quality.
+- Added service tests in `tests/services/test_benchmark_metrics_service.py` covering percentile math, missing-signal fail behavior, and DB-backed mode/run summary assembly.
+- Added log visibility in aggregation/status paths (`threshold resolution`, `metric aggregates`, `summary assembly`, and `run_passed/mode_pass_fail` in status resolution logs).
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_benchmark_metrics_service.py tests/api/test_benchmark_runs_api.py`
+- `docker compose exec db psql -U agent_user -d agent_search -c "SELECT mode, COUNT(*) AS total, COUNT(*) FILTER (WHERE execution_error IS NULL) AS completed, ROUND(AVG(latency_ms)::numeric, 2) AS avg_latency_ms, ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms)::numeric, 2) AS p95_latency_ms FROM benchmark_results GROUP BY mode ORDER BY mode;"`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `curl -sS -i http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_benchmark_metrics_service.py ...
+pytest: tests/api/test_benchmark_runs_api.py ......
+pytest: 9 passed in 1.75s
+
+sql spot-check:
+mode               | total | completed | avg_latency_ms | p95_latency_ms
+agentic_default    | 4     | 4         | 140.00         | 180.00
+agentic_no_rerank  | 2     | 2         | 260.00         | 260.00
+
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
