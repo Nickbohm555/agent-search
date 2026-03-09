@@ -65,6 +65,7 @@ class AgentGraphState(BaseModel):
     run_metadata: GraphRunMetadata
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str = ""
+    stage_snapshots: list["GraphStageSnapshot"] = Field(default_factory=list)
 
 
 class DecomposeNodeInput(BaseModel):
@@ -134,3 +135,15 @@ class SynthesizeFinalNodeInput(BaseModel):
 
 class SynthesizeFinalNodeOutput(BaseModel):
     final_answer: str = ""
+
+
+class GraphStageSnapshot(BaseModel):
+    stage: str
+    status: str = "completed"
+    sub_question: str = ""
+    lane_index: int = 0
+    lane_total: int = 0
+    decomposition_sub_questions: list[str] = Field(default_factory=list)
+    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_question_artifacts: list[SubQuestionArtifacts] = Field(default_factory=list)
+    output: str = ""

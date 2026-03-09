@@ -227,6 +227,7 @@ Backend
 Section 8 migration note: a sequential graph runner now exists as `run_sequential_graph_runner`, executing strict lane order:
 `decompose -> (expand -> search -> rerank -> answer per sub-question, sequentially) -> synthesize_final`.
 The existing coordinator/deep-agent runtime path remains available while migration continues.
+Section 9 migration note: `run_parallel_graph_runner` now executes sub-question lanes with bounded fanout (`GRAPH_RUNNER_MAX_WORKERS`) and reindexes lane outputs back to original decomposition order before synthesis. It also emits `stage_snapshots` on `AgentGraphState` after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
 
 | Order | Function | Core logic | Output |
 |------|----------|------------|--------|

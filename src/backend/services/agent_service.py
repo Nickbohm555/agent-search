@@ -27,6 +27,7 @@ from schemas import (
     ExpandNodeInput,
     ExpandNodeOutput,
     GraphRunMetadata,
+    GraphStageSnapshot,
     RerankNodeInput,
     RerankNodeOutput,
     SearchNodeInput,
@@ -109,6 +110,7 @@ _DOCUMENT_VALIDATION_CONFIG = build_document_validation_config_from_env()
 _RERANKER_CONFIG = build_reranker_config_from_env()
 _QUERY_EXPANSION_CONFIG = build_query_expansion_config_from_env()
 _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
+_GRAPH_RUNNER_MAX_WORKERS = max(1, int(os.getenv("GRAPH_RUNNER_MAX_WORKERS", "4")))
 _REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
 _SEARCH_NODE_K_FETCH = max(1, int(os.getenv("SEARCH_NODE_K_FETCH", "10")))
 _ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK = "nothing relevant found"
@@ -1716,6 +1718,283 @@ def apply_synthesize_final_node_output_to_graph_state(
         next_state.run_metadata.run_id,
     )
     return next_state
+
+
+@dataclass(frozen=True)
+class _GraphLaneExecutionResult:
+    lane_index: int
+    lane_total: int
+    sub_question: str
+    expand_output: ExpandNodeOutput
+    search_output: SearchNodeOutput
+    rerank_output: RerankNodeOutput
+    answer_output: AnswerSubquestionNodeOutput
+
+
+def _emit_graph_state_snapshot(
+    *,
+    state: AgentGraphState,
+    stage: str,
+    status: str = "completed",
+    sub_question: str = "",
+    lane_index: int = 0,
+    lane_total: int = 0,
+) -> None:
+    snapshot = GraphStageSnapshot(
+        stage=stage,
+        status=status,
+        sub_question=sub_question,
+        lane_index=lane_index,
+        lane_total=lane_total,
+        decomposition_sub_questions=list(state.decomposition_sub_questions),
+        sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
+        sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
+        output=state.output,
+    )
+    state.stage_snapshots.append(snapshot)
+    logger.info(
+        "Graph state snapshot emitted stage=%s status=%s lane_index=%s lane_total=%s sub_question=%s snapshot_count=%s run_id=%s",
+        stage,
+        status,
+        lane_index,
+        lane_total,
+        _truncate_query(sub_question),
+        len(state.stage_snapshots),
+        state.run_metadata.run_id,
+    )
+
+
+def _run_graph_subquestion_lane(
+    *,
+    main_question: str,
+    sub_question: str,
+    lane_index: int,
+    lane_total: int,
+    vector_store: Any,
+    model: BaseChatModel | None,
+    run_metadata: GraphRunMetadata,
+) -> _GraphLaneExecutionResult:
+    logger.info(
+        "Parallel graph lane start lane_index=%s lane_total=%s sub_question=%s run_id=%s",
+        lane_index,
+        lane_total,
+        _truncate_query(sub_question),
+        run_metadata.run_id,
+    )
+    expand_output = run_expand_node(
+        node_input=ExpandNodeInput(
+            main_question=main_question,
+            sub_question=sub_question,
+            run_metadata=run_metadata,
+        ),
+        model=model,
+    )
+    search_output = run_search_node(
+        node_input=SearchNodeInput(
+            sub_question=sub_question,
+            expanded_queries=list(expand_output.expanded_queries),
+            run_metadata=run_metadata,
+        ),
+        vector_store=vector_store,
+        k_fetch=_SEARCH_NODE_K_FETCH,
+    )
+    rerank_output = run_rerank_node(
+        node_input=RerankNodeInput(
+            sub_question=sub_question,
+            retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+            run_metadata=run_metadata,
+        ),
+        config=_RERANKER_CONFIG,
+    )
+    answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
+    answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
+    answer_output = run_answer_subquestion_node(
+        node_input=AnswerSubquestionNodeInput(
+            sub_question=sub_question,
+            reranked_docs=[row.model_copy(deep=True) for row in answer_input_rows],
+            citation_rows_by_index={
+                key: value.model_copy(deep=True) for key, value in answer_citation_rows.items()
+            },
+            run_metadata=run_metadata,
+        )
+    )
+    logger.info(
+        "Parallel graph lane complete lane_index=%s lane_total=%s sub_question=%s answerable=%s run_id=%s",
+        lane_index,
+        lane_total,
+        _truncate_query(sub_question),
+        answer_output.answerable,
+        run_metadata.run_id,
+    )
+    return _GraphLaneExecutionResult(
+        lane_index=lane_index,
+        lane_total=lane_total,
+        sub_question=sub_question,
+        expand_output=expand_output,
+        search_output=search_output,
+        rerank_output=rerank_output,
+        answer_output=answer_output,
+    )
+
+
+def run_parallel_graph_runner(
+    *,
+    payload: RuntimeAgentRunRequest,
+    vector_store: Any,
+    model: BaseChatModel | None = None,
+    run_metadata: GraphRunMetadata | None = None,
+    initial_search_context: list[dict[str, Any]] | None = None,
+) -> AgentGraphState:
+    resolved_run_metadata = run_metadata or build_graph_run_metadata()
+    resolved_initial_search_context = list(initial_search_context or [])
+    state = build_agent_graph_state(
+        main_question=payload.query,
+        decomposition_sub_questions=[],
+        sub_qa=[],
+        final_answer="",
+        run_metadata=resolved_run_metadata,
+    )
+    callbacks: list[Any] = [AgentLoggingCallbackHandler()]
+    langfuse_callback = build_langfuse_callback_handler()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
+    logger.info(
+        "Parallel graph runner start query=%s callback_count=%s langfuse_enabled=%s configured_max_workers=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(payload.query),
+        len(callbacks),
+        langfuse_callback is not None,
+        _GRAPH_RUNNER_MAX_WORKERS,
+        resolved_run_metadata.run_id,
+        resolved_run_metadata.trace_id,
+        resolved_run_metadata.correlation_id,
+    )
+    try:
+        decomposition_output = run_decomposition_node(
+            node_input=DecomposeNodeInput(
+                main_question=payload.query,
+                run_metadata=resolved_run_metadata,
+                initial_search_context=resolved_initial_search_context,
+            ),
+            model=model,
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+        )
+        state = apply_decompose_node_output_to_graph_state(
+            state=state,
+            node_output=decomposition_output,
+        )
+        _emit_graph_state_snapshot(state=state, stage="decompose")
+
+        lane_total = len(state.decomposition_sub_questions)
+        ordered_lane_results: list[_GraphLaneExecutionResult | None] = [None] * lane_total
+        if lane_total:
+            effective_workers = min(_GRAPH_RUNNER_MAX_WORKERS, lane_total)
+            logger.info(
+                "Parallel graph runner fanout start lane_total=%s effective_workers=%s run_id=%s",
+                lane_total,
+                effective_workers,
+                state.run_metadata.run_id,
+            )
+            with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+                future_by_lane_index = {
+                    executor.submit(
+                        _run_graph_subquestion_lane,
+                        main_question=payload.query,
+                        sub_question=sub_question,
+                        lane_index=lane_index,
+                        lane_total=lane_total,
+                        vector_store=vector_store,
+                        model=model,
+                        run_metadata=state.run_metadata,
+                    ): lane_index
+                    for lane_index, sub_question in enumerate(state.decomposition_sub_questions, start=1)
+                }
+                for future in as_completed(future_by_lane_index):
+                    lane_index = future_by_lane_index[future]
+                    lane_result = future.result()
+                    ordered_lane_results[lane_index - 1] = lane_result
+                    logger.info(
+                        "Parallel graph runner fanout lane completed lane_index=%s lane_total=%s sub_question=%s run_id=%s",
+                        lane_result.lane_index,
+                        lane_result.lane_total,
+                        _truncate_query(lane_result.sub_question),
+                        state.run_metadata.run_id,
+                    )
+
+        for lane_result in ordered_lane_results:
+            if lane_result is None:
+                continue
+            state = apply_expand_node_output_to_graph_state(
+                state=state,
+                sub_question=lane_result.sub_question,
+                node_output=lane_result.expand_output,
+            )
+            _emit_graph_state_snapshot(
+                state=state,
+                stage="expand",
+                sub_question=lane_result.sub_question,
+                lane_index=lane_result.lane_index,
+                lane_total=lane_result.lane_total,
+            )
+            state = apply_search_node_output_to_graph_state(
+                state=state,
+                sub_question=lane_result.sub_question,
+                node_output=lane_result.search_output,
+            )
+            _emit_graph_state_snapshot(
+                state=state,
+                stage="search",
+                sub_question=lane_result.sub_question,
+                lane_index=lane_result.lane_index,
+                lane_total=lane_result.lane_total,
+            )
+            state = apply_rerank_node_output_to_graph_state(
+                state=state,
+                sub_question=lane_result.sub_question,
+                node_output=lane_result.rerank_output,
+            )
+            _emit_graph_state_snapshot(
+                state=state,
+                stage="rerank",
+                sub_question=lane_result.sub_question,
+                lane_index=lane_result.lane_index,
+                lane_total=lane_result.lane_total,
+            )
+            state = apply_answer_subquestion_node_output_to_graph_state(
+                state=state,
+                sub_question=lane_result.sub_question,
+                node_output=lane_result.answer_output,
+            )
+            _emit_graph_state_snapshot(
+                state=state,
+                stage="answer",
+                sub_question=lane_result.sub_question,
+                lane_index=lane_result.lane_index,
+                lane_total=lane_result.lane_total,
+            )
+
+        synthesis_output = run_synthesize_final_node(
+            node_input=SynthesizeFinalNodeInput(
+                main_question=payload.query,
+                sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
+                sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
+                run_metadata=state.run_metadata,
+            )
+        )
+        state = apply_synthesize_final_node_output_to_graph_state(
+            state=state,
+            node_output=synthesis_output,
+        )
+        _emit_graph_state_snapshot(state=state, stage="synthesize_final")
+        logger.info(
+            "Parallel graph runner complete sub_question_count=%s output_len=%s snapshot_count=%s run_id=%s",
+            len(state.sub_qa),
+            len(state.output),
+            len(state.stage_snapshots),
+            state.run_metadata.run_id,
+        )
+        return state
+    finally:
+        flush_langfuse_callback_handler(langfuse_callback)
 
 
 def run_sequential_graph_runner(

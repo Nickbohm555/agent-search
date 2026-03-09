@@ -337,3 +337,65 @@ docker compose logs --tail=80 db
 curl -sS http://localhost:8000/api/health
 -> {"status":"ok"}
 ```
+
+## Section 9: Add parallel sub-question fanout and state snapshots
+
+**Single goal:** Add controlled parallelism for per-subquestion lanes and emit snapshot state for progress reporting.
+
+**Details completed:**
+- Added graph snapshot contract in `src/backend/schemas/agent.py`:
+  - `GraphStageSnapshot` model with stage/lane metadata and partial state payload fields (`decomposition_sub_questions`, `sub_qa`, `sub_question_artifacts`, `output`).
+  - `AgentGraphState.stage_snapshots` to retain ordered snapshot history for progressive status consumers.
+- Exported snapshot schema from `src/backend/schemas/__init__.py`.
+- Added bounded parallel graph runner orchestration in `src/backend/services/agent_service.py`:
+  - `run_parallel_graph_runner(...)` parallelizes per-subquestion lane execution for `expand -> search -> rerank -> answer` using `ThreadPoolExecutor` and env-configured `GRAPH_RUNNER_MAX_WORKERS`.
+  - Keeps deterministic output by reindexing lane results to decomposition order before applying graph-state transitions.
+  - Emits state snapshots after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
+  - Added explicit runner/lane/snapshot logs for observability.
+- Added tests in `src/backend/tests/services/test_agent_service.py`:
+  - `test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapshots` verifies:
+    - lanes can complete out of order under parallel fanout,
+    - final `sub_qa` order is deterministic (original decomposition order),
+    - stage snapshot sequence and payload fields are correct.
+- Updated required docs:
+  - `README.md` with Section 9 migration note for `run_parallel_graph_runner`, bounded fanout, and `stage_snapshots`.
+  - `src/frontend/public/run-flow.html` graph migration section + call chain updated with Section 9 details.
+
+### Useful logs
+
+```text
+docker compose down -v --rmi all
+-> full shutdown complete; containers/volumes/images removed
+
+docker compose build
+-> backend/frontend rebuilt successfully
+
+docker compose up -d
+-> db/backend/frontend/chrome started; db healthy
+
+docker compose exec backend uv run pytest tests/services/test_agent_service.py
+-> error: Failed to spawn: `pytest` (No such file or directory)
+
+docker compose exec backend uv pip install pytest
+-> Installed pytest==9.0.2 (plus iniconfig/pluggy)
+
+docker compose exec backend uv run pytest tests/services/test_agent_service.py
+-> 71 passed, 2 warnings in 23.39s
+
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=200 backend
+-> app startup complete
+-> reload events after code changes
+-> no fatal runtime errors
+
+docker compose logs --tail=120 frontend
+-> Vite ready at http://localhost:5173/
+
+docker compose logs --tail=120 db
+-> PostgreSQL ready to accept connections
+```
