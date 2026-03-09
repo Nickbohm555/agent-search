@@ -54,8 +54,7 @@ export default function App() {
     answer: "pending",
     final: "pending",
   });
-  const [answer, setAnswer] = useState("");
-  const [lastRunResponse, setLastRunResponse] = useState<RuntimeAgentRunResponse | null>(null);
+  const [lastSuccessfulSynthesis, setLastSuccessfulSynthesis] = useState<RuntimeAgentRunResponse | null>(null);
 
   const selectedWikiSource = useMemo(
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
@@ -209,15 +208,12 @@ export default function App() {
       answer: "pending",
       final: "pending",
     });
-    setAnswer("");
-    setLastRunResponse(null);
     console.info("Async run query requested.", { submittedQuery: submitted });
 
     const startResult = await startAgentRun(submitted);
     if (!startResult.ok) {
       setRunState("error");
       setRunStatusMessage(startResult.error.message);
-      setAnswer(startResult.error.message);
       console.error("Async run query failed to start.", {
         submittedQuery: submitted,
         error: startResult.error.message,
@@ -235,7 +231,6 @@ export default function App() {
       if (!statusResult.ok) {
         setRunState("error");
         setRunStatusMessage(statusResult.error.message);
-        setAnswer(statusResult.error.message);
         setRunJobId(null);
         console.error("Async run status polling failed.", {
           submittedQuery: submitted,
@@ -298,10 +293,25 @@ export default function App() {
           sub_qa: status.sub_qa,
           output: status.output,
         };
+        const completedStage = mapBackendStageToCanonical(status.stage);
         setRunState("success");
-        setLastRunResponse(response);
+        if (completedStage === "final") {
+          setLastSuccessfulSynthesis(response);
+          console.info("Final synthesis panel updated from completed run.", {
+            submittedQuery: submitted,
+            jobId,
+            mainQuestion: response.main_question,
+            subQuestionCount: response.sub_qa.length,
+            citationCoverageCount: countSubanswersWithCitations(response.sub_qa),
+          });
+        } else {
+          console.warn("Run marked as success before synthesis stage completed; preserving previous final synthesis panel.", {
+            submittedQuery: submitted,
+            jobId,
+            backendStage: status.stage,
+          });
+        }
         setRunSubQa(response.sub_qa);
-        setAnswer(response.output);
         setRunStatusMessage(status.message || "Completed.");
         setRunJobId(null);
         console.info("Async run completed.", {
@@ -318,7 +328,6 @@ export default function App() {
         setRunState("error");
         const failureMessage = status.error || status.message || `Run ${status.status}.`;
         setRunStatusMessage(failureMessage);
-        setAnswer(failureMessage);
         setRunJobId(null);
         console.error("Async run finished with non-success status.", {
           submittedQuery: submitted,
@@ -644,22 +653,44 @@ export default function App() {
       </section>
 
       <section className="panel final-readout-panel">
-        <h2>Final Readout</h2>
+        <h2>Final Synthesis</h2>
+        {runState === "loading" && lastSuccessfulSynthesis ? (
+          <p className="final-synthesis-preserved">Showing previous successful synthesis while current run is in progress.</p>
+        ) : null}
         <section className="final-readout-section" aria-labelledby="final-readout-main-question">
           <h3 id="final-readout-main-question">Main question</h3>
-          <p className="readout-body">{lastRunResponse?.main_question.trim() || submittedQuery || "No query submitted yet."}</p>
+          <p className="readout-body">{lastSuccessfulSynthesis?.main_question.trim() || "No synthesized run yet."}</p>
         </section>
         <section className="final-readout-section" aria-labelledby="final-readout-final-answer">
           <h3 id="final-readout-final-answer">Final answer</h3>
-          <p className="readout-body">{answer || "No answer yet."}</p>
+          <p className="readout-body">{lastSuccessfulSynthesis?.output.trim() || "No synthesized answer yet."}</p>
+        </section>
+        <section className="final-readout-section" aria-labelledby="final-readout-summary">
+          <h3 id="final-readout-summary">Supporting summary</h3>
+          {lastSuccessfulSynthesis ? (
+            <div className="final-synthesis-summary">
+              <p>
+                Subanswers used: {countNonEmptySubanswers(lastSuccessfulSynthesis.sub_qa)}/{lastSuccessfulSynthesis.sub_qa.length}
+              </p>
+              <p>
+                Citation coverage: {countSubanswersWithCitations(lastSuccessfulSynthesis.sub_qa)}/{lastSuccessfulSynthesis.sub_qa.length} subanswers with citations ({countTotalCitations(lastSuccessfulSynthesis.sub_qa)} total citations)
+              </p>
+              <p>
+                Fallback subanswers: {countFallbackSubanswers(lastSuccessfulSynthesis.sub_qa)}
+              </p>
+            </div>
+          ) : (
+            <p>No synthesis summary yet.</p>
+          )}
         </section>
         <section className="final-readout-section" aria-labelledby="final-readout-subquestions">
           <h3 id="final-readout-subquestions">Subquestions &amp; subanswers</h3>
-          {runSubQa.length > 0 ? (
+          {lastSuccessfulSynthesis && lastSuccessfulSynthesis.sub_qa.length > 0 ? (
             <div className="subquestions-list">
-              {runSubQa.map((item, index) => {
+              {lastSuccessfulSynthesis.sub_qa.map((item, index) => {
                 const subAnswer = item.sub_answer?.trim() ?? "";
                 const toolCallInput = item.tool_call_input?.trim() ?? "";
+                const citationIndices = getSubanswerCitationIndices(item);
                 const summaryId = `subquestion-summary-${index}`;
                 const contentId = `subquestion-content-${index}`;
                 return (
@@ -671,6 +702,15 @@ export default function App() {
                           <strong>Answer:</strong> {subAnswer}
                         </p>
                       ) : null}
+                      {citationIndices.length > 0 ? (
+                        <p className="subquestion-citation-coverage">
+                          <strong>Citation coverage:</strong> {citationIndices.map((citationIndex) => `[${citationIndex}]`).join(" ")}
+                        </p>
+                      ) : (
+                        <p className="subquestion-citation-coverage">
+                          <strong>Citation coverage:</strong> none
+                        </p>
+                      )}
                       {toolCallInput ? (
                         <p className="subquestion-tool-input">
                           <strong>Tool call input:</strong> {toolCallInput}
@@ -829,4 +869,27 @@ function isFallbackSubanswer(subAnswer: string): boolean {
 
 function toRerankEvidenceRowId(laneIndex: number, citationIndex: number): string {
   return `rerank-evidence-lane-${laneIndex + 1}-citation-${citationIndex}`;
+}
+
+function getSubanswerCitationIndices(subQa: SubQuestionAnswer): number[] {
+  return subQa.sub_answer_citations ?? extractCitationIndices(subQa.sub_answer ?? "");
+}
+
+function countNonEmptySubanswers(subQa: SubQuestionAnswer[]): number {
+  return subQa.reduce((sum, item) => sum + (item.sub_answer.trim().length > 0 ? 1 : 0), 0);
+}
+
+function countSubanswersWithCitations(subQa: SubQuestionAnswer[]): number {
+  return subQa.reduce((sum, item) => sum + (getSubanswerCitationIndices(item).length > 0 ? 1 : 0), 0);
+}
+
+function countTotalCitations(subQa: SubQuestionAnswer[]): number {
+  return subQa.reduce((sum, item) => sum + getSubanswerCitationIndices(item).length, 0);
+}
+
+function countFallbackSubanswers(subQa: SubQuestionAnswer[]): number {
+  return subQa.reduce((sum, item) => {
+    const isFallback = item.sub_answer_is_fallback ?? isFallbackSubanswer(item.sub_answer);
+    return sum + (isFallback ? 1 : 0);
+  }, 0);
 }

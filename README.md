@@ -238,6 +238,7 @@ Backend
 - Frontend section 15 search view: a dedicated Search panel renders per-subquestion merged candidate previews before rerank, including merge transparency stats (`raw_hits` from `retrieval_provenance` and `deduped_hits` from merged `retrieved_docs`).
 - Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
 - Frontend section 17 subanswer view: a dedicated Subanswer panel renders per-subquestion `sub_qa[].sub_answer` as soon as answer-stage updates arrive, highlights explicit `nothing relevant found` fallback responses, and links citation markers (`[n]`) to matching Rerank evidence rows.
+- Frontend section 18 final synthesis view: a dedicated Final Synthesis panel updates only when the terminal synthesis stage completes, summarizes supporting subanswers/citation coverage, and preserves the previous successful final synthesis while a new run is in progress.
 
 ### Runtime pipeline map (orders 1-18)
 

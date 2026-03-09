@@ -1025,3 +1025,75 @@ docker compose logs --tail=120 frontend
 docker compose logs --tail=120 db
 -> database restarted and ready to accept connections
 ```
+
+## Section 18: Final synthesis view - final answer with supporting subanswer summary
+
+**Single goal:** Render the final answer stage as a distinct panel that summarizes supporting subanswers and citations.
+
+**Details:**
+- Show final answer only when synthesis stage completes.
+- Display compact summary of contributing subanswers and citation coverage.
+- Preserve previous successful final answer while a new run is in progress.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/App.tsx` | Add Final panel with synthesis completion behavior. |
+| `src/frontend/src/App.test.tsx` | Verify final panel only updates on synthesis completion. |
+
+**How to test:** Run frontend tests and manual run to confirm final panel updates only at terminal synthesis stage.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Updated `src/frontend/src/App.tsx` final-stage handling:
+  - Replaced reset-on-submit final readout behavior with persisted `lastSuccessfulSynthesis` state.
+  - Final panel now updates only when async status is `success` at `synthesize_final`/`final`.
+  - While a new run is loading, the previous successful final synthesis remains visible.
+  - Added final-stage observability log: `Final synthesis panel updated from completed run.` with subquestion/citation coverage metrics.
+- Added Final Synthesis UI summary in `src/frontend/src/App.tsx`:
+  - Distinct panel title: `Final Synthesis`.
+  - Compact support summary including subanswers used, citation coverage counts, and fallback count.
+  - Subquestion detail rows now include citation coverage display.
+- Expanded tests in `src/frontend/src/App.test.tsx`:
+  - Added coverage assertion for summary text in existing final-result test.
+  - Added dedicated regression test proving previous successful final synthesis remains displayed until the next run reaches terminal synthesis success.
+  - Stabilized async polling behavior in rerank/subanswer tests by providing terminal success responses.
+- Updated documentation:
+  - `README.md` now documents section 18 Final Synthesis panel behavior.
+  - `src/frontend/public/run-flow.html` now documents synthesis-gated update and previous-answer preservation behavior.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all && docker compose build && docker compose up -d
+-> full stack rebuilt from scratch; db healthy; backend/frontend/chrome started
+
+Required section tests/checks:
+docker compose exec frontend npm run test
+-> PASS (8 tests)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite production build)
+
+Post-change service restart + verification:
+docker compose restart frontend
+-> frontend container restarted successfully
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=160 backend frontend db
+-> backend uvicorn/alembic startup healthy; frontend vite ready on :5173; db ready to accept connections
+```

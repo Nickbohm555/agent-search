@@ -201,7 +201,7 @@ describe("App run query flow", () => {
     expect(screen.getByText("Subquestion count: 1")).toBeInTheDocument();
     expect(screen.getByText("Ends with ?: yes")).toBeInTheDocument();
     expect(screen.getByText("Dedupe: pass")).toBeInTheDocument();
-    expect(screen.getByText("No answer yet.")).toBeInTheDocument();
+    expect(screen.getByText("No synthesized answer yet.")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
@@ -356,6 +356,30 @@ describe("App run query flow", () => {
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-rerank",
+            run_id: "run-rerank",
+            status: "success",
+            message: "Completed.",
+            stage: "synthesize_final",
+            stages: [],
+            decomposition_sub_questions: ["Primary subquestion?", "Fallback subquestion?"],
+            sub_question_artifacts: [],
+            sub_qa: [],
+            output: "Rerank run done.",
+            result: {
+              main_question: "Test rerank view",
+              sub_qa: [],
+              output: "Rerank run done.",
+            },
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -376,6 +400,9 @@ describe("App run query flow", () => {
     const orderRows = Array.from((rerankSection as HTMLElement).querySelectorAll(".rerank-order-change"));
     expect(orderRows.some((item) => (item.textContent ?? "").includes("yes"))).toBe(true);
     expect(orderRows.some((item) => (item.textContent ?? "").includes("no"))).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+    });
   });
 
   it("renders subanswers with citation markers and explicit fallback badge", async () => {
@@ -457,6 +484,56 @@ describe("App run query flow", () => {
           }),
           { status: 200, headers: { "Content-Type": "application/json" } },
         ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-answer",
+            run_id: "run-answer",
+            status: "success",
+            message: "Completed.",
+            stage: "synthesize_final",
+            stages: [],
+            decomposition_sub_questions: ["Supported subquestion?", "Unsupported subquestion?"],
+            sub_question_artifacts: [],
+            sub_qa: [
+              {
+                sub_question: "Supported subquestion?",
+                sub_answer: "Supported answer [1] with more detail [2].",
+                sub_answer_citations: [1, 2],
+                tool_call_input: "{}",
+              },
+              {
+                sub_question: "Unsupported subquestion?",
+                sub_answer: "nothing relevant found",
+                sub_answer_is_fallback: true,
+                tool_call_input: "{}",
+              },
+            ],
+            output: "Answer run done.",
+            result: {
+              main_question: "Test subanswer stage",
+              sub_qa: [
+                {
+                  sub_question: "Supported subquestion?",
+                  sub_answer: "Supported answer [1] with more detail [2].",
+                  sub_answer_citations: [1, 2],
+                  tool_call_input: "{}",
+                },
+                {
+                  sub_question: "Unsupported subquestion?",
+                  sub_answer: "nothing relevant found",
+                  sub_answer_is_fallback: true,
+                  tool_call_input: "{}",
+                },
+              ],
+              output: "Answer run done.",
+            },
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
       );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -479,6 +556,9 @@ describe("App run query flow", () => {
 
     const citationTwoLinks = screen.getAllByRole("link", { name: "[2]" });
     expect(citationTwoLinks.some((item) => item.getAttribute("href") === "#rerank-evidence-lane-1-citation-2")).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+    });
   });
 
   it("renders main question and expandable subquestion details from async final result", async () => {
@@ -562,6 +642,7 @@ describe("App run query flow", () => {
     expect(await screen.findByRole("heading", { name: "Main question" })).toBeInTheDocument();
     expect(screen.getAllByText("When and why was NATO formed?").length).toBeGreaterThan(0);
     expect(screen.getByText("NATO was formed in 1949.")).toBeInTheDocument();
+    expect(screen.getByText("Citation coverage: 0/1 subanswers with citations (0 total citations)")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Subquestions & subanswers" })).toBeInTheDocument();
 
     const subanswersHeading = screen.getByRole("heading", { name: "Subquestions & subanswers" });
@@ -572,6 +653,158 @@ describe("App run query flow", () => {
 
     expect(screen.getAllByText(/The North Atlantic Treaty created NATO\./).length).toBeGreaterThan(0);
     expect(screen.getByText('{"query":"NATO founding treaty"}')).toBeInTheDocument();
+  });
+
+  it("keeps the previous successful final synthesis visible until a new run reaches final stage", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-first", run_id: "run-first", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-first",
+            run_id: "run-first",
+            status: "success",
+            message: "Completed.",
+            stage: "synthesize_final",
+            stages: [],
+            decomposition_sub_questions: ["First subquestion?"],
+            sub_question_artifacts: [],
+            sub_qa: [
+              {
+                sub_question: "First subquestion?",
+                sub_answer: "First answer [1].",
+                sub_answer_citations: [1],
+                tool_call_input: "{}",
+              },
+            ],
+            output: "First final answer.",
+            result: {
+              main_question: "First question?",
+              sub_qa: [
+                {
+                  sub_question: "First subquestion?",
+                  sub_answer: "First answer [1].",
+                  sub_answer_citations: [1],
+                  tool_call_input: "{}",
+                },
+              ],
+              output: "First final answer.",
+            },
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-second", run_id: "run-second", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-second",
+            run_id: "run-second",
+            status: "running",
+            message: "Stage completed: answer",
+            stage: "answer",
+            stages: [],
+            decomposition_sub_questions: ["Second subquestion?"],
+            sub_question_artifacts: [],
+            sub_qa: [
+              {
+                sub_question: "Second subquestion?",
+                sub_answer: "Second draft answer [2].",
+                sub_answer_citations: [2],
+                tool_call_input: "{}",
+              },
+            ],
+            output: "Second draft output should not be shown.",
+            result: null,
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-second",
+            run_id: "run-second",
+            status: "success",
+            message: "Completed.",
+            stage: "synthesize_final",
+            stages: [],
+            decomposition_sub_questions: ["Second subquestion?"],
+            sub_question_artifacts: [],
+            sub_qa: [
+              {
+                sub_question: "Second subquestion?",
+                sub_answer: "Second final answer [2].",
+                sub_answer_citations: [2],
+                tool_call_input: "{}",
+              },
+            ],
+            output: "Second final answer.",
+            result: {
+              main_question: "Second question?",
+              sub_qa: [
+                {
+                  sub_question: "Second subquestion?",
+                  sub_answer: "Second final answer [2].",
+                  sub_answer_citations: [2],
+                  tool_call_input: "{}",
+                },
+              ],
+              output: "Second final answer.",
+            },
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "First question?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("First final answer.")).toBeInTheDocument();
+    expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "Second question?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    expect(await screen.findByText("Run status: Stage completed: answer")).toBeInTheDocument();
+    expect(screen.getByText("Showing previous successful synthesis while current run is in progress.")).toBeInTheDocument();
+    expect(screen.getByText("First final answer.")).toBeInTheDocument();
+    expect(screen.queryByText("Second draft output should not be shown.")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText("Second final answer.")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("First final answer.")).not.toBeInTheDocument();
   });
 
   it("shows an error message when run request fails", async () => {
@@ -597,7 +830,7 @@ describe("App run query flow", () => {
     fireEvent.change(textarea, { target: { value: "What happened?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
-    expect(await screen.findByText("Request failed with status 500")).toBeInTheDocument();
+    expect(await screen.findByText(/Request failed with status 500/)).toBeInTheDocument();
   });
 });
 
