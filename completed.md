@@ -146,3 +146,49 @@ docker compose logs --tail=120 frontend
 
 docker compose logs --tail=120 db
 -> PostgreSQL ready; no crash/restart loops
+
+## Section 5: Build rerank node - reorder retrieved candidates before answering
+
+**Single goal:** Add reranking node that reorders merged retrieval candidates and trims to final top_n context.
+
+**Details completed:**
+- Added production reranker dependency `flashrank>=0.2.10` in `src/backend/pyproject.toml` and refreshed `src/backend/uv.lock`.
+- Replaced custom lexical-overlap reranking in `src/backend/services/reranker_service.py` with a `flashrank` adapter (`Ranker` + `RerankRequest`) and explicit env-driven config (`RERANK_ENABLED`, `RERANK_TOP_N`, `RERANK_MODEL_NAME`, `RERANK_CACHE_DIR`).
+- Implemented deterministic fallback path to original document order when reranker is disabled/unavailable/fails.
+- Added graph rerank node in `src/backend/services/agent_service.py`:
+  - `run_rerank_node(...)` to rerank merged `retrieved_docs` and emit scored `reranked_docs`.
+  - `apply_rerank_node_output_to_graph_state(...)` to persist reranked rows and scores into graph artifacts and compatibility payloads.
+- Persisted rerank observability data in state/compat payload (`rerank_provenance`, `rerank_top_n`) and mapped rerank scores onto `CitationSourceRow.score`.
+- Updated existing per-subquestion rerank pipeline logging/config usage to the new flashrank-backed config.
+- Added/updated tests:
+  - `src/backend/tests/services/test_reranker_service.py` (flashrank order/top_n + fallback scenarios).
+  - `src/backend/tests/services/test_agent_service.py` (graph rerank node output/state updates and rerank application behavior).
+- Updated docs in `README.md` and `src/frontend/public/run-flow.html` to reflect rerank node placement and flashrank-based production behavior.
+
+### Useful logs
+
+```text
+docker compose exec backend uv lock
+-> Added flashrank v0.2.10 and transitive packages (onnxruntime, tokenizers, huggingface-hub, etc.)
+
+docker compose exec backend uv run --with pytest pytest tests/services/test_reranker_service.py tests/services/test_agent_service.py -k "rerank"
+-> 10 passed, 57 deselected in 3.21s
+
+docker compose exec backend uv run --with pytest pytest tests/services/test_reranker_service.py tests/services/test_agent_service.py
+-> 67 passed, 2 warnings in 23.22s
+
+docker compose build
+-> agent-search-backend Built
+-> agent-search-frontend Built
+
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+curl http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=80 backend frontend db
+-> backend startup complete (uvicorn + alembic)
+-> frontend Vite ready on http://localhost:5173/
+-> db ready to accept connections
+```

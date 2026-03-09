@@ -46,7 +46,7 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 [ OVERVIEW // DATA PATHS ]
 ```
 
-The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → coordinator-driven decomposition → parallel per-subquestion pipeline → initial synthesis → optional refinement → final response). A React front end and FastAPI backend expose load/wipe/run; the backend delegates decomposition and retrieval to a deep-agent coordinator and runs deterministic Python services for validation, reranking, subanswer generation, and verification. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`) and optional refinement replaces the initial answer when the pipeline decides it is insufficient.
+The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → coordinator-driven decomposition → parallel per-subquestion pipeline → initial synthesis → optional refinement → final response). A React front end and FastAPI backend expose load/wipe/run; the backend delegates decomposition and retrieval to a deep-agent coordinator and runs deterministic Python services for validation, subanswer generation, and verification, with `flashrank`-backed reranking for production evidence ordering. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`) and optional refinement replaces the initial answer when the pipeline decides it is insufficient.
 
 The runtime service also defines graph-state contracts for staged migration: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
 
@@ -222,7 +222,7 @@ Backend
 - Request: `RuntimeAgentRunRequest { query }`
 - Response: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
 
-### Runtime pipeline map (orders 1-16)
+### Runtime pipeline map (orders 1-18)
 
 | Order | Function | Core logic | Output |
 |------|----------|------------|--------|
@@ -233,16 +233,17 @@ Backend
 | 5 | `_run_decomposition_only_llm_call` + `_parse_decomposition_output` | Internal helpers used by decomposition node for LLM call + normalization/fallback. | Candidate + normalized subquestions. |
 | 6 | `run_expand_node` + `expand_queries_for_subquestion` | Expansion-node query generation (`MultiQueryRetriever`) with bounded normalization and fallback to original sub-question. | `expanded_queries[]` per sub-question artifact. |
 | 7 | `run_search_node` + `apply_search_node_output_to_graph_state` | Search-node retrieval over expanded queries with `k_fetch`, deterministic merge/dedupe (`document_id` preferred; fallback `source+content`), and retrieval provenance capture. | `retrieved_docs[]`, `citation_rows_by_index`, and `retrieval_provenance[]` in graph artifacts. |
-| 8 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
-| 9 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
-| 10 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
-| 11 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
-| 12 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
-| 13 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
-| 14 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
-| 15 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
-| 16 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
-| 17 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
+| 8 | `run_rerank_node` + `apply_rerank_node_output_to_graph_state` | Rerank-node scoring with `flashrank`; trims to `top_n`, preserves deterministic fallback order when reranker fails/disabled, and stores rerank score/order provenance. | `reranked_docs[]` + updated citation map and compatibility payload fields. |
+| 9 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
+| 10 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
+| 11 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
+| 12 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
+| 13 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
+| 14 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
+| 15 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
+| 16 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
+| 17 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
+| 18 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
 
 ### Parallelism points
 
@@ -286,7 +287,7 @@ That stable line contract is reused across validation, reranking, subanswer gene
 |------|--------|------|------|
 | **Orchestration** | Coordinator (deep-agent) for decompose/delegate; deterministic Python for post-retrieval | Flexible decomposition; predictable downstream stages | Mixed control model; tracing is harder |
 | **Payload shape** | String-formatted doc payloads between some stages | Easy to log and show in UI | Parsing fragility; extra conversion |
-| **Validation / rerank / verify** | Rule-based, deterministic | Low latency/cost; reproducible | Weaker semantic nuance than LLM scorers |
+| **Validation / rerank / verify** | Deterministic validation + `flashrank` rerank + heuristic verify | Better semantic ranking while keeping controllable latency | Extra reranker model dependency and potential cold-start download cost |
 | **Concurrency** | `ThreadPoolExecutor` per subquestion | Better throughput for many subquestions | Noisier errors and log interleaving |
 | **Refinement** | Conditional on insufficiency + answerable ratio | Skips second pass when first is good enough | Threshold tuning can misclassify |
 | **Reliability** | Fallback when OpenAI unavailable | Usable output under degradation | Answer quality drops vs full LLM |

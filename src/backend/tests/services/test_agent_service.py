@@ -18,6 +18,8 @@ from schemas import (
     DecomposeNodeInput,
     ExpandNodeInput,
     ExpandNodeOutput,
+    RerankNodeInput,
+    RerankNodeOutput,
     RuntimeAgentRunRequest,
     SearchNodeInput,
     SearchNodeOutput,
@@ -25,6 +27,7 @@ from schemas import (
 from schemas.decomposition import DecompositionPlan
 from services import document_validation_service
 from services import agent_service
+from services import reranker_service
 
 
 def _make_session() -> Session:
@@ -2810,6 +2813,153 @@ def test_apply_search_node_output_to_graph_state_updates_artifacts_and_compat_fi
     assert len(tool_call_input["retrieval_provenance"]) == 2
 
 
+def test_run_rerank_node_reorders_and_trims_documents(monkeypatch) -> None:
+    def fake_rerank_documents(*, query, documents, config):
+        assert query == "What changed in VAT policy?"
+        assert len(documents) == 3
+        return [
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=1,
+                    title="VAT Timeline",
+                    source="wiki://vat-timeline",
+                    content="Timeline details for VAT changes.",
+                ),
+                score=0.88,
+                original_rank=2,
+                reranked_rank=1,
+            ),
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=2,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                ),
+                score=0.63,
+                original_rank=1,
+                reranked_rank=2,
+            ),
+        ]
+
+    monkeypatch.setattr(agent_service, "rerank_documents", fake_rerank_documents)
+
+    output = agent_service.run_rerank_node(
+        node_input=RerankNodeInput(
+            sub_question="What changed in VAT policy?",
+            retrieved_docs=[
+                agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                ),
+                agent_service.CitationSourceRow(
+                    citation_index=2,
+                    rank=2,
+                    title="VAT Timeline",
+                    source="wiki://vat-timeline",
+                    content="Timeline details for VAT changes.",
+                    document_id="doc-2",
+                ),
+                agent_service.CitationSourceRow(
+                    citation_index=3,
+                    rank=3,
+                    title="VAT FAQ",
+                    source="wiki://vat-faq",
+                    content="Frequently asked questions.",
+                    document_id="doc-3",
+                ),
+            ],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-rerank-node"),
+        ),
+    )
+
+    assert [item.title for item in output.reranked_docs] == ["VAT Timeline", "VAT Policy"]
+    assert [item.document_id for item in output.reranked_docs] == ["doc-2", "doc-1"]
+    assert [item.score for item in output.reranked_docs] == [0.88, 0.63]
+    assert output.citation_rows_by_index[1].title == "VAT Timeline"
+
+
+def test_apply_rerank_node_output_to_graph_state_updates_artifacts_and_compat_fields() -> None:
+    state = agent_service.build_agent_graph_state(
+        main_question="Explain VAT changes",
+        decomposition_sub_questions=["What changed in VAT policy?"],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in VAT policy?",
+                sub_answer="1. title=VAT Policy source=wiki://vat-policy content=VAT policy changed in 2025.",
+                tool_call_input=json.dumps(
+                    {
+                        "query": "What changed in VAT policy?",
+                        "expanded_queries": ["What changed in VAT policy?", "VAT policy updates 2025"],
+                    }
+                ),
+                expanded_query="VAT policy updates 2025",
+            )
+        ],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-rerank-state"),
+    )
+    node_output = RerankNodeOutput(
+        reranked_docs=[
+            agent_service.CitationSourceRow(
+                citation_index=1,
+                rank=1,
+                title="VAT Timeline",
+                source="wiki://vat-timeline",
+                content="Timeline details for VAT changes.",
+                document_id="doc-2",
+                score=0.88,
+            ),
+            agent_service.CitationSourceRow(
+                citation_index=2,
+                rank=2,
+                title="VAT Policy",
+                source="wiki://vat-policy",
+                content="VAT policy changed in 2025.",
+                document_id="doc-1",
+                score=0.63,
+            ),
+        ],
+        citation_rows_by_index={
+            1: agent_service.CitationSourceRow(
+                citation_index=1,
+                rank=1,
+                title="VAT Timeline",
+                source="wiki://vat-timeline",
+                content="Timeline details for VAT changes.",
+                document_id="doc-2",
+                score=0.88,
+            ),
+            2: agent_service.CitationSourceRow(
+                citation_index=2,
+                rank=2,
+                title="VAT Policy",
+                source="wiki://vat-policy",
+                content="VAT policy changed in 2025.",
+                document_id="doc-1",
+                score=0.63,
+            ),
+        },
+    )
+
+    updated = agent_service.apply_rerank_node_output_to_graph_state(
+        state=state,
+        sub_question="What changed in VAT policy?",
+        node_output=node_output,
+    )
+
+    assert len(updated.sub_question_artifacts[0].reranked_docs) == 2
+    assert updated.sub_question_artifacts[0].reranked_docs[0].title == "VAT Timeline"
+    assert updated.sub_qa[0].sub_answer.startswith("1. title=VAT Timeline")
+    tool_call_input = json.loads(updated.sub_qa[0].tool_call_input)
+    assert tool_call_input["query"] == "What changed in VAT policy?"
+    assert len(tool_call_input["rerank_provenance"]) == 2
+    assert tool_call_input["rerank_provenance"][0]["score"] == 0.88
+
+
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:
     messages = [
         AIMessage(
@@ -2925,6 +3075,35 @@ def test_apply_reranking_to_sub_qa_reorders_documents(monkeypatch) -> None:
             sub_agent_response="Delegated summary.",
         )
     ]
+
+    monkeypatch.setattr(
+        agent_service,
+        "rerank_documents",
+        lambda **_: [
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=1,
+                    title="NATO Policy Shift",
+                    source="wiki://nato",
+                    content="Policy changed in 2025.",
+                ),
+                score=0.9,
+                original_rank=2,
+                reranked_rank=1,
+            ),
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=2,
+                    title="General Update",
+                    source="wiki://general",
+                    content="Generic summary.",
+                ),
+                score=0.2,
+                original_rank=1,
+                reranked_rank=2,
+            ),
+        ],
+    )
 
     output_sub_qa = agent_service._apply_reranking_to_sub_qa(input_sub_qa)
 

@@ -25,6 +25,8 @@ from schemas import (
     ExpandNodeInput,
     ExpandNodeOutput,
     GraphRunMetadata,
+    RerankNodeInput,
+    RerankNodeOutput,
     SearchNodeInput,
     SearchNodeOutput,
     RuntimeAgentRunRequest,
@@ -815,13 +817,11 @@ def _apply_document_validation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> lis
 
 def _apply_reranking_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> list[SubQuestionAnswer]:
     logger.info(
-        "Per-subquestion reranking start count=%s top_n=%s title_weight=%s content_weight=%s source_weight=%s original_rank_bias=%s",
+        "Per-subquestion reranking start count=%s enabled=%s top_n=%s model_name=%s",
         len(sub_qa),
+        _RERANKER_CONFIG.enabled,
         _RERANKER_CONFIG.top_n,
-        _RERANKER_CONFIG.title_weight,
-        _RERANKER_CONFIG.content_weight,
-        _RERANKER_CONFIG.source_weight,
-        _RERANKER_CONFIG.original_rank_bias,
+        _RERANKER_CONFIG.model_name,
     )
     for item in sub_qa:
         parsed_documents = parse_retrieved_documents(item.sub_answer)
@@ -1148,6 +1148,18 @@ def _format_citation_rows_for_pipeline(rows: list[CitationSourceRow]) -> str:
     return format_retrieved_documents(documents)
 
 
+def _to_retrieved_documents(rows: list[CitationSourceRow]) -> list[RetrievedDocument]:
+    return [
+        RetrievedDocument(
+            rank=row.rank,
+            title=row.title,
+            source=row.source,
+            content=row.content,
+        )
+        for row in rows
+    ]
+
+
 def apply_expand_node_output_to_graph_state(
     *,
     state: AgentGraphState,
@@ -1317,6 +1329,131 @@ def apply_search_node_output_to_graph_state(
         _truncate_query(sub_question),
         len(node_output.retrieved_docs),
         len(node_output.retrieval_provenance),
+        next_state.run_metadata.run_id,
+    )
+    return next_state
+
+
+def run_rerank_node(
+    *,
+    node_input: RerankNodeInput,
+    config: Any | None = None,
+) -> RerankNodeOutput:
+    effective_config = config or _RERANKER_CONFIG
+    logger.info(
+        "Rerank node start sub_question=%s candidate_count=%s enabled=%s top_n=%s model=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(node_input.retrieved_docs),
+        effective_config.enabled,
+        effective_config.top_n,
+        effective_config.model_name,
+        node_input.run_metadata.run_id,
+        node_input.run_metadata.trace_id,
+        node_input.run_metadata.correlation_id,
+    )
+    if not node_input.retrieved_docs:
+        logger.info(
+            "Rerank node skipped; no retrieved candidates sub_question=%s run_id=%s",
+            _truncate_query(node_input.sub_question),
+            node_input.run_metadata.run_id,
+        )
+        return RerankNodeOutput()
+
+    original_by_rank = {row.rank: row for row in node_input.retrieved_docs}
+    reranked_scores = rerank_documents(
+        query=node_input.sub_question,
+        documents=_to_retrieved_documents(node_input.retrieved_docs),
+        config=effective_config,
+    )
+
+    reranked_docs: list[CitationSourceRow] = []
+    for new_rank, reranked in enumerate(reranked_scores, start=1):
+        original_row = original_by_rank.get(reranked.original_rank)
+        reranked_docs.append(
+            CitationSourceRow(
+                citation_index=new_rank,
+                rank=new_rank,
+                title=reranked.document.title,
+                source=reranked.document.source,
+                content=reranked.document.content,
+                document_id=original_row.document_id if original_row is not None else "",
+                score=reranked.score,
+            )
+        )
+
+    citation_rows_by_index = {row.citation_index: row for row in reranked_docs}
+    logger.info(
+        "Rerank node complete sub_question=%s candidates_before=%s candidates_after=%s run_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(node_input.retrieved_docs),
+        len(reranked_docs),
+        node_input.run_metadata.run_id,
+    )
+    return RerankNodeOutput(
+        reranked_docs=reranked_docs,
+        citation_rows_by_index=citation_rows_by_index,
+    )
+
+
+def apply_rerank_node_output_to_graph_state(
+    *,
+    state: AgentGraphState,
+    sub_question: str,
+    node_output: RerankNodeOutput,
+) -> AgentGraphState:
+    next_state = state.model_copy(deep=True)
+    artifact = next(
+        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        None,
+    )
+    if artifact is None:
+        artifact = SubQuestionArtifacts(sub_question=sub_question)
+        next_state.sub_question_artifacts.append(artifact)
+    artifact.reranked_docs = [row.model_copy(deep=True) for row in node_output.reranked_docs]
+    artifact.citation_rows_by_index = {
+        key: value.model_copy(deep=True)
+        for key, value in node_output.citation_rows_by_index.items()
+    }
+    for index, row in node_output.citation_rows_by_index.items():
+        next_state.citation_rows_by_index[index] = row.model_copy(deep=True)
+
+    reranked_output = _format_citation_rows_for_pipeline(node_output.reranked_docs)
+    rerank_provenance = [
+        {
+            "reranked_rank": row.rank,
+            "citation_index": row.citation_index,
+            "score": row.score,
+            "document_id": row.document_id,
+            "source": row.source,
+        }
+        for row in node_output.reranked_docs
+    ]
+    matched_sub_qa = None
+    for item in next_state.sub_qa:
+        if item.sub_question == sub_question:
+            matched_sub_qa = item
+            break
+    if matched_sub_qa is None:
+        matched_sub_qa = SubQuestionAnswer(sub_question=sub_question, sub_answer="")
+        next_state.sub_qa.append(matched_sub_qa)
+    matched_sub_qa.sub_answer = reranked_output
+
+    tool_call_payload: dict[str, Any] = {}
+    if matched_sub_qa.tool_call_input:
+        try:
+            parsed_tool_payload = json.loads(matched_sub_qa.tool_call_input)
+            if isinstance(parsed_tool_payload, dict):
+                tool_call_payload = parsed_tool_payload
+        except json.JSONDecodeError:
+            tool_call_payload = {}
+    tool_call_payload["rerank_provenance"] = rerank_provenance
+    tool_call_payload["rerank_top_n"] = len(node_output.reranked_docs)
+    matched_sub_qa.tool_call_input = json.dumps(tool_call_payload, ensure_ascii=True)
+
+    logger.info(
+        "Rerank node state update sub_question=%s reranked_candidates=%s run_id=%s",
+        _truncate_query(sub_question),
+        len(node_output.reranked_docs),
         next_state.run_metadata.run_id,
     )
     return next_state
