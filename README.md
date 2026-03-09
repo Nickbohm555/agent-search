@@ -237,6 +237,7 @@ Backend
 - Frontend section 14 expand view: a dedicated Expand panel renders grouped `expanded_queries` by subquestion index and shows a fallback badge when expansion collapses to the original subquestion only.
 - Frontend section 15 search view: a dedicated Search panel renders per-subquestion merged candidate previews before rerank, including merge transparency stats (`raw_hits` from `retrieval_provenance` and `deduped_hits` from merged `retrieved_docs`).
 - Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
+- Frontend section 17 subanswer view: a dedicated Subanswer panel renders per-subquestion `sub_qa[].sub_answer` as soon as answer-stage updates arrive, highlights explicit `nothing relevant found` fallback responses, and links citation markers (`[n]`) to matching Rerank evidence rows.
 
 ### Runtime pipeline map (orders 1-18)
 

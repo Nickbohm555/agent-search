@@ -925,3 +925,103 @@ curl -sS http://localhost:8000/api/health
 docker compose logs --tail=120 backend frontend db
 -> backend uvicorn startup + health requests OK; frontend vite ready on :5173; db ready to accept connections
 ```
+
+## Section 17: Subanswer stage view - per-subquestion answer with citations
+
+**Single goal:** Render per-subquestion answers as they become available, including citation markers.
+
+**Details:**
+- Show each sub-question with its generated subanswer and citation markers (`[1]`, `[2]`, ...).
+- Highlight explicit fallback `nothing relevant found` when returned.
+- Link visible citation markers to reranked evidence rows in the Rerank panel.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/utils/api.ts` | Add subanswer citation/fallback fields to stage payload types. |
+| `src/frontend/src/App.tsx` | Add Subanswer panel and citation-to-evidence linkage. |
+| `src/frontend/src/App.test.tsx` | Verify subanswer rendering, citation markers, and fallback display. |
+
+**How to test:** Run frontend tests and confirm subanswers/citations render per sub-question during answering stage.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Updated staged async payload typing/parsing in `src/frontend/src/utils/api.ts`:
+  - Added optional `sub_answer_citations` and `sub_answer_is_fallback` to `SubQuestionAnswer`.
+  - Added backward-compatible derivation in validation by parsing citation markers from `sub_answer` and detecting exact fallback text `nothing relevant found`.
+  - Kept existing rerank metadata extraction and compatibility behavior intact.
+- Implemented Subanswer stage UI in `src/frontend/src/App.tsx`:
+  - Added a dedicated `Subanswer` panel rendering per-subquestion answers as soon as answer-stage updates arrive.
+  - Added explicit fallback badge (`Fallback: nothing relevant found`) when fallback responses are returned.
+  - Added citation-link rendering from subanswer markers to stable rerank evidence row anchors in the Rerank panel.
+  - Added stage visibility logging for subanswer progress: ready count, citation count, and fallback count.
+- Added UI styling in `src/frontend/src/styles.css` for subanswer lane cards, fallback badge, and citation links.
+- Added tests in `src/frontend/src/App.test.tsx`:
+  - New test validates subanswer rendering, citation markers, and fallback badge in answer stage.
+  - Updated assertions to scope duplicated subanswer text safely across the new Subanswer panel and existing final readout section.
+- Updated docs:
+  - `README.md` now documents frontend Section 17 Subanswer panel behavior.
+  - `src/frontend/public/run-flow.html` now documents the Subanswer stage panel and citation-to-rerank linkage.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> containers/images/volumes removed; fresh environment reset
+
+docker compose build
+-> backend/frontend images built successfully
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Pre-change runtime checks:
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+docker compose logs --tail=120 backend
+-> alembic upgrade + uvicorn startup complete
+
+docker compose logs --tail=120 frontend
+-> vite ready on http://localhost:5173
+
+docker compose logs --tail=120 db
+-> postgresql ready to accept connections
+
+Required section tests/checks:
+docker compose exec frontend npm run test
+-> initially failed (2 assertions due duplicate text after new Subanswer panel); fixed selector scoping and reran
+-> PASS (7/7)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite production build)
+
+Post-change restart + verification:
+docker compose restart
+-> backend/frontend/db/chrome restarted successfully
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> transient connection reset during restart window, then healthy on retry
+-> {"status":"ok"}
+
+docker compose logs --tail=160 backend
+-> uvicorn startup complete; no fatal errors
+
+docker compose logs --tail=120 frontend
+-> vite dev server ready on :5173
+
+docker compose logs --tail=120 db
+-> database restarted and ready to accept connections
+```

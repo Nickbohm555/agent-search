@@ -378,6 +378,109 @@ describe("App run query flow", () => {
     expect(orderRows.some((item) => (item.textContent ?? "").includes("no"))).toBe(true);
   });
 
+  it("renders subanswers with citation markers and explicit fallback badge", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-answer", run_id: "run-answer", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-answer",
+            run_id: "run-answer",
+            status: "running",
+            message: "Stage completed: answer",
+            stage: "answer",
+            stages: [],
+            decomposition_sub_questions: ["Supported subquestion?", "Unsupported subquestion?"],
+            sub_question_artifacts: [
+              {
+                sub_question: "Supported subquestion?",
+                expanded_queries: ["Supported subquestion?"],
+                retrieved_docs: [],
+                retrieval_provenance: [],
+                reranked_docs: [
+                  {
+                    citation_index: 1,
+                    rank: 1,
+                    title: "Doc Support A",
+                    source: "wiki://support-a",
+                    content: "Support A body",
+                    document_id: "doc-support-a",
+                    score: 0.9,
+                  },
+                  {
+                    citation_index: 2,
+                    rank: 2,
+                    title: "Doc Support B",
+                    source: "wiki://support-b",
+                    content: "Support B body",
+                    document_id: "doc-support-b",
+                    score: 0.8,
+                  },
+                ],
+              },
+              {
+                sub_question: "Unsupported subquestion?",
+                expanded_queries: ["Unsupported subquestion?"],
+                retrieved_docs: [],
+                retrieval_provenance: [],
+                reranked_docs: [],
+              },
+            ],
+            sub_qa: [
+              {
+                sub_question: "Supported subquestion?",
+                sub_answer: "Supported answer [1] with more detail [2].",
+                tool_call_input: "{}",
+              },
+              {
+                sub_question: "Unsupported subquestion?",
+                sub_answer: "nothing relevant found",
+                tool_call_input: "{}",
+              },
+            ],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Test subanswer stage" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    expect(await screen.findByText("Run status: Stage completed: answer")).toBeInTheDocument();
+    const subanswerHeading = screen.getByRole("heading", { name: "Subanswer" });
+    expect(subanswerHeading).toBeInTheDocument();
+    const subanswerSection = subanswerHeading.closest("section");
+    expect(subanswerSection).toBeTruthy();
+    expect(within(subanswerSection as HTMLElement).getByText("Supported answer [1] with more detail [2].")).toBeInTheDocument();
+    expect(within(subanswerSection as HTMLElement).getByText("Fallback: nothing relevant found")).toBeInTheDocument();
+
+    const citationOneLinks = screen.getAllByRole("link", { name: "[1]" });
+    expect(citationOneLinks.some((item) => item.getAttribute("href") === "#rerank-evidence-lane-1-citation-1")).toBe(true);
+
+    const citationTwoLinks = screen.getAllByRole("link", { name: "[2]" });
+    expect(citationTwoLinks.some((item) => item.getAttribute("href") === "#rerank-evidence-lane-1-citation-2")).toBe(true);
+  });
+
   it("renders main question and expandable subquestion details from async final result", async () => {
     const fetchMock = vi
       .fn()
@@ -467,7 +570,7 @@ describe("App run query flow", () => {
     const firstSubQuestion = within(subanswersSection as HTMLElement).getByText("Which treaty created NATO?");
     fireEvent.click(firstSubQuestion);
 
-    expect(screen.getByText(/The North Atlantic Treaty created NATO\./)).toBeInTheDocument();
+    expect(screen.getAllByText(/The North Atlantic Treaty created NATO\./).length).toBeGreaterThan(0);
     expect(screen.getByText('{"query":"NATO founding treaty"}')).toBeInTheDocument();
   });
 

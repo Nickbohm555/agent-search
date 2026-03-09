@@ -548,6 +548,50 @@ strong {
   line-height: 1.35;
 }
 
+.subanswer-lane-list {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.subanswer-lane-item {
+  border: 1px solid rgba(29, 242, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(9, 12, 29, 0.62);
+  padding: 10px;
+}
+
+.subanswer-lane-title,
+.subanswer-body,
+.subanswer-citations {
+  margin-top: 0;
+  color: var(--text);
+}
+
+.subanswer-fallback-badge {
+  margin-top: 8px;
+  display: inline-block;
+  border: 1px solid rgba(255, 77, 109, 0.6);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--err);
+}
+
+.subanswer-citation-link {
+  margin-right: 8px;
+  color: var(--panel-border);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.subanswer-citation-link:hover {
+  color: #7af7ff;
+}
+
 @media (max-width: 640px) {
   #root {
     padding: 14px;

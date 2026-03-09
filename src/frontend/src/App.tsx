@@ -266,6 +266,15 @@ export default function App() {
         const matchingSubQa = status.sub_qa.find((item) => item.sub_question === artifact.sub_question);
         return sum + (isRerankFallback({ artifact, subQa: matchingSubQa }) ? 1 : 0);
       }, 0);
+      const subAnswerReadyCount = status.sub_qa.reduce((sum, item) => sum + (item.sub_answer.trim().length > 0 ? 1 : 0), 0);
+      const subAnswerCitationCount = status.sub_qa.reduce(
+        (sum, item) => sum + (item.sub_answer_citations?.length ?? extractCitationIndices(item.sub_answer).length),
+        0,
+      );
+      const subAnswerFallbackCount = status.sub_qa.reduce((sum, item) => {
+        const isFallback = item.sub_answer_is_fallback ?? isFallbackSubanswer(item.sub_answer);
+        return sum + (isFallback ? 1 : 0);
+      }, 0);
       console.info("Async run stage update.", {
         submittedQuery: submitted,
         jobId,
@@ -277,6 +286,9 @@ export default function App() {
         searchDedupedHitsTotal,
         rerankRowsTotal,
         rerankBypassedCount,
+        subAnswerReadyCount,
+        subAnswerCitationCount,
+        subAnswerFallbackCount,
         stageStatuses: nextStatuses,
       });
 
@@ -552,7 +564,11 @@ export default function App() {
                   {rerankRows.length > 0 ? (
                     <ol className="rerank-row-list" aria-label={`Reranked evidence rows for subquestion ${index + 1}`}>
                       {rerankRows.map((row) => (
-                        <li key={`${index}-${row.citation_index}-${row.document_id}`} className="rerank-row-item">
+                        <li
+                          key={`${index}-${row.citation_index}-${row.document_id}`}
+                          className="rerank-row-item"
+                          id={toRerankEvidenceRowId(index, row.citation_index)}
+                        >
                           <p className="rerank-row-title">
                             <strong>
                               [{row.citation_index}] {row.title || "Untitled source"}
@@ -579,6 +595,51 @@ export default function App() {
           </ol>
         ) : (
           <p>No rerank data yet.</p>
+        )}
+      </section>
+
+      <section className="panel subanswer-panel">
+        <h2>Subanswer</h2>
+        {decompositionSubQuestions.length > 0 ? (
+          <ol className="subanswer-lane-list" aria-label="Subanswer groups">
+            {decompositionSubQuestions.map((subQuestion, index) => {
+              const subQa = runSubQa[index] ?? runSubQa.find((item) => item.sub_question === subQuestion);
+              const subAnswer = subQa?.sub_answer?.trim() ?? "";
+              const citationIndices = subQa?.sub_answer_citations ?? extractCitationIndices(subAnswer);
+              const fallback = subQa?.sub_answer_is_fallback ?? isFallbackSubanswer(subAnswer);
+              return (
+                <li key={`${index}-${subQuestion}`} className="subanswer-lane-item">
+                  <p className="subanswer-lane-title">
+                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                  </p>
+                  {subAnswer ? (
+                    <p className="subanswer-body">
+                      <strong>Answer:</strong> {subAnswer}
+                    </p>
+                  ) : (
+                    <p>No subanswer yet.</p>
+                  )}
+                  {fallback ? <span className="subanswer-fallback-badge">Fallback: nothing relevant found</span> : null}
+                  {citationIndices.length > 0 ? (
+                    <p className="subanswer-citations">
+                      <strong>Citations:</strong>{" "}
+                      {citationIndices.map((citationIndex) => (
+                        <a
+                          key={`${index}-${citationIndex}`}
+                          className="subanswer-citation-link"
+                          href={`#${toRerankEvidenceRowId(index, citationIndex)}`}
+                        >
+                          [{citationIndex}]
+                        </a>
+                      ))}
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p>No subanswers yet.</p>
         )}
       </section>
 
@@ -753,4 +814,19 @@ function toSnippet(content: string): string {
   if (!normalized) return "No snippet available.";
   if (normalized.length <= 180) return normalized;
   return `${normalized.slice(0, 177)}...`;
+}
+
+function extractCitationIndices(text: string): number[] {
+  const values = Array.from(text.matchAll(/\[(\d+)\]/g), (match) => Number(match[1])).filter(
+    (item) => Number.isInteger(item) && item > 0,
+  );
+  return Array.from(new Set(values));
+}
+
+function isFallbackSubanswer(subAnswer: string): boolean {
+  return subAnswer.trim().toLowerCase() === "nothing relevant found";
+}
+
+function toRerankEvidenceRowId(laneIndex: number, citationIndex: number): string {
+  return `rerank-evidence-lane-${laneIndex + 1}-citation-${citationIndex}`;
 }

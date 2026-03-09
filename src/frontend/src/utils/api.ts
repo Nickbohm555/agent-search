@@ -55,6 +55,8 @@ export interface WipeInternalDataResponse {
 export interface SubQuestionAnswer {
   sub_question: string;
   sub_answer: string;
+  sub_answer_citations?: number[];
+  sub_answer_is_fallback?: boolean;
   tool_call_input?: string;
   sub_agent_response?: string;
   rerank_top_n?: number;
@@ -320,8 +322,13 @@ function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
     isOptionalString(value.tool_call_input) &&
     isOptionalString(value.sub_agent_response)
   ) {
+    attachSubanswerMetadata(value);
     attachRerankMetadataFromToolCallInput(value);
     return (
+      (value.sub_answer_citations === undefined ||
+        (Array.isArray(value.sub_answer_citations) &&
+          value.sub_answer_citations.every((item) => typeof item === "number"))) &&
+      (value.sub_answer_is_fallback === undefined || typeof value.sub_answer_is_fallback === "boolean") &&
       (value.rerank_top_n === undefined || typeof value.rerank_top_n === "number") &&
       (value.rerank_bypassed === undefined || typeof value.rerank_bypassed === "boolean") &&
       (value.rerank_provenance === undefined ||
@@ -361,6 +368,22 @@ function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {
     (retrievalProvenance === undefined ||
       (Array.isArray(retrievalProvenance) && retrievalProvenance.every(isSearchRetrievalProvenanceRow)))
   );
+}
+
+function attachSubanswerMetadata(value: Record<string, unknown>): void {
+  const rawSubAnswer = value.sub_answer;
+  if (typeof rawSubAnswer !== "string") return;
+  const citations = extractCitationIndices(rawSubAnswer);
+  if (citations.length > 0) {
+    value.sub_answer_citations = citations;
+  }
+  value.sub_answer_is_fallback = rawSubAnswer.trim().toLowerCase() === "nothing relevant found";
+}
+
+function extractCitationIndices(text: string): number[] {
+  const matches = text.matchAll(/\[(\d+)\]/g);
+  const values = Array.from(matches, (match) => Number(match[1])).filter((item) => Number.isInteger(item) && item > 0);
+  return Array.from(new Set(values));
 }
 
 function attachRerankMetadataFromToolCallInput(value: Record<string, unknown>): void {
