@@ -1,413 +1,163 @@
 <p align="center">
-  <img src="assets/readme-hud-banner.png" alt="agent-search cyberpunk HUD banner" width="100%" data-darkreader-ignore />
+  <img src="assets/readme-hud-banner.png" alt="agent-search banner" width="100%" data-darkreader-ignore />
 </p>
 
 # agent-search
 
-**A plug-and-play RAG SDK that turns your `model` + `vector_store` into a multi-stage, traceable answer pipeline.**  
-Ship faster with graph-driven decomposition, parallel per-subquestion retrieval, evidence checks, and an optional refinement loop—without rebuilding the plumbing.
-
-```text
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ SYSTEM README — AGENT-SEARCH // ARCHITECTURE MAP                             ┃
-┃ SDK for world-class RAG: bring your `model` + `vector_store` — we own the flow┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-PALETTE: neon #00ff9f / #00ffff  •  magenta #ff00aa / #ff006e  •  dark #0d1117
-DISPLAY: best viewed in dark mode (the HUD panels below are designed for it)
-```
-
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
-
----
+`agent-search` is a Dockerized RAG application and SDK-style runtime built with FastAPI, React, Postgres, pgvector, and a state-graph backend pipeline.
 
 ## Purpose
 
-```text
-[ PURPOSE ]
-```
+The runtime exposes one canonical answer flow:
 
-This project builds an **SDK** that takes your **model**, your **vector store**, and abstracts the logic for building **world-class RAG systems** using a fixed technical flow. You can build products and experiences on top of this pipeline without reimplementing decomposition, retrieval, verification, or refinement—we provide the orchestration, contracts, and traceability.
+`decompose -> expand -> search -> rerank -> answer -> synthesize`
 
-**Why it exists:** Multi-stage RAG (retrieve → decompose → per-subquestion retrieval → verify → synthesize → optionally refine) is complex and easy to get wrong. This codebase encodes one proven flow: load curated data into a pgvector-backed store, run a graph-runtime agent pipeline over it, and return a final answer with per-subquestion traceability. The SDK-style boundary (model + vector_store in; structured run out) lets you swap embeddings/LLMs and stores while keeping the same pipeline behavior.
+It returns a stable API payload:
 
-**For whom:** Developers and teams who want a production-ready RAG pipeline they can extend (e.g. different front ends, data sources, or deployment targets) rather than building from scratch.
+`RuntimeAgentRunResponse { main_question, sub_qa[], output }`
 
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
+## Stack
 
----
+- Backend: FastAPI + `uv` + Alembic
+- Frontend: React + TypeScript + Vite
+- Database: Postgres 16 + pgvector
+- Retrieval expansion: LangChain `MultiQueryRetriever`
+- Reranking: `flashrank`
+- Orchestration: graph-state runtime (`run_runtime_agent -> run_parallel_graph_runner`)
 
-## Overview
+## Architecture
 
-```text
-[ OVERVIEW // DATA PATHS ]
-```
+### System path
 
-The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → graph decomposition → parallel per-subquestion graph lane → synthesis). A React front end and FastAPI backend expose load/wipe/run; `/api/agents/run` executes the graph runner path (`run_parallel_graph_runner`) as the sole runtime execution mode. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`).
-Async runtime endpoints (`/api/agents/run-async`, `/api/agents/run-status/{job_id}`, `/api/agents/run-cancel/{job_id}`) let clients poll staged progress and receive `subquestions_ready` as soon as decomposition finishes.
+- User submits query in React UI.
+- Frontend starts async run with `POST /api/agents/run-async`.
+- Backend service runs graph pipeline and emits stage snapshots.
+- Frontend polls `GET /api/agents/run-status/{job_id}` and updates timeline panels.
+- Final result is returned as `main_question`, `sub_qa`, and `output`.
 
-The runtime service defines graph-state contracts: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
+### Canonical graph stages
 
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
+1. `decompose`
+2. `expand`
+3. `search`
+4. `rerank`
+5. `answer`
+6. `synthesize`
 
----
+### Graph state
 
-## Architecture — Parts
+Graph state carries:
 
-```text
-[ ARCHITECTURE // PARTS ]
-```
+- `main_question`
+- `decomposition_sub_questions`
+- `sub_question_artifacts[]`
+- `citation_rows_by_index`
+- `sub_qa` (compatibility)
+- `output` (compatibility)
+- `final_answer`
+- `stage_snapshots`
+- observability metadata: `run_id`, `thread_id`, `trace_id`, `correlation_id`
 
-The pipeline is documented as **14 sections** in `docs/`. Each section covers one stage of the flow. Summary:
+## How The Flow Works
 
-| Section | Role | Doc |
-|--------|------|-----|
-| **1** | Coordinator flow tracking (`write_todos` + virtual file system) | [section-01-coordinator-flow-tracking](docs/section-01-coordinator-flow-tracking.md) |
-| **2** | Initial search for synthesis context (one retrieval before decomposition) | [section-02-initial-search-for-decomposition-context](docs/section-02-initial-search-for-decomposition-context.md) |
-| **3** | Question decomposition (question-only input) | [section-03-question-decomposition-informed-by-context](docs/section-03-question-decomposition-informed-by-context.md) |
-| **4** | Per-subquestion query expansion (expanded retrieval query) | [section-04-per-subquestion-query-expansion](docs/section-04-per-subquestion-query-expansion.md) |
-| **5** | Per-subquestion search (retriever tool + callback capture) | [section-05-per-subquestion-search](docs/section-05-per-subquestion-search.md) |
-| **6** | Per-subquestion document validation (parallel) | [section-06-per-subquestion-document-validation-parallel](docs/section-06-per-subquestion-document-validation-parallel.md) |
-| **7** | Per-subquestion reranking | [section-07-per-subquestion-reranking](docs/section-07-per-subquestion-reranking.md) |
-| **8** | Per-subquestion subanswer generation | [section-08-per-subquestion-subanswer-generation](docs/section-08-per-subquestion-subanswer-generation.md) |
-| **9** | Per-subquestion subanswer verification | [section-09-per-subquestion-subanswer-verification](docs/section-09-per-subquestion-subanswer-verification.md) |
-| **10** | Parallel sub-question processing (run lane 4–9 in parallel) | [section-10-parallel-sub-question-processing](docs/section-10-parallel-sub-question-processing.md) |
-| **11** | Initial answer generation (synthesize from initial context + sub_qa) | [section-11-initial-answer-generation](docs/section-11-initial-answer-generation.md) |
-| **12** | Refinement decision (refine or return) | [section-12-refinement-decision](docs/section-12-refinement-decision.md) |
-| **13** | Refinement decomposition (refined sub-questions) | [section-13-refinement-decomposition](docs/section-13-refinement-decomposition.md) |
-| **14** | Refinement answer path (rerun retrieval + pipeline, replace output) | [section-14-refinement-answer-path](docs/section-14-refinement-answer-path.md) |
+1. `decompose`: split the main question into atomic sub-questions (normalized, deduped, question-mark terminated).
+2. `expand`: generate related query variants per sub-question using `MultiQueryRetriever`, while retaining the original query and applying dedupe/limits.
+3. `search`: retrieve candidate chunks for expanded queries using vector similarity, then merge/dedupe results with deterministic identity rules.
+4. `rerank`: score merged candidates with `flashrank`, reorder by relevance, and trim to configured context depth.
+5. `answer`: generate grounded subanswers from reranked evidence and enforce citation-backed support.
+6. `synthesize`: combine subanswers into final output while preserving grounding/citation references.
 
-```text
-HUD NOTE: Diagrams are intended to render neon green/cyan and magenta on dark.
-If your renderer ignores Mermaid theming, the layout still communicates the flow.
-```
+## Retrieval Fundamentals
 
-### Flow diagram — Parts (entry → lane → synthesis → refinement)
+### Embeddings and nearest-neighbor retrieval
 
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#0d1117', 'primaryTextColor':'#00ff9f', 'primaryBorderColor':'#00ff9f', 'lineColor':'#ff00aa', 'secondaryColor':'#1a1a2e', 'tertiaryColor':'#0d1117'}}}%%
-flowchart TB
-    subgraph ENTRY["§1–3 Entry"]
-        A["§1 Coordinator flow"]
-        B["§2 Initial search"]
-        C["§3 Decomposition"]
-        A --> B --> C
-    end
-    subgraph LANE["§4–9 Per-subquestion lane"]
-        D["§4 Query expansion"]
-        E["§5 Search"]
-        F["§6 Validation"]
-        G["§7 Rerank"]
-        H["§8 Subanswer"]
-        I["§9 Verify"]
-        D --> E --> F --> G --> H --> I
-    end
-    subgraph PAR["§10 Parallel"]
-        PARBOX["run_pipeline_for_subquestions"]
-        PARBOX --> LANE
-    end
-    subgraph SYNTH["§11 Synthesis"]
-        J["Initial answer"]
-    end
-    subgraph REF["§12–14 Refinement"]
-        K["§12 Decide"]
-        L["§13 Decompose"]
-        M["§14 Rerun lane + replace"]
-        K --> L --> M
-    end
-    C --> PAR
-    LANE --> SYNTH
-    J --> K
-    K -->|refine| REF
-    M --> OUT[RuntimeAgentRunResponse]
-    K -->|done| OUT
-```
+- Each text chunk is converted to an embedding vector.
+- Query embeddings are compared against chunk embeddings.
+- Nearest-neighbor search returns the most similar chunks as initial candidates.
 
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
+### Cosine similarity intuition
 
----
+- Cosine similarity measures vector direction alignment in `[-1, 1]`.
+- Higher values mean stronger semantic alignment.
+- Vector retrieval uses this as an initial relevance signal, not a final answer-quality guarantee.
 
-## Architecture — Whole System
+### Why `k_fetch` then `top_n`
 
-```text
-[ ARCHITECTURE // WHOLE SYSTEM ]
-```
+- `k_fetch` over-fetches a broader candidate pool during search.
+- `top_n` trims to the highest-value context after reranking.
+- This usually improves precision and reduces prompt/token budget compared with naive top-k only retrieval.
 
-End-to-end: **User** → **Frontend** (Vite + React) → **Backend** (FastAPI) → **Agent service** orchestrates graph nodes + vector store + per-subquestion pipeline and synthesis → **Response** (`main_question`, `sub_qa[]`, `output`) back to frontend. **Ingestion** path: load request → internal data service → wiki ingestion + vector store service → Postgres/pgvector. **Answer** path: run request → initial retrieval → graph decomposition → parallel lane execution (expand → search → rerank → answer) → final synthesis output.
+### Merge/dedupe and citation stability
 
-**Deployment:** `frontend` (React, :5173), `backend` (FastAPI, :8000), `db` (Postgres 16 + pgvector). Optional `chrome` for remote debugging (:9222).
+- Candidates from multiple expanded queries are merged.
+- Dedupe prefers `document_id`; fallback identity is `source + content`.
+- Citation indices are assigned deterministically from post-merge/post-rerank order so `[n]` markers map consistently to evidence rows.
 
-```text
-HUD NOTE: Whole-system diagram uses the same neon palette as the parts map.
-```
+## Reranking Explained
 
-### Flow diagram — Whole system
+### Retrieval score vs reranker score
 
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#0d1117', 'primaryTextColor':'#00ff9f', 'primaryBorderColor':'#00ff9f', 'lineColor':'#ff00aa', 'secondaryColor':'#1a1a2e', 'tertiaryColor':'#0d1117'}}}%%
-flowchart LR
-    U[User] --> FE[Frontend]
-    FE -->|POST /api/agents/run| API[FastAPI]
-    API --> SVC[agent_service]
-    SVC --> VSS[vector_store_service]
-    VSS --> CHUNKS[(pgvector)]
-    SVC --> PIPE[Graph lane execution]
-    PIPE --> SYNTH[Final synthesis]
-    SYNTH --> OUT[Response]
-    OUT --> API --> FE --> U
-```
+- Initial vector score is embedding-space similarity.
+- Reranker score is cross-text relevance scoring for the specific query and candidate passage.
+- They measure different signals and can produce different orderings.
 
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
+### Why reranking improves results
 
----
-
-## Run Flow — UI to Backend to Response
-
-```text
-[ RUN FLOW // EXECUTION TRACE ]
-```
-
-This section migrates the runtime logic formerly documented in `src/frontend/public/run-flow.html` into this README.
-
-### Reference image (same run-flow diagram)
-
-<p align="center">
-  <img src="flow.jpg" alt="Pipeline flow diagram with exploratory search, decomposition, per-subquestion processing, initial answer, refinement decision, and refined answer path" width="100%" data-darkreader-ignore />
-</p>
-
-### Exact function call chain
-
-```text
-UI click/submit
-  -> src/frontend/src/App.tsx
-     handleRun(event)
-       -> startAgentRun(submittedQuery)
-          -> requestJson("/api/agents/run-async", { method:"POST", payload:{ query }, timeoutMs })
-             -> fetch("http://localhost:8000/api/agents/run-async", ...)
-       -> poll getAgentRunStatus(jobId)
-          -> requestJson("/api/agents/run-status/{job_id}", { method:"GET", timeoutMs })
-             -> fetch("http://localhost:8000/api/agents/run-status/{job_id}", ...)
-       -> update stage rail:
-          decompose -> expand -> search -> rerank -> answer -> final
-          statuses: pending / in_progress / completed / error
-
-Backend
-  -> src/backend/routers/agent.py
-     runtime_agent_run(payload, db)
-       -> run_runtime_agent(payload, db)
-```
-
-### Frontend path (Run button -> network)
-
-| Step | Function | What happens | Data in/out |
-|------|----------|--------------|-------------|
-| 1 | `App.tsx::handleRun` | Prevent default submit, trim query, set `runState="loading"`, reset timeline + readout state. | In: textarea text. Out: React state updates. |
-| 2 | `utils/api.ts::startAgentRun` | Calls `requestJson` with `POST /api/agents/run-async`. | In: `{ query }`. Out: `job_id` + `run_id`. |
-| 3 | `utils/api.ts::getAgentRunStatus` | Polls `GET /api/agents/run-status/{job_id}` every second until terminal status. | Out: stage, status, partial/final payloads. |
-| 4 | `App.tsx::computeStageStatuses` | Maps backend stage names (`subquestions_ready`, `synthesize_final`, etc.) to canonical UI rail stages. | Out: per-stage status (`pending`, `in_progress`, `completed`, `error`). |
-| 5 | `App.tsx::handleRun` success/error branch | On success stores final `output` + `sub_qa`; on failure sets error state/message. | UI renders stage rail and final readout. |
-
-### Backend HTTP entry
-
-- Route: `src/backend/routers/agent.py::runtime_agent_run`
-- Endpoint: `POST /api/agents/run`
-- Request: `RuntimeAgentRunRequest { query }`
-- Response: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
-- Async start endpoint: `POST /api/agents/run-async` returns `{ job_id, run_id, status }`.
-- Async status endpoint: `GET /api/agents/run-status/{job_id}` returns staged progress including `stage`, `stages[]`, `decomposition_sub_questions`, `sub_question_artifacts[]` (with per-subquestion `expanded_queries`), and partial `sub_qa`/`output`.
-- Async cancel endpoint: `POST /api/agents/run-cancel/{job_id}` sets cancellation requested for running jobs.
-- Frontend section 12 timeline shell: ordered rail is `decompose -> expand -> search -> rerank -> answer -> final`, with visible state transitions based on async status polling.
-- Frontend section 13 decompose view: a dedicated Decompose panel now renders `decomposition_sub_questions` immediately at `subquestions_ready`, including count and normalization indicators (`Ends with ?`, `Dedupe`), independent from later stage artifacts.
-- Frontend section 14 expand view: a dedicated Expand panel renders grouped `expanded_queries` by subquestion index and shows a fallback badge when expansion collapses to the original subquestion only.
-- Frontend section 15 search view: a dedicated Search panel renders per-subquestion merged candidate previews before rerank, including merge transparency stats (`raw_hits` from `retrieval_provenance` and `deduped_hits` from merged `retrieved_docs`).
-- Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
-- Frontend section 17 subanswer view: a dedicated Subanswer panel renders per-subquestion `sub_qa[].sub_answer` as soon as answer-stage updates arrive, highlights explicit `nothing relevant found` fallback responses, and links citation markers (`[n]`) to matching Rerank evidence rows.
-- Frontend section 18 final synthesis view: a dedicated Final Synthesis panel updates only when the terminal synthesis stage completes, summarizes supporting subanswers/citation coverage, and preserves the previous successful final synthesis while a new run is in progress.
-- Backend regression tests validate stable graph-runtime response shape (`main_question`, `output`, `sub_qa` count/order), plus matching fallback behavior (including vector-store timeout fallback and `nothing relevant found` propagation).
-- Retrieval quality evals compare `search-only` vs `search+rerank` on hard queries and track two quality metrics only: `top1_hit_rate` for relevant evidence and citation-grounding consistency (whether cited `[1]` resolves to the expected supporting row). Eval slices include baseline (`no expansion + no rerank`) and stack path (`MultiQueryRetriever` expansion slice + `flashrank` rerank slice).
-- Efficiency evals quantify token-budget impact of reranked `top_n` context versus naive unfiltered context, enforce a quality floor (gold evidence remains in cited context), and record practical operating ranges. Current recommended operating range from the eval fixtures is `k_fetch=6..8` with `top_n=2..3` for substantial context reduction while preserving answer grounding.
-
-### Runtime pipeline map (orders 1-18)
-
-The runtime path is graph-only (`run_runtime_agent -> run_parallel_graph_runner`) and executes bounded fanout (`GRAPH_RUNNER_MAX_WORKERS`) with deterministic reindexing back to original decomposition order. The graph state emits `stage_snapshots` after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
-`run_sequential_graph_runner` is retained as a deterministic reference runner for tests and debugging.
-
-| Order | Function | Core logic | Output |
-|------|----------|------------|--------|
-| 1 | `get_vector_store` | Opens/creates PGVector collection. | Vector store handle. |
-| 2 | `search_documents_for_context` | Initial retrieval on user question. | Top-k context docs. |
-| 3 | `build_initial_search_context` | Normalizes docs to rank/doc_id/title/source/snippet. | `initial_search_context[]`. |
-| 4 | `run_decomposition_node` | Graph-entry decomposition node that emits normalized decomposition state. | `decomposition_sub_questions[]`. |
-| 5 | `_run_decomposition_only_llm_call` + `_parse_decomposition_output` | Internal helpers used by decomposition node for LLM call + normalization/fallback. | Candidate + normalized subquestions. |
-| 6 | `run_expand_node` + `expand_queries_for_subquestion` | Expansion-node query generation (`MultiQueryRetriever`) with bounded normalization and fallback to original sub-question. | `expanded_queries[]` per sub-question artifact. |
-| 7 | `run_search_node` + `apply_search_node_output_to_graph_state` | Search-node retrieval over expanded queries with `k_fetch`, deterministic merge/dedupe (`document_id` preferred; fallback `source+content`), and retrieval provenance capture. | `retrieved_docs[]`, `citation_rows_by_index`, and `retrieval_provenance[]` in graph artifacts. |
-| 8 | `run_rerank_node` + `apply_rerank_node_output_to_graph_state` | Rerank-node scoring with `flashrank`; trims to `top_n`, preserves deterministic fallback order when reranker fails/disabled, and stores rerank score/order provenance. | `reranked_docs[]` + updated citation map and compatibility payload fields. |
-| 9 | `run_answer_subquestion_node` + `apply_answer_subquestion_node_output_to_graph_state` | Subanswer-node generation + verification over reranked docs; requires citation markers and supporting citation rows; falls back to exact `nothing relevant found` when unsupported. | `sub_answer`, citation usage, and supporting source rows in graph/compat state. |
-| 9a | `run_synthesize_final_node` + `apply_synthesize_final_node_output_to_graph_state` | Final synthesis-node helper that composes final answer from collected subanswers while preserving citation markers and writes graph compatibility fields. | `final_answer` + `output` in graph state. |
-| 19 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
-
-### Parallelism points
-
-- `run_pipeline_for_subquestions` parallelizes by subquestion with `ThreadPoolExecutor`.
-- Per-document validation inside document validation service is also parallelized.
-- Refinement retrieval seeding (`_seed_refined_sub_qa_from_retrieval`) is parallelized across refined subquestions.
-- Output order is restored by writing future results back to original indices.
-
-### Retriever contract and evidence shape
-
-The RAG subagent calls `search_database(query, expanded_query, limit, wiki_source_filter)` in `src/backend/tools/retriever_tool.py` and returns line-oriented evidence:
-
-```text
-1. title={title} source={source} content={content}
-2. title={title} source={source} content={content}
-...
-```
-
-That stable line contract is reused across validation, reranking, subanswer generation, and verification.
+Reranking can elevate a chunk that was not highest by raw vector distance but is more directly relevant to the exact sub-question phrasing.
 
 ### Fallback behavior
 
-- Missing `OPENAI_API_KEY`: decomposition/subanswer/synthesis/refinement-decomposition use deterministic fallback logic.
-- Malformed decomposition output: falls back to normalized original question.
-- No supportable subanswer from reranked docs in graph-node path: returns exact fallback text `nothing relevant found`.
-- Refinement triggers when answer is empty/insufficient, no subanswers exist, or answerable ratio is below threshold.
+If reranking is disabled or unavailable, the system keeps deterministic original candidate order and still continues the pipeline.
 
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
+## Runtime Endpoints
 
----
+- Health: `GET /api/health`
+- Sync run: `POST /api/agents/run`
+- Async run: `POST /api/agents/run-async`
+- Async status: `GET /api/agents/run-status/{job_id}`
+- Async cancel: `POST /api/agents/run-cancel/{job_id}`
 
-## Tradeoffs
-
-```text
-[ TRADEOFFS // SIGNAL VS COST ]
-```
-
-| Area | Choice | Pros | Cons |
-|------|--------|------|------|
-| **Orchestration** | Graph runtime (`run_parallel_graph_runner`) | Deterministic stage boundaries and cleaner snapshots/tracing | Less flexibility for experimental alternate runtimes |
-| **Payload shape** | String-formatted doc payloads between some stages | Easy to log and show in UI | Parsing fragility; extra conversion |
-| **Validation / rerank / verify** | Deterministic validation + `flashrank` rerank + heuristic verify | Better semantic ranking while keeping controllable latency | Extra reranker model dependency and potential cold-start download cost |
-| **Concurrency** | `ThreadPoolExecutor` per subquestion | Better throughput for many subquestions | Noisier errors and log interleaving |
-| **Refinement** | Conditional on insufficiency + answerable ratio | Skips second pass when first is good enough | Threshold tuning can misclassify |
-| **Reliability** | Fallback when OpenAI unavailable | Usable output under degradation | Answer quality drops vs full LLM |
-
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
-
----
-
-## Quick start
-
-```text
-[ QUICK START // BOOT SEQUENCE ]
-```
-
-**Prerequisites:** Docker (and Compose), `.env` with `OPENAI_API_KEY` and any overrides for `POSTGRES_*`, `DATABASE_URL`, `VITE_API_BASE_URL`.
+## Quick Start
 
 ```bash
+docker compose build
 docker compose up -d
 ```
 
-- **Frontend:** http://localhost:5173  
-- **Backend API:** http://localhost:8000  
-- **DB:** Postgres 16 + pgvector on port 5432 (default credentials in `docker-compose.yml`).
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8000`
+- Health: `http://localhost:8000/api/health`
 
-Backend runs Alembic migrations at startup. Use the UI to load a wiki source, then run a query to exercise the full pipeline.
-
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
-
----
-
-## OpenAPI spec
-
-Canonical OpenAPI export artifact:
-
-- Path: `openapi.json` (repo root)
-- Format: JSON (OpenAPI 3.x)
-
-Export command:
+## Useful Commands
 
 ```bash
-uv run --project src/backend python scripts/export_openapi.py
+# Logs
+docker compose logs -f
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f db
+
+# Containers
+docker compose ps
+docker compose restart backend
+docker compose restart frontend
+
+# Tests
+docker compose exec backend uv run pytest
+docker compose exec backend uv run pytest tests/api -m smoke
+docker compose exec frontend npm run typecheck
+docker compose exec frontend npm run build
 ```
 
-Validation command:
+## OpenAPI / SDK
 
-```bash
-./scripts/validate_openapi.sh
-```
-
-Direct Docker equivalent:
-
-```bash
-docker run --rm -v "$(pwd):/local" openapitools/openapi-generator-cli validate -i /local/openapi.json
-```
-
-Generate Python SDK with Docker (no local OpenAPI Generator install):
-
-```bash
-docker run --rm \
-  -u "$(id -u):$(id -g)" \
-  -v "$(pwd):/local" \
-  openapitools/openapi-generator-cli generate \
-  -i /local/openapi.json \
-  -g python \
-  -o /local/sdk/python
-```
-
-Generate Python SDK with the repo script (single invocation):
-
-```bash
-./scripts/generate_sdk.sh
-```
-
-### SDK output location and repo policy
-
-- Canonical generated SDK path: `sdk/python`
-- Repo policy: generated SDK files in `sdk/python` are committed to git.
-- `.gitignore` intentionally does not ignore `sdk/python`; regenerate with `./scripts/generate_sdk.sh` whenever `openapi.json` changes.
+- OpenAPI artifact: `openapi.json`
+- Export: `uv run --project src/backend python scripts/export_openapi.py`
+- Validate: `./scripts/validate_openapi.sh`
+- Generate SDK: `./scripts/generate_sdk.sh`
 
 ## Links
 
-```text
-[ LINKS // REFERENCE CHANNELS ]
-```
-
-| Resource | Path |
-|----------|------|
-| **System architecture** | [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md) |
-| **Section docs (1–14)** | [docs/section-01-coordinator-flow-tracking.md](docs/section-01-coordinator-flow-tracking.md) … [docs/section-14-refinement-answer-path.md](docs/section-14-refinement-answer-path.md) |
-| **Agent/runtime guidance** | [AGENTS.md](AGENTS.md) |
-
-<p align="center">
-  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
-</p>
-
----
-
-## Inspiration / Articles Used
-
-```text
-[ INSPIRATION // EXTERNAL SIGNAL ]
-```
-
-- Toloka: [RAG Evaluation: A Technical Guide to Measuring Retrieval-Augmented Generation](https://toloka.ai/blog/rag-evaluation-a-technical-guide-to-measuring-retrieval-augmented-generation/?utm_source=chatgpt.com)
-- LangChain: [Beyond RAG: Implementing Agent Search with LangGraph for Smarter Knowledge Retrieval](https://blog.langchain.com/beyond-rag-implementing-agent-search-with-langgraph-for-smarter-knowledge-retrieval/)
-- Onyx: [Building the Best Deep Research](https://onyx.app/blog/building-the-best-deep-research)
-- Onyx: [Benchmarking Agentic RAG on Workplace Questions](https://onyx.app/blog/benchmarking-agentic-rag-on-workplace-questions)
-
----
+- Runtime flow doc: `src/frontend/public/run-flow.html`
+- Architecture tracker: `ARCHITECTURE_TRACKER.md`
+- Agent operation guide: `AGENTS.md`

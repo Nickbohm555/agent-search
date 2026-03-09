@@ -1467,3 +1467,106 @@ docker compose logs --no-color --tail=140 backend frontend db
 -> frontend vite ready on :5173 with run-flow reload events
 -> db ready/healthy; non-fatal transaction-in-progress warnings observed during test activity
 ```
+
+## Section 24: Final architecture docs reconciliation - canonical state-graph docs only
+
+**Single goal:** Ensure repository docs and flow diagrams reflect only the final state-graph architecture.
+
+**Details:**
+- Update the architecture content in `README.md` to remove deep-agent runtime references.
+- Update `run-flow.html` to show the canonical lane: `decompose -> expand -> search -> rerank -> answer -> synthesize`.
+- Ensure README examples and terminology match actual code paths and endpoint behavior.
+- Confirm no contradictory legacy flow descriptions remain across docs.
+- Document concrete library usage in architecture docs: `langchain` `MultiQueryRetriever` for expansion and `flashrank` for reranking.
+- Add a "How the flow works" explainer covering each stage:
+  - `decompose`: split main question into atomic sub-questions.
+  - `expand`: generate related queries per sub-question.
+  - `search`: retrieve candidate chunks with vector similarity.
+  - `rerank`: reorder retrieved chunks by query-specific relevance.
+  - `answer`: produce subanswer with citations from reranked evidence.
+  - `synthesize`: build final answer from subanswers.
+- Add a retrieval fundamentals explainer:
+  - embedding vectors and nearest-neighbor retrieval basics.
+  - cosine similarity intuition (`-1..1`, direction similarity, higher is closer).
+  - why over-fetch (`k_fetch`) then rerank (`top_n`) improves precision.
+  - merge/dedupe behavior across expanded queries and citation index stability.
+- Add a reranking explainer:
+  - difference between initial vector retrieval score and reranker score.
+  - why reranking can surface relevant chunks that were not in naive top-k.
+  - fallback behavior when reranker is unavailable.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `README.md` | Canonical architecture and usage docs for state-graph runtime. |
+| `src/frontend/public/run-flow.html` | Final flow visualization aligned with implementation. |
+
+**How to test:** Manually validate docs against real runtime traces; confirm every stage in UI/run-status has a matching explanation, and verify retrieval/rerank examples are technically consistent with implementation (`k_fetch`, `top_n`, cosine similarity, dedupe/citation behavior).
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Replaced `README.md` architecture/run-flow content with canonical state-graph runtime documentation only.
+- Removed legacy/deep-agent/refinement-oriented flow language from `README.md` and aligned wording with actual `run_runtime_agent -> run_parallel_graph_runner` execution.
+- Added requested explainers in `README.md`:
+  - "How The Flow Works" with all six canonical stages (`decompose`, `expand`, `search`, `rerank`, `answer`, `synthesize`).
+  - retrieval fundamentals (embeddings, nearest-neighbor retrieval, cosine similarity intuition, `k_fetch`/`top_n`, merge/dedupe and citation stability).
+  - reranking fundamentals (vector score vs reranker score, why reranking helps, deterministic fallback behavior).
+- Rewrote `src/frontend/public/run-flow.html` to a concise canonical runtime page showing:
+  - exact frontend -> backend call chain,
+  - canonical stage behavior,
+  - frontend stage mapping,
+  - retrieval/rerank fundamentals and fallback behavior.
+- Verified no contradictory legacy terms remain in these two docs (`deep-agent`, `refinement`, legacy section-path wording).
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> removed running containers, network, data volumes, and rebuilt images
+
+docker compose build
+-> backend/frontend images built successfully
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Post-change container restart + checks:
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+Health check:
+curl http://localhost:8000/api/health
+-> {"status":"ok"}
+
+Logs reviewed:
+docker compose logs --no-color --tail=120 backend
+-> uvicorn started; alembic upgrade executed; app startup complete
+
+docker compose logs --no-color --tail=120 frontend
+-> vite ready on :5173; public/run-flow.html reload observed
+
+docker compose logs --no-color --tail=120 db
+-> postgres ready to accept connections
+
+Validation commands:
+docker compose exec frontend npm run typecheck
+-> PASS
+
+docker compose exec frontend npm run build
+-> PASS
+
+docker compose exec backend uv run --with pytest pytest tests/api -m smoke
+-> no smoke-marked tests selected in current suite (all deselected)
+
+docker compose exec backend uv run --with pytest pytest tests/api
+-> PASS (6 passed)
+```
