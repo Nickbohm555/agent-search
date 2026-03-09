@@ -3008,3 +3008,87 @@ Local: http://localhost:5173/
 DB log excerpt:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 46
+
+## Section 46: Generated HTTP client refresh - post-contract artifact alignment
+
+**Single goal:** Regenerate Python OpenAPI client from final spec.
+
+**Why:** This synchronizes generated artifacts and release/CI safeguards so the integrated system remains consistent over time.
+
+
+**Details:**
+- Refresh generated methods/models including benchmark endpoints.
+- Keep generated client secondary to in-process SDK.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new runtime dependencies.
+- Tooling (uv, poetry, Docker): use existing generation scripts.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `sdk/python/openapi_client/**` | Refreshed generated client code. |
+| `sdk/python/docs/**` | Refreshed generated docs. |
+| `sdk/README.md` | Artifact role clarification. |
+
+**How to test:** Regenerate and verify benchmark endpoints in generated classes.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Regenerated Python SDK artifacts using existing generator workflow (`./scripts/generate_sdk.sh`) against the current canonical `openapi.json`.
+- Verified benchmark endpoints now exist in generated classes/docs (`BenchmarksApi` with create/list/get/cancel/compare/wipe methods).
+- Clarified SDK role in `sdk/README.md`: generated HTTP client is secondary to in-process `agent_search` SDK.
+- Restarted the full Docker stack and re-checked backend/frontend/db logs and runtime health endpoints.
+
+**Commands run:**
+- `./scripts/update_sdk.sh` (failed on host uv platform mismatch)
+- `./scripts/generate_sdk.sh`
+- `rg -n "class BenchmarksApi|def .*benchmark|/api/benchmarks" sdk/python/openapi_client/api/benchmarks_api.py sdk/python/docs/BenchmarksApi.md`
+- `test -f sdk/python/openapi_client/api/benchmarks_api.py && test -f sdk/python/docs/BenchmarksApi.md && rg -n "create_benchmark_run_api_benchmarks_runs_post|list_runs_api_benchmarks_runs_get|get_run_api_benchmarks_runs_run_id_get|cancel_run_api_benchmarks_runs_run_id_cancel_post|compare_run_modes_api_benchmarks_runs_run_id_compare_get|wipe_benchmark_data_api_benchmarks_wipe_post" sdk/python/openapi_client/api/benchmarks_api.py sdk/python/docs/BenchmarksApi.md`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `curl -sS -i http://localhost:8000/api/benchmarks/runs`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+sdk generation:
+INFO generate_sdk: starting image=openapitools/openapi-generator-cli lang=python spec=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.json output=/Users/nickbohm/Desktop/tinkering/agent-search/sdk/python
+writing file /local/sdk/python/openapi_client/api/benchmarks_api.py
+writing file /local/sdk/python/docs/BenchmarksApi.md
+INFO generate_sdk: generation complete
+
+benchmark endpoint verification:
+BenchmarksApi.md includes:
+- POST /api/benchmarks/runs
+- GET /api/benchmarks/runs
+- GET /api/benchmarks/runs/{run_id}
+- POST /api/benchmarks/runs/{run_id}/cancel
+- GET /api/benchmarks/runs/{run_id}/compare
+- POST /api/benchmarks/wipe
+
+post-restart runtime checks:
+HTTP/1.1 200 OK /api/health -> {"status":"ok"}
+HTTP/1.1 200 OK /api/benchmarks/runs -> {"runs":[]}
+
+backend logs:
+Uvicorn running on http://0.0.0.0:8000
+Application startup complete.
+
+frontend logs:
+VITE v5.4.21 ready
+Local: http://localhost:5173/
+
+db logs:
+database system is ready to accept connections
+```

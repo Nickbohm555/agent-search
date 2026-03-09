@@ -2,6 +2,10 @@
 
 This directory stores generated SDK artifacts for this repository.
 
+The generated OpenAPI HTTP client is a secondary integration surface for
+network calls to the running API. The primary SDK surface for in-process
+usage remains `agent_search` under `src/backend/agent_search`.
+
 ## Python SDK
 
 - Output path: `sdk/python`

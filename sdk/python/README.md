@@ -86,22 +86,62 @@ All URIs are relative to *http://localhost*
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 *AgentsApi* | [**runtime_agent_run_api_agents_run_post**](docs/AgentsApi.md#runtime_agent_run_api_agents_run_post) | **POST** /api/agents/run | Runtime Agent Run
+*AgentsApi* | [**runtime_agent_run_async_api_agents_run_async_post**](docs/AgentsApi.md#runtime_agent_run_async_api_agents_run_async_post) | **POST** /api/agents/run-async | Runtime Agent Run Async
+*AgentsApi* | [**runtime_agent_run_cancel_api_agents_run_cancel_job_id_post**](docs/AgentsApi.md#runtime_agent_run_cancel_api_agents_run_cancel_job_id_post) | **POST** /api/agents/run-cancel/{job_id} | Runtime Agent Run Cancel
+*AgentsApi* | [**runtime_agent_run_status_api_agents_run_status_job_id_get**](docs/AgentsApi.md#runtime_agent_run_status_api_agents_run_status_job_id_get) | **GET** /api/agents/run-status/{job_id} | Runtime Agent Run Status
+*BenchmarksApi* | [**cancel_run_api_benchmarks_runs_run_id_cancel_post**](docs/BenchmarksApi.md#cancel_run_api_benchmarks_runs_run_id_cancel_post) | **POST** /api/benchmarks/runs/{run_id}/cancel | Cancel Run
+*BenchmarksApi* | [**compare_run_modes_api_benchmarks_runs_run_id_compare_get**](docs/BenchmarksApi.md#compare_run_modes_api_benchmarks_runs_run_id_compare_get) | **GET** /api/benchmarks/runs/{run_id}/compare | Compare Run Modes
+*BenchmarksApi* | [**create_benchmark_run_api_benchmarks_runs_post**](docs/BenchmarksApi.md#create_benchmark_run_api_benchmarks_runs_post) | **POST** /api/benchmarks/runs | Create Benchmark Run
+*BenchmarksApi* | [**get_run_api_benchmarks_runs_run_id_get**](docs/BenchmarksApi.md#get_run_api_benchmarks_runs_run_id_get) | **GET** /api/benchmarks/runs/{run_id} | Get Run
+*BenchmarksApi* | [**list_runs_api_benchmarks_runs_get**](docs/BenchmarksApi.md#list_runs_api_benchmarks_runs_get) | **GET** /api/benchmarks/runs | List Runs
+*BenchmarksApi* | [**wipe_benchmark_data_api_benchmarks_wipe_post**](docs/BenchmarksApi.md#wipe_benchmark_data_api_benchmarks_wipe_post) | **POST** /api/benchmarks/wipe | Wipe Benchmark Data
 *DefaultApi* | [**health_api_health_get**](docs/DefaultApi.md#health_api_health_get) | **GET** /api/health | Health
 *InternalDataApi* | [**list_wiki_sources_api_internal_data_wiki_sources_get**](docs/InternalDataApi.md#list_wiki_sources_api_internal_data_wiki_sources_get) | **GET** /api/internal-data/wiki-sources | List Wiki Sources
+*InternalDataApi* | [**load_cancel_api_internal_data_load_cancel_job_id_post**](docs/InternalDataApi.md#load_cancel_api_internal_data_load_cancel_job_id_post) | **POST** /api/internal-data/load-cancel/{job_id} | Load Cancel
 *InternalDataApi* | [**load_data_api_internal_data_load_post**](docs/InternalDataApi.md#load_data_api_internal_data_load_post) | **POST** /api/internal-data/load | Load Data
+*InternalDataApi* | [**load_data_async_api_internal_data_load_async_post**](docs/InternalDataApi.md#load_data_async_api_internal_data_load_async_post) | **POST** /api/internal-data/load-async | Load Data Async
+*InternalDataApi* | [**load_status_api_internal_data_load_status_job_id_get**](docs/InternalDataApi.md#load_status_api_internal_data_load_status_job_id_get) | **GET** /api/internal-data/load-status/{job_id} | Load Status
 *InternalDataApi* | [**wipe_data_api_internal_data_wipe_post**](docs/InternalDataApi.md#wipe_data_api_internal_data_wipe_post) | **POST** /api/internal-data/wipe | Wipe Data
 
 
 ## Documentation For Models
 
+ - [AgentRunStageMetadata](docs/AgentRunStageMetadata.md)
+ - [BenchmarkExecutionMode](docs/BenchmarkExecutionMode.md)
+ - [BenchmarkKPI](docs/BenchmarkKPI.md)
+ - [BenchmarkMode](docs/BenchmarkMode.md)
+ - [BenchmarkModeComparison](docs/BenchmarkModeComparison.md)
+ - [BenchmarkModeSummary](docs/BenchmarkModeSummary.md)
+ - [BenchmarkObjective](docs/BenchmarkObjective.md)
+ - [BenchmarkResultQualityScore](docs/BenchmarkResultQualityScore.md)
+ - [BenchmarkResultRetrievalDiagnostics](docs/BenchmarkResultRetrievalDiagnostics.md)
+ - [BenchmarkResultStatusItem](docs/BenchmarkResultStatusItem.md)
+ - [BenchmarkRunCancelResponse](docs/BenchmarkRunCancelResponse.md)
+ - [BenchmarkRunCompareResponse](docs/BenchmarkRunCompareResponse.md)
+ - [BenchmarkRunCreateRequest](docs/BenchmarkRunCreateRequest.md)
+ - [BenchmarkRunCreateResponse](docs/BenchmarkRunCreateResponse.md)
+ - [BenchmarkRunListItem](docs/BenchmarkRunListItem.md)
+ - [BenchmarkRunListResponse](docs/BenchmarkRunListResponse.md)
+ - [BenchmarkRunStatus](docs/BenchmarkRunStatus.md)
+ - [BenchmarkRunStatusResponse](docs/BenchmarkRunStatusResponse.md)
+ - [BenchmarkTargets](docs/BenchmarkTargets.md)
+ - [BenchmarkWipeResponse](docs/BenchmarkWipeResponse.md)
+ - [CitationSourceRow](docs/CitationSourceRow.md)
  - [HTTPValidationError](docs/HTTPValidationError.md)
+ - [InternalDataLoadJobCancelResponse](docs/InternalDataLoadJobCancelResponse.md)
+ - [InternalDataLoadJobStartResponse](docs/InternalDataLoadJobStartResponse.md)
+ - [InternalDataLoadJobStatusResponse](docs/InternalDataLoadJobStatusResponse.md)
  - [InternalDataLoadRequest](docs/InternalDataLoadRequest.md)
  - [InternalDataLoadResponse](docs/InternalDataLoadResponse.md)
  - [InternalDocumentInput](docs/InternalDocumentInput.md)
  - [LocationInner](docs/LocationInner.md)
+ - [RuntimeAgentRunAsyncCancelResponse](docs/RuntimeAgentRunAsyncCancelResponse.md)
+ - [RuntimeAgentRunAsyncStartResponse](docs/RuntimeAgentRunAsyncStartResponse.md)
+ - [RuntimeAgentRunAsyncStatusResponse](docs/RuntimeAgentRunAsyncStatusResponse.md)
  - [RuntimeAgentRunRequest](docs/RuntimeAgentRunRequest.md)
  - [RuntimeAgentRunResponse](docs/RuntimeAgentRunResponse.md)
  - [SubQuestionAnswer](docs/SubQuestionAnswer.md)
+ - [SubQuestionArtifacts](docs/SubQuestionArtifacts.md)
  - [ValidationError](docs/ValidationError.md)
  - [WikiLoadInput](docs/WikiLoadInput.md)
  - [WikiSourceOption](docs/WikiSourceOption.md)

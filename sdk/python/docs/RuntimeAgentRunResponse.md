@@ -5,6 +5,7 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
+**final_citations** | [**List[CitationSourceRow]**](CitationSourceRow.md) |  | [optional] 
 **main_question** | **str** |  | [optional] [default to '']
 **output** | **str** |  | 
 **sub_qa** | [**List[SubQuestionAnswer]**](SubQuestionAnswer.md) |  | [optional] 
