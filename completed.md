@@ -1353,3 +1353,63 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 22
+
+## Section 22: Internal benchmark dataset schema - DeepResearchBench-aligned
+
+**Single goal:** Define strict JSONL schema for internal benchmark questions.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Required fields: `question_id`, `question`, `domain`, `difficulty`, `expected_answer_points`, `required_sources`, `disallowed_behaviors`.
+- v1 dataset size target: 120 public questions.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/benchmarks/datasets/schema.md` | Dataset contract documentation. |
+| `src/backend/benchmarks/datasets/internal_v1/questions.jsonl` | v1 benchmark questions. |
+| `src/backend/tests/benchmarks/test_dataset_schema.py` | Schema/distribution tests. |
+
+**How to test:** Run dataset schema tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added strict benchmark dataset validation model in `src/backend/benchmarks/datasets/schema.py` with extra-field rejection and per-line JSON/schema validation.
+- Added loader visibility logs for dataset load start/completion and validation failures.
+- Added DeepResearchBench-aligned dataset contract documentation in `src/backend/benchmarks/datasets/schema.md`.
+- Added `internal_v1` benchmark dataset fixture with exactly 120 JSONL question rows and all required fields.
+- Added `tests/benchmarks/test_dataset_schema.py` covering strict field set checks, unique ID format checks, domain/difficulty distribution checks, and loader logging checks.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d && docker compose ps`
+- `docker compose exec backend uv run --with pytest pytest tests/benchmarks/test_dataset_schema.py`
+- `docker compose restart backend`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/benchmarks/test_dataset_schema.py ..... [100%]
+pytest: 5 passed in 0.03s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
