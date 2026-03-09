@@ -13,7 +13,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
-from db import DATABASE_URL
 from schemas import (
     AgentGraphState,
     AnswerSubquestionNodeInput,
@@ -59,13 +58,10 @@ from services.subanswer_verification_service import (
     verify_subanswer,
 )
 from services.vector_store_service import (
-    build_initial_search_context,
-    get_vector_store,
     search_documents_for_queries,
     search_documents_for_context,
 )
 from utils.agent_callbacks import AgentLoggingCallbackHandler
-from utils.embeddings import get_embedding_model
 from utils.langfuse_tracing import (
     build_langfuse_run_metadata,
     build_langfuse_callback_handler,
@@ -651,7 +647,10 @@ def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> s
 
 
 def _build_callbacks() -> tuple[list[Any], Any | None]:
-    callbacks, langfuse_callback = _build_callbacks()
+    callbacks: list[Any] = [AgentLoggingCallbackHandler()]
+    langfuse_callback = build_langfuse_callback_handler()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
     return callbacks, langfuse_callback
 
 
@@ -2183,96 +2182,23 @@ def run_runtime_agent(
     vector_store: Any | None = None,
 ) -> RuntimeAgentRunResponse:
     _ = db
-    run_metadata = build_graph_run_metadata()
     logger.info(
-        "Runtime agent run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
+        "Runtime agent service wrapper delegating to runtime core query=%s query_length=%s provided_model=%s provided_vector_store=%s",
         _truncate_query(payload.query),
         len(payload.query),
         model is not None,
         vector_store is not None,
-        run_metadata.run_id,
-        run_metadata.trace_id,
-        run_metadata.correlation_id,
     )
-    selected_vector_store = vector_store
-    if selected_vector_store is None:
-        try:
-            selected_vector_store = _run_with_timeout(
-                timeout_s=_RUNTIME_TIMEOUT_CONFIG.vector_store_acquisition_timeout_s,
-                operation_name="vector_store_acquisition",
-                fn=lambda: get_vector_store(
-                    connection=DATABASE_URL,
-                    collection_name=_VECTOR_COLLECTION_NAME,
-                    embeddings=get_embedding_model(),
-                ),
-            )
-        except FuturesTimeoutError:
-            logger.warning(
-                "Runtime agent short-circuiting due to vector store timeout query=%s run_id=%s",
-                _truncate_query(payload.query),
-                run_metadata.run_id,
-            )
-            return RuntimeAgentRunResponse(
-                main_question=payload.query,
-                sub_qa=[],
-                output=_VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE,
-            )
-        logger.info(
-            "Runtime agent vector store selected source=default collection_name=%s run_id=%s",
-            _VECTOR_COLLECTION_NAME,
-            run_metadata.run_id,
-        )
-    else:
-        logger.info(
-            "Runtime agent vector store selected source=provided run_id=%s",
-            run_metadata.run_id,
-        )
+    from agent_search.runtime.runner import run_runtime_agent as run_runtime_agent_core
 
-    def _build_initial_context_payload() -> tuple[list[Any], list[dict[str, Any]]]:
-        docs = search_documents_for_context(
-            vector_store=selected_vector_store,
-            query=payload.query,
-            k=_INITIAL_SEARCH_CONTEXT_K,
-            score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-        )
-        return docs, build_initial_search_context(docs)
-
-    try:
-        _, initial_search_context = _run_with_timeout(
-            timeout_s=_RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
-            operation_name="initial_search_context_build",
-            fn=_build_initial_context_payload,
-        )
-        logger.info(
-            "Runtime agent initial context built query=%s docs=%s k=%s score_threshold=%s run_id=%s",
-            _truncate_query(payload.query),
-            len(initial_search_context),
-            _INITIAL_SEARCH_CONTEXT_K,
-            _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-            run_metadata.run_id,
-        )
-    except FuturesTimeoutError:
-        initial_search_context = []
-        logger.warning(
-            "Runtime agent initial context timeout; continuing with empty context query=%s timeout_s=%s run_id=%s",
-            _truncate_query(payload.query),
-            _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
-            run_metadata.run_id,
-        )
-
-    state = run_parallel_graph_runner(
-        payload=payload,
-        vector_store=selected_vector_store,
+    response = run_runtime_agent_core(
+        payload,
         model=model,
-        run_metadata=run_metadata,
-        initial_search_context=initial_search_context,
+        vector_store=vector_store,
     )
-    response = map_graph_state_to_runtime_response(state)
     logger.info(
-        "Runtime agent run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
+        "Runtime agent service wrapper completed delegation sub_qa_count=%s output_length=%s",
         len(response.sub_qa),
         len(response.output),
-        len(state.stage_snapshots),
-        run_metadata.run_id,
     )
     return response

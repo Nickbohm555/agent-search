@@ -497,3 +497,83 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 9
+
+## Section 9: Runtime core module boundary - framework-independent orchestration shell
+
+**Single goal:** Extract framework-independent runtime orchestrator.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Move orchestration into SDK runtime module.
+- Remove FastAPI/SQLAlchemy coupling at core runtime boundary.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/runner.py` | Core orchestration boundary. |
+| `src/backend/services/agent_service.py` | Compatibility wrapper during migration. |
+| `src/backend/tests/services/test_agent_service.py` | Wrapper parity tests. |
+
+**How to test:** Run runtime + service parity tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added framework-independent runtime entrypoint `agent_search.runtime.runner.run_runtime_agent` that performs vector-store acquisition, initial context retrieval, graph execution, and runtime-response mapping without requiring FastAPI or SQLAlchemy session types.
+- Converted `services.agent_service.run_runtime_agent` into a compatibility wrapper that preserves existing API shape (`db` argument) while delegating orchestration to the runtime core module.
+- Added explicit delegation logs at both service-wrapper and runtime-core boundaries for visibility.
+- Added service parity tests validating runtime-core execution without DB dependency and wrapper delegation behavior.
+- Fixed `_build_callbacks` recursion in `services.agent_service` (runtime bug surfaced during container log verification), restoring callback construction and preventing runtime 500s.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k 'runtime_runner_executes_without_db_dependency or run_runtime_agent_wrapper_delegates_to_runtime_runner'`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k 'run_sequential_graph_runner_executes_strict_node_order or run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapshots or runtime_runner_executes_without_db_dependency or run_runtime_agent_wrapper_delegates_to_runtime_runner'`
+- `docker compose exec backend uv run --with pytest pytest tests/api/test_agent_run.py`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_public_api.py tests/sdk/test_errors.py tests/sdk/test_vectorstore_protocol.py`
+- `docker compose down && docker compose up -d`
+- `curl -sS http://localhost:8000/api/health`
+- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in policy X?"}'`
+- `docker compose restart backend`
+- `docker compose logs --tail=260 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_agent_service.py .... [100%]
+pytest: 4 passed, 48 deselected in 1.69s
+pytest: tests/api/test_agent_run.py ..... [100%]
+pytest: 5 passed in 1.92s
+pytest: tests/sdk/test_public_api.py ...
+pytest: tests/sdk/test_errors.py ......
+pytest: tests/sdk/test_vectorstore_protocol.py .....
+pytest: 14 passed in 1.63s
+backend: Runtime agent service wrapper delegating to runtime core query=What changed in policy X? ...
+backend: Runtime core run start query=What changed in policy X? ...
+backend: Runtime core run complete sub_qa_count=5 output_length=165 snapshot_count=22 ...
+backend: Runtime agent service wrapper completed delegation sub_qa_count=5 output_length=165
+backend: POST /api/agents/run HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```

@@ -30,6 +30,7 @@ from schemas import (
     SynthesizeFinalNodeOutput,
 )
 from schemas.decomposition import DecompositionPlan
+from agent_search.runtime import runner as runtime_runner
 from services import document_validation_service
 from services import agent_service
 from services import reranker_service
@@ -1245,6 +1246,98 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
     assert state.stage_snapshots[5].lane_index == 2
     assert state.stage_snapshots[-1].output == "Final from 2 subanswers."
     assert captured_flush["handler"] is langfuse_callback
+
+
+def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
+    from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+
+    payload = RuntimeAgentRunRequest(query="How does core runner execute?")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        runtime_runner,
+        "get_vector_store",
+        lambda *, connection, collection_name, embeddings: "vector-store-core",
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "search_documents_for_context",
+        lambda *, vector_store, query, k, score_threshold: ["doc1"],
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "build_initial_search_context",
+        lambda docs: [{"rank": 1, "title": "Doc"}],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "run_parallel_graph_runner",
+        lambda *, payload, vector_store, model, run_metadata, initial_search_context: captured.update(
+            {
+                "payload_query": payload.query,
+                "vector_store": vector_store,
+                "initial_search_context": initial_search_context,
+            }
+        )
+        or agent_service.build_agent_graph_state(
+            main_question=payload.query,
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="Core sub-question?",
+                    sub_answer="Core answer [1].",
+                )
+            ],
+            final_answer="Core final [1].",
+            run_metadata=run_metadata,
+        ),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "map_graph_state_to_runtime_response",
+        lambda state: RuntimeAgentRunResponse(
+            main_question=state.main_question,
+            sub_qa=state.sub_qa,
+            output=state.output,
+        ),
+    )
+
+    response = runtime_runner.run_runtime_agent(payload, model="model-x")
+
+    assert captured["payload_query"] == "How does core runner execute?"
+    assert captured["vector_store"] == "vector-store-core"
+    assert captured["initial_search_context"] == [{"rank": 1, "title": "Doc"}]
+    assert response.output == "Core final [1]."
+    assert response.sub_qa[0].sub_question == "Core sub-question?"
+
+
+def test_run_runtime_agent_wrapper_delegates_to_runtime_runner(monkeypatch) -> None:
+    from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+
+    payload = RuntimeAgentRunRequest(query="Wrapper compatibility?")
+    session = _make_session()
+    captured: dict[str, object] = {}
+
+    def fake_runtime_core(payload_arg, *, model=None, vector_store=None):
+        captured["query"] = payload_arg.query
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        return RuntimeAgentRunResponse(
+            main_question=payload_arg.query,
+            sub_qa=[SubQuestionAnswer(sub_question="Wrapper sub-question?", sub_answer="Wrapper answer [1].")],
+            output="Wrapper output [1].",
+        )
+
+    monkeypatch.setattr(runtime_runner, "run_runtime_agent", fake_runtime_core)
+
+    response = agent_service.run_runtime_agent(payload, db=session, model="model-y", vector_store="store-y")
+
+    assert captured == {
+        "query": "Wrapper compatibility?",
+        "model": "model-y",
+        "vector_store": "store-y",
+    }
+    assert response.output == "Wrapper output [1]."
+    assert response.sub_qa[0].sub_question == "Wrapper sub-question?"
 
 
 def test_estimate_retrieved_doc_count_counts_ranked_lines() -> None:
