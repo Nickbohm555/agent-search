@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 
 class BenchmarkMode(str, Enum):
-    baseline = "baseline"
-    retrieval_only = "retrieval_only"
-    full = "full"
+    baseline_retrieve_then_answer = "baseline_retrieve_then_answer"
+    agentic_default = "agentic_default"
+    agentic_no_rerank = "agentic_no_rerank"
+    agentic_single_query_no_decompose = "agentic_single_query_no_decompose"
 
 
 class BenchmarkRunStatus(str, Enum):
@@ -48,6 +52,28 @@ class BenchmarkRunCreateRequest(BaseModel):
     modes: list[BenchmarkMode] = Field(min_length=1)
     targets: BenchmarkTargets | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("modes", mode="before")
+    @classmethod
+    def _validate_modes(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+
+        supported_modes = {mode.value for mode in BenchmarkMode}
+        invalid_modes = sorted(
+            str(item)
+            for item in value
+            if str(item.value if isinstance(item, BenchmarkMode) else item) not in supported_modes
+        )
+        if invalid_modes:
+            logger.error(
+                "Benchmark create request rejected invalid modes invalid_modes=%s supported_modes=%s",
+                invalid_modes,
+                sorted(supported_modes),
+            )
+            raise ValueError(f"Unsupported benchmark modes: {', '.join(invalid_modes)}")
+        logger.info("Benchmark create request modes validated mode_count=%s", len(value))
+        return value
 
 
 class BenchmarkRunCreateResponse(BaseModel):

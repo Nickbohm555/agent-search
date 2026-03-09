@@ -57,7 +57,12 @@ def test_public_api_return_annotations_are_runtime_models() -> None:
 
 
 def test_benchmark_mode_enum_values_are_frozen() -> None:
-    assert [mode.value for mode in BenchmarkMode] == ["baseline", "retrieval_only", "full"]
+    assert [mode.value for mode in BenchmarkMode] == [
+        "baseline_retrieve_then_answer",
+        "agentic_default",
+        "agentic_no_rerank",
+        "agentic_single_query_no_decompose",
+    ]
 
 
 def test_benchmark_create_request_schema_is_frozen() -> None:

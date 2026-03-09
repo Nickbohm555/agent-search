@@ -1673,3 +1673,65 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 db: duplicate key value violates unique constraint "uq_benchmark_results_run_mode_question" (expected by uniqueness test)
 ```
+
+## Completed - 2026-03-09 - Section 27
+
+## Section 27: Benchmark mode registry - deterministic evaluation modes
+
+**Single goal:** Define stable benchmark mode registry.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Modes: `baseline_retrieve_then_answer`, `agentic_default`, `agentic_no_rerank`, `agentic_single_query_no_decompose`.
+- Reject unknown modes at validation time.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_modes.py` | Mode definitions and overrides. |
+| `src/backend/schemas/benchmark.py` | Mode enums/validators. |
+| `src/backend/tests/services/test_benchmark_modes.py` | Registry tests. |
+
+**How to test:** Run benchmark mode tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added deterministic benchmark mode registry in `services/benchmark_modes.py` with explicit runtime override blocks for all four required modes.
+- Updated `schemas/benchmark.py` mode enum values to the required mode set and added validation-time rejection/logging for unsupported modes.
+- Added `tests/services/test_benchmark_modes.py` covering registry ordering, mode override definitions, defensive override-copy behavior, and unknown mode validation failure.
+- Updated `tests/contracts/test_public_contracts.py` mode snapshot assertion to align with the new frozen mode values.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_benchmark_modes.py tests/contracts/test_public_contracts.py`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_benchmark_modes.py .... [ 33%]
+pytest: tests/contracts/test_public_contracts.py ........ [100%]
+pytest: 12 passed in 1.47s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
