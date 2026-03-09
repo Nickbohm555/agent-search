@@ -1735,3 +1735,62 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 28
+
+## Section 28: Benchmark execution adapter - SDK boundary isolation
+
+**Single goal:** Add adapter layer so benchmark runner depends only on SDK public API boundary.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Runner calls adapter, adapter calls `agent_search.public_api` sync/async.
+- Prevent direct dependency on legacy service internals.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_execution_adapter.py` | SDK-boundary execution adapter. |
+| `src/backend/tests/services/test_benchmark_execution_adapter.py` | Adapter contract tests. |
+
+**How to test:** Run adapter tests with mocked SDK public API.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkExecutionAdapter` in `services/benchmark_execution_adapter.py` as an SDK-boundary wrapper so benchmark flows call only `agent_search.public_api`.
+- Implemented adapter methods for sync run, async run, async status, and async cancel, each with structured logs for operational visibility.
+- Added `tests/services/test_benchmark_execution_adapter.py` with mocked SDK API calls verifying delegation and argument/response contract forwarding for all adapter methods.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/services/test_benchmark_execution_adapter.py"`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_benchmark_execution_adapter.py .... [100%]
+pytest: 4 passed in 1.58s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
