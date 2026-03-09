@@ -774,3 +774,66 @@ pytest: 3 passed in 1.56s
 pytest: tests/services/test_agent_service.py . [100%]
 pytest: 1 passed, 51 deselected in 1.62s
 ```
+
+## Completed - 2026-03-09 - Section 13
+
+## Section 13: Rerank node extraction - isolated ranking module
+
+**Single goal:** Extract rerank logic without behavior change.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Preserve deterministic fallback.
+- Preserve citation row remapping semantics.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): reuse existing `flashrank`.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/nodes/rerank.py` | Rerank node. |
+| `src/backend/tests/sdk/test_node_rerank.py` | Rerank tests. |
+
+**How to test:** Run rerank node tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added runtime rerank node module `agent_search.runtime.nodes.rerank` and extracted rerank execution logic from `services.agent_service`.
+- Preserved deterministic fallback behavior by continuing to route through existing `services.reranker_service.rerank_documents` with unchanged config defaults.
+- Preserved citation row remapping semantics by retaining original-rank to document-id mapping while reindexing citation rows by reranked order.
+- Kept service compatibility by turning `services.agent_service.run_rerank_node` into a thin delegation wrapper to the runtime node.
+- Added SDK rerank node tests for reordering/remapping behavior, query fallback behavior, and empty-candidate short-circuit behavior.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_node_rerank.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/services/test_agent_service.py -k 'run_rerank_node_reorders_and_trims_documents or apply_rerank_node_output_to_graph_state_updates_artifacts_and_compat_fields'"`
+- `docker compose restart backend`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=180 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_node_rerank.py ... [100%]
+pytest: 3 passed in 1.86s
+pytest: tests/services/test_agent_service.py .. [100%]
+pytest: 2 passed, 50 deselected in 1.99s
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
