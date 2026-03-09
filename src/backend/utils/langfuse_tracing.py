@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import logging
-import os
 import inspect
+import logging
+import threading
 import uuid
-from typing import Any
+from typing import Any, Literal
+
+from config import LangfuseSettings, should_sample_rate
 
 logger = logging.getLogger(__name__)
 
-
-def _is_enabled(value: str | None) -> bool:
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+_LangfuseScope = Literal["runtime", "benchmark"]
+_UNSET: object = object()
+_cached_langfuse_client: Any | object = _UNSET
+_cache_lock = threading.Lock()
 
 
 def _normalize_identifier(value: str | None) -> str:
@@ -48,89 +49,158 @@ def build_langfuse_run_metadata(
     return metadata
 
 
-def build_langfuse_callback_handler() -> Any | None:
-    """Create a Langfuse LangChain callback handler when env-based tracing is enabled."""
-    enabled = _is_enabled(os.getenv("LANGFUSE_ENABLED"))
-    if not enabled:
-        logger.info("Langfuse tracing disabled LANGFUSE_ENABLED=%s", os.getenv("LANGFUSE_ENABLED", ""))
-        return None
-
-    public_key = (os.getenv("LANGFUSE_PUBLIC_KEY") or "").strip()
-    secret_key = (os.getenv("LANGFUSE_SECRET_KEY") or "").strip()
-    host = (os.getenv("LANGFUSE_BASE_URL") or os.getenv("LANGFUSE_HOST") or "").strip()
-    environment = (os.getenv("LANGFUSE_ENVIRONMENT") or "").strip()
-    release = (os.getenv("LANGFUSE_RELEASE") or "").strip()
-
-    if not public_key or not secret_key:
-        logger.warning(
-            "Langfuse tracing enabled but credentials are missing public_key_set=%s secret_key_set=%s",
-            bool(public_key),
-            bool(secret_key),
-        )
-        return None
-
+def _load_callback_handler_class() -> Any | None:
     try:
         from langfuse.langchain import CallbackHandler
+
+        return CallbackHandler
     except Exception:  # pragma: no cover - import path can vary by SDK version.
         try:
             from langfuse.callback import CallbackHandler  # type: ignore[attr-defined]
+
+            return CallbackHandler
         except Exception:
             logger.exception("Langfuse tracing enabled but callback handler import failed")
             return None
 
-    langfuse_client: Any | None = None
+
+def _build_langfuse_client(settings: LangfuseSettings) -> Any | None:
+    if not settings.enabled:
+        logger.info("Langfuse client bootstrap skipped: disabled")
+        return None
+
+    if not settings.has_credentials():
+        logger.warning(
+            "Langfuse client bootstrap skipped: missing credentials public_key_set=%s secret_key_set=%s",
+            bool(settings.public_key),
+            bool(settings.secret_key),
+        )
+        return None
+
     try:
         from langfuse import Langfuse
+    except Exception:
+        logger.exception("Langfuse tracing enabled but Langfuse module import failed")
+        return None
 
-        client_kwargs: dict[str, Any] = {
-            "public_key": public_key,
-            "secret_key": secret_key,
-            "tracing_enabled": True,
-        }
-        if host:
-            client_kwargs["host"] = host
-        if environment:
-            client_kwargs["environment"] = environment
-        if release:
-            client_kwargs["release"] = release
-        langfuse_client = Langfuse(**client_kwargs)
+    client_kwargs: dict[str, Any] = {
+        "public_key": settings.public_key,
+        "secret_key": settings.secret_key,
+        "tracing_enabled": True,
+        "host": settings.host,
+        "environment": settings.environment,
+        "release": settings.release,
+    }
+    signature = inspect.signature(Langfuse.__init__)
+    accepted = set(signature.parameters.keys()) - {"self"}
+    if "sample_rate" in accepted:
+        client_kwargs["sample_rate"] = settings.runtime_sample_rate
+
+    try:
+        client = Langfuse(**client_kwargs)
     except Exception:
         logger.exception("Langfuse tracing enabled but Langfuse client init failed")
         return None
 
-    signature = inspect.signature(CallbackHandler.__init__)
+    logger.info(
+        "Langfuse client initialized host=%s environment=%s release=%s runtime_sample_rate=%s",
+        settings.host,
+        settings.environment,
+        settings.release,
+        settings.runtime_sample_rate,
+    )
+    return client
+
+
+def get_langfuse_client(*, settings: LangfuseSettings | None = None, force_reinit: bool = False) -> Any | None:
+    global _cached_langfuse_client
+
+    resolved_settings = settings or LangfuseSettings.from_env()
+    with _cache_lock:
+        if not force_reinit and _cached_langfuse_client is not _UNSET:
+            return _cached_langfuse_client
+
+        _cached_langfuse_client = _build_langfuse_client(resolved_settings)
+        return _cached_langfuse_client
+
+
+def _should_trace(settings: LangfuseSettings, *, scope: _LangfuseScope, sampling_key: str | None) -> bool:
+    if not settings.enabled:
+        logger.info("Langfuse tracing disabled enabled=%s", settings.enabled)
+        return False
+
+    scope_rate = settings.sample_rate_for_scope(scope)
+    sampled = should_sample_rate(scope_rate, sampling_key=sampling_key)
+    logger.info(
+        "Langfuse trace sampling evaluated scope=%s sample_rate=%s sampled=%s sampling_key_provided=%s",
+        scope,
+        scope_rate,
+        sampled,
+        bool(sampling_key),
+    )
+    return sampled
+
+
+def build_langfuse_callback_handler(
+    *,
+    scope: _LangfuseScope = "runtime",
+    sampling_key: str | None = None,
+    settings: LangfuseSettings | None = None,
+) -> Any | None:
+    """Create a Langfuse LangChain callback handler when tracing is enabled/sampled."""
+    resolved_settings = settings or LangfuseSettings.from_env()
+    if not _should_trace(resolved_settings, scope=scope, sampling_key=sampling_key):
+        return None
+
+    if not resolved_settings.has_credentials():
+        logger.warning(
+            "Langfuse tracing enabled but credentials are missing public_key_set=%s secret_key_set=%s",
+            bool(resolved_settings.public_key),
+            bool(resolved_settings.secret_key),
+        )
+        return None
+
+    callback_handler_class = _load_callback_handler_class()
+    if callback_handler_class is None:
+        return None
+
+    langfuse_client = get_langfuse_client(settings=resolved_settings)
+    if langfuse_client is None:
+        return None
+
+    signature = inspect.signature(callback_handler_class.__init__)
     accepted = set(signature.parameters.keys()) - {"self"}
     kwargs: dict[str, Any] = {}
     if "public_key" in accepted:
-        kwargs["public_key"] = public_key
+        kwargs["public_key"] = resolved_settings.public_key
     if "secret_key" in accepted:
-        kwargs["secret_key"] = secret_key
+        kwargs["secret_key"] = resolved_settings.secret_key
     if "langfuse_public_key" in accepted:
-        kwargs["langfuse_public_key"] = public_key
+        kwargs["langfuse_public_key"] = resolved_settings.public_key
     if "langfuse_secret_key" in accepted:
-        kwargs["langfuse_secret_key"] = secret_key
-    if host:
-        if "host" in accepted:
-            kwargs["host"] = host
-        elif "base_url" in accepted:
-            kwargs["base_url"] = host
-    if environment and "environment" in accepted:
-        kwargs["environment"] = environment
-    if release and "release" in accepted:
-        kwargs["release"] = release
+        kwargs["langfuse_secret_key"] = resolved_settings.secret_key
+    if "host" in accepted:
+        kwargs["host"] = resolved_settings.host
+    elif "base_url" in accepted:
+        kwargs["base_url"] = resolved_settings.host
+    if "environment" in accepted:
+        kwargs["environment"] = resolved_settings.environment
+    if "release" in accepted:
+        kwargs["release"] = resolved_settings.release
 
     try:
-        handler = CallbackHandler(**kwargs)
+        handler = callback_handler_class(**kwargs)
     except Exception:
         logger.exception("Failed to initialize Langfuse callback handler")
         return None
-    setattr(handler, "_agent_search_langfuse_client", langfuse_client)
 
+    setattr(handler, "_agent_search_langfuse_client", langfuse_client)
     logger.info(
-        "Langfuse tracing enabled host=%s environment=%s release=%s",
-        host or "default",
-        environment or "default",
-        release or "default",
+        "Langfuse callback handler initialized scope=%s host=%s environment=%s release=%s",
+        scope,
+        resolved_settings.host,
+        resolved_settings.environment,
+        resolved_settings.release,
     )
     return handler
 

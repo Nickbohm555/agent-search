@@ -3443,3 +3443,88 @@ Local:   http://localhost:5173/
 db logs:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 51
+
+## Section 51: Langfuse foundation - SDK/runtime observability configuration
+
+**Single goal:** Add configuration and client bootstrap for Langfuse across SDK runtime and benchmark services.
+
+**Why:** This adds observability after core stability so tracing improves operations without destabilizing functional delivery.
+
+
+**Details:**
+- Define environment-backed Langfuse settings (host, public key, secret key, enabled flag, sampling controls).
+- Initialize a shared Langfuse client utility used by SDK runtime and benchmark services.
+- Ensure observability can be disabled cleanly without affecting runtime behavior.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): reuse existing `langfuse` dependency in backend.
+- Tooling (uv, poetry, Docker): add env var docs and compose env pass-through if needed.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/config.py` | Langfuse configuration fields and defaults. |
+| `src/backend/utils/langfuse_tracing.py` | Shared Langfuse client/bootstrap helpers. |
+| `.env.example` | Langfuse env variable documentation. |
+| `src/backend/tests/utils/test_langfuse_tracing.py` | Langfuse bootstrap/config tests. |
+
+**How to test:** Run Langfuse utility tests with enabled/disabled modes and verify no-op fallback behavior.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `LangfuseSettings` in `src/backend/config.py` with env-backed fields for `LANGFUSE_ENABLED`, host/base URL, keys, environment/release, plus `LANGFUSE_RUNTIME_SAMPLE_RATE` and `LANGFUSE_BENCHMARK_SAMPLE_RATE` sampling controls.
+- Added shared sampling helper `should_sample_rate(...)` and scope-based sample-rate resolution for runtime vs benchmark traces.
+- Refactored `src/backend/utils/langfuse_tracing.py` to use config-backed bootstrap:
+  - shared, cached Langfuse client initializer (`get_langfuse_client(...)`)
+  - deterministic enable/disable and sampling gate before callback handler creation
+  - clean no-op fallback when disabled/missing credentials/import/init failure
+  - explicit startup/sampling/flush logging for runtime visibility.
+- Expanded tests:
+  - updated `tests/utils/test_langfuse_tracing.py` for config-backed enabled/disabled behavior, sampling scope behavior, shared client bootstrap, and no-op flush fallback paths.
+  - added `LangfuseSettings` coverage in `tests/utils/test_benchmark_config.py` for defaults, env overrides, and invalid sampling fallback handling.
+- Updated `.env.example` with new Langfuse settings docs:
+  - `LANGFUSE_BASE_URL`
+  - `LANGFUSE_RUNTIME_SAMPLE_RATE`
+  - `LANGFUSE_BENCHMARK_SAMPLE_RATE`.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose restart backend`
+- `docker compose exec backend sh -lc 'uv sync --frozen --all-groups'`
+- `docker compose exec backend sh -lc 'uv run --with pytest pytest tests/utils/test_langfuse_tracing.py tests/utils/test_benchmark_config.py'`
+- `docker compose ps`
+- `docker compose logs --no-color --tail=200 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+backend tests:
+============================= test session starts ==============================
+collected 14 items
+
+tests/utils/test_langfuse_tracing.py .......                             [ 50%]
+tests/utils/test_benchmark_config.py .......                             [100%]
+
+============================== 14 passed in 0.15s ==============================
+
+backend runtime:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+
+frontend runtime:
+VITE v5.4.21  ready in 288 ms
+Local:   http://localhost:5173/
+
+db runtime:
+database system is ready to accept connections
+```

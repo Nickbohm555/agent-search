@@ -9,6 +9,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from config import (
     BenchmarkRuntimeSettings,
+    LangfuseSettings,
     build_benchmark_execution_context,
     compute_benchmark_context_fingerprint,
     get_benchmark_context_fingerprint,
@@ -96,3 +97,41 @@ def test_execution_context_fingerprint_changes_with_settings() -> None:
     tuned_fingerprint = get_benchmark_context_fingerprint(tuned_settings, runtime_model="gpt-4.1-mini")
 
     assert default_fingerprint != tuned_fingerprint
+
+
+def test_langfuse_settings_defaults() -> None:
+    settings = LangfuseSettings.from_env({})
+
+    assert settings.enabled is False
+    assert settings.host == "https://cloud.langfuse.com"
+    assert settings.public_key == ""
+    assert settings.secret_key == ""
+    assert settings.environment == "development"
+    assert settings.release == "0.1.0"
+    assert settings.runtime_sample_rate == 1.0
+    assert settings.benchmark_sample_rate == 1.0
+
+
+def test_langfuse_settings_env_overrides_and_fallbacks() -> None:
+    settings = LangfuseSettings.from_env(
+        {
+            "LANGFUSE_ENABLED": "true",
+            "LANGFUSE_BASE_URL": "https://self-hosted.langfuse.local",
+            "LANGFUSE_HOST": "https://unused-host.example",
+            "LANGFUSE_PUBLIC_KEY": "pk_live",
+            "LANGFUSE_SECRET_KEY": "sk_live",
+            "LANGFUSE_ENVIRONMENT": "staging",
+            "LANGFUSE_RELEASE": "2.3.4",
+            "LANGFUSE_RUNTIME_SAMPLE_RATE": "0.35",
+            "LANGFUSE_BENCHMARK_SAMPLE_RATE": "bad-value",
+        }
+    )
+
+    assert settings.enabled is True
+    assert settings.host == "https://self-hosted.langfuse.local"
+    assert settings.public_key == "pk_live"
+    assert settings.secret_key == "sk_live"
+    assert settings.environment == "staging"
+    assert settings.release == "2.3.4"
+    assert settings.runtime_sample_rate == 0.35
+    assert settings.benchmark_sample_rate == 1.0
