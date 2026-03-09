@@ -104,6 +104,23 @@ class BenchmarkModeSummary(BaseModel):
     p95_latency_ms: float | None = Field(default=None, ge=0.0)
 
 
+class BenchmarkResultQualityScore(BaseModel):
+    score: float | None = Field(default=None, ge=0.0, le=1.0)
+    passed: bool | None = None
+    rubric_version: str | None = None
+    judge_model: str | None = None
+    subscores: dict[str, float] | None = None
+    error: str | None = None
+
+
+class BenchmarkResultStatusItem(BaseModel):
+    mode: str = Field(min_length=1)
+    question_id: str = Field(min_length=1)
+    latency_ms: int | None = Field(default=None, ge=0)
+    execution_error: str | None = None
+    quality: BenchmarkResultQualityScore | None = None
+
+
 class BenchmarkRunStatusResponse(BaseModel):
     run_id: str = Field(min_length=1)
     status: BenchmarkRunStatus
@@ -112,6 +129,7 @@ class BenchmarkRunStatusResponse(BaseModel):
     objective: BenchmarkObjective = Field(default_factory=BenchmarkObjective)
     targets: BenchmarkTargets | None = None
     mode_summaries: list[BenchmarkModeSummary] = Field(default_factory=list)
+    results: list[BenchmarkResultStatusItem] = Field(default_factory=list)
     completed_questions: int = Field(default=0, ge=0)
     total_questions: int = Field(default=0, ge=0)
     created_at: float | None = None

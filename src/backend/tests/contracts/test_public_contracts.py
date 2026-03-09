@@ -83,6 +83,7 @@ def test_benchmark_run_status_response_schema_is_frozen() -> None:
         "objective",
         "targets",
         "mode_summaries",
+        "results",
         "completed_questions",
         "total_questions",
         "created_at",

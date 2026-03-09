@@ -17,6 +17,8 @@ from schemas import (
     BenchmarkMode,
     BenchmarkModeSummary,
     BenchmarkObjective,
+    BenchmarkResultQualityScore,
+    BenchmarkResultStatusItem,
     BenchmarkRunListItem,
     BenchmarkRunListResponse,
     BenchmarkRunStatus,
@@ -133,6 +135,21 @@ def test_get_benchmark_run_returns_status_shape(monkeypatch) -> None:
                     p95_latency_ms=150.0,
                 )
             ],
+            results=[
+                BenchmarkResultStatusItem(
+                    mode=BenchmarkMode.agentic_default.value,
+                    question_id="DRB-001",
+                    latency_ms=120,
+                    execution_error=None,
+                    quality=BenchmarkResultQualityScore(
+                        score=0.92,
+                        passed=True,
+                        rubric_version="v1",
+                        judge_model="gpt-test-judge",
+                        subscores={"coverage": 0.92},
+                    ),
+                )
+            ],
             completed_questions=3,
             total_questions=3,
             created_at=1.0,
@@ -173,6 +190,22 @@ def test_get_benchmark_run_returns_status_shape(monkeypatch) -> None:
                 "correctness_rate": 1.0,
                 "avg_latency_ms": 120.0,
                 "p95_latency_ms": 150.0,
+            }
+        ],
+        "results": [
+            {
+                "mode": BenchmarkMode.agentic_default.value,
+                "question_id": "DRB-001",
+                "latency_ms": 120,
+                "execution_error": None,
+                "quality": {
+                    "score": 0.92,
+                    "passed": True,
+                    "rubric_version": "v1",
+                    "judge_model": "gpt-test-judge",
+                    "subscores": {"coverage": 0.92},
+                    "error": None,
+                },
             }
         ],
         "completed_questions": 3,

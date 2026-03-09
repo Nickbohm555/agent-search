@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -21,6 +21,7 @@ from schemas import BenchmarkMode, BenchmarkTargets
 from services.benchmark_artifact_registry import BenchmarkArtifactRegistry
 from services.benchmark_execution_adapter import BenchmarkExecutionAdapter
 from services.benchmark_modes import get_mode_runtime_overrides
+from services.benchmark_quality_service import BenchmarkQualityService
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +46,19 @@ class BenchmarkRunner:
         *,
         session_factory: sessionmaker[Session] = SessionLocal,
         execution_adapter: BenchmarkExecutionAdapter | None = None,
+        quality_service: BenchmarkQualityService | None = None,
         dataset_root: Path = DEFAULT_DATASET_ROOT,
         runtime_settings: BenchmarkRuntimeSettings | None = None,
         artifact_registry: BenchmarkArtifactRegistry | None = None,
+        progress_callback: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._execution_adapter = execution_adapter or BenchmarkExecutionAdapter()
+        self._quality_service = quality_service or BenchmarkQualityService(session_factory=session_factory)
         self._dataset_root = dataset_root
         self._runtime_settings = runtime_settings or BenchmarkRuntimeSettings.from_env()
         self._artifact_registry = artifact_registry or BenchmarkArtifactRegistry()
+        self._progress_callback = progress_callback
 
     def run(
         self,
@@ -65,6 +70,7 @@ class BenchmarkRunner:
         run_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         targets: BenchmarkTargets | None = None,
+        progress_callback: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> BenchmarkRunSummary:
         resolved_modes = [mode if isinstance(mode, BenchmarkMode) else BenchmarkMode(mode) for mode in modes]
         if not resolved_modes:
@@ -110,6 +116,7 @@ class BenchmarkRunner:
                         questions=questions,
                         vector_store=vector_store,
                         model=model,
+                        progress_callback=progress_callback,
                     )
                 run.status = "completed"
                 run.error = None
@@ -146,9 +153,12 @@ class BenchmarkRunner:
         questions: list[BenchmarkQuestion],
         vector_store: Any,
         model: Any,
+        progress_callback: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> int:
         successful_ids = self._get_successful_question_ids(session=session, run_id=run_id, mode=mode.value)
         mode_overrides = get_mode_runtime_overrides(mode)
+        run = session.get(BenchmarkRun, run_id)
+        run_metadata = run.run_metadata if run is not None else None
         completed = 0
         logger.info(
             "Benchmark runner mode start run_id=%s mode=%s question_count=%s successful_cached=%s",
@@ -156,6 +166,15 @@ class BenchmarkRunner:
             mode.value,
             len(questions),
             len(successful_ids),
+        )
+        self._emit_progress(
+            "mode_started",
+            {
+                "run_id": run_id,
+                "mode": mode.value,
+                "question_count": len(questions),
+            },
+            progress_callback=progress_callback,
         )
         for index, question in enumerate(questions, start=1):
             if question.question_id in successful_ids:
@@ -170,6 +189,7 @@ class BenchmarkRunner:
             started = time.perf_counter()
             response = None
             execution_error = None
+            result_row: BenchmarkResult | None = None
             try:
                 response = self._execution_adapter.run_sync(
                     question.question,
@@ -190,7 +210,7 @@ class BenchmarkRunner:
                 )
 
             latency_ms = int((time.perf_counter() - started) * 1000)
-            self._upsert_result(
+            result_row = self._upsert_result(
                 session=session,
                 run_id=run_id,
                 mode=mode.value,
@@ -211,6 +231,71 @@ class BenchmarkRunner:
                 latency_ms,
                 execution_error is not None,
             )
+
+            if execution_error is None and result_row is not None:
+                self._emit_progress(
+                    "quality_evaluation_started",
+                    {
+                        "run_id": run_id,
+                        "mode": mode.value,
+                        "question_id": question.question_id,
+                    },
+                    progress_callback=progress_callback,
+                )
+                try:
+                    quality_row = self._quality_service.evaluate_and_persist(
+                        result_id=result_row.id,
+                        question_text=question.question,
+                        expected_answer_points=question.expected_answer_points,
+                        required_sources=question.required_sources,
+                        run_metadata=run_metadata,
+                    )
+                    logger.info(
+                        "Benchmark runner quality scoring complete run_id=%s mode=%s question_id=%s score=%.4f passed=%s",
+                        run_id,
+                        mode.value,
+                        question.question_id,
+                        quality_row.score,
+                        quality_row.passed,
+                    )
+                    self._emit_progress(
+                        "quality_evaluation_completed",
+                        {
+                            "run_id": run_id,
+                            "mode": mode.value,
+                            "question_id": question.question_id,
+                            "score": quality_row.score,
+                            "passed": quality_row.passed,
+                        },
+                        progress_callback=progress_callback,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    error_message = str(exc)
+                    logger.exception(
+                        "Benchmark runner quality scoring failed run_id=%s mode=%s question_id=%s error=%s",
+                        run_id,
+                        mode.value,
+                        question.question_id,
+                        error_message,
+                    )
+                    self._append_quality_evaluation_error(
+                        session=session,
+                        run_id=run_id,
+                        mode=mode.value,
+                        question_id=question.question_id,
+                        error=error_message,
+                    )
+                    session.commit()
+                    self._emit_progress(
+                        "quality_evaluation_failed",
+                        {
+                            "run_id": run_id,
+                            "mode": mode.value,
+                            "question_id": question.question_id,
+                            "error": error_message,
+                        },
+                        progress_callback=progress_callback,
+                    )
 
             if execution_error is not None:
                 raise RuntimeError(execution_error)
@@ -311,7 +396,7 @@ class BenchmarkRunner:
         latency_ms: int,
         token_usage: dict[str, Any] | None,
         execution_error: str | None,
-    ) -> None:
+    ) -> BenchmarkResult:
         row = session.scalar(
             select(BenchmarkResult).where(
                 BenchmarkResult.run_id == run_id,
@@ -327,6 +412,57 @@ class BenchmarkRunner:
         row.latency_ms = latency_ms
         row.token_usage = token_usage
         row.execution_error = execution_error
+        session.flush()
+        return row
+
+    def _append_quality_evaluation_error(
+        self,
+        *,
+        session: Session,
+        run_id: str,
+        mode: str,
+        question_id: str,
+        error: str,
+    ) -> None:
+        run = session.get(BenchmarkRun, run_id)
+        if run is None:
+            return
+        metadata = dict(run.run_metadata or {})
+        evaluation_errors = metadata.get("evaluation_errors")
+        if not isinstance(evaluation_errors, list):
+            evaluation_errors = []
+        evaluation_errors.append(
+            {
+                "stage": "quality",
+                "mode": mode,
+                "question_id": question_id,
+                "error": error,
+                "captured_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        metadata["evaluation_errors"] = evaluation_errors
+        run.run_metadata = metadata
+        logger.warning(
+            "Benchmark runner captured non-fatal evaluation error run_id=%s mode=%s question_id=%s",
+            run_id,
+            mode,
+            question_id,
+        )
+
+    def _emit_progress(
+        self,
+        event: str,
+        payload: dict[str, Any],
+        *,
+        progress_callback: Callable[[str, dict[str, Any]], None] | None = None,
+    ) -> None:
+        callback = progress_callback or self._progress_callback
+        if callback is None:
+            return
+        try:
+            callback(event, payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Benchmark runner progress callback failed event=%s error=%s", event, exc)
 
     def _get_successful_question_ids(self, *, session: Session, run_id: str, mode: str) -> set[str]:
         rows = session.scalars(

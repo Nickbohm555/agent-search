@@ -2242,3 +2242,68 @@ backend: Application startup complete.
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 36
+
+## Section 36: Quality evaluator pipeline wiring - run-time integration
+
+**Single goal:** Wire the simple quality evaluator into benchmark execution so each completed result is automatically scored.
+
+**Why:** This keeps v1 evaluation simple while creating compatibility scaffolding for future DeepResearchBench-style expansion without rework.
+
+
+**Details:**
+- Invoke `benchmark_quality_service` as a post-processing step in benchmark runner/job flow.
+- Persist quality score linkage to `(run_id, mode, question_id)` and expose score in run detail API payloads.
+- Ensure failures in quality scoring are captured as non-fatal evaluation errors, not execution crashes.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_runner.py` | Call quality evaluator after each answer result is persisted. |
+| `src/backend/services/benchmark_jobs.py` | Ensure job lifecycle includes evaluation stage updates. |
+| `src/backend/routers/benchmarks.py` | Expose quality score fields in run detail responses. |
+| `src/backend/tests/services/test_benchmark_runner.py` | Validate quality scoring integration and error handling. |
+| `src/backend/tests/api/test_benchmark_runs_api.py` | Verify score visibility in API responses. |
+
+**How to test:** Run benchmark runner/API tests and confirm scored outputs appear for completed results.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Wired `BenchmarkQualityService` into `BenchmarkRunner` so each successful persisted result is quality-scored immediately after save.
+- Added non-fatal quality error capture in run metadata (`run_metadata.evaluation_errors[]`) keyed by mode/question; execution continues and run can still complete.
+- Added progress callback emission for quality evaluation start/success/failure and hooked benchmark jobs to update lifecycle messages and logs during evaluation stages.
+- Extended benchmark run-detail schema payload with `results[]` entries including per-result `quality` block (`score`, `passed`, `rubric_version`, `judge_model`, `subscores`, `error`).
+- Expanded tests to validate quality persistence linkage, API response visibility, and non-fatal evaluator failure behavior.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose restart backend`
+- `docker compose exec backend uv pip install pytest`
+- `docker compose exec backend uv run pytest tests/services/test_benchmark_runner.py tests/api/test_benchmark_runs_api.py`
+- `docker compose exec backend uv run pytest tests/contracts/test_public_contracts.py`
+- `docker compose logs --no-color --tail=200 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+- `docker compose ps`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_benchmark_runner.py ... [ 33%]
+pytest: tests/api/test_benchmark_runs_api.py ...... [100%]
+pytest: 9 passed in 1.83s
+pytest: tests/contracts/test_public_contracts.py ........ [100%]
+pytest: 8 passed in 1.51s
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```

@@ -15,11 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from db import DATABASE_URL, SessionLocal
-from models import BenchmarkResult, BenchmarkRun, BenchmarkRunMode
+from models import BenchmarkQualityScore, BenchmarkResult, BenchmarkRun, BenchmarkRunMode
 from schemas import (
     BenchmarkMode,
     BenchmarkModeSummary,
     BenchmarkObjective,
+    BenchmarkResultQualityScore,
+    BenchmarkResultStatusItem,
     BenchmarkRunCreateRequest,
     BenchmarkRunCreateResponse,
     BenchmarkRunListItem,
@@ -192,13 +194,62 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
             )
         )
 
+    quality_rows = db.scalars(select(BenchmarkQualityScore).where(BenchmarkQualityScore.run_id == run_id)).all()
+    quality_by_key = {(row.mode, row.question_id): row for row in quality_rows}
+    evaluation_error_by_key: dict[tuple[str, str], str] = {}
+    if isinstance(run.run_metadata, dict):
+        for item in run.run_metadata.get("evaluation_errors", []):
+            if not isinstance(item, dict):
+                continue
+            if item.get("stage") != "quality":
+                continue
+            mode = item.get("mode")
+            question_id = item.get("question_id")
+            error = item.get("error")
+            if isinstance(mode, str) and isinstance(question_id, str) and isinstance(error, str):
+                evaluation_error_by_key[(mode, question_id)] = error
+
+    result_rows = db.scalars(
+        select(BenchmarkResult).where(BenchmarkResult.run_id == run_id).order_by(BenchmarkResult.mode, BenchmarkResult.question_id)
+    ).all()
+    results: list[BenchmarkResultStatusItem] = []
+    for result in result_rows:
+        key = (result.mode, result.question_id)
+        quality_row = quality_by_key.get(key)
+        quality_score = (
+            BenchmarkResultQualityScore(
+                score=quality_row.score,
+                passed=quality_row.passed,
+                rubric_version=quality_row.rubric_version,
+                judge_model=quality_row.judge_model,
+                subscores=quality_row.subscores_json if isinstance(quality_row.subscores_json, dict) else None,
+                error=evaluation_error_by_key.get(key),
+            )
+            if quality_row is not None
+            else (
+                BenchmarkResultQualityScore(error=evaluation_error_by_key.get(key))
+                if key in evaluation_error_by_key
+                else None
+            )
+        )
+        results.append(
+            BenchmarkResultStatusItem(
+                mode=result.mode,
+                question_id=result.question_id,
+                latency_ms=result.latency_ms,
+                execution_error=result.execution_error,
+                quality=quality_score,
+            )
+        )
+
     logger.info(
-        "Benchmark run status resolved run_id=%s status=%s mode_count=%s completed=%s total=%s",
+        "Benchmark run status resolved run_id=%s status=%s mode_count=%s completed=%s total=%s quality_scores=%s",
         run_id,
         run.status,
         len(parsed_modes),
         completed_questions,
         total_questions,
+        len(quality_rows),
     )
     return BenchmarkRunStatusResponse(
         run_id=run.run_id,
@@ -208,6 +259,7 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
         objective=BenchmarkObjective(),
         targets=None,
         mode_summaries=mode_summaries,
+        results=results,
         completed_questions=completed_questions,
         total_questions=total_questions,
         created_at=_epoch_or_none(run.created_at),
@@ -256,6 +308,25 @@ def _run_benchmark_job(
 
     logger.info("Benchmark run job started job_id=%s run_id=%s", job_id, run_id)
     job_runner = runner or BenchmarkRunner(session_factory=session_factory)
+
+    def _progress_callback(event: str, payload: dict[str, Any]) -> None:
+        with _JOB_LOCK:
+            current = _JOBS.get(job_id)
+            if current is None:
+                return
+            if event == "quality_evaluation_started":
+                current.message = "Running quality evaluation."
+            elif event == "quality_evaluation_completed":
+                current.message = "Quality evaluation completed."
+            elif event == "quality_evaluation_failed":
+                current.message = "Quality evaluation failed; continuing."
+        logger.info(
+            "Benchmark run job progress job_id=%s run_id=%s event=%s payload=%s",
+            job_id,
+            run_id,
+            event,
+            payload,
+        )
     try:
         with _JOB_LOCK:
             current = _JOBS.get(job_id)
@@ -283,6 +354,7 @@ def _run_benchmark_job(
             model=model,
             metadata=payload.metadata,
             targets=payload.targets,
+            progress_callback=_progress_callback,
         )
         with _JOB_LOCK:
             current = _JOBS.get(job_id)
