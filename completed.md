@@ -1472,3 +1472,63 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 24
+
+## Section 24: Benchmark corpus fixture - deterministic source loading
+
+**Single goal:** Ensure benchmark runs operate on deterministic indexed source corpus.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Define corpus manifest.
+- Add repeatable load/reset utility and corpus hash generation.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): reuse existing internal-data load/wipe flow.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/benchmarks/corpus/internal_v1_manifest.json` | Source manifest for benchmark corpus. |
+| `src/backend/benchmarks/tools/load_corpus.py` | Deterministic corpus loader/reset tool. |
+| `src/backend/tests/benchmarks/test_corpus_loader.py` | Deterministic corpus tests. |
+
+**How to test:** Run corpus load twice and verify identical hash/counts.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `benchmarks/corpus/internal_v1_manifest.json` with fixed-order curated wiki source IDs for benchmark corpus determinism.
+- Added `benchmarks.tools.load_corpus` loader utility with strict manifest validation, reset support via existing `wipe_internal_data`, deterministic ordered loads via existing `load_internal_data`, and SHA-256 manifest/corpus hash generation.
+- Added CLI entrypoint (`python -m benchmarks.tools.load_corpus`) with `--manifest` and `--no-reset` flags for repeatable operator runs.
+- Added benchmark tests validating deterministic repeated load hash/count parity, manifest duplicate-ID guardrails, source-scoped corpus hashing, and visibility logs.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build && docker compose up -d && docker compose ps`
+- `docker compose exec backend uv run --with pytest pytest tests/benchmarks/test_corpus_loader.py -q`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=180 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/benchmarks/test_corpus_loader.py .... [100%]
+pytest: 4 passed in 1.10s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

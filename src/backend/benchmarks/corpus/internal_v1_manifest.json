@@ -1,0 +1,47 @@
+{
+  "corpus_id": "internal_v1",
+  "version": 1,
+  "source_type": "wiki",
+  "sources": [
+    {
+      "source_id": "geopolitics",
+      "label": "Geopolitics"
+    },
+    {
+      "source_id": "strait_of_hormuz",
+      "label": "Strait of Hormuz"
+    },
+    {
+      "source_id": "nato",
+      "label": "NATO"
+    },
+    {
+      "source_id": "european_union",
+      "label": "European Union"
+    },
+    {
+      "source_id": "united_nations",
+      "label": "United Nations"
+    },
+    {
+      "source_id": "foreign_policy_us",
+      "label": "Foreign Policy of the United States"
+    },
+    {
+      "source_id": "middle_east",
+      "label": "Middle East"
+    },
+    {
+      "source_id": "cold_war",
+      "label": "Cold War"
+    },
+    {
+      "source_id": "international_relations",
+      "label": "International Relations"
+    },
+    {
+      "source_id": "balance_of_power",
+      "label": "Balance of Power (IR)"
+    }
+  ]
+}
