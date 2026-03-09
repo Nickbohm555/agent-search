@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -34,6 +36,12 @@ def runtime_agent_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
     job = get_agent_run_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
+    now = time.time()
+    started_at = getattr(job, "started_at", None)
+    finished_at = getattr(job, "finished_at", None)
+    elapsed_ms = None
+    if started_at is not None:
+        elapsed_ms = int(((finished_at or now) - started_at) * 1000)
     return RuntimeAgentRunAsyncStatusResponse(
         job_id=job.job_id,
         run_id=job.run_id,
@@ -48,6 +56,9 @@ def runtime_agent_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
         result=job.result.model_copy(deep=True) if job.result is not None else None,
         error=job.error,
         cancel_requested=job.cancel_requested,
+        started_at=started_at,
+        finished_at=finished_at,
+        elapsed_ms=elapsed_ms,
     )
 
 

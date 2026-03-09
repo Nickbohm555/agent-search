@@ -191,3 +191,56 @@ def test_reranker_quality_eval_fallback_remains_deterministic_when_ranker_return
 
     assert [entry.document.title for entry in reranked] == ["First", "Second"]
     assert [entry.original_rank for entry in reranked] == [1, 2]
+
+
+def test_rerank_documents_uses_openai_provider_when_api_key_is_available(monkeypatch) -> None:
+    documents = [
+        RetrievedDocument(rank=1, title="General update", source="wiki://general", content="overview"),
+        RetrievedDocument(rank=2, title="NATO Policy Changes", source="wiki://nato", content="policy changed"),
+    ]
+
+    def _fake_rerank_with_openai(*, query, documents, config):
+        assert query == "What changed in NATO policy?"
+        assert config.openai_model_name == "gpt-4.1-mini"
+        assert config.openai_temperature == 0.0
+        return [(documents[1], 0.97), (documents[0], 0.12)]
+
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("services.reranker_service._rerank_with_openai", _fake_rerank_with_openai)
+
+    reranked = rerank_documents(
+        query="What changed in NATO policy?",
+        documents=documents,
+        config=RerankerConfig(enabled=True, provider="openai"),
+    )
+
+    assert [entry.document.title for entry in reranked] == ["NATO Policy Changes", "General update"]
+    assert [entry.score for entry in reranked] == [0.97, 0.12]
+
+
+def test_rerank_documents_openai_falls_back_to_flashrank_when_openai_fails(monkeypatch) -> None:
+    documents = [
+        RetrievedDocument(rank=1, title="A", source="wiki://a", content="a"),
+        RetrievedDocument(rank=2, title="B", source="wiki://b", content="b"),
+    ]
+
+    def _broken_rerank_with_openai(*, query, documents, config):
+        _ = (query, documents, config)
+        raise RuntimeError("openai-failed")
+
+    class _FakeRanker:
+        def rerank(self, request):
+            _ = request
+            return [{"id": "1", "score": 0.9}, {"id": "0", "score": 0.4}]
+
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr("services.reranker_service._rerank_with_openai", _broken_rerank_with_openai)
+    monkeypatch.setattr("services.reranker_service._build_ranker", lambda *_: _FakeRanker())
+
+    reranked = rerank_documents(
+        query="a",
+        documents=documents,
+        config=RerankerConfig(enabled=True, provider="auto"),
+    )
+
+    assert [entry.document.title for entry in reranked] == ["B", "A"]

@@ -88,7 +88,11 @@ def search_documents_for_context(
             k=safe_k,
             score_threshold=score_threshold,
         )
-        documents = [doc for doc, _score in docs_with_scores]
+        documents: list[Document] = []
+        for doc, score in docs_with_scores:
+            metadata = dict(doc.metadata or {})
+            metadata["score"] = score
+            documents.append(Document(page_content=doc.page_content, metadata=metadata, id=doc.id))
         logger.info(
             "Context search complete query=%r k=%s score_threshold=%s results=%s mode=with_scores",
             query,

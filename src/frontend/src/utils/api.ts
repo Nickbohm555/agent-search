@@ -68,6 +68,7 @@ export interface RuntimeAgentRunResponse {
   output: string;
   main_question: string;
   sub_qa: SubQuestionAnswer[];
+  final_citations: SearchCandidateRow[];
 }
 
 export type AgentStageName =
@@ -145,6 +146,9 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   result?: RuntimeAgentRunResponse | null;
   error?: string | null;
   cancel_requested: boolean;
+  started_at?: number | null;
+  finished_at?: number | null;
+  elapsed_ms?: number | null;
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -284,7 +288,10 @@ export async function getAgentRunStatus(jobId: string): Promise<ApiResult<Runtim
       typeof v.output === "string" &&
       (v.result === undefined || v.result === null || validateRuntimeAgentRunResponse(v.result)) &&
       (v.error === undefined || v.error === null || typeof v.error === "string") &&
-      typeof v.cancel_requested === "boolean",
+      typeof v.cancel_requested === "boolean" &&
+      (v.started_at === undefined || v.started_at === null || typeof v.started_at === "number") &&
+      (v.finished_at === undefined || v.finished_at === null || typeof v.finished_at === "number") &&
+      (v.elapsed_ms === undefined || v.elapsed_ms === null || typeof v.elapsed_ms === "number"),
     timeoutMs: AGENT_RUN_TIMEOUT_MS,
   });
 }
@@ -462,6 +469,13 @@ function validateRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentR
     value.sub_qa = [];
   } else if (!Array.isArray(value.sub_qa) || !value.sub_qa.every(isSubQuestionAnswer)) {
     console.warn("runAgent response validation failed: sub_qa must be an array of sub-question objects.");
+    return false;
+  }
+
+  if (value.final_citations === undefined) {
+    value.final_citations = [];
+  } else if (!Array.isArray(value.final_citations) || !value.final_citations.every(isSearchCandidateRow)) {
+    console.warn("runAgent response validation failed: final_citations must be an array of citations.");
     return false;
   }
 

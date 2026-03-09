@@ -890,6 +890,88 @@ def test_run_synthesize_final_node_uses_subanswers_as_grounded_inputs(monkeypatc
     assert captured["sub_qa_count"] == 1
 
 
+def test_run_synthesize_final_node_falls_back_when_final_answer_has_no_citations(monkeypatch) -> None:
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa):
+        _ = main_question, sub_qa
+        return "VAT policy changed in 2025."
+
+    monkeypatch.setattr(agent_service, "generate_final_synthesis_answer", fake_generate_final_synthesis_answer)
+
+    output = agent_service.run_synthesize_final_node(
+        node_input=SynthesizeFinalNodeInput(
+            main_question="Explain VAT policy changes.",
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            sub_question_artifacts=[
+                agent_service.SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    citation_rows_by_index={
+                        1: agent_service.CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="VAT Policy",
+                            source="wiki://vat-policy",
+                            content="VAT policy changed in 2025.",
+                            document_id="doc-1",
+                        )
+                    },
+                )
+            ],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-synthesize-citation-fallback"),
+        ),
+    )
+
+    assert output.final_answer == "VAT changed in 2025 [1] (source: wiki://vat-policy)."
+
+
+def test_run_synthesize_final_node_falls_back_when_final_answer_uses_invalid_citations(monkeypatch) -> None:
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa):
+        _ = main_question, sub_qa
+        return "VAT policy changed in 2025 [9] (source: wiki://vat-policy)."
+
+    monkeypatch.setattr(agent_service, "generate_final_synthesis_answer", fake_generate_final_synthesis_answer)
+
+    output = agent_service.run_synthesize_final_node(
+        node_input=SynthesizeFinalNodeInput(
+            main_question="Explain VAT policy changes.",
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            sub_question_artifacts=[
+                agent_service.SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    citation_rows_by_index={
+                        1: agent_service.CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="VAT Policy",
+                            source="wiki://vat-policy",
+                            content="VAT policy changed in 2025.",
+                            document_id="doc-1",
+                        )
+                    },
+                )
+            ],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-synthesize-invalid-citation"),
+        ),
+    )
+
+    assert output.final_answer == "VAT changed in 2025 [1] (source: wiki://vat-policy)."
+
+
 def test_apply_synthesize_final_node_output_to_graph_state_updates_final_answer_and_output() -> None:
     state = agent_service.build_agent_graph_state(
         main_question="Explain VAT policy changes.",

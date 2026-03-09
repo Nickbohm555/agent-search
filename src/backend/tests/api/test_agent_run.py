@@ -79,6 +79,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
             }
         ],
         "output": "Echo: Find Hormuz risks",
+        "final_citations": [],
     }
     assert captured["query"] == "Find Hormuz risks"
 
@@ -182,6 +183,9 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
         "result": None,
         "error": None,
         "cancel_requested": False,
+        "started_at": None,
+        "finished_at": None,
+        "elapsed_ms": None,
     }
 
 

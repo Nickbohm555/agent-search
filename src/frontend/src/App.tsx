@@ -25,6 +25,22 @@ function runSymbol(state: RequestState): string {
   return "-";
 }
 
+function formatLatency(ms: number | null): string {
+  if (ms === null) return "n/a";
+  if (ms < 1000) return `${ms} ms`;
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
+type RunSummary = {
+  searchRawHitsTotal: number;
+  searchDedupedHitsTotal: number;
+  rerankRowsTotal: number;
+  rerankBypassedCount: number;
+  citationCoverageCount: number;
+  citationCoverageTotal: number;
+  totalLatencyMs: number | null;
+};
+
 export default function App() {
   const orderedStages: AgentStageName[] = ["decompose", "expand", "search", "rerank", "answer", "final"];
   const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>(DEFAULT_WIKI_SOURCES);
@@ -43,6 +59,15 @@ export default function App() {
   const [runJobId, setRunJobId] = useState<string | null>(null);
   const [runStatusMessage, setRunStatusMessage] = useState("Not started.");
   const [runCurrentStage, setRunCurrentStage] = useState("");
+  const [runSummary, setRunSummary] = useState<RunSummary>({
+    searchRawHitsTotal: 0,
+    searchDedupedHitsTotal: 0,
+    rerankRowsTotal: 0,
+    rerankBypassedCount: 0,
+    citationCoverageCount: 0,
+    citationCoverageTotal: 0,
+    totalLatencyMs: null,
+  });
   const [decompositionSubQuestions, setDecompositionSubQuestions] = useState<string[]>([]);
   const [subQuestionArtifacts, setSubQuestionArtifacts] = useState<SubQuestionArtifact[]>([]);
   const [runSubQa, setRunSubQa] = useState<SubQuestionAnswer[]>([]);
@@ -61,6 +86,10 @@ export default function App() {
     [wikiSources, wikiSourceId],
   );
   const isLoadAll = selectedWikiSource?.source_id === "all";
+  const finalCitationMap = useMemo(
+    () => buildFinalCitationMap(lastSuccessfulSynthesis?.final_citations ?? []),
+    [lastSuccessfulSynthesis],
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -200,6 +229,15 @@ export default function App() {
     setDecompositionSubQuestions([]);
     setSubQuestionArtifacts([]);
     setRunSubQa([]);
+    setRunSummary({
+      searchRawHitsTotal: 0,
+      searchDedupedHitsTotal: 0,
+      rerankRowsTotal: 0,
+      rerankBypassedCount: 0,
+      citationCoverageCount: 0,
+      citationCoverageTotal: 0,
+      totalLatencyMs: null,
+    });
     setStageStatuses({
       decompose: "pending",
       expand: "pending",
@@ -270,6 +308,21 @@ export default function App() {
         const isFallback = item.sub_answer_is_fallback ?? isFallbackSubanswer(item.sub_answer);
         return sum + (isFallback ? 1 : 0);
       }, 0);
+      const totalLatencyMs =
+        typeof status.elapsed_ms === "number"
+          ? status.elapsed_ms
+          : typeof status.started_at === "number"
+            ? Math.max(0, Math.round(Date.now() - status.started_at * 1000))
+            : null;
+      setRunSummary({
+        searchRawHitsTotal,
+        searchDedupedHitsTotal,
+        rerankRowsTotal,
+        rerankBypassedCount,
+        citationCoverageCount: countSubanswersWithCitations(status.sub_qa),
+        citationCoverageTotal: status.sub_qa.length,
+        totalLatencyMs,
+      });
       console.info("Async run stage update.", {
         submittedQuery: submitted,
         jobId,
@@ -422,6 +475,34 @@ export default function App() {
         {runJobId ? <p>Run job id: {runJobId}</p> : null}
       </section>
 
+      <section className="panel run-summary-panel">
+        <h2>Run Summary</h2>
+        <div className="summary-grid">
+          <div className="summary-item">
+            <span className="summary-label">Total latency</span>
+            <span className="summary-value">{formatLatency(runSummary.totalLatencyMs)}</span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">Search hits</span>
+            <span className="summary-value">
+              {runSummary.searchDedupedHitsTotal}/{runSummary.searchRawHitsTotal} deduped
+            </span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">Rerank rows</span>
+            <span className="summary-value">
+              {runSummary.rerankRowsTotal} (bypassed: {runSummary.rerankBypassedCount})
+            </span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">Citation coverage</span>
+            <span className="summary-value">
+              {runSummary.citationCoverageCount}/{runSummary.citationCoverageTotal}
+            </span>
+          </div>
+        </div>
+      </section>
+
       <section className="panel stage-rail-panel">
         <h2>Run Timeline</h2>
         <p>
@@ -439,217 +520,247 @@ export default function App() {
       </section>
 
       <section className="panel decompose-panel">
-        <h2>Decompose</h2>
-        <p>Subquestion count: {decompositionSubQuestions.length}</p>
-        <div className="decompose-indicators" aria-label="Decompose normalization indicators">
-          <span className={`decompose-indicator ${endsWithQuestionMark(decompositionSubQuestions) ? "ok" : "warn"}`}>
-            Ends with ?: {endsWithQuestionMark(decompositionSubQuestions) ? "yes" : "no"}
-          </span>
-          <span className={`decompose-indicator ${hasNoDuplicateQuestions(decompositionSubQuestions) ? "ok" : "warn"}`}>
-            Dedupe: {hasNoDuplicateQuestions(decompositionSubQuestions) ? "pass" : "duplicates found"}
-          </span>
-        </div>
-        {decompositionSubQuestions.length > 0 ? (
-          <ol className="decompose-question-list" aria-label="Decomposed subquestions">
-            {decompositionSubQuestions.map((subQuestion, index) => (
-              <li key={`${index}-${subQuestion}`} className="decompose-question-item">
-                {subQuestion.trim() || `Subquestion ${index + 1}`}
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p>No decomposed subquestions yet.</p>
-        )}
+        <details open>
+          <summary className="panel-summary">
+            <h2>Decompose</h2>
+          </summary>
+          <div className="panel-body">
+            <p>Subquestion count: {decompositionSubQuestions.length}</p>
+            <div className="decompose-indicators" aria-label="Decompose normalization indicators">
+              <span className={`decompose-indicator ${endsWithQuestionMark(decompositionSubQuestions) ? "ok" : "warn"}`}>
+                Ends with ?: {endsWithQuestionMark(decompositionSubQuestions) ? "yes" : "no"}
+              </span>
+              <span className={`decompose-indicator ${hasNoDuplicateQuestions(decompositionSubQuestions) ? "ok" : "warn"}`}>
+                Dedupe: {hasNoDuplicateQuestions(decompositionSubQuestions) ? "pass" : "duplicates found"}
+              </span>
+            </div>
+            {decompositionSubQuestions.length > 0 ? (
+              <ol className="decompose-question-list" aria-label="Decomposed subquestions">
+                {decompositionSubQuestions.map((subQuestion, index) => (
+                  <li key={`${index}-${subQuestion}`} className="decompose-question-item">
+                    {subQuestion.trim() || `Subquestion ${index + 1}`}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>No decomposed subquestions yet.</p>
+            )}
+          </div>
+        </details>
       </section>
 
       <section className="panel expand-panel">
-        <h2>Expand</h2>
-        {decompositionSubQuestions.length > 0 ? (
-          <ol className="expand-lane-list" aria-label="Expanded query groups">
-            {decompositionSubQuestions.map((subQuestion, index) => {
-              const artifact = subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
-              const expandedQueries = artifact?.expanded_queries ?? [];
-              const fallbackToOriginalOnly = isExpansionFallback({
-                subQuestion,
-                expandedQueries,
-              });
-              return (
-                <li key={`${index}-${subQuestion}`} className="expand-lane-item">
-                  <p className="expand-lane-title">
-                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
-                  </p>
-                  <p className="expand-original-question">
-                    <strong>Original:</strong> {subQuestion}
-                  </p>
-                  {expandedQueries.length > 0 ? (
-                    <ol className="expand-query-list" aria-label={`Expanded queries for subquestion ${index + 1}`}>
-                      {expandedQueries.map((queryItem, queryIndex) => (
-                        <li key={`${index}-${queryIndex}-${queryItem}`} className="expand-query-item">
-                          {queryItem}
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p>No expanded queries yet.</p>
-                  )}
-                  {fallbackToOriginalOnly ? <span className="expansion-fallback-badge">Fallback: original only</span> : null}
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p>No expansion data yet.</p>
-        )}
+        <details open>
+          <summary className="panel-summary">
+            <h2>Expand</h2>
+          </summary>
+          <div className="panel-body">
+            {decompositionSubQuestions.length > 0 ? (
+              <ol className="expand-lane-list" aria-label="Expanded query groups">
+                {decompositionSubQuestions.map((subQuestion, index) => {
+                  const artifact = subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
+                  const expandedQueries = artifact?.expanded_queries ?? [];
+                  const fallbackToOriginalOnly = isExpansionFallback({
+                    subQuestion,
+                    expandedQueries,
+                  });
+                  return (
+                    <li key={`${index}-${subQuestion}`} className="expand-lane-item">
+                      <p className="expand-lane-title">
+                        <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                      </p>
+                      <p className="expand-original-question">
+                        <strong>Original:</strong> {subQuestion}
+                      </p>
+                      {expandedQueries.length > 0 ? (
+                        <ol className="expand-query-list" aria-label={`Expanded queries for subquestion ${index + 1}`}>
+                          {expandedQueries.map((queryItem, queryIndex) => (
+                            <li key={`${index}-${queryIndex}-${queryItem}`} className="expand-query-item">
+                              {queryItem}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p>No expanded queries yet.</p>
+                      )}
+                      {fallbackToOriginalOnly ? <span className="expansion-fallback-badge">Fallback: original only</span> : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p>No expansion data yet.</p>
+            )}
+          </div>
+        </details>
       </section>
 
       <section className="panel search-panel">
-        <h2>Search</h2>
-        {decompositionSubQuestions.length > 0 ? (
-          <ol className="search-lane-list" aria-label="Search candidate groups">
-            {decompositionSubQuestions.map((subQuestion, index) => {
-              const artifact =
-                subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
-              const mergeStats = getSearchMergeStats(artifact);
-              const previewRows = getSearchPreviewRows(artifact, 3);
-              return (
-                <li key={`${index}-${subQuestion}`} className="search-lane-item">
-                  <p className="search-lane-title">
-                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
-                  </p>
-                  <p className="search-candidate-count">Merged candidates: {mergeStats.dedupedHits}</p>
-                  <div className="search-merge-stats" aria-label={`Search merge stats for subquestion ${index + 1}`}>
-                    <span className="search-merge-stat">Raw hits: {mergeStats.rawHits}</span>
-                    <span className="search-merge-stat">Deduped hits: {mergeStats.dedupedHits}</span>
-                  </div>
-                  {previewRows.length > 0 ? (
-                    <ol className="search-preview-list" aria-label={`Search preview rows for subquestion ${index + 1}`}>
-                      {previewRows.map((row) => (
-                        <li key={`${index}-${row.citation_index}-${row.document_id}`} className="search-preview-item">
-                          <p className="search-preview-title">
-                            <strong>{row.title || "Untitled source"}</strong>
-                          </p>
-                          <p className="search-preview-source">
-                            <strong>Source:</strong> {row.source || "unknown"}
-                          </p>
-                          <p className="search-preview-snippet">{toSnippet(row.content)}</p>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p>No retrieved candidates yet.</p>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p>No search data yet.</p>
-        )}
+        <details open>
+          <summary className="panel-summary">
+            <h2>Search</h2>
+          </summary>
+          <div className="panel-body">
+            {decompositionSubQuestions.length > 0 ? (
+              <ol className="search-lane-list" aria-label="Search candidate groups">
+                {decompositionSubQuestions.map((subQuestion, index) => {
+                  const artifact =
+                    subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
+                  const mergeStats = getSearchMergeStats(artifact);
+                  const previewRows = getSearchPreviewRows(artifact, 3);
+                  return (
+                    <li key={`${index}-${subQuestion}`} className="search-lane-item">
+                      <p className="search-lane-title">
+                        <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                      </p>
+                      <p className="search-candidate-count">Merged candidates: {mergeStats.dedupedHits}</p>
+                      <div className="search-merge-stats" aria-label={`Search merge stats for subquestion ${index + 1}`}>
+                        <span className="search-merge-stat">Raw hits: {mergeStats.rawHits}</span>
+                        <span className="search-merge-stat">Deduped hits: {mergeStats.dedupedHits}</span>
+                      </div>
+                      {previewRows.length > 0 ? (
+                        <ol className="search-preview-list" aria-label={`Search preview rows for subquestion ${index + 1}`}>
+                          {previewRows.map((row) => (
+                            <li key={`${index}-${row.citation_index}-${row.document_id}`} className="search-preview-item">
+                              <p className="search-preview-title">
+                                <strong>{row.title || "Untitled source"}</strong>
+                              </p>
+                              <p className="search-preview-source">
+                                <strong>Source:</strong> {row.source || "unknown"}
+                              </p>
+                              <p className="search-preview-snippet">{toSnippet(row.content)}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p>No retrieved candidates yet.</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p>No search data yet.</p>
+            )}
+          </div>
+        </details>
       </section>
 
       <section className="panel rerank-panel">
-        <h2>Rerank</h2>
-        {decompositionSubQuestions.length > 0 ? (
-          <ol className="rerank-lane-list" aria-label="Reranked evidence groups">
-            {decompositionSubQuestions.map((subQuestion, index) => {
-              const artifact =
-                subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
-              const rerankRows = getRerankRows(artifact);
-              const matchingSubQa = runSubQa.find((item) => item.sub_question === subQuestion);
-              const fallbackBypassed = isRerankFallback({
-                artifact,
-                subQa: matchingSubQa,
-              });
-              const orderChanged = didRerankOrderChange(artifact);
-              return (
-                <li key={`${index}-${subQuestion}`} className="rerank-lane-item">
-                  <p className="rerank-lane-title">
-                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
-                  </p>
-                  <p className="rerank-order-change">
-                    <strong>Order changed:</strong> {orderChanged ? "yes" : "no"}
-                  </p>
-                  {fallbackBypassed ? <span className="rerank-fallback-badge">Fallback: reranking bypassed</span> : null}
-                  {rerankRows.length > 0 ? (
-                    <ol className="rerank-row-list" aria-label={`Reranked evidence rows for subquestion ${index + 1}`}>
-                      {rerankRows.map((row) => (
-                        <li
-                          key={`${index}-${row.citation_index}-${row.document_id}`}
-                          className="rerank-row-item"
-                          id={toRerankEvidenceRowId(index, row.citation_index)}
-                        >
-                          <p className="rerank-row-title">
-                            <strong>
-                              [{row.citation_index}] {row.title || "Untitled source"}
-                            </strong>
-                          </p>
-                          <p className="rerank-row-meta">
-                            <strong>Rank:</strong> {row.rank}
-                            {" · "}
-                            <strong>Score:</strong> {row.score === null || row.score === undefined ? "n/a" : row.score}
-                          </p>
-                          <p className="rerank-row-source">
-                            <strong>Source:</strong> {row.source || "unknown"}
-                          </p>
-                          <p className="rerank-row-snippet">{toSnippet(row.content)}</p>
-                        </li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p>No reranked evidence yet.</p>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p>No rerank data yet.</p>
-        )}
+        <details open>
+          <summary className="panel-summary">
+            <h2>Rerank</h2>
+          </summary>
+          <div className="panel-body">
+            {decompositionSubQuestions.length > 0 ? (
+              <ol className="rerank-lane-list" aria-label="Reranked evidence groups">
+                {decompositionSubQuestions.map((subQuestion, index) => {
+                  const artifact =
+                    subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
+                  const rerankRows = getRerankRows(artifact);
+                  const matchingSubQa = runSubQa.find((item) => item.sub_question === subQuestion);
+                  const fallbackBypassed = isRerankFallback({
+                    artifact,
+                    subQa: matchingSubQa,
+                  });
+                  const orderChanged = didRerankOrderChange(artifact);
+                  return (
+                    <li key={`${index}-${subQuestion}`} className="rerank-lane-item">
+                      <p className="rerank-lane-title">
+                        <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                      </p>
+                      <p className="rerank-order-change">
+                        <strong>Order changed:</strong> {orderChanged ? "yes" : "no"}
+                      </p>
+                      {fallbackBypassed ? <span className="rerank-fallback-badge">Fallback: reranking bypassed</span> : null}
+                      {rerankRows.length > 0 ? (
+                        <ol className="rerank-row-list" aria-label={`Reranked evidence rows for subquestion ${index + 1}`}>
+                          {rerankRows.map((row) => (
+                            <li
+                              key={`${index}-${row.citation_index}-${row.document_id}`}
+                              className="rerank-row-item"
+                              id={toRerankEvidenceRowId(index, row.citation_index)}
+                            >
+                              <p className="rerank-row-title">
+                                <strong>
+                                  [{row.citation_index}] {row.title || "Untitled source"}
+                                </strong>
+                              </p>
+                              <p className="rerank-row-meta">
+                                <strong>Rank:</strong> {row.rank}
+                                {" · "}
+                                <strong>Score:</strong> {row.score === null || row.score === undefined ? "n/a" : row.score}
+                              </p>
+                              <p className="rerank-row-source">
+                                <strong>Source:</strong> {row.source || "unknown"}
+                              </p>
+                              <p className="rerank-row-snippet">{toSnippet(row.content)}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p>No reranked evidence yet.</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p>No rerank data yet.</p>
+            )}
+          </div>
+        </details>
       </section>
 
       <section className="panel subanswer-panel">
-        <h2>Subanswer</h2>
-        {decompositionSubQuestions.length > 0 ? (
-          <ol className="subanswer-lane-list" aria-label="Subanswer groups">
-            {decompositionSubQuestions.map((subQuestion, index) => {
-              const subQa = runSubQa[index] ?? runSubQa.find((item) => item.sub_question === subQuestion);
-              const subAnswer = subQa?.sub_answer?.trim() ?? "";
-              const citationIndices = subQa?.sub_answer_citations ?? extractCitationIndices(subAnswer);
-              const fallback = subQa?.sub_answer_is_fallback ?? isFallbackSubanswer(subAnswer);
-              return (
-                <li key={`${index}-${subQuestion}`} className="subanswer-lane-item">
-                  <p className="subanswer-lane-title">
-                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
-                  </p>
-                  {subAnswer ? (
-                    <p className="subanswer-body">
-                      <strong>Answer:</strong> {subAnswer}
-                    </p>
-                  ) : (
-                    <p>No subanswer yet.</p>
-                  )}
-                  {fallback ? <span className="subanswer-fallback-badge">Fallback: nothing relevant found</span> : null}
-                  {citationIndices.length > 0 ? (
-                    <p className="subanswer-citations">
-                      <strong>Citations:</strong>{" "}
-                      {citationIndices.map((citationIndex) => (
-                        <a
-                          key={`${index}-${citationIndex}`}
-                          className="subanswer-citation-link"
-                          href={`#${toRerankEvidenceRowId(index, citationIndex)}`}
-                        >
-                          [{citationIndex}]
-                        </a>
-                      ))}
-                    </p>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ol>
-        ) : (
-          <p>No subanswers yet.</p>
-        )}
+        <details open>
+          <summary className="panel-summary">
+            <h2>Subanswer</h2>
+          </summary>
+          <div className="panel-body">
+            {decompositionSubQuestions.length > 0 ? (
+              <ol className="subanswer-lane-list" aria-label="Subanswer groups">
+                {decompositionSubQuestions.map((subQuestion, index) => {
+                  const subQa = runSubQa[index] ?? runSubQa.find((item) => item.sub_question === subQuestion);
+                  const subAnswer = subQa?.sub_answer?.trim() ?? "";
+                  const citationIndices = subQa?.sub_answer_citations ?? extractCitationIndices(subAnswer);
+                  const fallback = subQa?.sub_answer_is_fallback ?? isFallbackSubanswer(subAnswer);
+                  return (
+                    <li key={`${index}-${subQuestion}`} className="subanswer-lane-item">
+                      <p className="subanswer-lane-title">
+                        <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                      </p>
+                      {subAnswer ? (
+                        <p className="subanswer-body">
+                          <strong>Answer:</strong> {subAnswer}
+                        </p>
+                      ) : (
+                        <p>No subanswer yet.</p>
+                      )}
+                      {fallback ? <span className="subanswer-fallback-badge">Fallback: nothing relevant found</span> : null}
+                      {citationIndices.length > 0 ? (
+                        <p className="subanswer-citations">
+                          <strong>Citations:</strong>{" "}
+                          {citationIndices.map((citationIndex) => (
+                            <a
+                              key={`${index}-${citationIndex}`}
+                              className="subanswer-citation-link"
+                              href={`#${toRerankEvidenceRowId(index, citationIndex)}`}
+                            >
+                              [{citationIndex}]
+                            </a>
+                          ))}
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p>No subanswers yet.</p>
+            )}
+          </div>
+        </details>
       </section>
 
       <section className="panel final-readout-panel">
@@ -663,7 +774,39 @@ export default function App() {
         </section>
         <section className="final-readout-section" aria-labelledby="final-readout-final-answer">
           <h3 id="final-readout-final-answer">Final answer</h3>
-          <p className="readout-body">{lastSuccessfulSynthesis?.output.trim() || "No synthesized answer yet."}</p>
+          <p className="readout-body">
+            {renderAnswerWithCitations(
+              lastSuccessfulSynthesis?.output.trim() || "No synthesized answer yet.",
+              finalCitationMap,
+            )}
+          </p>
+        </section>
+        <section className="final-readout-section" aria-labelledby="final-readout-citations">
+          <h3 id="final-readout-citations">Citations</h3>
+          {lastSuccessfulSynthesis && lastSuccessfulSynthesis.final_citations.length > 0 ? (
+            <ol className="final-citation-list">
+              {lastSuccessfulSynthesis.final_citations.map((citation) => (
+                <li key={`final-citation-${citation.citation_index}`} className="final-citation-item">
+                  <p className="final-citation-title">
+                    <strong>[{citation.citation_index}]</strong> {citation.title || "Untitled source"}
+                  </p>
+                  <p className="final-citation-source">
+                    <strong>Source:</strong>{" "}
+                    {isHttpUrl(citation.source) ? (
+                      <a href={citation.source} target="_blank" rel="noreferrer">
+                        {citation.source}
+                      </a>
+                    ) : (
+                      citation.source || "unknown"
+                    )}
+                  </p>
+                  <p className="final-citation-snippet">{toSnippet(citation.content)}</p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p>No citations yet.</p>
+          )}
         </section>
         <section className="final-readout-section" aria-labelledby="final-readout-summary">
           <h3 id="final-readout-summary">Supporting summary</h3>
@@ -854,6 +997,49 @@ function toSnippet(content: string): string {
   if (!normalized) return "No snippet available.";
   if (normalized.length <= 180) return normalized;
   return `${normalized.slice(0, 177)}...`;
+}
+
+function isHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+function buildFinalCitationMap(citations: SearchCandidateRow[]): Map<number, SearchCandidateRow> {
+  const map = new Map<number, SearchCandidateRow>();
+  citations.forEach((item) => {
+    map.set(item.citation_index, item);
+  });
+  return map;
+}
+
+function renderAnswerWithCitations(
+  text: string,
+  citationMap: Map<number, SearchCandidateRow>,
+): Array<string | JSX.Element> {
+  const parts = text.split(/(\[\d+\])/g);
+  return parts.map((part, index) => {
+    const match = part.match(/^\[(\d+)\]$/);
+    if (!match) return part;
+    const citationIndex = Number(match[1]);
+    const citation = citationMap.get(citationIndex);
+    if (citation && isHttpUrl(citation.source)) {
+      return (
+        <a
+          key={`citation-link-${citationIndex}-${index}`}
+          className="inline-citation-link"
+          href={citation.source}
+          target="_blank"
+          rel="noreferrer"
+        >
+          [{citationIndex}]
+        </a>
+      );
+    }
+    return (
+      <span key={`citation-text-${citationIndex}-${index}`} className="inline-citation">
+        [{citationIndex}]
+      </span>
+    );
+  });
 }
 
 function extractCitationIndices(text: string): number[] {

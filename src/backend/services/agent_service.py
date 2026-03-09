@@ -104,6 +104,14 @@ _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORK
 _GRAPH_RUNNER_MAX_WORKERS = max(1, int(os.getenv("GRAPH_RUNNER_MAX_WORKERS", "4")))
 _REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
 _SEARCH_NODE_K_FETCH = max(1, int(os.getenv("SEARCH_NODE_K_FETCH", "10")))
+_SEARCH_NODE_SCORE_THRESHOLD_RAW = os.getenv("SEARCH_NODE_SCORE_THRESHOLD", "0.0")
+try:
+    _SEARCH_NODE_SCORE_THRESHOLD = (
+        float(_SEARCH_NODE_SCORE_THRESHOLD_RAW) if _SEARCH_NODE_SCORE_THRESHOLD_RAW not in (None, "") else None
+    )
+except ValueError:
+    _SEARCH_NODE_SCORE_THRESHOLD = None
+_SEARCH_NODE_MERGED_CAP = max(1, int(os.getenv("SEARCH_NODE_MERGED_CAP", "30")))
 _ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK = "nothing relevant found"
 _CITATION_INDEX_PATTERN = re.compile(r"\[(\d+)\]")
 _DECOMPOSITION_ONLY_PROMPT = (
@@ -167,7 +175,7 @@ def build_runtime_timeout_config_from_env() -> RuntimeTimeoutConfig:
         initial_search_timeout_s=_read_timeout_seconds("INITIAL_SEARCH_TIMEOUT_S", 20),
         decomposition_llm_timeout_s=_read_timeout_seconds("DECOMPOSITION_LLM_TIMEOUT_S", 60),
         document_validation_timeout_s=_read_timeout_seconds("DOCUMENT_VALIDATION_TIMEOUT_S", 20),
-        rerank_timeout_s=_read_timeout_seconds("RERANK_TIMEOUT_S", 20),
+        rerank_timeout_s=_read_timeout_seconds("RERANK_TIMEOUT_S", 1),
         subanswer_generation_timeout_s=_read_timeout_seconds("SUBANSWER_GENERATION_TIMEOUT_S", 60),
         subanswer_verification_timeout_s=_read_timeout_seconds("SUBANSWER_VERIFICATION_TIMEOUT_S", 30),
         subquestion_pipeline_total_timeout_s=_read_timeout_seconds("SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S", 120),
@@ -722,10 +730,17 @@ def build_agent_graph_state(
 
 def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentRunResponse:
     output = state.output.strip() or state.final_answer
+    citation_indices = _extract_citation_indices(output)
+    final_citations = [
+        state.citation_rows_by_index[index].model_copy(deep=True)
+        for index in sorted(set(citation_indices))
+        if index in state.citation_rows_by_index
+    ]
     response = RuntimeAgentRunResponse(
         main_question=state.main_question,
         sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
         output=output,
+        final_citations=final_citations,
     )
     logger.info(
         "Agent graph state mapped to runtime response sub_qa_count=%s output_len=%s run_id=%s",
@@ -860,6 +875,88 @@ def _extract_citation_indices(answer: str) -> list[int]:
     return indices
 
 
+def _collect_available_citation_indices(sub_question_artifacts: list[SubQuestionArtifacts]) -> set[int]:
+    available_indices: set[int] = set()
+    for artifact in sub_question_artifacts:
+        for index in artifact.citation_rows_by_index.keys():
+            if index > 0:
+                available_indices.add(index)
+    return available_indices
+
+
+def _build_final_synthesis_citation_fallback(
+    *,
+    sub_qa: list[SubQuestionAnswer],
+    available_indices: set[int],
+) -> str:
+    fallback_candidates: list[str] = []
+    seen_answers: set[str] = set()
+    for answerable_only in (True, False):
+        for item in sub_qa:
+            if answerable_only and not item.answerable:
+                continue
+            answer = (item.sub_answer or "").strip()
+            if not answer:
+                continue
+            citation_indices = _extract_citation_indices(answer)
+            if not citation_indices:
+                continue
+            if available_indices and any(index not in available_indices for index in citation_indices):
+                continue
+            normalized_answer = answer.casefold()
+            if normalized_answer in seen_answers:
+                continue
+            seen_answers.add(normalized_answer)
+            fallback_candidates.append(answer)
+            if len(fallback_candidates) >= 2:
+                return " ".join(fallback_candidates)
+    if fallback_candidates:
+        return " ".join(fallback_candidates)
+    return _build_initial_answer_timeout_fallback(sub_qa)
+
+
+def _enforce_final_synthesis_citation_contract(
+    *,
+    generated_final_answer: str,
+    sub_qa: list[SubQuestionAnswer],
+    sub_question_artifacts: list[SubQuestionArtifacts],
+    run_id: str,
+) -> str:
+    resolved_final_answer = (generated_final_answer or "").strip()
+    if not resolved_final_answer:
+        logger.warning(
+            "Final synthesis citation contract fallback; generated answer empty run_id=%s",
+            run_id,
+        )
+        available_indices = _collect_available_citation_indices(sub_question_artifacts)
+        return _build_final_synthesis_citation_fallback(sub_qa=sub_qa, available_indices=available_indices)
+
+    available_indices = _collect_available_citation_indices(sub_question_artifacts)
+    citation_indices_used = _extract_citation_indices(resolved_final_answer)
+    invalid_indices = (
+        [index for index in citation_indices_used if index not in available_indices]
+        if available_indices
+        else []
+    )
+    missing_citations = not citation_indices_used
+
+    if not missing_citations and not invalid_indices:
+        return resolved_final_answer
+
+    fallback_reason = "missing_citation_markers" if missing_citations else "missing_supporting_source_rows"
+    logger.warning(
+        "Final synthesis citation contract fallback; reason=%s used_indices=%s available_indices_count=%s run_id=%s",
+        fallback_reason,
+        citation_indices_used,
+        len(available_indices),
+        run_id,
+    )
+    return _build_final_synthesis_citation_fallback(
+        sub_qa=sub_qa,
+        available_indices=available_indices,
+    )
+
+
 def apply_expand_node_output_to_graph_state(
     *,
     state: AgentGraphState,
@@ -928,21 +1025,30 @@ def run_search_node(
         vector_store=vector_store,
         queries=normalized_queries,
         k=effective_k_fetch,
-        score_threshold=None,
+        score_threshold=_SEARCH_NODE_SCORE_THRESHOLD,
     )
     merged_rows: list[CitationSourceRow] = []
     retrieval_provenance: list[dict[str, Any]] = []
-    seen_document_identities: set[str] = set()
+    seen_document_identities: dict[str, int] = {}
+
+    def _extract_score(document: Any) -> float | None:
+        if document is None:
+            return None
+        metadata = getattr(document, "metadata", {}) or {}
+        score = metadata.get("score")
+        return float(score) if isinstance(score, (int, float)) else None
 
     for query_index, query in enumerate(normalized_queries, start=1):
         docs_for_query = documents_by_query.get(query, [])
         for query_rank, document in enumerate(docs_for_query, start=1):
             row = _build_citation_row_from_document(document=document, rank=len(merged_rows) + 1)
+            row.score = _extract_score(document)
             document_identity = _build_document_identity(
                 document_id=row.document_id,
                 source=row.source,
                 content=row.content,
             )
+            deduped = document_identity in seen_document_identities
             retrieval_provenance.append(
                 {
                     "query": query,
@@ -951,15 +1057,27 @@ def run_search_node(
                     "document_identity": document_identity,
                     "document_id": row.document_id,
                     "source": row.source,
-                    "deduped": document_identity in seen_document_identities,
+                    "deduped": deduped,
                 }
             )
-            if document_identity in seen_document_identities:
+            if deduped:
+                existing_index = seen_document_identities[document_identity]
+                existing_row = merged_rows[existing_index]
+                existing_score = existing_row.score if existing_row.score is not None else float("-inf")
+                candidate_score = row.score if row.score is not None else float("-inf")
+                if candidate_score > existing_score:
+                    existing_row.score = row.score
                 continue
-            seen_document_identities.add(document_identity)
+            seen_document_identities[document_identity] = len(merged_rows)
             row.rank = len(merged_rows) + 1
             row.citation_index = len(merged_rows) + 1
             merged_rows.append(row)
+
+    if _SEARCH_NODE_MERGED_CAP and len(merged_rows) > _SEARCH_NODE_MERGED_CAP:
+        merged_rows = merged_rows[:_SEARCH_NODE_MERGED_CAP]
+        for index, row in enumerate(merged_rows, start=1):
+            row.rank = index
+            row.citation_index = index
 
     citation_rows_by_index = {item.citation_index: item for item in merged_rows}
     logger.info(
@@ -1040,6 +1158,7 @@ def run_rerank_node(
     config: Any | None = None,
 ) -> RerankNodeOutput:
     effective_config = config or _RERANKER_CONFIG
+    rerank_query = (node_input.expanded_query or "").strip() or node_input.sub_question
     logger.info(
         "Rerank node start sub_question=%s candidate_count=%s enabled=%s top_n=%s model=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(node_input.sub_question),
@@ -1061,7 +1180,7 @@ def run_rerank_node(
 
     original_by_rank = {row.rank: row for row in node_input.retrieved_docs}
     reranked_scores = rerank_documents(
-        query=node_input.sub_question,
+        query=rerank_query,
         documents=_to_retrieved_documents(node_input.retrieved_docs),
         config=effective_config,
     )
@@ -1336,9 +1455,15 @@ def run_synthesize_final_node(
         node_input.run_metadata.trace_id,
         node_input.run_metadata.correlation_id,
     )
-    final_answer = generate_final_synthesis_answer(
+    generated_final_answer = generate_final_synthesis_answer(
         main_question=node_input.main_question,
         sub_qa=node_input.sub_qa,
+    )
+    final_answer = _enforce_final_synthesis_citation_contract(
+        generated_final_answer=generated_final_answer,
+        sub_qa=node_input.sub_qa,
+        sub_question_artifacts=node_input.sub_question_artifacts,
+        run_id=node_input.run_metadata.run_id,
     )
     logger.info(
         "Final synthesis node complete output_len=%s run_id=%s",
@@ -1457,6 +1582,10 @@ def _run_graph_subquestion_lane(
     rerank_output = run_rerank_node(
         node_input=RerankNodeInput(
             sub_question=sub_question,
+            expanded_query=_select_compat_expanded_query(
+                sub_question=sub_question,
+                expanded_queries=list(expand_output.expanded_queries),
+            ),
             retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
             run_metadata=run_metadata,
         ),
@@ -1751,6 +1880,10 @@ def run_sequential_graph_runner(
             rerank_output = run_rerank_node(
                 node_input=RerankNodeInput(
                     sub_question=sub_question,
+                    expanded_query=_select_compat_expanded_query(
+                        sub_question=sub_question,
+                        expanded_queries=list(expand_output.expanded_queries),
+                    ),
                     retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
                     run_metadata=state.run_metadata,
                 ),

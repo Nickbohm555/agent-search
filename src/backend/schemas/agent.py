@@ -23,6 +23,7 @@ class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
+    final_citations: list["CitationSourceRow"] = Field(default_factory=list)
 
 
 class AgentRunStageMetadata(BaseModel):
@@ -54,6 +55,9 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     result: RuntimeAgentRunResponse | None = None
     error: str | None = None
     cancel_requested: bool = False
+    started_at: float | None = None
+    finished_at: float | None = None
+    elapsed_ms: int | None = None
 
 
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
@@ -138,6 +142,7 @@ class SearchNodeOutput(BaseModel):
 
 class RerankNodeInput(BaseModel):
     sub_question: str
+    expanded_query: str = ""
     retrieved_docs: list[CitationSourceRow] = Field(default_factory=list)
     run_metadata: GraphRunMetadata
 
