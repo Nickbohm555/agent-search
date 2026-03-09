@@ -3256,3 +3256,95 @@ db logs:
 PostgreSQL Database directory appears to contain a database; Skipping initialization
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 49
+
+## Section 49: CI drift gates - long-term contract safety
+
+**Single goal:** Add CI checks that prevent API/SDK/spec artifact drift after integration.
+
+**Why:** This synchronizes generated artifacts and release/CI safeguards so the integrated system remains consistent over time.
+
+**Details:**
+- Enforce OpenAPI parity and generated-client freshness checks.
+- Keep migration-safe guardrails for future endpoint/schema changes.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new runtime dependencies.
+- Tooling (uv, poetry, Docker): add CI validation steps.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `scripts/validate_openapi.sh` | OpenAPI drift gate script. |
+| `.github/workflows/ci.yml` | CI checks for spec/client parity. |
+
+**How to test:** Run CI-equivalent checks locally and verify intentional drift fails.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added new GitHub Actions workflow `.github/workflows/ci.yml` (push to `main` + pull requests) that runs the OpenAPI/client drift gate.
+- Expanded `scripts/validate_openapi.sh` into a full contract drift gate with UTC-timestamped logging for:
+  - OpenAPI structural validation via `openapitools/openapi-generator-cli validate`.
+  - Runtime-versus-committed OpenAPI parity checks (normalized JSON compare).
+  - Generated SDK freshness checks by generating into a temporary copy and diffing against `sdk/python`.
+- Added resilience for local development where host `uv` may fail platform resolution by exporting runtime OpenAPI from the running `backend` container when available, with host fallback.
+- Updated canonical generated artifacts (`openapi.json`, `sdk/python/.openapi-generator/FILES`) to satisfy the new parity/freshness gate.
+- Restarted all containers and verified runtime health and logs after changes.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `curl -sS http://localhost:8000/api/health`
+- `./scripts/validate_openapi.sh`
+- `docker compose exec -T backend uv run python - <<'PY' > openapi.json ... PY`
+- `./scripts/generate_sdk.sh`
+- `./scripts/validate_openapi.sh`
+- `python3 - <<'PY' ... write openapi.drift-test.json with info.version drift ... PY`
+- `./scripts/validate_openapi.sh openapi.drift-test.json` (expected failure)
+- `python3 - <<'PY' ... unlink openapi.drift-test.json ... PY`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+validate gate pass:
+2026-03-09T20:20:49Z INFO validate_openapi: starting validation spec=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.json
+No validation issues detected.
+2026-03-09T20:20:53Z INFO validate_openapi: OpenAPI parity check passed spec=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.json
+2026-03-09T20:20:55Z INFO validate_openapi: sdk drift check passed sdk=/Users/nickbohm/Desktop/tinkering/agent-search/sdk/python
+2026-03-09T20:20:55Z INFO validate_openapi: all checks passed
+
+intentional drift failure:
+2026-03-09T20:21:27Z INFO validate_openapi: starting validation spec=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.drift-test.json
+2026-03-09T20:21:32Z ERROR validate_openapi: committed OpenAPI differs from runtime export path=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.drift-test.json
+@@ -1469,7 +1469,7 @@
+-    "version": "0.1.0-drift-test"
++    "version": "0.1.0"
+
+post-restart runtime checks:
+HTTP/1.1 200 OK
+{"status":"ok"}
+
+backend logs:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+
+frontend logs:
+VITE v5.4.21  ready
+Local:   http://localhost:5173/
+
+db logs:
+database system is ready to accept connections
+```
