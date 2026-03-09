@@ -186,10 +186,11 @@ class BenchmarkRunner:
                 )
                 continue
 
-            started = time.perf_counter()
+            question_started = time.perf_counter()
             response = None
             execution_error = None
             result_row: BenchmarkResult | None = None
+            stage_timings: dict[str, int] = {}
             try:
                 response = self._execution_adapter.run_sync(
                     question.question,
@@ -208,8 +209,9 @@ class BenchmarkRunner:
                     len(questions),
                     exc,
                 )
+            stage_timings["runtime_execution_ms"] = int((time.perf_counter() - question_started) * 1000)
 
-            latency_ms = int((time.perf_counter() - started) * 1000)
+            persist_started = time.perf_counter()
             result_row = self._upsert_result(
                 session=session,
                 run_id=run_id,
@@ -217,22 +219,29 @@ class BenchmarkRunner:
                 question_id=question.question_id,
                 answer_payload=response.model_dump(mode="json") if response is not None else None,
                 citations=[row.model_dump(mode="json") for row in (response.final_citations if response else [])],
-                latency_ms=latency_ms,
+                e2e_latency_ms=stage_timings["runtime_execution_ms"],
+                stage_timings=stage_timings,
+                timing_outcome=self._classify_timing_outcome(execution_error),
+                latency_ms=stage_timings["runtime_execution_ms"],
                 token_usage=None,
                 execution_error=execution_error,
             )
             session.commit()
+            stage_timings["persist_result_ms"] = int((time.perf_counter() - persist_started) * 1000)
             completed += 1
             logger.info(
-                "Benchmark runner persisted result run_id=%s mode=%s question_id=%s latency_ms=%s has_error=%s",
+                "Benchmark runner persisted result run_id=%s mode=%s question_id=%s e2e_latency_ms=%s timing_outcome=%s stage_timings=%s has_error=%s",
                 run_id,
                 mode.value,
                 question.question_id,
-                latency_ms,
+                result_row.e2e_latency_ms if result_row is not None else None,
+                result_row.timing_outcome if result_row is not None else None,
+                stage_timings,
                 execution_error is not None,
             )
 
             if execution_error is None and result_row is not None:
+                quality_started = time.perf_counter()
                 self._emit_progress(
                     "quality_evaluation_started",
                     {
@@ -296,8 +305,58 @@ class BenchmarkRunner:
                         },
                         progress_callback=progress_callback,
                     )
+                finally:
+                    stage_timings["quality_evaluation_ms"] = int((time.perf_counter() - quality_started) * 1000)
+                    e2e_latency_ms = int((time.perf_counter() - question_started) * 1000)
+                    result_row = self._upsert_result(
+                        session=session,
+                        run_id=run_id,
+                        mode=mode.value,
+                        question_id=question.question_id,
+                        answer_payload=response.model_dump(mode="json") if response is not None else None,
+                        citations=[row.model_dump(mode="json") for row in (response.final_citations if response else [])],
+                        e2e_latency_ms=e2e_latency_ms,
+                        stage_timings=stage_timings,
+                        timing_outcome=self._classify_timing_outcome(execution_error),
+                        latency_ms=e2e_latency_ms,
+                        token_usage=None,
+                        execution_error=execution_error,
+                    )
+                    session.commit()
+                    logger.info(
+                        "Benchmark runner updated timings after quality evaluation run_id=%s mode=%s question_id=%s stage_timings=%s",
+                        run_id,
+                        mode.value,
+                        question.question_id,
+                        stage_timings,
+                    )
 
             if execution_error is not None:
+                e2e_latency_ms = int((time.perf_counter() - question_started) * 1000)
+                result_row = self._upsert_result(
+                    session=session,
+                    run_id=run_id,
+                    mode=mode.value,
+                    question_id=question.question_id,
+                    answer_payload=response.model_dump(mode="json") if response is not None else None,
+                    citations=[row.model_dump(mode="json") for row in (response.final_citations if response else [])],
+                    e2e_latency_ms=e2e_latency_ms,
+                    stage_timings=stage_timings,
+                    timing_outcome=self._classify_timing_outcome(execution_error),
+                    latency_ms=e2e_latency_ms,
+                    token_usage=None,
+                    execution_error=execution_error,
+                )
+                session.commit()
+                logger.info(
+                    "Benchmark runner finalized error timing run_id=%s mode=%s question_id=%s e2e_latency_ms=%s timing_outcome=%s stage_timings=%s",
+                    run_id,
+                    mode.value,
+                    question.question_id,
+                    result_row.e2e_latency_ms if result_row is not None else None,
+                    result_row.timing_outcome if result_row is not None else None,
+                    stage_timings,
+                )
                 raise RuntimeError(execution_error)
         return completed
 
@@ -393,6 +452,9 @@ class BenchmarkRunner:
         question_id: str,
         answer_payload: dict[str, Any] | None,
         citations: list[dict[str, Any]],
+        e2e_latency_ms: int,
+        stage_timings: dict[str, int],
+        timing_outcome: str,
         latency_ms: int,
         token_usage: dict[str, Any] | None,
         execution_error: str | None,
@@ -409,11 +471,24 @@ class BenchmarkRunner:
             session.add(row)
         row.answer_payload = answer_payload
         row.citations = citations
+        row.e2e_latency_ms = e2e_latency_ms
+        row.stage_timings = dict(stage_timings)
+        row.timing_outcome = timing_outcome
         row.latency_ms = latency_ms
         row.token_usage = token_usage
         row.execution_error = execution_error
         session.flush()
         return row
+
+    def _classify_timing_outcome(self, execution_error: str | None) -> str:
+        if execution_error is None:
+            return "completed"
+        lowered = execution_error.lower()
+        if "cancel" in lowered:
+            return "cancelled"
+        if "timeout" in lowered or "timed out" in lowered:
+            return "timeout"
+        return "error"
 
     def _append_quality_evaluation_error(
         self,

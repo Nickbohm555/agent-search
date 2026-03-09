@@ -141,6 +141,12 @@ class BenchmarkResult(Base):
         nullable=False,
         server_default=text("'[]'::jsonb"),
     )
+    e2e_latency_ms = Column(Integer, nullable=True)
+    stage_timings = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
+    timing_outcome = Column(String(32), nullable=True)
     latency_ms = Column(Integer, nullable=True)
     token_usage = Column(
         JSON().with_variant(JSONB, "postgresql"),

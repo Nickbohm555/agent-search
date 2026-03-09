@@ -2307,3 +2307,77 @@ backend: Application startup complete.
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 37
+
+## Section 37: Latency instrumentation - end-to-end and stage timings
+
+**Single goal:** Capture per-result end-to-end and stage-level latency.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Persist e2e latency and optional stage timing blocks.
+- Distinguish timeout/cancel timing outcomes.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): Alembic migration if new fields/tables required.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_runner.py` | Timing checkpoint instrumentation. |
+| `src/backend/models.py` | Timing model/fields. |
+| `src/backend/alembic/versions/006_add_benchmark_timing_fields.py` | Timing migration. |
+| `src/backend/tests/services/test_benchmark_latency_capture.py` | Timing tests. |
+
+**How to test:** Run timing tests and verify DB timing fields after run.
+
+**Test results:** (Add when section is complete.)
+- Pending.
+
+---
+
+
+**Completion notes:**
+- Added benchmark timing persistence fields on `benchmark_results`: `e2e_latency_ms`, `stage_timings` (JSONB), and `timing_outcome`.
+- Added Alembic migration `006_benchmark_timing_fields` and applied it to `head`.
+- Instrumented benchmark runner checkpoints for runtime execution, result persistence, and quality evaluation timing.
+- Added timing outcome classification (`completed`, `timeout`, `cancelled`, `error`) from execution outcomes and persisted per result.
+- Added dedicated latency tests in `tests/services/test_benchmark_latency_capture.py` covering e2e/stage timings and timeout/cancel classification.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run alembic upgrade head`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_benchmark_latency_capture.py tests/services/test_benchmark_runner.py`
+- `docker compose exec backend uv run --with pytest pytest tests/db/test_benchmark_results_schema.py`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=140 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose exec db psql -U agent_user -d agent_search -c "SELECT column_name, data_type FROM information_schema.columns WHERE table_name='benchmark_results' AND column_name IN ('e2e_latency_ms','stage_timings','timing_outcome','latency_ms') ORDER BY column_name;"`
+- `docker compose exec db psql -U agent_user -d agent_search -c "SELECT run_id, mode, question_id, e2e_latency_ms, timing_outcome, stage_timings FROM benchmark_results WHERE run_id LIKE 'run-benchmark-latency-%' OR run_id LIKE 'run-benchmark-timeout-%' OR run_id LIKE 'run-benchmark-cancel-%' ORDER BY created_at DESC LIMIT 5;"`
+
+**Useful logs (excerpt):**
+```text
+alembic: Running upgrade 005_benchmark_citation_tables -> 006_benchmark_timing_fields
+pytest: tests/services/test_benchmark_latency_capture.py ..
+pytest: tests/services/test_benchmark_runner.py ...
+pytest: 5 passed in 1.73s
+pytest: tests/db/test_benchmark_results_schema.py ..
+pytest: 2 passed in 0.89s
+backend: Application startup complete.
+health: HTTP/1.1 200 OK {"status":"ok"}
+db columns: e2e_latency_ms (integer), stage_timings (jsonb), timing_outcome (character varying), latency_ms (integer)
+db sample rows:
+  run-benchmark-latency-... timing_outcome=completed stage_timings={"persist_result_ms": 1, "runtime_execution_ms": 0, "quality_evaluation_ms": 0}
+  run-benchmark-timeout-... timing_outcome=timeout stage_timings={"persist_result_ms": 1, "runtime_execution_ms": 0}
+  run-benchmark-cancel-... timing_outcome=cancelled stage_timings={"persist_result_ms": 0, "runtime_execution_ms": 0}
+```
