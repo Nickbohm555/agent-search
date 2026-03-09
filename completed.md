@@ -171,3 +171,63 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 4
+
+## Section 4: SDK public async API contract - stable lifecycle entrypoint
+
+**Single goal:** Expose SDK async `run_async`, `get_run_status`, and `cancel_run` interfaces.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Keep payload fields aligned with current async runtime shape.
+- Keep cancellation/status semantics stable.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/public_api.py` | Async SDK lifecycle functions. |
+| `src/backend/tests/sdk/test_public_api_async.py` | Async lifecycle contract tests. |
+
+**How to test:** Run SDK async contract tests.
+
+**Test results:** (Add when section is complete.)
+- Pending.
+
+---
+
+**Completion notes:**
+- Implemented SDK async lifecycle functions in `agent_search.public_api`: `run_async`, `get_run_status`, and `cancel_run`.
+- Reused existing runtime job orchestration in `services.agent_jobs` to keep SDK lifecycle behavior aligned with API runtime semantics.
+- Added runtime visibility logs for async queue, status resolution, and cancel acceptance/failure paths.
+- Added `tests/sdk/test_public_api_async.py` to lock async SDK signature, start payload shape, status payload timing/result shape, and missing/uncancellable job error semantics.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend frontend db`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_public_api_async.py tests/contracts/test_public_contracts.py"`
+- `docker compose restart backend`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=140 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_public_api_async.py ...... [ 50%]
+pytest: tests/contracts/test_public_contracts.py ...... [100%]
+pytest: 12 passed in 1.56s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
