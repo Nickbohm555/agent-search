@@ -91,6 +91,12 @@ class BenchmarkRun(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    retrieval_metrics = relationship(
+        "BenchmarkRetrievalMetric",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class BenchmarkRunMode(Base):
@@ -165,6 +171,13 @@ class BenchmarkResult(Base):
     )
     citation_score = relationship(
         "BenchmarkCitationScore",
+        back_populates="result",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    retrieval_metrics = relationship(
+        "BenchmarkRetrievalMetric",
         back_populates="result",
         uselist=False,
         cascade="all, delete-orphan",
@@ -287,3 +300,46 @@ class BenchmarkCitationVerification(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     citation_score = relationship("BenchmarkCitationScore", back_populates="verifications")
+
+
+class BenchmarkRetrievalMetric(Base):
+    __tablename__ = "benchmark_retrieval_metrics"
+    __table_args__ = (
+        UniqueConstraint("run_id", "mode", "question_id", name="uq_benchmark_retrieval_metrics_run_mode_question"),
+        UniqueConstraint("result_id", name="uq_benchmark_retrieval_metrics_result_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(
+        String(128),
+        ForeignKey("benchmark_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    result_id = Column(
+        Integer,
+        ForeignKey("benchmark_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode = Column(String(64), nullable=False)
+    question_id = Column(String(128), nullable=False)
+    recall_at_k = Column(Float, nullable=True)
+    mrr = Column(Float, nullable=True)
+    ndcg = Column(Float, nullable=True)
+    k = Column(Integer, nullable=False, server_default=text("10"))
+    retrieved_document_ids = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    relevant_document_ids = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+    )
+    label_source = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    run = relationship("BenchmarkRun", back_populates="retrieval_metrics")
+    result = relationship("BenchmarkResult", back_populates="retrieval_metrics")

@@ -15,12 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from db import DATABASE_URL, SessionLocal
-from models import BenchmarkQualityScore, BenchmarkResult, BenchmarkRun, BenchmarkRunMode
+from models import BenchmarkQualityScore, BenchmarkResult, BenchmarkRetrievalMetric, BenchmarkRun, BenchmarkRunMode
 from schemas import (
     BenchmarkMode,
     BenchmarkModeSummary,
     BenchmarkObjective,
     BenchmarkResultQualityScore,
+    BenchmarkResultRetrievalDiagnostics,
     BenchmarkResultStatusItem,
     BenchmarkRunCreateRequest,
     BenchmarkRunCreateResponse,
@@ -196,6 +197,8 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
 
     quality_rows = db.scalars(select(BenchmarkQualityScore).where(BenchmarkQualityScore.run_id == run_id)).all()
     quality_by_key = {(row.mode, row.question_id): row for row in quality_rows}
+    retrieval_rows = db.scalars(select(BenchmarkRetrievalMetric).where(BenchmarkRetrievalMetric.run_id == run_id)).all()
+    retrieval_by_key = {(row.mode, row.question_id): row for row in retrieval_rows}
     evaluation_error_by_key: dict[tuple[str, str], str] = {}
     if isinstance(run.run_metadata, dict):
         for item in run.run_metadata.get("evaluation_errors", []):
@@ -216,6 +219,7 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
     for result in result_rows:
         key = (result.mode, result.question_id)
         quality_row = quality_by_key.get(key)
+        retrieval_row = retrieval_by_key.get(key)
         quality_score = (
             BenchmarkResultQualityScore(
                 score=quality_row.score,
@@ -232,6 +236,27 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
                 else None
             )
         )
+        retrieval_diagnostics = (
+            BenchmarkResultRetrievalDiagnostics(
+                recall_at_k=retrieval_row.recall_at_k,
+                mrr=retrieval_row.mrr,
+                ndcg=retrieval_row.ndcg,
+                k=retrieval_row.k,
+                retrieved_document_ids=[
+                    item for item in retrieval_row.retrieved_document_ids if isinstance(item, str)
+                ]
+                if isinstance(retrieval_row.retrieved_document_ids, list)
+                else [],
+                relevant_document_ids=[
+                    item for item in retrieval_row.relevant_document_ids if isinstance(item, str)
+                ]
+                if isinstance(retrieval_row.relevant_document_ids, list)
+                else [],
+                label_source=retrieval_row.label_source,
+            )
+            if retrieval_row is not None
+            else None
+        )
         results.append(
             BenchmarkResultStatusItem(
                 mode=result.mode,
@@ -239,17 +264,19 @@ def get_benchmark_run_status(*, run_id: str, db: Session) -> BenchmarkRunStatusR
                 latency_ms=result.latency_ms,
                 execution_error=result.execution_error,
                 quality=quality_score,
+                retrieval=retrieval_diagnostics,
             )
         )
 
     logger.info(
-        "Benchmark run status resolved run_id=%s status=%s mode_count=%s completed=%s total=%s quality_scores=%s",
+        "Benchmark run status resolved run_id=%s status=%s mode_count=%s completed=%s total=%s quality_scores=%s retrieval_metrics=%s",
         run_id,
         run.status,
         len(parsed_modes),
         completed_questions,
         total_questions,
         len(quality_rows),
+        len(retrieval_rows),
     )
     return BenchmarkRunStatusResponse(
         run_id=run.run_id,

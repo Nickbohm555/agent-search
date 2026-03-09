@@ -2381,3 +2381,73 @@ db sample rows:
   run-benchmark-timeout-... timing_outcome=timeout stage_timings={"persist_result_ms": 1, "runtime_execution_ms": 0}
   run-benchmark-cancel-... timing_outcome=cancelled stage_timings={"persist_result_ms": 0, "runtime_execution_ms": 0}
 ```
+
+## Completed - 2026-03-09 - Section 38
+
+## Section 38: Retrieval diagnostics - benchmark retrieval quality signals
+
+**Single goal:** Add retrieval diagnostics for failure analysis.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Persist `recall@k`, `mrr`, `ndcg`, and retrieved IDs where labels allow.
+- Expose diagnostics in run detail payloads.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): Alembic migration.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/models.py` | `benchmark_retrieval_metrics` model. |
+| `src/backend/alembic/versions/007_add_benchmark_retrieval_metrics_table.py` | Migration file. |
+| `src/backend/services/benchmark_retrieval_metrics_service.py` | Metrics service. |
+| `src/backend/tests/services/test_benchmark_retrieval_metrics_service.py` | Retrieval diagnostics tests. |
+
+**How to test:** Run retrieval diagnostics tests and inspect saved metrics.
+
+**Test results:** (Add when section is complete.)
+- Pending.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkRetrievalMetric` ORM model and relationships from `BenchmarkRun` + `BenchmarkResult`.
+- Added Alembic migration `007_benchmark_retrieval_metrics` creating `benchmark_retrieval_metrics` with uniqueness constraints and indexes.
+- Implemented `BenchmarkRetrievalMetricsService` to compute/persist `recall@k`, `mrr`, `ndcg`, retrieved ids, relevant ids, and label source.
+- Wired retrieval diagnostics into benchmark execution flow (`BenchmarkRunner`) so each persisted benchmark result gets retrieval diagnostics recorded.
+- Extended run detail payload results with `retrieval` diagnostics block via `BenchmarkResultRetrievalDiagnostics` and `benchmark_jobs.get_benchmark_run_status`.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=60 frontend`
+- `docker compose logs --tail=60 db`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_benchmark_retrieval_metrics_service.py tests/api/test_benchmark_runs_api.py`
+- `docker compose exec backend uv run alembic current`
+- `docker compose exec db psql -U agent_user -d agent_search -c "\\dt benchmark_*"`
+- `docker compose exec db psql -U agent_user -d agent_search -c "SELECT run_id, mode, question_id, recall_at_k, mrr, ndcg, k, label_source, retrieved_document_ids, relevant_document_ids FROM benchmark_retrieval_metrics ORDER BY created_at DESC LIMIT 5;"`
+
+**Useful logs (excerpt):**
+```text
+alembic: Running upgrade 006_benchmark_timing_fields -> 007_benchmark_retrieval_metrics
+pytest: tests/services/test_benchmark_retrieval_metrics_service.py ...
+pytest: tests/api/test_benchmark_runs_api.py ......
+pytest: 9 passed in 1.73s
+alembic current: 007_benchmark_retrieval_metrics (head)
+psql \dt: benchmark_retrieval_metrics table present
+db sample rows:
+  run-retrieval-unlabeled-... DRB-002 recall_at_k=NULL mrr=NULL ndcg=NULL k=5 label_source=NULL retrieved=["doc-a","doc-b","doc-c"] relevant=[]
+  run-retrieval-... DRB-001 recall_at_k=1 mrr=1 ndcg=1 k=1 label_source=manual retrieved=["doc-x","doc-gold","doc-y"] relevant=["doc-x"]
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready.
+db: database system is ready to accept connections.
+```

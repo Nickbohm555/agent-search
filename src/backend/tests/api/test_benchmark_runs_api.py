@@ -206,6 +206,7 @@ def test_get_benchmark_run_returns_status_shape(monkeypatch) -> None:
                     "subscores": {"coverage": 0.92},
                     "error": None,
                 },
+                "retrieval": None,
             }
         ],
         "completed_questions": 3,

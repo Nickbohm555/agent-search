@@ -22,6 +22,7 @@ from services.benchmark_artifact_registry import BenchmarkArtifactRegistry
 from services.benchmark_execution_adapter import BenchmarkExecutionAdapter
 from services.benchmark_modes import get_mode_runtime_overrides
 from services.benchmark_quality_service import BenchmarkQualityService
+from services.benchmark_retrieval_metrics_service import BenchmarkRetrievalMetricsService
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class BenchmarkRunner:
         session_factory: sessionmaker[Session] = SessionLocal,
         execution_adapter: BenchmarkExecutionAdapter | None = None,
         quality_service: BenchmarkQualityService | None = None,
+        retrieval_metrics_service: BenchmarkRetrievalMetricsService | None = None,
         dataset_root: Path = DEFAULT_DATASET_ROOT,
         runtime_settings: BenchmarkRuntimeSettings | None = None,
         artifact_registry: BenchmarkArtifactRegistry | None = None,
@@ -55,6 +57,9 @@ class BenchmarkRunner:
         self._session_factory = session_factory
         self._execution_adapter = execution_adapter or BenchmarkExecutionAdapter()
         self._quality_service = quality_service or BenchmarkQualityService(session_factory=session_factory)
+        self._retrieval_metrics_service = retrieval_metrics_service or BenchmarkRetrievalMetricsService(
+            session_factory=session_factory
+        )
         self._dataset_root = dataset_root
         self._runtime_settings = runtime_settings or BenchmarkRuntimeSettings.from_env()
         self._artifact_registry = artifact_registry or BenchmarkArtifactRegistry()
@@ -239,6 +244,30 @@ class BenchmarkRunner:
                 stage_timings,
                 execution_error is not None,
             )
+            if result_row is not None:
+                retrieval_k = self._resolve_retrieval_k(run_metadata=run_metadata)
+                try:
+                    retrieval_row = self._retrieval_metrics_service.evaluate_and_persist(
+                        result_id=result_row.id,
+                        k=retrieval_k,
+                    )
+                    logger.info(
+                        "Benchmark runner retrieval diagnostics complete run_id=%s mode=%s question_id=%s recall_at_k=%s mrr=%s ndcg=%s",
+                        run_id,
+                        mode.value,
+                        question.question_id,
+                        retrieval_row.recall_at_k,
+                        retrieval_row.mrr,
+                        retrieval_row.ndcg,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "Benchmark runner retrieval diagnostics failed run_id=%s mode=%s question_id=%s error=%s",
+                        run_id,
+                        mode.value,
+                        question.question_id,
+                        exc,
+                    )
 
             if execution_error is None and result_row is not None:
                 quality_started = time.perf_counter()
@@ -568,3 +597,12 @@ class BenchmarkRunner:
             max_cost_usd=self._runtime_settings.target_max_cost_usd,
         )
         return json.loads(target_values.model_dump_json())
+
+    @staticmethod
+    def _resolve_retrieval_k(*, run_metadata: dict[str, Any] | None) -> int | None:
+        if not isinstance(run_metadata, dict):
+            return None
+        raw = run_metadata.get("retrieval_metrics_k")
+        if isinstance(raw, int) and raw > 0:
+            return raw
+        return None

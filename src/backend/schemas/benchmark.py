@@ -113,12 +113,23 @@ class BenchmarkResultQualityScore(BaseModel):
     error: str | None = None
 
 
+class BenchmarkResultRetrievalDiagnostics(BaseModel):
+    recall_at_k: float | None = Field(default=None, ge=0.0, le=1.0)
+    mrr: float | None = Field(default=None, ge=0.0, le=1.0)
+    ndcg: float | None = Field(default=None, ge=0.0, le=1.0)
+    k: int = Field(default=10, ge=1)
+    retrieved_document_ids: list[str] = Field(default_factory=list)
+    relevant_document_ids: list[str] = Field(default_factory=list)
+    label_source: str | None = None
+
+
 class BenchmarkResultStatusItem(BaseModel):
     mode: str = Field(min_length=1)
     question_id: str = Field(min_length=1)
     latency_ms: int | None = Field(default=None, ge=0)
     execution_error: str | None = None
     quality: BenchmarkResultQualityScore | None = None
+    retrieval: BenchmarkResultRetrievalDiagnostics | None = None
 
 
 class BenchmarkRunStatusResponse(BaseModel):
