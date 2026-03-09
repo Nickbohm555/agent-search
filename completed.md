@@ -100,3 +100,49 @@ docker compose logs --tail=120 db
 docker compose exec backend uv run pytest tests/services/test_query_expansion_service.py tests/services/test_agent_service.py -k "expand_queries_for_subquestion or run_expand_node or apply_expand_node_output_to_graph_state or run_decomposition_node"
 -> 7 passed, 55 deselected in ~2s
 ```
+
+## Section 4: Build search node - multi-query retrieval with merge/dedupe
+
+**Single goal:** Implement graph search node that retrieves across expanded queries and merges candidates.
+
+**Details completed:**
+- Implemented graph search-node execution in `src/backend/services/agent_service.py` via `run_search_node(...)`.
+- Added configurable over-fetch via env var `SEARCH_NODE_K_FETCH` and per-call override.
+- Added deterministic multi-query merge logic that dedupes by stable identity (`document_id` first; fallback `source+content`).
+- Added retrieval provenance capture for every retrieval event (query index, query rank, dedupe flag, identity, source, document_id).
+- Added graph-state update helper `apply_search_node_output_to_graph_state(...)` to persist `retrieved_docs`, `citation_rows_by_index`, and `retrieval_provenance` in sub-question artifacts.
+- Preserved compatibility fields by writing merged retrieval output back into `sub_qa[].sub_answer` citation-contract lines and `sub_qa[].tool_call_input` payload metadata.
+- Extended graph schema contracts in `src/backend/schemas/agent.py` with `retrieval_provenance` on `SubQuestionArtifacts` and `SearchNodeOutput`.
+- Added reusable vector-store primitive `search_documents_for_queries(...)` in `src/backend/services/vector_store_service.py` for multi-query retrieval orchestration.
+- Added/updated backend tests in `src/backend/tests/services/test_agent_service.py` covering merge/dedupe determinism and state-apply behavior.
+- Updated required docs (`README.md` and `src/frontend/public/run-flow.html`) to reflect the explicit graph search node and provenance behavior.
+- Fixed two unrelated failing backend tests discovered during mandatory full-suite run:
+  - Restored legacy-compatible `wiki_page` metadata in vector-store normalization.
+  - Preserved extra wiki metadata keys (for example `language`) while still normalizing `title`/`source`.
+
+### Useful logs
+
+```text
+docker compose down -v --rmi all && docker compose build && docker compose up -d
+-> backend/frontend rebuilt; db healthy; backend/frontend/chrome started
+
+docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py -k "search_node or apply_search_node"'
+-> 2 passed, 59 deselected in 2.12s
+
+docker compose exec backend sh -lc 'cd /app && uv run pytest'
+-> 111 passed, 3 warnings in 24.24s
+
+docker compose restart backend frontend
+-> backend/frontend restarted cleanly
+
+curl http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=120 backend
+-> Uvicorn startup complete, app startup complete, no fatal runtime errors
+
+docker compose logs --tail=120 frontend
+-> Vite ready on http://localhost:5173/
+
+docker compose logs --tail=120 db
+-> PostgreSQL ready; no crash/restart loops

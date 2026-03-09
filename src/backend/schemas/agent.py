@@ -50,6 +50,7 @@ class SubQuestionArtifacts(BaseModel):
     sub_question: str
     expanded_queries: list[str] = Field(default_factory=list)
     retrieved_docs: list[CitationSourceRow] = Field(default_factory=list)
+    retrieval_provenance: list[dict[str, Any]] = Field(default_factory=list)
     reranked_docs: list[CitationSourceRow] = Field(default_factory=list)
     sub_answer: str = ""
     citation_rows_by_index: dict[int, CitationSourceRow] = Field(default_factory=dict)
@@ -94,6 +95,7 @@ class SearchNodeInput(BaseModel):
 
 class SearchNodeOutput(BaseModel):
     retrieved_docs: list[CitationSourceRow] = Field(default_factory=list)
+    retrieval_provenance: list[dict[str, Any]] = Field(default_factory=list)
     citation_rows_by_index: dict[int, CitationSourceRow] = Field(default_factory=dict)
 
 

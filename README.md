@@ -222,7 +222,7 @@ Backend
 - Request: `RuntimeAgentRunRequest { query }`
 - Response: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
 
-### Runtime pipeline map (orders 1-15)
+### Runtime pipeline map (orders 1-16)
 
 | Order | Function | Core logic | Output |
 |------|----------|------------|--------|
@@ -232,16 +232,17 @@ Backend
 | 4 | `run_decomposition_node` | Graph-entry decomposition node that emits normalized decomposition state. | `decomposition_sub_questions[]`. |
 | 5 | `_run_decomposition_only_llm_call` + `_parse_decomposition_output` | Internal helpers used by decomposition node for LLM call + normalization/fallback. | Candidate + normalized subquestions. |
 | 6 | `run_expand_node` + `expand_queries_for_subquestion` | Expansion-node query generation (`MultiQueryRetriever`) with bounded normalization and fallback to original sub-question. | `expanded_queries[]` per sub-question artifact. |
-| 7 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
-| 8 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
-| 9 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
-| 10 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
-| 11 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
-| 12 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
-| 13 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
-| 14 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
-| 15 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
-| 16 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
+| 7 | `run_search_node` + `apply_search_node_output_to_graph_state` | Search-node retrieval over expanded queries with `k_fetch`, deterministic merge/dedupe (`document_id` preferred; fallback `source+content`), and retrieval provenance capture. | `retrieved_docs[]`, `citation_rows_by_index`, and `retrieval_provenance[]` in graph artifacts. |
+| 8 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
+| 9 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
+| 10 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
+| 11 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
+| 12 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
+| 13 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
+| 14 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
+| 15 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
+| 16 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
+| 17 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
 
 ### Parallelism points
 

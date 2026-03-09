@@ -25,6 +25,8 @@ from schemas import (
     ExpandNodeInput,
     ExpandNodeOutput,
     GraphRunMetadata,
+    SearchNodeInput,
+    SearchNodeOutput,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
     SubQuestionAnswer,
@@ -55,6 +57,7 @@ from services.subanswer_verification_service import (
 from services.vector_store_service import (
     build_initial_search_context,
     get_vector_store,
+    search_documents_for_queries,
     search_documents_for_context,
 )
 from utils.agent_callbacks import (
@@ -101,6 +104,7 @@ _RERANKER_CONFIG = build_reranker_config_from_env()
 _QUERY_EXPANSION_CONFIG = build_query_expansion_config_from_env()
 _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
 _REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
+_SEARCH_NODE_K_FETCH = max(1, int(os.getenv("SEARCH_NODE_K_FETCH", "10")))
 
 
 @dataclass(frozen=True)
@@ -1085,6 +1089,65 @@ def _select_compat_expanded_query(*, sub_question: str, expanded_queries: list[s
     return ""
 
 
+def _normalize_search_queries(*, sub_question: str, expanded_queries: list[str]) -> list[str]:
+    candidates = [sub_question, *expanded_queries]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        query = (candidate or "").strip()
+        if not query:
+            continue
+        lowered = query.casefold()
+        if lowered in seen:
+            continue
+        normalized.append(query)
+        seen.add(lowered)
+    return normalized
+
+
+def _build_document_identity(
+    *,
+    document_id: str,
+    source: str,
+    content: str,
+) -> str:
+    if document_id:
+        return f"document_id:{document_id}"
+    normalized_source = source.strip().casefold()
+    normalized_content = content.strip()
+    return f"source_content:{normalized_source}|{normalized_content}"
+
+
+def _build_citation_row_from_document(*, document: Any, rank: int) -> CitationSourceRow:
+    metadata = document.metadata or {}
+    title = str(metadata.get("topic") or metadata.get("title") or metadata.get("wiki_page") or "").strip()
+    source = str(metadata.get("wiki_url") or metadata.get("source") or "").strip()
+    content = str(getattr(document, "page_content", "") or "").strip()
+    document_id = str(getattr(document, "id", "") or "").strip()
+    return CitationSourceRow(
+        citation_index=rank,
+        rank=rank,
+        title=title,
+        source=source,
+        content=content,
+        document_id=document_id,
+        score=None,
+    )
+
+
+def _format_citation_rows_for_pipeline(rows: list[CitationSourceRow]) -> str:
+    documents = [
+        RetrievedDocument(
+            rank=row.rank,
+            title=row.title,
+            source=row.source,
+            content=row.content,
+        )
+        for row in rows
+    ]
+    return format_retrieved_documents(documents)
+
+
 def apply_expand_node_output_to_graph_state(
     *,
     state: AgentGraphState,
@@ -1115,6 +1178,145 @@ def apply_expand_node_output_to_graph_state(
         _truncate_query(sub_question),
         len(node_output.expanded_queries),
         _truncate_query(compat_expanded_query),
+        next_state.run_metadata.run_id,
+    )
+    return next_state
+
+
+def run_search_node(
+    *,
+    node_input: SearchNodeInput,
+    vector_store: Any,
+    k_fetch: int | None = None,
+) -> SearchNodeOutput:
+    effective_k_fetch = max(1, k_fetch or _SEARCH_NODE_K_FETCH)
+    normalized_queries = _normalize_search_queries(
+        sub_question=node_input.sub_question,
+        expanded_queries=node_input.expanded_queries,
+    )
+    logger.info(
+        "Search node start sub_question=%s expanded_query_count=%s normalized_query_count=%s k_fetch=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(node_input.expanded_queries),
+        len(normalized_queries),
+        effective_k_fetch,
+        node_input.run_metadata.run_id,
+        node_input.run_metadata.trace_id,
+        node_input.run_metadata.correlation_id,
+    )
+    if not normalized_queries:
+        logger.warning(
+            "Search node skipped; no valid queries sub_question=%s run_id=%s",
+            _truncate_query(node_input.sub_question),
+            node_input.run_metadata.run_id,
+        )
+        return SearchNodeOutput()
+
+    documents_by_query = search_documents_for_queries(
+        vector_store=vector_store,
+        queries=normalized_queries,
+        k=effective_k_fetch,
+        score_threshold=None,
+    )
+    merged_rows: list[CitationSourceRow] = []
+    retrieval_provenance: list[dict[str, Any]] = []
+    seen_document_identities: set[str] = set()
+
+    for query_index, query in enumerate(normalized_queries, start=1):
+        docs_for_query = documents_by_query.get(query, [])
+        for query_rank, document in enumerate(docs_for_query, start=1):
+            row = _build_citation_row_from_document(document=document, rank=len(merged_rows) + 1)
+            document_identity = _build_document_identity(
+                document_id=row.document_id,
+                source=row.source,
+                content=row.content,
+            )
+            retrieval_provenance.append(
+                {
+                    "query": query,
+                    "query_index": query_index,
+                    "query_rank": query_rank,
+                    "document_identity": document_identity,
+                    "document_id": row.document_id,
+                    "source": row.source,
+                    "deduped": document_identity in seen_document_identities,
+                }
+            )
+            if document_identity in seen_document_identities:
+                continue
+            seen_document_identities.add(document_identity)
+            row.rank = len(merged_rows) + 1
+            row.citation_index = len(merged_rows) + 1
+            merged_rows.append(row)
+
+    citation_rows_by_index = {item.citation_index: item for item in merged_rows}
+    logger.info(
+        "Search node complete sub_question=%s query_count=%s raw_candidates=%s merged_candidates=%s run_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(normalized_queries),
+        sum(len(documents_by_query.get(query, [])) for query in normalized_queries),
+        len(merged_rows),
+        node_input.run_metadata.run_id,
+    )
+    return SearchNodeOutput(
+        retrieved_docs=merged_rows,
+        retrieval_provenance=retrieval_provenance,
+        citation_rows_by_index=citation_rows_by_index,
+    )
+
+
+def apply_search_node_output_to_graph_state(
+    *,
+    state: AgentGraphState,
+    sub_question: str,
+    node_output: SearchNodeOutput,
+) -> AgentGraphState:
+    next_state = state.model_copy(deep=True)
+    artifact = next(
+        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        None,
+    )
+    if artifact is None:
+        artifact = SubQuestionArtifacts(sub_question=sub_question)
+        next_state.sub_question_artifacts.append(artifact)
+    artifact.retrieved_docs = [row.model_copy(deep=True) for row in node_output.retrieved_docs]
+    artifact.retrieval_provenance = list(node_output.retrieval_provenance)
+    artifact.citation_rows_by_index = {
+        key: value.model_copy(deep=True)
+        for key, value in node_output.citation_rows_by_index.items()
+    }
+
+    for index, row in node_output.citation_rows_by_index.items():
+        next_state.citation_rows_by_index[index] = row.model_copy(deep=True)
+
+    retrieved_output = _format_citation_rows_for_pipeline(node_output.retrieved_docs)
+    compat_input_payload = {
+        "query": sub_question,
+        "expanded_queries": list(artifact.expanded_queries),
+        "retrieval_provenance": list(node_output.retrieval_provenance),
+        "limit": len(node_output.retrieved_docs),
+    }
+    matched_sub_qa = None
+    for item in next_state.sub_qa:
+        if item.sub_question == sub_question:
+            matched_sub_qa = item
+            break
+    if matched_sub_qa is None:
+        matched_sub_qa = SubQuestionAnswer(sub_question=sub_question, sub_answer="")
+        next_state.sub_qa.append(matched_sub_qa)
+
+    matched_sub_qa.sub_answer = retrieved_output
+    matched_sub_qa.tool_call_input = json.dumps(compat_input_payload, ensure_ascii=True)
+    matched_sub_qa.expanded_query = _select_compat_expanded_query(
+        sub_question=sub_question,
+        expanded_queries=artifact.expanded_queries,
+    )
+
+    logger.info(
+        "Search node state update sub_question=%s merged_candidates=%s provenance_events=%s run_id=%s",
+        _truncate_query(sub_question),
+        len(node_output.retrieved_docs),
+        len(node_output.retrieval_provenance),
         next_state.run_metadata.run_id,
     )
     return next_state

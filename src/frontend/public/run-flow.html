@@ -181,18 +181,19 @@ run_runtime_agent() internals
      -> _parse_decomposition_output(...)
   5) run_expand_node(...)  // graph-node query expansion contract
      -> expand_queries_for_subquestion(...)  // MultiQueryRetriever + normalization/fallback
-  6) create_coordinator_agent(...)
-  7) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
-  8) _extract_sub_qa(messages, search_database_calls)
-  9) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
- 10) generate_initial_answer(...)
- 11) should_refine(...)
- 12) if refinement_needed:
+  6) run_search_node(...) + apply_search_node_output_to_graph_state(...)  // expanded retrieval + merge/dedupe/provenance
+  7) create_coordinator_agent(...)
+  8) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
+  9) _extract_sub_qa(messages, search_database_calls)
+ 10) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
+ 11) generate_initial_answer(...)
+ 12) should_refine(...)
+ 13) if refinement_needed:
        refine_subquestions(...)
        _seed_refined_sub_qa_from_retrieval(...)  // PARALLEL
        run_pipeline_for_subquestions(...)         // PARALLEL
        generate_initial_answer(...)               // refined final output
- 13) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+ 14) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
       </div>
 
       <div class="panel">
@@ -273,16 +274,17 @@ run_runtime_agent() internals
             <tr><td>3</td><td><code>build_initial_search_context</code></td><td>Structured handoff between initial search and "Decompose Question into Sub-Questions".</td></tr>
             <tr><td>4</td><td><code>run_decomposition_node</code></td><td>Graph-entry decomposition node for "Decompose Question into Sub-Questions".</td></tr>
             <tr><td>5</td><td><code>_run_decomposition_only_llm_call</code> + <code>_parse_decomposition_output</code></td><td>Internal decomposition node helpers that normalize/dedupe/limit the provided sub-question list for "Initial Subquestion 1..n" lanes.</td></tr>
-            <tr><td>6</td><td><code>create_coordinator_agent</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
-            <tr><td>7</td><td><code>agent.invoke</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Validate -&gt; Rerank -&gt; Answer -&gt; Check.</td></tr>
-            <tr><td>8</td><td><code>_extract_sub_qa</code></td><td>Post-lane collection feeding "Generate Initial Answer".</td></tr>
-            <tr><td>9</td><td><code>run_pipeline_for_subquestions</code></td><td>Explicit per-subquestion stage stack shown in each lane (Expand/Search/Validate/Rerank/Answer/Check), run in parallel.</td></tr>
-            <tr><td>10</td><td><code>generate_initial_answer</code></td><td>"Generate Initial Answer".</td></tr>
-            <tr><td>11</td><td><code>should_refine</code></td><td>"Need refinement?" decision node.</td></tr>
-            <tr><td>12</td><td><code>refine_subquestions</code></td><td>"Entity/Relationship/Term Extraction" + "Generate new &amp; informed subquestions".</td></tr>
-            <tr><td>13</td><td><code>_seed_refined_sub_qa_from_retrieval</code> + <code>run_pipeline_for_subquestions</code></td><td>"Refined Subquestion 1..n" lanes (Expand/Search/Validate/Rerank/Answer/Check).</td></tr>
-            <tr><td>14</td><td><code>generate_initial_answer</code> (refined)</td><td>Corresponds to refinement answer production path ("Produce &amp; Validate Refined Answer", with refinement evidence folded into final synthesis).</td></tr>
-            <tr><td>15</td><td>Return <code>RuntimeAgentRunResponse</code></td><td>Output arrow to <code>&lt;answers&gt;</code>.</td></tr>
+            <tr><td>6</td><td><code>run_search_node</code> + <code>apply_search_node_output_to_graph_state</code></td><td>Graph search node for expanded queries with <code>k_fetch</code> over-fetch and deterministic merge/dedupe before rerank.</td></tr>
+            <tr><td>7</td><td><code>create_coordinator_agent</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
+            <tr><td>8</td><td><code>agent.invoke</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Validate -&gt; Rerank -&gt; Answer -&gt; Check.</td></tr>
+            <tr><td>9</td><td><code>_extract_sub_qa</code></td><td>Post-lane collection feeding "Generate Initial Answer".</td></tr>
+            <tr><td>10</td><td><code>run_pipeline_for_subquestions</code></td><td>Explicit per-subquestion stage stack shown in each lane (Expand/Search/Validate/Rerank/Answer/Check), run in parallel.</td></tr>
+            <tr><td>11</td><td><code>generate_initial_answer</code></td><td>"Generate Initial Answer".</td></tr>
+            <tr><td>12</td><td><code>should_refine</code></td><td>"Need refinement?" decision node.</td></tr>
+            <tr><td>13</td><td><code>refine_subquestions</code></td><td>"Entity/Relationship/Term Extraction" + "Generate new &amp; informed subquestions".</td></tr>
+            <tr><td>14</td><td><code>_seed_refined_sub_qa_from_retrieval</code> + <code>run_pipeline_for_subquestions</code></td><td>"Refined Subquestion 1..n" lanes (Expand/Search/Validate/Rerank/Answer/Check).</td></tr>
+            <tr><td>15</td><td><code>generate_initial_answer</code> (refined)</td><td>Corresponds to refinement answer production path ("Produce &amp; Validate Refined Answer", with refinement evidence folded into final synthesis).</td></tr>
+            <tr><td>16</td><td>Return <code>RuntimeAgentRunResponse</code></td><td>Output arrow to <code>&lt;answers&gt;</code>.</td></tr>
           </tbody>
         </table>
 
@@ -328,60 +330,72 @@ run_runtime_agent() internals
             </tr>
             <tr>
               <td>6</td>
+              <td><code>run_expand_node</code> + <code>expand_queries_for_subquestion</code></td>
+              <td>Graph expansion node that generates bounded query variants per sub-question.</td>
+              <td><code>expanded_queries[]</code> per artifact.</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td><code>run_search_node</code> + <code>apply_search_node_output_to_graph_state</code></td>
+              <td>Retrieves per expanded query with <code>k_fetch</code>, then merges/dedupes by stable identity and stores retrieval provenance in graph state.</td>
+              <td>Deterministic <code>retrieved_docs[]</code> + provenance.</td>
+            </tr>
+            <tr>
+              <td>8</td>
               <td><code>create_coordinator_agent</code></td>
               <td>Builds deep-agents coordinator + one RAG subagent using retriever tool <code>search_database</code>.</td>
               <td>Runnable coordinator.</td>
             </tr>
             <tr>
-              <td>7</td>
+              <td>9</td>
               <td><code>agent.invoke</code></td>
               <td>Coordinator delegates each provided subquestion via <code>task(...)</code>; subagent calls <code>search_database(query, expanded_query, limit)</code>.</td>
               <td>Agent message list + tool interactions.</td>
             </tr>
             <tr>
-              <td>8</td>
+              <td>10</td>
               <td><code>_extract_sub_qa</code></td>
               <td>Builds <code>SubQuestionAnswer[]</code> from captured retriever calls and tool outputs, including <code>tool_call_input</code> and <code>expanded_query</code>.</td>
               <td>Raw per-subquestion results.</td>
             </tr>
             <tr>
-              <td>9</td>
+              <td>11</td>
               <td><code>run_pipeline_for_subquestions</code></td>
               <td>Processes each subquestion in thread pool: validate docs -> rerank -> generate subanswer -> verify grounding.</td>
               <td>Enriched <code>sub_qa[]</code> with <code>answerable</code>, <code>verification_reason</code>.</td>
             </tr>
             <tr>
-              <td>10</td>
+              <td>12</td>
               <td><code>generate_initial_answer</code></td>
               <td>Synthesizes main answer from initial context + verified subanswers (LLM or fallback).</td>
               <td><code>output</code> draft.</td>
             </tr>
             <tr>
-              <td>11</td>
+              <td>13</td>
               <td><code>should_refine</code></td>
               <td>Checks insufficiency patterns and answerable ratio threshold.</td>
               <td>Refinement decision + reason.</td>
             </tr>
             <tr>
-              <td>12</td>
+              <td>14</td>
               <td><code>refine_subquestions</code> (conditional)</td>
               <td>If needed, creates new targeted subquestions for missing evidence.</td>
               <td><code>refined_subquestions[]</code>.</td>
             </tr>
             <tr>
-              <td>13</td>
+              <td>15</td>
               <td><code>_seed_refined_sub_qa_from_retrieval</code> + pipeline (conditional)</td>
               <td>Parallel retrieval for refined questions, then same per-subquestion pipeline again.</td>
               <td><code>refined_sub_qa[]</code>.</td>
             </tr>
             <tr>
-              <td>14</td>
+              <td>16</td>
               <td><code>generate_initial_answer</code> again (conditional)</td>
               <td>Builds final output from refined evidence.</td>
               <td>Final <code>output</code>.</td>
             </tr>
             <tr>
-              <td>15</td>
+              <td>17</td>
               <td>Return response model</td>
               <td>Returns JSON to frontend.</td>
               <td><code>{ main_question, sub_qa, output }</code>.</td>

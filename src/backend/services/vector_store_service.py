@@ -48,7 +48,12 @@ def _normalize_document_metadata(document: Document) -> Document:
     metadata = document.metadata or {}
     topic = str(metadata.get("title") or metadata.get("wiki_page") or "").strip()
     wiki_url = str(metadata.get("source") or metadata.get("wiki_url") or "").strip()
-    slim_metadata = {"topic": topic, "wiki_url": wiki_url}
+    # Preserve legacy wiki keys for backward compatibility with existing retrieval consumers/tests.
+    slim_metadata = {
+        "topic": topic,
+        "wiki_url": wiki_url,
+        "wiki_page": topic,
+    }
     return Document(page_content=document.page_content, metadata=slim_metadata, id=document.id)
 
 
@@ -102,6 +107,38 @@ def search_documents_for_context(
         len(documents),
     )
     return documents
+
+
+def search_documents_for_queries(
+    vector_store: Any,
+    queries: list[str],
+    *,
+    k: int,
+    score_threshold: float | None = None,
+) -> dict[str, list[Document]]:
+    """Run retrieval for each query and return results keyed by query text."""
+    results: dict[str, list[Document]] = {}
+    safe_queries = [query.strip() for query in queries if isinstance(query, str) and query.strip()]
+    logger.info(
+        "Multi-query context search start query_count=%s k=%s score_threshold=%s",
+        len(safe_queries),
+        max(1, k),
+        score_threshold,
+    )
+    for query in safe_queries:
+        documents = search_documents_for_context(
+            vector_store=vector_store,
+            query=query,
+            k=k,
+            score_threshold=score_threshold,
+        )
+        results[query] = documents
+    logger.info(
+        "Multi-query context search complete query_count=%s total_results=%s",
+        len(safe_queries),
+        sum(len(docs) for docs in results.values()),
+    )
+    return results
 
 
 def build_initial_search_context(documents: list[Document]) -> list[dict[str, str | int]]:

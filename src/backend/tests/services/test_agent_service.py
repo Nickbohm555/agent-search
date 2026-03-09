@@ -1,4 +1,5 @@
 import logging
+import json
 import sys
 import time
 import uuid
@@ -13,7 +14,14 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from schemas import DecomposeNodeInput, ExpandNodeInput, ExpandNodeOutput, RuntimeAgentRunRequest
+from schemas import (
+    DecomposeNodeInput,
+    ExpandNodeInput,
+    ExpandNodeOutput,
+    RuntimeAgentRunRequest,
+    SearchNodeInput,
+    SearchNodeOutput,
+)
 from schemas.decomposition import DecompositionPlan
 from services import document_validation_service
 from services import agent_service
@@ -2655,6 +2663,151 @@ def test_apply_expand_node_output_to_graph_state_updates_artifacts_and_compat_fi
         "VAT changes by region",
     ]
     assert updated.sub_qa[0].expanded_query == "VAT policy updates 2025"
+
+
+def test_run_search_node_merges_and_dedupes_multi_query_results(monkeypatch) -> None:
+    class _Doc:
+        def __init__(self, *, doc_id: str, title: str, source: str, content: str):
+            self.id = doc_id
+            self.metadata = {"title": title, "source": source}
+            self.page_content = content
+
+    def fake_search_documents_for_queries(*, vector_store, queries, k, score_threshold):
+        assert queries == [
+            "What changed in VAT policy?",
+            "VAT policy updates 2025",
+            "VAT changes by region",
+        ]
+        assert k == 7
+        return {
+            "What changed in VAT policy?": [
+                _Doc(doc_id="doc-1", title="Policy Doc", source="wiki://policy", content="Policy changed in 2025."),
+                _Doc(doc_id="", title="Regional Memo", source="wiki://memo", content="Regional changes by country."),
+            ],
+            "VAT policy updates 2025": [
+                _Doc(doc_id="doc-1", title="Policy Doc Duplicate", source="wiki://policy", content="Duplicate by id."),
+                _Doc(
+                    doc_id="",
+                    title="Regional Memo Duplicate",
+                    source="wiki://memo",
+                    content="Regional changes by country.",
+                ),
+                _Doc(doc_id="doc-4", title="Timeline", source="wiki://timeline", content="Timeline details."),
+            ],
+            "VAT changes by region": [
+                _Doc(doc_id="doc-5", title="Region Breakdown", source="wiki://regions", content="Region-by-region notes.")
+            ],
+        }
+
+    monkeypatch.setattr(agent_service, "search_documents_for_queries", fake_search_documents_for_queries)
+
+    output = agent_service.run_search_node(
+        node_input=SearchNodeInput(
+            sub_question="What changed in VAT policy?",
+            expanded_queries=["VAT policy updates 2025", "VAT changes by region"],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-search-node"),
+        ),
+        vector_store="fake-store",
+        k_fetch=7,
+    )
+
+    assert [item.document_id for item in output.retrieved_docs] == ["doc-1", "", "doc-4", "doc-5"]
+    assert [item.rank for item in output.retrieved_docs] == [1, 2, 3, 4]
+    assert [item.citation_index for item in output.retrieved_docs] == [1, 2, 3, 4]
+    assert len(output.retrieval_provenance) == 6
+    assert sum(1 for item in output.retrieval_provenance if item["deduped"]) == 2
+    assert output.citation_rows_by_index[1].title == "Policy Doc"
+    assert output.citation_rows_by_index[3].title == "Timeline"
+
+
+def test_apply_search_node_output_to_graph_state_updates_artifacts_and_compat_fields() -> None:
+    state = agent_service.build_agent_graph_state(
+        main_question="Explain VAT changes",
+        decomposition_sub_questions=["What changed in VAT policy?"],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in VAT policy?",
+                sub_answer="",
+                expanded_query="VAT policy updates 2025",
+            )
+        ],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-search-state"),
+    )
+    state = agent_service.apply_expand_node_output_to_graph_state(
+        state=state,
+        sub_question="What changed in VAT policy?",
+        node_output=ExpandNodeOutput(
+            expanded_queries=["What changed in VAT policy?", "VAT policy updates 2025"]
+        ),
+    )
+    node_output = SearchNodeOutput(
+        retrieved_docs=[
+            agent_service.CitationSourceRow(
+                citation_index=1,
+                rank=1,
+                title="VAT Policy",
+                source="wiki://vat-policy",
+                content="VAT policy changed in 2025.",
+                document_id="doc-1",
+            ),
+            agent_service.CitationSourceRow(
+                citation_index=2,
+                rank=2,
+                title="VAT Timeline",
+                source="wiki://vat-timeline",
+                content="Timeline details for VAT changes.",
+                document_id="doc-2",
+            ),
+        ],
+        retrieval_provenance=[
+            {
+                "query": "What changed in VAT policy?",
+                "query_index": 1,
+                "query_rank": 1,
+                "document_identity": "document_id:doc-1",
+                "deduped": False,
+            },
+            {
+                "query": "VAT policy updates 2025",
+                "query_index": 2,
+                "query_rank": 1,
+                "document_identity": "document_id:doc-2",
+                "deduped": False,
+            },
+        ],
+        citation_rows_by_index={
+            1: agent_service.CitationSourceRow(
+                citation_index=1,
+                rank=1,
+                title="VAT Policy",
+                source="wiki://vat-policy",
+                content="VAT policy changed in 2025.",
+                document_id="doc-1",
+            ),
+            2: agent_service.CitationSourceRow(
+                citation_index=2,
+                rank=2,
+                title="VAT Timeline",
+                source="wiki://vat-timeline",
+                content="Timeline details for VAT changes.",
+                document_id="doc-2",
+            ),
+        },
+    )
+
+    updated = agent_service.apply_search_node_output_to_graph_state(
+        state=state,
+        sub_question="What changed in VAT policy?",
+        node_output=node_output,
+    )
+
+    assert len(updated.sub_question_artifacts[0].retrieved_docs) == 2
+    assert len(updated.sub_question_artifacts[0].retrieval_provenance) == 2
+    assert updated.citation_rows_by_index[1].source == "wiki://vat-policy"
+    assert updated.sub_qa[0].sub_answer.startswith("1. title=VAT Policy")
+    tool_call_input = json.loads(updated.sub_qa[0].tool_call_input)
+    assert tool_call_input["query"] == "What changed in VAT policy?"
+    assert len(tool_call_input["retrieval_provenance"]) == 2
 
 
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:

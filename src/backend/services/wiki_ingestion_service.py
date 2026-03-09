@@ -111,7 +111,9 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[Document]:
         metadata = getattr(loaded, "metadata", {}) or {}
         title = str(metadata.get("title") or source.label).strip()
         source_ref = str(metadata.get("source") or source.source_id).strip() or source.source_id
-        normalized_metadata = {"title": title, "source": source_ref}
+        normalized_metadata = dict(metadata)
+        normalized_metadata["title"] = title
+        normalized_metadata["source"] = source_ref
         metadata_keys.update(normalized_metadata.keys())
         total_chars += len(content)
         resolved_documents.append(
