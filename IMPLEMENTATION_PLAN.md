@@ -1,6 +1,6 @@
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 2. (move +1 after each turn)
+Current section to work on: section 3. (move +1 after each turn)
 
 ---
 
