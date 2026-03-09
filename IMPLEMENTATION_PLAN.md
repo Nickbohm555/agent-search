@@ -1,6 +1,6 @@
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 10. (move +1 after each turn)
+Current section to work on: section 11. (move +1 after each turn)
 
 ---
 
@@ -30,7 +30,7 @@ Current section to work on: section 10. (move +1 after each turn)
 **How to test:** Run backend API tests for route/shape stability.
 
 **Test results:** (Add when section is complete.)
-- Pending.
+- Completed.
 
 ---
 
@@ -295,7 +295,7 @@ Current section to work on: section 10. (move +1 after each turn)
 **How to test:** Run decomposition node tests.
 
 **Test results:** (Add when section is complete.)
-- Pending.
+- Completed.
 
 ---
 

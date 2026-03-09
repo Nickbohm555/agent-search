@@ -577,3 +577,72 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 10
+
+## Section 10: Decomposition node extraction - isolated runtime node module
+
+**Single goal:** Extract decomposition node without behavior change.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Preserve prompt/parse/fallback semantics.
+- Keep output guarantees unchanged.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/nodes/decompose.py` | Decomposition node. |
+| `src/backend/tests/sdk/test_node_decompose.py` | Decomposition tests. |
+
+**How to test:** Run decomposition node tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.runtime.nodes.decompose` as an isolated runtime node module with decomposition prompt execution, output parsing, timeout handling, fallback behavior, and structured node logs.
+- Added `agent_search.runtime.nodes.__init__` export so node modules are first-class runtime components.
+- Updated `services.agent_service.run_decomposition_node` to delegate to the new runtime node module while preserving existing behavior through dependency injection hooks.
+- Preserved compatibility with existing decomposition tests/patch points in `services.agent_service` and avoided orchestration behavior changes.
+- Fixed an import-cycle regression surfaced in backend container logs by moving the runtime-node import in `agent_service` to function scope (lazy import).
+- Added `tests/sdk/test_node_decompose.py` to validate normalized outputs, timeout fallback, and parse/fallback semantics from the new node module.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose ps`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_node_decompose.py`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k 'parse_decomposition_output or run_decomposition_node_uses_fallback_on_timeout or run_decomposition_node_emits_normalized_subquestions'`
+- `docker compose restart backend`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k 'run_decomposition_node_emits_normalized_subquestions or run_decomposition_node_uses_fallback_on_timeout'`
+- `docker compose restart backend`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose logs --tail=180 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_node_decompose.py ... [100%]
+pytest: 3 passed in 1.65s
+pytest: tests/services/test_agent_service.py ........ [100%]
+pytest: 8 passed, 44 deselected in 2.08s
+backend: ImportError: cannot import name 'cancel_agent_run_job' from partially initialized module 'services.agent_jobs' (resolved by lazy runtime-node import)
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```

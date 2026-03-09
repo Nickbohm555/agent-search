@@ -1977,53 +1977,20 @@ def run_decomposition_node(
     timeout_s: int | None = None,
     callbacks: list[Any] | None = None,
 ) -> DecomposeNodeOutput:
-    effective_timeout_s = timeout_s or _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s
-    logger.info(
-        "Decomposition node start query=%s context_docs=%s timeout_s=%s run_id=%s trace_id=%s correlation_id=%s",
-        _truncate_query(node_input.main_question),
-        len(node_input.initial_search_context),
-        effective_timeout_s,
-        node_input.run_metadata.run_id,
-        node_input.run_metadata.trace_id,
-        node_input.run_metadata.correlation_id,
+    from agent_search.runtime.nodes.decompose import run_decomposition_node as run_runtime_decomposition_node
+
+    return run_runtime_decomposition_node(
+        node_input=node_input,
+        model=model,
+        timeout_s=timeout_s,
+        callbacks=callbacks,
+        default_timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+        run_with_timeout_fn=_run_with_timeout,
+        run_llm_call_fn=_run_decomposition_only_llm_call,
+        parse_output_fn=_parse_decomposition_output,
+        normalize_sub_question_fn=_normalize_sub_question,
+        truncate_query_fn=_truncate_query,
     )
-    try:
-        decomposition_raw_output = _run_with_timeout(
-            timeout_s=effective_timeout_s,
-            operation_name="decomposition_llm_call",
-            fn=lambda: _run_decomposition_only_llm_call(
-                query=node_input.main_question,
-                initial_search_context=node_input.initial_search_context,
-                model=model,
-                callbacks=callbacks,
-            ),
-        )
-    except FuturesTimeoutError:
-        fallback_sub_question = _normalize_sub_question(node_input.main_question) or "What is the main question?"
-        decomposition_raw_output = [fallback_sub_question]
-        logger.warning(
-            "Decomposition LLM timeout; continuing with fallback sub-question query=%s timeout_s=%s fallback=%s",
-            _truncate_query(node_input.main_question),
-            effective_timeout_s,
-            _truncate_query(fallback_sub_question),
-        )
-    decomposition_raw_output_preview = json.dumps(decomposition_raw_output, ensure_ascii=True)
-    logger.info(
-        "Decomposition-only LLM output captured output_length=%s output_preview=%s",
-        len(decomposition_raw_output),
-        _truncate_query(decomposition_raw_output_preview),
-    )
-    decomposition_sub_questions = _parse_decomposition_output(
-        raw_output=decomposition_raw_output,
-        query=node_input.main_question,
-    )
-    logger.info(
-        "Decomposition output parsed sub_question_count=%s sub_questions=%s run_id=%s",
-        len(decomposition_sub_questions),
-        json.dumps(decomposition_sub_questions, ensure_ascii=True),
-        node_input.run_metadata.run_id,
-    )
-    return DecomposeNodeOutput(decomposition_sub_questions=decomposition_sub_questions)
 
 
 def run_expand_node(
