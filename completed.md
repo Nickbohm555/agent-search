@@ -901,3 +901,65 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 15
+
+## Section 15: Final synthesis node extraction - isolated output module
+
+**Single goal:** Extract final synthesis/citation contract logic.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Preserve final output shape and fallback selection behavior.
+- Preserve citation contract enforcement.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/nodes/synthesize.py` | Final synthesis node. |
+| `src/backend/tests/sdk/test_node_synthesize.py` | Synthesis node tests. |
+
+**How to test:** Run synthesis node tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Extracted final synthesis/citation-contract behavior from `services/agent_service.py` into `agent_search.runtime.nodes.synthesize.run_synthesize_node`.
+- Preserved fallback selection behavior (answerable-first, dedupe, citation-index validation, timeout-prefix fallback).
+- Added dedicated SDK node tests in `tests/sdk/test_node_synthesize.py` for valid synthesis pass-through, missing-citation fallback, invalid-citation fallback, and timeout-prefix fallback paths.
+- Updated `services.agent_service.run_synthesize_final_node` to delegate directly to the extracted runtime node.
+- Exported the new node via `agent_search.runtime.nodes.__init__`.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_node_synthesize.py tests/services/test_agent_service.py -k synthesize`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=180 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `curl -sS -i http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_node_synthesize.py .... [ 50%]
+pytest: tests/services/test_agent_service.py .... [100%]
+pytest: 8 passed, 48 deselected in 1.72s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

@@ -887,88 +887,6 @@ def _extract_citation_indices(answer: str) -> list[int]:
     return indices
 
 
-def _collect_available_citation_indices(sub_question_artifacts: list[SubQuestionArtifacts]) -> set[int]:
-    available_indices: set[int] = set()
-    for artifact in sub_question_artifacts:
-        for index in artifact.citation_rows_by_index.keys():
-            if index > 0:
-                available_indices.add(index)
-    return available_indices
-
-
-def _build_final_synthesis_citation_fallback(
-    *,
-    sub_qa: list[SubQuestionAnswer],
-    available_indices: set[int],
-) -> str:
-    fallback_candidates: list[str] = []
-    seen_answers: set[str] = set()
-    for answerable_only in (True, False):
-        for item in sub_qa:
-            if answerable_only and not item.answerable:
-                continue
-            answer = (item.sub_answer or "").strip()
-            if not answer:
-                continue
-            citation_indices = _extract_citation_indices(answer)
-            if not citation_indices:
-                continue
-            if available_indices and any(index not in available_indices for index in citation_indices):
-                continue
-            normalized_answer = answer.casefold()
-            if normalized_answer in seen_answers:
-                continue
-            seen_answers.add(normalized_answer)
-            fallback_candidates.append(answer)
-            if len(fallback_candidates) >= 2:
-                return " ".join(fallback_candidates)
-    if fallback_candidates:
-        return " ".join(fallback_candidates)
-    return _build_initial_answer_timeout_fallback(sub_qa)
-
-
-def _enforce_final_synthesis_citation_contract(
-    *,
-    generated_final_answer: str,
-    sub_qa: list[SubQuestionAnswer],
-    sub_question_artifacts: list[SubQuestionArtifacts],
-    run_id: str,
-) -> str:
-    resolved_final_answer = (generated_final_answer or "").strip()
-    if not resolved_final_answer:
-        logger.warning(
-            "Final synthesis citation contract fallback; generated answer empty run_id=%s",
-            run_id,
-        )
-        available_indices = _collect_available_citation_indices(sub_question_artifacts)
-        return _build_final_synthesis_citation_fallback(sub_qa=sub_qa, available_indices=available_indices)
-
-    available_indices = _collect_available_citation_indices(sub_question_artifacts)
-    citation_indices_used = _extract_citation_indices(resolved_final_answer)
-    invalid_indices = (
-        [index for index in citation_indices_used if index not in available_indices]
-        if available_indices
-        else []
-    )
-    missing_citations = not citation_indices_used
-
-    if not missing_citations and not invalid_indices:
-        return resolved_final_answer
-
-    fallback_reason = "missing_citation_markers" if missing_citations else "missing_supporting_source_rows"
-    logger.warning(
-        "Final synthesis citation contract fallback; reason=%s used_indices=%s available_indices_count=%s run_id=%s",
-        fallback_reason,
-        citation_indices_used,
-        len(available_indices),
-        run_id,
-    )
-    return _build_final_synthesis_citation_fallback(
-        sub_qa=sub_qa,
-        available_indices=available_indices,
-    )
-
-
 def apply_expand_node_output_to_graph_state(
     *,
     state: AgentGraphState,
@@ -1254,32 +1172,16 @@ def run_synthesize_final_node(
     node_input: SynthesizeFinalNodeInput,
     callbacks: list[Any] | None = None,
 ) -> SynthesizeFinalNodeOutput:
-    logger.info(
-        "Final synthesis node start main_question_len=%s sub_qa_count=%s artifact_count=%s run_id=%s trace_id=%s correlation_id=%s",
-        len(node_input.main_question),
-        len(node_input.sub_qa),
-        len(node_input.sub_question_artifacts),
-        node_input.run_metadata.run_id,
-        node_input.run_metadata.trace_id,
-        node_input.run_metadata.correlation_id,
-    )
-    generated_final_answer = generate_final_synthesis_answer(
-        main_question=node_input.main_question,
-        sub_qa=node_input.sub_qa,
+    from agent_search.runtime.nodes.synthesize import run_synthesize_node as run_runtime_synthesize_node
+
+    return run_runtime_synthesize_node(
+        node_input=node_input,
         callbacks=callbacks,
+        generate_final_synthesis_answer_fn=generate_final_synthesis_answer,
+        extract_citation_indices_fn=_extract_citation_indices,
+        build_initial_answer_timeout_fallback_fn=_build_initial_answer_timeout_fallback,
+        truncate_query_fn=_truncate_query,
     )
-    final_answer = _enforce_final_synthesis_citation_contract(
-        generated_final_answer=generated_final_answer,
-        sub_qa=node_input.sub_qa,
-        sub_question_artifacts=node_input.sub_question_artifacts,
-        run_id=node_input.run_metadata.run_id,
-    )
-    logger.info(
-        "Final synthesis node complete output_len=%s run_id=%s",
-        len(final_answer),
-        node_input.run_metadata.run_id,
-    )
-    return SynthesizeFinalNodeOutput(final_answer=final_answer)
 
 
 def apply_synthesize_final_node_output_to_graph_state(
