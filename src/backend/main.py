@@ -13,7 +13,6 @@ if not _root.handlers:
 for _name in (
     "utils.agent_callbacks",
     "services.agent_service",
-    "agents.coordinator",
     "tools.retriever_tool",
 ):
     logging.getLogger(_name).setLevel(logging.INFO)

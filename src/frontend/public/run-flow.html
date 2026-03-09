@@ -161,8 +161,7 @@
         <p class="small">
           Section 8 adds <code>run_sequential_graph_runner(...)</code> for strict sequential execution:
           <code>decompose -&gt; (expand -&gt; search -&gt; rerank -&gt; answer per sub-question) -&gt; synthesize_final</code>.
-          Section 10 makes <code>run_runtime_agent(...)</code> graph-first for <code>/api/agents/run</code>, with rollback
-          via <code>RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true</code>.
+          Section 10 makes <code>run_runtime_agent(...)</code> call the graph path for <code>/api/agents/run</code>.
         </p>
         <p class="small">
           Section 9 adds <code>run_parallel_graph_runner(...)</code> for bounded fanout across sub-questions with
@@ -196,9 +195,9 @@
           preserves the previous successful final answer while a new run is still in progress.
         </p>
         <p class="small">
-          Section 19 adds backend parity evaluations that compare graph-first and rollback deep-agent responses for
-          fixed questions, including response-shape parity (<code>main_question</code>, <code>sub_qa</code>, <code>output</code>)
-          and fallback parity (for example vector-store timeout and <code>nothing relevant found</code> behavior).
+          Section 19 adds backend parity evaluations for stable graph-runtime response shape
+          (<code>main_question</code>, <code>sub_qa</code>, <code>output</code>) and fallback behavior
+          (for example vector-store timeout and <code>nothing relevant found</code> behavior).
         </p>
         <p class="small">
           Section 20 adds retrieval-quality evaluations focused on evidence quality only (not cost): tests compare
@@ -236,18 +235,12 @@ Backend
 
 run_runtime_agent() internals
   1) build_graph_run_metadata(...)
-  2) feature flag check: RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT
-  3) graph path (default):
+  2) graph path:
      -> get_vector_store(...)
      -> search_documents_for_context(...) + build_initial_search_context(...)
      -> run_parallel_graph_runner(...)
      -> map_graph_state_to_runtime_response(...)
-  4) rollback path (only when flag=true):
-     -> create_coordinator_agent(...)
-     -> agent.invoke(...)
-     -> _extract_sub_qa(...) + run_pipeline_for_subquestions(...)
-     -> optional refinement loop
-  5) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+  3) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
       </div>
 
       <div class="panel">
@@ -354,7 +347,7 @@ run_runtime_agent() internals
             <tr><td>4</td><td><code>run_decomposition_node</code></td><td>Graph-entry decomposition node for "Decompose Question into Sub-Questions".</td></tr>
             <tr><td>5</td><td><code>_run_decomposition_only_llm_call</code> + <code>_parse_decomposition_output</code></td><td>Internal decomposition node helpers that normalize/dedupe/limit the provided sub-question list for "Initial Subquestion 1..n" lanes.</td></tr>
             <tr><td>6</td><td><code>run_search_node</code> + <code>apply_search_node_output_to_graph_state</code></td><td>Graph search node for expanded queries with <code>k_fetch</code> over-fetch and deterministic merge/dedupe before rerank.</td></tr>
-            <tr><td>7</td><td><code>create_coordinator_agent</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
+            <tr><td>7</td><td><code>run_parallel_graph_runner</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
             <tr><td>8</td><td><code>agent.invoke</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Validate -&gt; Rerank -&gt; Answer -&gt; Check.</td></tr>
             <tr><td>9</td><td><code>_extract_sub_qa</code></td><td>Post-lane collection feeding "Generate Initial Answer".</td></tr>
             <tr><td>10</td><td><code>run_pipeline_for_subquestions</code></td><td>Explicit per-subquestion stage stack shown in each lane (Expand/Search/Validate/Rerank/Answer/Check), run in parallel.</td></tr>
@@ -439,9 +432,9 @@ run_runtime_agent() internals
             </tr>
             <tr>
               <td>10</td>
-              <td><code>create_coordinator_agent</code></td>
-              <td>Builds deep-agents coordinator + one RAG subagent using retriever tool <code>search_database</code>.</td>
-              <td>Runnable coordinator.</td>
+              <td><code>run_parallel_graph_runner</code></td>
+              <td>Builds graph runner fanout + per-stage state updates.</td>
+              <td>Graph state with snapshots.</td>
             </tr>
             <tr>
               <td>11</td>
@@ -593,15 +586,15 @@ decomposition_sub_questions = _parse_decomposition_output(
         </details>
 
         <details>
-          <summary><strong>Order 6:</strong> <code>create_coordinator_agent</code></summary>
+          <summary><strong>Order 6:</strong> <code>run_parallel_graph_runner</code></summary>
           <div class="mono-block"># src/backend/services/agent_service.py
-agent = create_coordinator_agent(
+agent = run_parallel_graph_runner(
     vector_store=vector_store,
     model=_RUNTIME_AGENT_MODEL,
 )
 
-# src/backend/agents/coordinator.py
-def create_coordinator_agent(vector_store, model, ...):
+# src/backend/services/agent_service.py
+def run_parallel_graph_runner(payload, vector_store, model, run_metadata, initial_search_context):
     retriever_tool = make_retriever_tool(vector_store)
     rag_subagent = {
         "name": "rag_retriever",
@@ -633,7 +626,7 @@ config = {
     "configurable": {"thread_id": run_thread_id},
 }
 
-coordinator_message = _build_coordinator_input_message(decomposition_sub_questions)
+coordinator_message = run_decomposition_node(decomposition_sub_questions)
 result = agent.invoke(
     {"messages": [HumanMessage(content=coordinator_message)]},
     config=config,
@@ -812,7 +805,7 @@ return RuntimeAgentRunResponse(
             <tr>
               <td>Lesson 1: Planning isolated from execution</td>
               <td>Dedicated decomposition-only LLM call before coordinator invocation.</td>
-              <td><code>agent_service._run_decomposition_only_llm_call</code>, <code>coordinator.get_decomposition_only_prompt</code></td>
+              <td><code>agent_service._run_decomposition_only_llm_call</code>, <code>agent_service._DECOMPOSITION_ONLY_PROMPT</code></td>
               <td>Cleaner separation of concerns: planning output is explicit input to execution.</td>
             </tr>
             <tr>
@@ -824,7 +817,7 @@ return RuntimeAgentRunResponse(
             <tr>
               <td>Lesson 1 + Lesson 2: Orchestrator role clarity</td>
               <td>Coordinator receives provided subquestions only and delegates; no final synthesis.</td>
-              <td><code>agent_service._build_coordinator_input_message</code>, <code>coordinator._COORDINATOR_PROMPT</code></td>
+              <td><code>agent_service.run_decomposition_node</code>, <code>agent_service.run_parallel_graph_runner</code></td>
               <td>Coordinator is now a control-plane component; answer synthesis moved to service layer.</td>
             </tr>
             <tr>
@@ -842,14 +835,14 @@ return RuntimeAgentRunResponse(
             <tr>
               <td>Lesson 3: Co-locate instructions + end reminders + simplify prompts</td>
               <td>RAG subagent prompt consolidated around tool contract, with final reminder and reduced branch complexity.</td>
-              <td><code>coordinator._RAG_SUBAGENT_PROMPT</code></td>
+              <td><code>agent_service.run_answer_subquestion_node</code></td>
               <td>Improves instruction adherence for tool usage and output formatting under long contexts.</td>
             </tr>
           </tbody>
         </table>
         <p class="small">
           Net effect: the system moved from a loosely-coupled prompt flow to a more explicit pipeline architecture:
-          isolated planning, strict handoff contracts, coordinator-as-delegator, and evidence identity preserved end-to-end.
+          isolated planning, strict handoff contracts, graph-lane execution, and evidence identity preserved end-to-end.
         </p>
       </div>
 
@@ -991,7 +984,7 @@ return RuntimeAgentRunResponse(
         <h3>High-Impact, Low-Risk First Improvements</h3>
         <ul>
           <li>Move evidence representation from line text to strict JSON objects between stages.</li>
-          <li>Add stage timing metrics (decomposition, coordinator invoke, subquestion pipeline, refinement) and p95 dashboards.</li>
+          <li>Add stage timing metrics (decomposition, subquestion lane, subquestion pipeline, refinement) and p95 dashboards.</li>
           <li>Calibrate <code>SUBQUESTION_PIPELINE_MAX_WORKERS</code> and <code>DOCUMENT_VALIDATION_MAX_WORKERS</code> together to avoid oversubscription.</li>
           <li>Gate refinement with stronger criteria to avoid unnecessary second-pass runs.</li>
           <li>Add retry-on-parse for decomposition output before fallback to single question.</li>
@@ -999,11 +992,11 @@ return RuntimeAgentRunResponse(
       </div>
 
       <div class="panel">
-        <h2>Coordinator vs Final Answer Responsibility</h2>
+        <h2>Graph Runtime Final Answer Responsibility</h2>
         <ul>
-          <li>Coordinator agent is instructed to delegate and gather subagent outputs, not to synthesize final user answer.</li>
+          <li>Graph runtime executes typed node stages and synthesizes the final answer in <code>run_synthesize_final_node</code>.</li>
           <li>Main final answer is generated in backend service layer by <code>generate_initial_answer</code>.</li>
-          <li>UI displays that service-generated <code>output</code>, not raw coordinator completion text.</li>
+          <li>UI displays that service-generated <code>output</code>, not intermediate lane text.</li>
         </ul>
       </div>
 

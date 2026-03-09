@@ -1305,3 +1305,100 @@ docker compose logs --no-color --tail=120 frontend
 docker compose logs --no-color --tail=120 db
 -> postgres ready to accept connections
 ```
+
+## Section 22: Remove deep-agent runtime code - post-cutover cleanup
+
+**Single goal:** Delete unused deep-agent runtime orchestration code after graph path is validated.
+
+**Details:**
+- Remove coordinator/deep-agent invocation from active runtime execution.
+- Delete deep-agent-only helpers, callbacks, and prompt contracts that are no longer referenced.
+- Keep only code required for historical docs/tests if explicitly needed; otherwise remove.
+- Ensure imports and schemas no longer reference deep-agent-specific artifacts.
+- Do not remove `langfuse` tracing integration; retain/cleanly re-home it as graph runtime observability.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Remove or archive deep-agent runtime path if fully unused. |
+| `src/backend/services/agent_service.py` | Remove deep-agent branches and callback plumbing. |
+| `src/backend/utils/agent_callbacks.py` | Remove deep-agent callback capture code if no longer used. |
+| `src/backend/tests/agents/test_coordinator_agent.py` | Remove/replace tests tied only to removed runtime code. |
+
+**How to test:** Run full backend tests and static import checks to confirm no dead deep-agent references remain.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Removed deep-agent runtime execution path from `run_runtime_agent(...)`:
+  - Deleted `_run_runtime_agent_with_legacy_deep_agent(...)` and rollback-flag switching logic.
+  - Kept graph runtime path only (`_run_runtime_agent_with_graph_runner`).
+- Removed deep-agent helper plumbing from backend service/runtime:
+  - Deleted coordinator-specific helper functions (`_build_coordinator_input_message`, `_extract_sub_qa`, callback-capture parsing helpers).
+  - Re-homed decomposition prompt contract in `agent_service.py` (`_DECOMPOSITION_ONLY_PROMPT`) and removed dependency on `agents.coordinator` prompt export.
+  - Removed `coordinator_invoke_timeout_s` from runtime timeout config and test fixtures.
+- Removed deep-agent modules/tests:
+  - Deleted `src/backend/agents/coordinator.py`.
+  - Simplified `src/backend/agents/__init__.py`.
+  - Deleted `src/backend/tests/agents/test_coordinator_agent.py`.
+- Removed deep-agent callback capture code:
+  - Trimmed `src/backend/utils/agent_callbacks.py` to keep only `AgentLoggingCallbackHandler` used by graph runner.
+- Updated backend/runtime docs and config:
+  - Updated `README.md` and `src/frontend/public/run-flow.html` to document graph-only runtime and Section 22 cleanup state.
+  - Removed migration env flags from `.env.example` (`RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT`, `COORDINATOR_INVOKE_TIMEOUT_S`) and removed rollback var from local `.env`.
+- Updated dependency lock:
+  - Removed `deepagents` from `src/backend/pyproject.toml`.
+  - Regenerated `src/backend/uv.lock` via `uv lock`.
+- Updated tests for graph-only runtime:
+  - Pruned legacy deep-agent assertions in `src/backend/tests/services/test_agent_service.py`.
+  - Fixed API status fixture in `src/backend/tests/api/test_agent_run.py` by including `sub_question_artifacts`.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> removed services, network, backend/frontend images, and volumes
+
+docker compose build
+-> backend/frontend rebuilt successfully
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Health and runtime checks:
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS -w '\n%{http_code}\n' http://localhost:8000/api/health
+-> {"status":"ok"}
+-> 200
+
+Dependency + static checks:
+cd src/backend && uv lock
+-> lock refreshed; deepagents removed
+
+docker compose exec backend uv run python -m compileall -q /app
+-> success
+
+Source static reference check (graph-only runtime surface):
+rg -n "deepagents|agents\.coordinator|create_coordinator_agent|RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT|COORDINATOR_INVOKE_TIMEOUT_S" src/backend src/frontend/src src/frontend/public README.md .env .env.example -g '!src/backend/uv.lock'
+-> no matches
+
+Required section test suite:
+docker compose exec backend uv run pytest
+-> PASS (104 passed, 1 warning)
+
+Container refresh after edits:
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+Post-change logs:
+docker compose logs --no-color --tail=80 backend frontend db
+-> backend uvicorn/alembic startup healthy; frontend vite ready on :5173; db ready/healthy
+-> note: watchfiles reload warnings observed after test/dependency edits; no fatal runtime errors
+```

@@ -5,7 +5,7 @@
 # agent-search
 
 **A plug-and-play RAG SDK that turns your `model` + `vector_store` into a multi-stage, traceable answer pipeline.**  
-Ship faster with coordinator-driven decomposition, parallel per-subquestion retrieval, evidence checks, and an optional refinement loop—without rebuilding the plumbing.
+Ship faster with graph-driven decomposition, parallel per-subquestion retrieval, evidence checks, and an optional refinement loop—without rebuilding the plumbing.
 
 ```text
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -30,7 +30,7 @@ DISPLAY: best viewed in dark mode (the HUD panels below are designed for it)
 
 This project builds an **SDK** that takes your **model**, your **vector store**, and abstracts the logic for building **world-class RAG systems** using a fixed technical flow. You can build products and experiences on top of this pipeline without reimplementing decomposition, retrieval, verification, or refinement—we provide the orchestration, contracts, and traceability.
 
-**Why it exists:** Multi-stage RAG (retrieve → decompose → per-subquestion retrieval → verify → synthesize → optionally refine) is complex and easy to get wrong. This codebase encodes one proven flow: load curated data into a pgvector-backed store, run a coordinator-driven agent pipeline over it, and return a final answer with per-subquestion traceability. The SDK-style boundary (model + vector_store in; structured run out) lets you swap embeddings/LLMs and stores while keeping the same pipeline behavior.
+**Why it exists:** Multi-stage RAG (retrieve → decompose → per-subquestion retrieval → verify → synthesize → optionally refine) is complex and easy to get wrong. This codebase encodes one proven flow: load curated data into a pgvector-backed store, run a graph-runtime agent pipeline over it, and return a final answer with per-subquestion traceability. The SDK-style boundary (model + vector_store in; structured run out) lets you swap embeddings/LLMs and stores while keeping the same pipeline behavior.
 
 **For whom:** Developers and teams who want a production-ready RAG pipeline they can extend (e.g. different front ends, data sources, or deployment targets) rather than building from scratch.
 
@@ -46,7 +46,7 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 [ OVERVIEW // DATA PATHS ]
 ```
 
-The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → graph decomposition → parallel per-subquestion graph lane → synthesis). A React front end and FastAPI backend expose load/wipe/run; `/api/agents/run` now executes the graph runner path by default (`run_parallel_graph_runner`) and keeps a rollback flag (`RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true`) for the legacy deep-agent coordinator path during migration. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`).
+The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → graph decomposition → parallel per-subquestion graph lane → synthesis). A React front end and FastAPI backend expose load/wipe/run; `/api/agents/run` executes the graph runner path (`run_parallel_graph_runner`) as the sole runtime execution mode. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`).
 Section 11 adds async runtime endpoints (`/api/agents/run-async`, `/api/agents/run-status/{job_id}`, `/api/agents/run-cancel/{job_id}`) so clients can poll staged progress and receive `subquestions_ready` as soon as decomposition finishes.
 
 The runtime service also defines graph-state contracts for staged migration: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
@@ -140,7 +140,7 @@ flowchart TB
 [ ARCHITECTURE // WHOLE SYSTEM ]
 ```
 
-End-to-end: **User** → **Frontend** (Vite + React) → **Backend** (FastAPI) → **Agent service** orchestrates coordinator + vector store + per-subquestion pipeline and optional refinement → **Response** (`main_question`, `sub_qa[]`, `output`) back to frontend. **Ingestion** path: load request → internal data service → wiki ingestion + vector store service → Postgres/pgvector. **Answer** path: run request → initial retrieval → coordinator (decomposition + delegated retrieval) → parallel pipeline (validate → rerank → subanswer → verify) → initial answer → refinement decision → optional refinement loop → final output.
+End-to-end: **User** → **Frontend** (Vite + React) → **Backend** (FastAPI) → **Agent service** orchestrates graph nodes + vector store + per-subquestion pipeline and synthesis → **Response** (`main_question`, `sub_qa[]`, `output`) back to frontend. **Ingestion** path: load request → internal data service → wiki ingestion + vector store service → Postgres/pgvector. **Answer** path: run request → initial retrieval → graph decomposition → parallel lane execution (expand → search → rerank → answer) → final synthesis output.
 
 **Deployment:** `frontend` (React, :5173), `backend` (FastAPI, :8000), `db` (Postgres 16 + pgvector). Optional `chrome` for remote debugging (:9222).
 
@@ -156,18 +156,11 @@ flowchart LR
     U[User] --> FE[Frontend]
     FE -->|POST /api/agents/run| API[FastAPI]
     API --> SVC[agent_service]
-    SVC --> COORD[Coordinator]
     SVC --> VSS[vector_store_service]
-    COORD --> RET[retriever_tool]
-    RET --> CHUNKS[(pgvector)]
-    VSS --> CHUNKS
-    SVC --> PIPE[Per-subq pipeline]
-    PIPE --> SYNTH[Initial answer]
-    SYNTH --> REF{Refine?}
-    REF -->|yes| REFPIPE[Refinement path]
-    REFPIPE --> SYNTH
-    REF -->|no| OUT[Response]
-    SYNTH --> OUT
+    VSS --> CHUNKS[(pgvector)]
+    SVC --> PIPE[Graph lane execution]
+    PIPE --> SYNTH[Final synthesis]
+    SYNTH --> OUT[Response]
     OUT --> API --> FE --> U
 ```
 
@@ -239,7 +232,7 @@ Backend
 - Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
 - Frontend section 17 subanswer view: a dedicated Subanswer panel renders per-subquestion `sub_qa[].sub_answer` as soon as answer-stage updates arrive, highlights explicit `nothing relevant found` fallback responses, and links citation markers (`[n]`) to matching Rerank evidence rows.
 - Frontend section 18 final synthesis view: a dedicated Final Synthesis panel updates only when the terminal synthesis stage completes, summarizes supporting subanswers/citation coverage, and preserves the previous successful final synthesis while a new run is in progress.
-- Section 19 parity evals: backend regression tests now run fixed-question parity checks across graph-first and rollback (`RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true`) paths and require parity for response shape (`main_question`, `output`, `sub_qa` count/order), plus matching fallback behavior (including vector-store timeout fallback and `nothing relevant found` propagation).
+- Section 19 parity evals: backend regression tests validate stable graph-runtime response shape (`main_question`, `output`, `sub_qa` count/order), plus matching fallback behavior (including vector-store timeout fallback and `nothing relevant found` propagation).
 - Section 20 retrieval quality evals: backend tests now compare `search-only` vs `search+rerank` on hard queries and track two quality metrics only: `top1_hit_rate` for relevant evidence and citation-grounding consistency (whether cited `[1]` resolves to the expected supporting row). Eval slices include baseline (`no expansion + no rerank`) and stack path (`MultiQueryRetriever` expansion slice + `flashrank` rerank slice).
 - Section 21 efficiency evals: backend tests now quantify token-budget impact of reranked `top_n` context versus naive unfiltered context, enforce a quality floor (gold evidence remains in cited context), and record practical operating ranges. Current recommended operating range from the eval fixtures is `k_fetch=6..8` with `top_n=2..3` for substantial context reduction while preserving answer grounding.
 
@@ -247,9 +240,9 @@ Backend
 
 Section 8 migration note: a sequential graph runner now exists as `run_sequential_graph_runner`, executing strict lane order:
 `decompose -> (expand -> search -> rerank -> answer per sub-question, sequentially) -> synthesize_final`.
-Section 10 migration note: `run_runtime_agent` is graph-first and calls `run_parallel_graph_runner` on `/api/agents/run`; rollback to legacy deep-agent runtime is controlled by `RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true`.
+Section 10 migration note: `run_runtime_agent` calls `run_parallel_graph_runner` on `/api/agents/run` as the only runtime path.
 Section 9 migration note: `run_parallel_graph_runner` now executes sub-question lanes with bounded fanout (`GRAPH_RUNNER_MAX_WORKERS`) and reindexes lane outputs back to original decomposition order before synthesis. It also emits `stage_snapshots` on `AgentGraphState` after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
-Section 19 migration note: parity suite assertions in `tests/services/test_agent_service.py` enforce no behavioral regression between graph and rollback paths for fixed queries before cleanup sections.
+Section 22 cleanup note: deep-agent rollback runtime code has been removed; graph execution is now the only maintained production runtime.
 Section 20 migration note: retrieval-quality eval suites in `tests/services/test_agent_service.py` and `tests/services/test_reranker_service.py` enforce that rerank-enabled paths improve hard-query retrieval ordering and citation-grounding consistency versus non-reranked/non-expanded baselines.
 Section 21 migration note: efficiency eval suites in `tests/services/test_agent_service.py` enforce that reranked contexts reduce token budget versus naive retrieved windows while retaining gold-evidence quality floor, and they lock recommended tuning targets for `k_fetch`/`top_n`.
 
@@ -265,15 +258,6 @@ Section 21 migration note: efficiency eval suites in `tests/services/test_agent_
 | 8 | `run_rerank_node` + `apply_rerank_node_output_to_graph_state` | Rerank-node scoring with `flashrank`; trims to `top_n`, preserves deterministic fallback order when reranker fails/disabled, and stores rerank score/order provenance. | `reranked_docs[]` + updated citation map and compatibility payload fields. |
 | 9 | `run_answer_subquestion_node` + `apply_answer_subquestion_node_output_to_graph_state` | Subanswer-node generation + verification over reranked docs; requires citation markers and supporting citation rows; falls back to exact `nothing relevant found` when unsupported. | `sub_answer`, citation usage, and supporting source rows in graph/compat state. |
 | 9a | `run_synthesize_final_node` + `apply_synthesize_final_node_output_to_graph_state` | Final synthesis-node helper that composes final answer from collected subanswers while preserving citation markers and writes graph compatibility fields. | `final_answer` + `output` in graph state. |
-| 10 | `create_coordinator_agent` (rollback only) | Builds coordinator + retriever-backed RAG subagent when rollback flag is enabled. | Runnable agent. |
-| 11 | `agent.invoke` (rollback only) | Delegates subquestions; runs retriever tool calls when rollback path is active. | Agent messages + tool outputs. |
-| 12 | `_extract_sub_qa` (rollback only) | Builds `SubQuestionAnswer[]` from captured tool calls/messages for rollback path. | Seed `sub_qa[]`. |
-| 13 | `run_pipeline_for_subquestions` (rollback only) | Legacy parallel lane: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
-| 14 | `generate_initial_answer` (rollback only) | Legacy synthesis from initial context + subanswers. | Initial `output`. |
-| 15 | `should_refine` (rollback only) | Legacy refinement decision. | Refinement decision. |
-| 16 | `refine_subquestions` (rollback only) | Legacy refined subquestion generation. | `refined_subquestions[]`. |
-| 17 | `_seed_refined_sub_qa_from_retrieval` + pipeline (rollback only) | Legacy refinement retrieval + rerun. | `refined_sub_qa[]`. |
-| 18 | `generate_initial_answer` again (rollback only) | Legacy refined synthesis. | Refined/final `output`. |
 | 19 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
 
 ### Parallelism points
@@ -316,7 +300,7 @@ That stable line contract is reused across validation, reranking, subanswer gene
 
 | Area | Choice | Pros | Cons |
 |------|--------|------|------|
-| **Orchestration** | Graph-first runtime (`run_parallel_graph_runner`) with rollback flag to deep-agent | Deterministic stage boundaries, cleaner snapshots/tracing, rollback safety | Temporary dual-path maintenance during migration |
+| **Orchestration** | Graph runtime (`run_parallel_graph_runner`) | Deterministic stage boundaries and cleaner snapshots/tracing | Less flexibility for experimental alternate runtimes |
 | **Payload shape** | String-formatted doc payloads between some stages | Easy to log and show in UI | Parsing fragility; extra conversion |
 | **Validation / rerank / verify** | Deterministic validation + `flashrank` rerank + heuristic verify | Better semantic ranking while keeping controllable latency | Extra reranker model dependency and potential cold-start download cost |
 | **Concurrency** | `ThreadPoolExecutor` per subquestion | Better throughput for many subquestions | Noisier errors and log interleaving |
