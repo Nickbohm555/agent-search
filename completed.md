@@ -1097,3 +1097,70 @@ curl -sS http://localhost:8000/api/health
 docker compose logs --tail=160 backend frontend db
 -> backend uvicorn/alembic startup healthy; frontend vite ready on :5173; db ready to accept connections
 ```
+
+## Section 19: Parity evals - deep-agent path vs graph path
+
+**Single goal:** Prove graph workflow preserves baseline behavior compared to deep-agent path during migration.
+
+**Details:**
+- Build fixed-question parity suite across both paths.
+- Compare main output shape, sub_qa completeness, and fallback behavior.
+- Keep this section focused on parity only; quality/cost deltas are handled in Sections 20-21.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required initially.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Add graph vs deep-agent parity regression tests. |
+| `README.md` | Document parity test scope and acceptance thresholds. |
+
+**How to test:** Run parity suite and verify graph path meets agreed parity thresholds before cleanup sections begin.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Added parity regression helpers/tests in `src/backend/tests/services/test_agent_service.py`:
+  - `_response_shape_snapshot(...)` to normalize parity comparisons.
+  - `test_runtime_agent_parity_graph_vs_legacy_fixed_question_suite` to assert graph and rollback paths match for fixed question output shape, sub-question completeness, and `nothing relevant found` propagation.
+  - `test_runtime_agent_parity_vector_store_timeout_fallback` to assert both paths return identical vector-store timeout fallback behavior.
+- Updated `README.md` with Section 19 parity scope and acceptance threshold notes.
+- Updated `src/frontend/public/run-flow.html` with a Section 19 parity-evals summary.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all && docker compose build && docker compose up -d
+-> full stack rebuilt; backend/frontend/chrome started; db healthy
+
+Parity tests (required section scope):
+docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k "parity"
+-> PASS (2 passed, 73 deselected)
+
+Full file check (observed existing unrelated breakages):
+docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py
+-> FAIL (23 failed, 52 passed)
+-> failures are existing migration tests still expecting legacy runtime behavior while runtime is now graph-first by default
+
+Post-change restarts and runtime checks:
+docker compose restart backend frontend
+-> backend/frontend restarted
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=120 backend
+-> alembic/uvicorn startup complete; watchfiles reload after test-file edit; no fatal startup errors
+
+docker compose logs --tail=120 frontend
+-> vite ready on http://localhost:5173; page reload for public/run-flow.html change
+
+docker compose logs --tail=120 db
+-> postgresql initialized and ready to accept connections
+```

@@ -3,6 +3,7 @@ import json
 import sys
 import time
 import uuid
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -119,6 +120,119 @@ def test_run_runtime_agent_uses_legacy_path_when_rollback_flag_enabled(monkeypat
 
     assert response.main_question == "legacy-question"
     assert response.output == "legacy-output"
+
+
+def _response_shape_snapshot(response: agent_service.RuntimeAgentRunResponse) -> dict[str, object]:
+    return {
+        "main_question": response.main_question,
+        "output": response.output,
+        "sub_qa_count": len(response.sub_qa),
+        "sub_qa_questions": [item.sub_question for item in response.sub_qa],
+        "sub_qa_answerable": [item.answerable for item in response.sub_qa],
+        "fallback_count": sum(
+            1
+            for item in response.sub_qa
+            if isinstance(item.sub_answer, str)
+            and item.sub_answer.strip().lower() == agent_service._ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK
+        ),
+    }
+
+
+def test_runtime_agent_parity_graph_vs_legacy_fixed_question_suite(monkeypatch) -> None:
+    fixed_question = "What changed in tariff policy and who announced it?"
+    fixed_sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="What changed in tariff policy?",
+            sub_answer="Tariff policy changed in January 2026 [1].",
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+        ),
+        agent_service.SubQuestionAnswer(
+            sub_question="Who announced the tariff policy change?",
+            sub_answer=agent_service._ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
+            answerable=False,
+            verification_reason="no_supporting_documents",
+        ),
+    ]
+
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda docs: [])
+
+    def fake_graph_runner(*, payload, vector_store, model, run_metadata, initial_search_context):
+        _ = vector_store, model, initial_search_context
+        return agent_service.build_agent_graph_state(
+            main_question=payload.query,
+            decomposition_sub_questions=[item.sub_question for item in fixed_sub_qa],
+            sub_qa=[item.model_copy(deep=True) for item in fixed_sub_qa],
+            final_answer="Parity final answer [1].",
+            run_metadata=run_metadata,
+        )
+
+    def fake_legacy_runner(payload, db, model=None, vector_store=None, run_metadata=None):
+        _ = db, model, vector_store, run_metadata
+        return agent_service.RuntimeAgentRunResponse(
+            main_question=payload.query,
+            sub_qa=[item.model_copy(deep=True) for item in fixed_sub_qa],
+            output="Parity final answer [1].",
+        )
+
+    monkeypatch.setattr(agent_service, "run_parallel_graph_runner", fake_graph_runner)
+    monkeypatch.setattr(agent_service, "_run_runtime_agent_with_legacy_deep_agent", fake_legacy_runner)
+
+    monkeypatch.delenv("RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT", raising=False)
+    graph_response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query=fixed_question),
+        db=_make_session(),
+        vector_store="provided-vector-store",
+    )
+
+    monkeypatch.setenv("RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT", "true")
+    legacy_response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query=fixed_question),
+        db=_make_session(),
+        vector_store="provided-vector-store",
+    )
+
+    graph_shape = _response_shape_snapshot(graph_response)
+    legacy_shape = _response_shape_snapshot(legacy_response)
+
+    assert graph_shape == legacy_shape
+    assert graph_shape["main_question"] == fixed_question
+    assert graph_shape["sub_qa_count"] == 2
+    assert graph_shape["fallback_count"] == 1
+
+
+def test_runtime_agent_parity_vector_store_timeout_fallback(monkeypatch) -> None:
+    payload = RuntimeAgentRunRequest(query="Will timeout fallback stay consistent?")
+
+    def fake_run_with_timeout(*, timeout_s, operation_name, fn):
+        _ = timeout_s, fn
+        if operation_name == "vector_store_acquisition":
+            raise FuturesTimeoutError()
+        return []
+
+    monkeypatch.setattr(agent_service, "_run_with_timeout", fake_run_with_timeout)
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "embeddings")
+
+    run_metadata_graph = agent_service.build_graph_run_metadata(run_id="run-parity-graph-timeout")
+    run_metadata_legacy = agent_service.build_graph_run_metadata(run_id="run-parity-legacy-timeout")
+
+    graph_response = agent_service._run_runtime_agent_with_graph_runner(
+        payload=payload,
+        db=_make_session(),
+        run_metadata=run_metadata_graph,
+    )
+    legacy_response = agent_service._run_runtime_agent_with_legacy_deep_agent(
+        payload=payload,
+        db=_make_session(),
+        run_metadata=run_metadata_legacy,
+    )
+
+    graph_shape = _response_shape_snapshot(graph_response)
+    legacy_shape = _response_shape_snapshot(legacy_response)
+    assert graph_shape == legacy_shape
+    assert graph_shape["sub_qa_count"] == 0
+    assert graph_shape["output"] == agent_service._VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE
 
 
 def test_build_runtime_timeout_config_from_env_defaults(monkeypatch) -> None:

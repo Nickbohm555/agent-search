@@ -239,6 +239,7 @@ Backend
 - Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
 - Frontend section 17 subanswer view: a dedicated Subanswer panel renders per-subquestion `sub_qa[].sub_answer` as soon as answer-stage updates arrive, highlights explicit `nothing relevant found` fallback responses, and links citation markers (`[n]`) to matching Rerank evidence rows.
 - Frontend section 18 final synthesis view: a dedicated Final Synthesis panel updates only when the terminal synthesis stage completes, summarizes supporting subanswers/citation coverage, and preserves the previous successful final synthesis while a new run is in progress.
+- Section 19 parity evals: backend regression tests now run fixed-question parity checks across graph-first and rollback (`RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true`) paths and require parity for response shape (`main_question`, `output`, `sub_qa` count/order), plus matching fallback behavior (including vector-store timeout fallback and `nothing relevant found` propagation).
 
 ### Runtime pipeline map (orders 1-18)
 
@@ -246,6 +247,7 @@ Section 8 migration note: a sequential graph runner now exists as `run_sequentia
 `decompose -> (expand -> search -> rerank -> answer per sub-question, sequentially) -> synthesize_final`.
 Section 10 migration note: `run_runtime_agent` is graph-first and calls `run_parallel_graph_runner` on `/api/agents/run`; rollback to legacy deep-agent runtime is controlled by `RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true`.
 Section 9 migration note: `run_parallel_graph_runner` now executes sub-question lanes with bounded fanout (`GRAPH_RUNNER_MAX_WORKERS`) and reindexes lane outputs back to original decomposition order before synthesis. It also emits `stage_snapshots` on `AgentGraphState` after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
+Section 19 migration note: parity suite assertions in `tests/services/test_agent_service.py` enforce no behavioral regression between graph and rollback paths for fixed queries before cleanup sections.
 
 | Order | Function | Core logic | Output |
 |------|----------|------------|--------|
