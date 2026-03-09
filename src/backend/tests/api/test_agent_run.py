@@ -165,6 +165,7 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
             }
         ],
         "decomposition_sub_questions": ["First question?", "Second question?"],
+        "sub_question_artifacts": [],
         "sub_qa": [
             {
                 "sub_question": "First question?",

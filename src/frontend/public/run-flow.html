@@ -261,6 +261,12 @@ run_runtime_agent() internals
               <td>At <code>subquestions_ready</code>, renders <code>decomposition_sub_questions</code> immediately with count and normalization indicators.</td>
               <td>Independent from expansion/search/rerank/answer/final stage outputs.</td>
             </tr>
+            <tr>
+              <td>7</td>
+              <td><code>App.tsx</code> expand panel render</td>
+              <td>Renders grouped <code>sub_question_artifacts[].expanded_queries</code> per subquestion index and marks fallback when only the original query remains.</td>
+              <td>Out: per-subquestion expanded query list + fallback badge.</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -278,7 +284,7 @@ run_runtime_agent() internals
           <code>GET /api/agents/run-status/{job_id}</code>,
           <code>POST /api/agents/run-cancel/{job_id}</code>.
           Status payload includes staged metadata and partial state fields (notably
-          <code>decomposition_sub_questions</code>) before final synthesis completes.
+          <code>decomposition_sub_questions</code> and <code>sub_question_artifacts</code>) before final synthesis completes.
         </p>
         <p class="small">DB session is injected by FastAPI dependency <code>get_db()</code>; this route passes it to the service but current run logic primarily uses PGVector connection directly.</p>
       </div>

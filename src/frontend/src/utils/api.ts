@@ -84,6 +84,11 @@ export interface AgentRunStageMetadata {
   emitted_at?: number | null;
 }
 
+export interface SubQuestionArtifact {
+  sub_question: string;
+  expanded_queries: string[];
+}
+
 export interface RuntimeAgentRunAsyncStartResponse {
   job_id: string;
   run_id: string;
@@ -98,6 +103,7 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   stage: string;
   stages: AgentRunStageMetadata[];
   decomposition_sub_questions: string[];
+  sub_question_artifacts: SubQuestionArtifact[];
   sub_qa: SubQuestionAnswer[];
   output: string;
   result?: RuntimeAgentRunResponse | null;
@@ -235,6 +241,8 @@ export async function getAgentRunStatus(jobId: string): Promise<ApiResult<Runtim
       v.stages.every(isAgentRunStageMetadata) &&
       Array.isArray(v.decomposition_sub_questions) &&
       v.decomposition_sub_questions.every((item) => typeof item === "string") &&
+      Array.isArray(v.sub_question_artifacts) &&
+      v.sub_question_artifacts.every(isSubQuestionArtifact) &&
       Array.isArray(v.sub_qa) &&
       v.sub_qa.every(isSubQuestionAnswer) &&
       typeof v.output === "string" &&
@@ -289,6 +297,15 @@ function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata
     typeof value.lane_index === "number" &&
     typeof value.lane_total === "number" &&
     (value.emitted_at === undefined || value.emitted_at === null || typeof value.emitted_at === "number")
+  );
+}
+
+function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {
+  return (
+    isObject(value) &&
+    typeof value.sub_question === "string" &&
+    Array.isArray(value.expanded_queries) &&
+    value.expanded_queries.every((item) => typeof item === "string")
   );
 }
 

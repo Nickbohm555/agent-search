@@ -4,6 +4,7 @@ import {
   AgentStageRuntimeStatus,
   RequestState,
   RuntimeAgentRunResponse,
+  SubQuestionArtifact,
   WikiSourceOption,
   cancelInternalDataLoad,
   getAgentRunStatus,
@@ -41,6 +42,7 @@ export default function App() {
   const [runStatusMessage, setRunStatusMessage] = useState("Not started.");
   const [runCurrentStage, setRunCurrentStage] = useState("");
   const [decompositionSubQuestions, setDecompositionSubQuestions] = useState<string[]>([]);
+  const [subQuestionArtifacts, setSubQuestionArtifacts] = useState<SubQuestionArtifact[]>([]);
   const [stageStatuses, setStageStatuses] = useState<Record<AgentStageName, AgentStageRuntimeStatus>>({
     decompose: "pending",
     expand: "pending",
@@ -194,6 +196,7 @@ export default function App() {
     setRunStatusMessage("Submitting run...");
     setRunCurrentStage("");
     setDecompositionSubQuestions([]);
+    setSubQuestionArtifacts([]);
     setStageStatuses({
       decompose: "pending",
       expand: "pending",
@@ -241,6 +244,7 @@ export default function App() {
       const status = statusResult.data;
       setRunCurrentStage(status.stage);
       setDecompositionSubQuestions(status.decomposition_sub_questions);
+      setSubQuestionArtifacts(status.sub_question_artifacts);
       setRunStatusMessage(status.message || `Run status: ${status.status}`);
       const nextStatuses = computeStageStatuses(orderedStages, status.stage, status.status);
       setStageStatuses(nextStatuses);
@@ -250,6 +254,7 @@ export default function App() {
         backendStage: status.stage,
         backendStatus: status.status,
         decompositionSubQuestionCount: status.decomposition_sub_questions.length,
+        subQuestionArtifactCount: status.sub_question_artifacts.length,
         stageStatuses: nextStatuses,
       });
 
@@ -413,6 +418,46 @@ export default function App() {
         )}
       </section>
 
+      <section className="panel expand-panel">
+        <h2>Expand</h2>
+        {decompositionSubQuestions.length > 0 ? (
+          <ol className="expand-lane-list" aria-label="Expanded query groups">
+            {decompositionSubQuestions.map((subQuestion, index) => {
+              const artifact = subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
+              const expandedQueries = artifact?.expanded_queries ?? [];
+              const fallbackToOriginalOnly = isExpansionFallback({
+                subQuestion,
+                expandedQueries,
+              });
+              return (
+                <li key={`${index}-${subQuestion}`} className="expand-lane-item">
+                  <p className="expand-lane-title">
+                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                  </p>
+                  <p className="expand-original-question">
+                    <strong>Original:</strong> {subQuestion}
+                  </p>
+                  {expandedQueries.length > 0 ? (
+                    <ol className="expand-query-list" aria-label={`Expanded queries for subquestion ${index + 1}`}>
+                      {expandedQueries.map((queryItem, queryIndex) => (
+                        <li key={`${index}-${queryIndex}-${queryItem}`} className="expand-query-item">
+                          {queryItem}
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>No expanded queries yet.</p>
+                  )}
+                  {fallbackToOriginalOnly ? <span className="expansion-fallback-badge">Fallback: original only</span> : null}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p>No expansion data yet.</p>
+        )}
+      </section>
+
       <section className="panel final-readout-panel">
         <h2>Final Readout</h2>
         <section className="final-readout-section" aria-labelledby="final-readout-main-question">
@@ -530,4 +575,14 @@ function hasNoDuplicateQuestions(subQuestions: string[]): boolean {
   if (subQuestions.length === 0) return false;
   const normalized = subQuestions.map((subQuestion) => subQuestion.trim().toLowerCase());
   return normalized.length === new Set(normalized).size;
+}
+
+function isExpansionFallback(args: { subQuestion: string; expandedQueries: string[] }): boolean {
+  const normalizedSubQuestion = args.subQuestion.trim().toLowerCase();
+  if (!normalizedSubQuestion) return false;
+  const normalizedQueries = args.expandedQueries
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0);
+  if (normalizedQueries.length !== 1) return false;
+  return normalizedQueries[0] === normalizedSubQuestion;
 }

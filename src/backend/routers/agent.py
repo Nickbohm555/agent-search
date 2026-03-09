@@ -42,6 +42,7 @@ def runtime_agent_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
         stage=job.stage,
         stages=list(job.stages),
         decomposition_sub_questions=list(job.decomposition_sub_questions),
+        sub_question_artifacts=[item.model_copy(deep=True) for item in job.sub_question_artifacts],
         sub_qa=[item.model_copy(deep=True) for item in job.sub_qa],
         output=job.output,
         result=job.result.model_copy(deep=True) if job.result is not None else None,

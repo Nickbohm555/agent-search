@@ -15,6 +15,7 @@ from schemas import (
     GraphStageSnapshot,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
+    SubQuestionArtifacts,
     SubQuestionAnswer,
 )
 from services.agent_service import (
@@ -52,6 +53,7 @@ class AgentRunJobStatus:
     stage: str = "queued"
     stages: list[AgentRunStageMetadata] = field(default_factory=list)
     decomposition_sub_questions: list[str] = field(default_factory=list)
+    sub_question_artifacts: list[SubQuestionArtifacts] = field(default_factory=list)
     sub_qa: list[SubQuestionAnswer] = field(default_factory=list)
     output: str = ""
     result: Optional[RuntimeAgentRunResponse] = None
@@ -168,6 +170,7 @@ def _run_agent_job(job_id: str, payload: RuntimeAgentRunRequest, run_id: str) ->
                 current_job.message = f"Stage completed: {mapped_stage}"
                 current_job.stages.append(stage_metadata)
                 current_job.decomposition_sub_questions = list(snapshot.decomposition_sub_questions)
+                current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in snapshot.sub_question_artifacts]
                 current_job.sub_qa = [item.model_copy(deep=True) for item in snapshot.sub_qa]
                 current_job.output = snapshot.output
             logger.info(
@@ -201,6 +204,7 @@ def _run_agent_job(job_id: str, payload: RuntimeAgentRunRequest, run_id: str) ->
                 current_job.result = response
             current_job.sub_qa = [item.model_copy(deep=True) for item in response.sub_qa]
             current_job.decomposition_sub_questions = list(state.decomposition_sub_questions)
+            current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in state.sub_question_artifacts]
             current_job.output = response.output
             current_job.finished_at = time.time()
         logger.info(

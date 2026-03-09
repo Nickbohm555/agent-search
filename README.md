@@ -230,10 +230,11 @@ Backend
 - Request: `RuntimeAgentRunRequest { query }`
 - Response: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
 - Async start endpoint: `POST /api/agents/run-async` returns `{ job_id, run_id, status }`.
-- Async status endpoint: `GET /api/agents/run-status/{job_id}` returns staged progress including `stage`, `stages[]`, `decomposition_sub_questions`, and partial `sub_qa`/`output`.
+- Async status endpoint: `GET /api/agents/run-status/{job_id}` returns staged progress including `stage`, `stages[]`, `decomposition_sub_questions`, `sub_question_artifacts[]` (with per-subquestion `expanded_queries`), and partial `sub_qa`/`output`.
 - Async cancel endpoint: `POST /api/agents/run-cancel/{job_id}` sets cancellation requested for running jobs.
 - Frontend section 12 timeline shell: ordered rail is `decompose -> expand -> search -> rerank -> answer -> final`, with visible state transitions based on async status polling.
 - Frontend section 13 decompose view: a dedicated Decompose panel now renders `decomposition_sub_questions` immediately at `subquestions_ready`, including count and normalization indicators (`Ends with ?`, `Dedupe`), independent from later stage artifacts.
+- Frontend section 14 expand view: a dedicated Expand panel renders grouped `expanded_queries` by subquestion index and shows a fallback badge when expansion collapses to the original subquestion only.
 
 ### Runtime pipeline map (orders 1-18)
 

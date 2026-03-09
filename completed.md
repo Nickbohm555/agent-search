@@ -664,3 +664,77 @@ Frontend runtime visibility logs from tests include:
 -> Async run stage update ... backendStage: 'subquestions_ready' ... decompositionSubQuestionCount: 1
 -> Async run stage update ... backendStage: 'synthesize_final' ... decompositionSubQuestionCount: 1
 ```
+
+## Section 14: Expand stage view - per-subquestion expanded query list
+
+**Single goal:** Render expansion outputs for each sub-question in a dedicated Expand panel.
+
+**Details completed:**
+- Added async status payload support for expansion artifacts in backend so frontend can consume per-subquestion expanded query groups:
+  - `RuntimeAgentRunAsyncStatusResponse` now includes `sub_question_artifacts`.
+  - Async job tracking (`AgentRunJobStatus`) now persists `sub_question_artifacts` from graph snapshots/final state.
+  - `/api/agents/run-status/{job_id}` now returns `sub_question_artifacts`.
+- Added frontend staged payload typing/validation for expansion artifacts in `src/frontend/src/utils/api.ts` via `SubQuestionArtifact` and strict runtime shape checks.
+- Added Expand-stage UI in `src/frontend/src/App.tsx`:
+  - New `Expand` panel grouped by subquestion index.
+  - Renders original subquestion and `expanded_queries` list for each lane.
+  - Shows fallback badge `Fallback: original only` when expansion collapses to exactly the original query.
+  - Added stage-update visibility logs including `subQuestionArtifactCount`.
+- Added Expand panel styles in `src/frontend/src/styles.css` for grouped lane cards, query lists, and fallback badge.
+- Updated tests in `src/frontend/src/App.test.tsx` to validate:
+  - Expand panel rendering during async polling.
+  - Expanded query groups display.
+  - Fallback badge rendering behavior.
+- Updated async API route test expectation in `src/backend/tests/api/test_agent_run.py` for new response field.
+- Updated required docs:
+  - `README.md` now documents `sub_question_artifacts[]` in async status payload and section-14 Expand view behavior.
+  - `src/frontend/public/run-flow.html` now includes Expand panel rendering in frontend flow and status-payload field notes.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> removed containers/volumes/images for project
+
+docker compose build
+-> agent-search-backend Built
+-> agent-search-frontend Built
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Health and runtime checks:
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+Required section tests/checks:
+docker compose exec frontend npm run test -- --run src/App.test.tsx
+-> PASS (5 passed)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite build successful)
+
+Backend check attempt for modified API test:
+docker compose exec backend uv run python -m pytest tests/api/test_agent_run.py
+-> /app/.venv/bin/python3: No module named pytest
+
+Changed service restarts + logs:
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+docker compose logs --tail=160 backend
+-> uvicorn startup complete; file-change reloads observed; no fatal errors
+
+docker compose logs --tail=120 frontend
+-> Vite ready on http://localhost:5173/
+
+docker compose logs --tail=120 db
+-> PostgreSQL ready to accept connections
+```

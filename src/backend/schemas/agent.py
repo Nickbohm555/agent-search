@@ -48,6 +48,7 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     stage: str = ""
     stages: list[AgentRunStageMetadata] = Field(default_factory=list)
     decomposition_sub_questions: list[str] = Field(default_factory=list)
+    sub_question_artifacts: list["SubQuestionArtifacts"] = Field(default_factory=list)
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str = ""
     result: RuntimeAgentRunResponse | None = None

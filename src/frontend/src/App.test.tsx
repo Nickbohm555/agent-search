@@ -76,6 +76,12 @@ describe("App run query flow", () => {
             stage: "subquestions_ready",
             stages: [],
             decomposition_sub_questions: ["First subquestion?"],
+            sub_question_artifacts: [
+              {
+                sub_question: "First subquestion?",
+                expanded_queries: ["First subquestion?"],
+              },
+            ],
             sub_qa: [],
             output: "",
             result: null,
@@ -95,6 +101,12 @@ describe("App run query flow", () => {
             stage: "synthesize_final",
             stages: [],
             decomposition_sub_questions: ["First subquestion?"],
+            sub_question_artifacts: [
+              {
+                sub_question: "First subquestion?",
+                expanded_queries: ["First subquestion?", "First subquestion? alt phrasing"],
+              },
+            ],
             sub_qa: [],
             output: "NATO is a military alliance.",
             result: {
@@ -121,8 +133,12 @@ describe("App run query flow", () => {
     expect(getStageStatusText("decompose")).toContain("in_progress");
     expect(getStageStatusText("search")).toContain("pending");
     expect(screen.getByRole("heading", { name: "Decompose" })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Decomposed subquestions" })).toBeInTheDocument();
-    expect(screen.getByText("First subquestion?")).toBeInTheDocument();
+    const decomposeList = screen.getByRole("list", { name: "Decomposed subquestions" });
+    expect(decomposeList).toBeInTheDocument();
+    expect(within(decomposeList).getByText("First subquestion?")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Expand" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Expanded query groups" })).toBeInTheDocument();
+    expect(screen.getByText("Fallback: original only")).toBeInTheDocument();
     expect(screen.getByText("Subquestion count: 1")).toBeInTheDocument();
     expect(screen.getByText("Ends with ?: yes")).toBeInTheDocument();
     expect(screen.getByText("Dedupe: pass")).toBeInTheDocument();
@@ -193,6 +209,12 @@ describe("App run query flow", () => {
             stage: "synthesize_final",
             stages: [],
             decomposition_sub_questions: ["Which treaty created NATO?"],
+            sub_question_artifacts: [
+              {
+                sub_question: "Which treaty created NATO?",
+                expanded_queries: ["Which treaty created NATO?", "NATO founding treaty"],
+              },
+            ],
             sub_qa: [
               {
                 sub_question: "Which treaty created NATO?",
