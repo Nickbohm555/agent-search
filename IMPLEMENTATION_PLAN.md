@@ -1,541 +1,625 @@
-# Agent-Search Implementation Plan (RAG-focused)
 
-**Goal:** Build a better RAG system. Input: user question. Output: answer based on vectorized docs (with citations where applicable).
+Tasks are in **recommended implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Tasks are in **recommended implementation order** (1…n). Each section = **one context window**. Complete one section at a time.
-
-Current section to work on: section 19. (move +1 after each turn)
-
-**Guardrail policy:** Time guardrails (Sections 3–18) **do not fail** the run. On timeout, force a return (partial result, fallback, or safe default) and continue so the pipeline stays fast and the user always gets an answer when possible.
+Current section to work on: section 1. (move +1 after each turn)
 
 ---
 
-## Section 1: Optional chat model parameter at run entry
+## Section 1: Define state graph contracts - graph state and node IO
 
-**Single goal:** Allow the run entry point to accept an optional chat model (e.g. LangChain `BaseChatModel` / OpenAI) so callers can supply their own model; when not provided, keep current env-based default.
+**Single goal:** Introduce a typed state model and node contracts for the full workflow before migrating execution.
 
 **Details:**
-- Add optional `model` parameter to `run_runtime_agent` (and any public SDK entry that calls it).
-- When provided, use it for `create_coordinator_agent(..., model=...)` and for the decomposition LLM call (`_run_decomposition_only_llm_call`); when not provided, use existing `_RUNTIME_AGENT_MODEL` / `_DECOMPOSITION_ONLY_MODEL` and current `ChatOpenAI` construction.
-- Do not change request/response schema in this section; focus on the service layer signature and coordinator/decomposition wiring.
+- Define graph-level state for: `main_question`, `decomposition_sub_questions`, per-subquestion artifacts (`expanded_queries`, `retrieved_docs`, `reranked_docs`, `sub_answer`), and `final_answer`.
+- Define stable node input/output contracts for nodes: `decompose`, `expand`, `search`, `rerank`, `answer_subquestion`, `synthesize_final`.
+- Keep compatibility fields used by current API response (`sub_qa`, `output`) so migration is non-breaking.
+- Define citation carrier format in state (ranked source rows keyed by citation index).
+- Include observability identifiers in run state/metadata (`run_id`, trace/correlation ids) so `langfuse` traces can be attached consistently across nodes.
 
 **Tech stack and dependencies**
-- No new packages; existing `langchain_core` / `langchain_openai` for `BaseChatModel`-like typing if desired.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required.
+- Tooling (uv, poetry, Docker): no container/runtime changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Add optional `model` to `run_runtime_agent`; thread to `create_coordinator_agent` and `_run_decomposition_only_llm_call`. |
-| `src/backend/agents/coordinator.py` | Already accepts `model`; no change unless signature doc updated. |
-| `src/backend/tests/services/test_agent_service.py` | Tests for run with provided model vs default. |
+| `src/backend/schemas/agent.py` | Add graph-state-adjacent typed models for staged artifacts. |
+| `src/backend/services/agent_service.py` | Host shared state-contract definitions and conversion helpers. |
+| `src/backend/utils/langfuse_tracing.py` | Reuse existing tracing helpers for graph-state run metadata conventions. |
+| `src/backend/tests/services/test_agent_service.py` | Validate state-shape and backward-compatible response mapping. |
 
-**How to test:** Unit tests: run with `model=None` (default behavior unchanged); run with a fake model and assert it is passed to `create_coordinator_agent` and used in decomposition. Restart app and run one query via API to confirm no regression.
+**How to test:** Run backend schema/service tests to confirm graph state maps cleanly to existing `RuntimeAgentRunResponse`.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `20 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response schema
+## Section 2: Build decomposition node from existing logic - state-graph entry
 
----
-
-## Section 2: Optional vector store parameter at run entry
-
-**Single goal:** Allow the run entry point to accept an optional vector store instance so callers can supply their own store; when not provided, keep current `get_vector_store(...)` from env/DB.
+**Single goal:** Reuse current decomposition logic as the first graph node that produces normalized sub-questions.
 
 **Details:**
-- Add optional `vector_store` parameter to `run_runtime_agent` (and any public SDK entry).
-- When provided, use it for initial search, coordinator retriever, and refinement retrieval; when not provided, call `get_vector_store(connection=..., collection_name=..., embeddings=...)` as today.
-- Do not change request/response schema in this section; focus on the service layer.
+- Lift current decomposition-only logic into a dedicated graph node.
+- Keep existing normalization guarantees (atomic questions ending with `?`, dedupe, max/min handling).
+- Emit `decomposition_sub_questions` immediately into graph state for downstream fanout and UI.
+- Preserve fallback behavior when LLM decomposition fails.
 
 **Tech stack and dependencies**
-- No new packages; existing `vector_store_service.get_vector_store` and store interface (e.g. `similarity_search`).
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Add optional `vector_store` to `run_runtime_agent`; use when provided, else `get_vector_store(...)`. |
-| `src/backend/tests/services/test_agent_service.py` | Tests for run with provided vector_store vs default. |
+| `src/backend/services/agent_service.py` | Extract decomposition into reusable graph node function. |
+| `src/backend/schemas/decomposition.py` | Continue using structured decomposition output contract. |
+| `src/backend/tests/services/test_agent_service.py` | Verify node behavior and fallback logic. |
 
-**How to test:** Unit tests: run with `vector_store=None` (default behavior unchanged); run with a fake vector_store and assert it is used for initial search and coordinator. Restart app and run one query via API to confirm no regression.
+**How to test:** Run decomposition-focused backend tests; confirm node emits normalized sub-questions in state.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `25 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with response shape unchanged (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=200 backend`, `docker compose logs --tail=80 frontend`, `docker compose logs --tail=80 db` -> reviewed for visibility; no change-specific backend exceptions
+## Section 3: Build expansion node - query list generation per sub-question
 
----
-
-## Section 3: Time guardrail configuration
-
-**Single goal:** Introduce a single place (env or config) that defines timeout seconds for each RAG step so every guardrail can be configured without code changes.
+**Single goal:** Add a graph node that expands each sub-question into a bounded query list.
 
 **Details:**
-- Define named timeout keys (e.g. `INITIAL_SEARCH_TIMEOUT_S`, `DECOMPOSITION_LLM_TIMEOUT_S`, `COORDINATOR_INVOKE_TIMEOUT_S`, etc.) and read from env with sensible defaults (e.g. 30–120s for LLM steps, 10–30s for retrieval).
-- No actual timeout enforcement in this section; only add the configuration and document it (e.g. in `.env.example` or docs).
+- For each sub-question, generate `queries` containing original question plus expansions.
+- Use `langchain` `MultiQueryRetriever` query-generation flow to produce alternate phrasings per sub-question.
+- Apply normalization: trim, dedupe, drop empties, cap count and query length.
+- Keep deterministic fallback to original question when expansion fails.
+- Store expansions per sub-question in graph state.
 
 **Tech stack and dependencies**
-- No new packages; `os.getenv` or existing config pattern.
+- Libraries/packages (pip, npm, uv, etc.): use `langchain` `MultiQueryRetriever` for expansion generation.
+- Tooling (uv, poetry, Docker): optional env settings for expansion count/limits.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` or a small `config.py` / env module | Declare and read timeout env vars for all steps. |
-| `.env.example` or `docs/` | Document new env vars and default values. |
+| `src/backend/pyproject.toml` | Add/lock query-expansion dependencies (`langchain` explicit version/range as needed). |
+| `src/backend/services/query_expansion_service.py` | Library-backed query expansion wrapper (`MultiQueryRetriever`) with normalization/fallback. |
+| `src/backend/services/agent_service.py` | Implement expansion node and state updates. |
+| `src/backend/tests/services/test_agent_service.py` | Test expansion list generation and fallback behavior. |
+| `src/backend/tests/services/test_query_expansion_service.py` | Verify library-backed expansion behavior and deterministic fallback path. |
 
-**How to test:** Assert that timeout values are read correctly in tests (e.g. default present, override from env when set). No runtime behavior change yet.
+**How to test:** Run backend tests verifying expansion node outputs include original query and bounded expansions.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `29 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+## Section 4: Build search node - multi-query retrieval with merge/dedupe
 
----
-
-## Section 4: Time guardrail — vector store acquisition
-
-**Single goal:** Enforce a maximum time for obtaining the vector store when not provided by the caller (i.e. for the `get_vector_store(...)` path).
+**Single goal:** Implement graph search node that retrieves across expanded queries and merges candidates.
 
 **Details:**
-- When `run_runtime_agent` calls `get_vector_store(...)`, wrap that call in a timeout; on timeout, **do not fail**—return a safe fallback (e.g. return early from run with a short “unavailable” message, or retry once with shorter timeout) so the API still returns a response.
-- Use the timeout value from Section 3 (e.g. `VECTOR_STORE_ACQUISITION_TIMEOUT_S`).
-- When caller provides `vector_store`, skip this step; no guardrail applied.
+- For each sub-question, run retrieval for each expanded query with over-fetch (`k_fetch`).
+- Merge/dedupe by stable key (`document_id` preferred; fallback source+content key).
+- Keep deterministic ordering before rerank fallback path.
+- Store merged candidate set and retrieval provenance in graph state.
 
 **Tech stack and dependencies**
-- Python stdlib `concurrent.futures` or equivalent; no new pip packages.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): configurable `k_fetch` via env.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap `get_vector_store` in timeout when vector_store not provided. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout triggers and normal completion. |
+| `src/backend/services/agent_service.py` | Implement search node orchestration and merge logic. |
+| `src/backend/services/vector_store_service.py` | Reuse retrieval primitives in graph node execution. |
+| `src/backend/tests/services/test_agent_service.py` | Validate multi-query retrieval merge and dedupe behavior. |
 
-**How to test:** Unit test: mock slow `get_vector_store` and assert timeout raises; test normal path still returns store. Restart app and run one query.
+**How to test:** Run backend tests and verify merged retrieval candidates are deduplicated and deterministic.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `25 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with response shape unchanged (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=200 backend`, `docker compose logs --tail=80 frontend`, `docker compose logs --tail=80 db` -> reviewed for visibility; no change-specific backend exceptions
+## Section 5: Build rerank node - reorder retrieved candidates before answering
 
----
-
-## Section 5: Time guardrail — initial search (context for decomposition)
-
-**Single goal:** Enforce a maximum time for the initial retrieval and context build (search_documents_for_context + build_initial_search_context) before decomposition.
+**Single goal:** Add reranking node that reorders merged retrieval candidates and trims to final top_n context.
 
 **Details:**
-- Wrap the block that performs initial search and builds `initial_search_context` in a timeout; on timeout, **do not fail**—use empty or partial context and continue (decomposition can still run with less context).
-- Use config from Section 3 (e.g. `INITIAL_SEARCH_TIMEOUT_S`).
+- Score merged candidate documents with a library reranker (`flashrank`) against sub-question semantics.
+- Select top `top_n` reranked documents for answer generation.
+- Keep deterministic fallback to non-reranked order if reranker fails/unavailable.
+- Persist rerank scores/order in graph state for observability.
+- Explicitly remove and prohibit custom lexical-overlap reranking implementations for production path.
 
 **Tech stack and dependencies**
-- Python stdlib; reuse same timeout pattern as Section 4.
+- Libraries/packages (pip, npm, uv, etc.): use `flashrank` for reranking models/inference.
+- Tooling (uv, poetry, Docker): env config for rerank enable/top_n.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap initial search + build_initial_search_context in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/backend/pyproject.toml` | Add `flashrank` dependency for production reranking. |
+| `src/backend/services/agent_service.py` | Implement rerank node and fallback behavior. |
+| `src/backend/services/reranker_service.py` | Provide `flashrank`-backed reranking adapter/config. |
+| `src/backend/tests/services/test_reranker_service.py` | Validate ranking quality and fallback behavior. |
+| `src/backend/tests/services/test_agent_service.py` | Verify rerank node state transitions and outputs. |
 
-**How to test:** Unit test: slow search mock triggers timeout; normal path succeeds. Restart app and run one query.
+**How to test:** Run reranker and agent-service tests; confirm top_n docs differ from raw retrieval when reranking is enabled.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `27 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+## Section 6: Build subanswer node - answer per sub-question with citations
 
----
-
-## Section 6: Time guardrail — decomposition LLM call
-
-**Single goal:** Enforce a maximum time for the decomposition-only LLM call (`_run_decomposition_only_llm_call`).
+**Single goal:** Generate one grounded subanswer per sub-question using reranked docs and mandatory citation markers.
 
 **Details:**
-- Wrap `_run_decomposition_only_llm_call` in a timeout; on timeout, **do not fail**—use fallback (e.g. single normalized question from user query) and continue so the pipeline still runs.
-- Use config from Section 3 (e.g. `DECOMPOSITION_LLM_TIMEOUT_S`).
+- Build prompt contract: answer only from reranked docs; include citation markers like `[1]`, `[2]`.
+- Return exact fallback `nothing relevant found` when docs do not support an answer.
+- Store `sub_answer`, citation usage, and supporting source rows in graph state.
+- Keep output aligned with existing `SubQuestionAnswer` fields.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap _run_decomposition_only_llm_call in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout (fallback or error) and normal path. |
+| `src/backend/services/agent_service.py` | Implement subanswer node and state updates. |
+| `src/backend/services/subanswer_service.py` | Reuse/extend subanswer generation contract. |
+| `src/backend/services/subanswer_verification_service.py` | Validate citation presence/supportability. |
+| `src/backend/tests/services/test_agent_service.py` | Verify subanswers include citations or correct fallback. |
 
-**How to test:** Unit test: slow LLM mock triggers timeout; normal path returns parsed sub-questions. Restart app and run one query.
+**How to test:** Run backend subanswer/verification tests and confirm citation markers map to ranked doc rows.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `29 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+## Section 7: Build final synthesis node - compose final answer from subanswers
 
----
-
-## Section 7: Time guardrail — coordinator agent invoke
-
-**Single goal:** Enforce a maximum time for the coordinator agent invocation (agent.invoke with sub-questions and retriever tool).
+**Single goal:** Synthesize final answer from per-subquestion answers while preserving grounded citations.
 
 **Details:**
-- Wrap `agent.invoke(...)` in a timeout; on timeout, **do not fail**—use whatever messages/sub_qa were captured so far (or build minimal sub_qa from decomposition only) and continue to synthesis so the user still gets an answer.
-- Use config from Section 3 (e.g. `COORDINATOR_INVOKE_TIMEOUT_S`).
+- Use `main_question` + collected subanswers as synthesis inputs.
+- Preserve citation grounding in final output (carry through or remap citations deterministically).
+- Ensure final output remains concise and evidence-bound.
+- Keep API response shape unchanged (`output` + `sub_qa`).
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap coordinator agent.invoke in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/backend/services/initial_answer_service.py` | Adapt synthesis for state-graph inputs/outputs. |
+| `src/backend/services/agent_service.py` | Invoke synthesis node and map graph state to response. |
+| `src/backend/tests/services/test_initial_answer_service.py` | Verify grounded final synthesis behavior. |
 
-**How to test:** Unit test: slow invoke triggers timeout; normal path returns messages and sub_qa. Restart app and run one query.
+**How to test:** Run synthesis tests and verify final answer uses subanswer evidence with stable citations.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `31 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=200 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no new change-specific backend exceptions
+## Section 8: Assemble graph runner - sequential lane only
 
----
-
-## Section 8: Time guardrail — per-subquestion document validation
-
-**Single goal:** Enforce a maximum time for the document validation step applied to each sub-question (e.g. each `_apply_document_validation_to_sub_qa` batch or per-item).
+**Single goal:** Implement a sequential graph runner that executes nodes in strict order for one sub-question at a time.
 
 **Details:**
-- Wrap the document validation work in a timeout; on timeout, **do not fail**—treat that sub-question as validation-skipped (keep existing docs/order) and continue so the pipeline returns an answer.
-- Use config from Section 3 (e.g. `DOCUMENT_VALIDATION_TIMEOUT_S`).
+- Graph order: `decompose -> (for each sub-question: expand -> search -> rerank -> answer) -> synthesize_final`.
+- Run sub-question lane sequentially in this section to simplify correctness/debugging.
+- Keep legacy deep-agent code untouched in this section; only add sequential graph runner and tests.
+- Defer parallel fanout and state snapshot emission to Section 9.
+- Keep `langfuse` tracing active in this new graph path (start handler, attach callbacks, flush at run end/finally).
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap document validation in timeout (per item or per batch as chosen). |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/backend/services/agent_service.py` | Implement graph runner and node orchestration. |
+| `src/backend/utils/langfuse_tracing.py` | Provide callback lifecycle utilities reused by graph runner execution. |
+| `src/backend/tests/services/test_agent_service.py` | Validate sequential graph order and deterministic outputs. |
 
-**How to test:** Unit test: slow validation triggers timeout; normal path completes. Restart app and run one query.
+**How to test:** Run agent-service tests verifying strict sequential node execution and stable outputs.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `35 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no reranking-guardrail runtime exceptions
+## Section 9: Add parallel sub-question fanout and state snapshots
 
----
-
-## Section 9: Time guardrail — per-subquestion reranking
-
-**Single goal:** Enforce a maximum time for the reranking step applied to each sub-question.
+**Single goal:** Add controlled parallelism for per-subquestion lanes and emit snapshot state for progress reporting.
 
 **Details:**
-- Wrap the reranking work in a timeout; on timeout, **do not fail**—keep existing document order and continue so the pipeline returns an answer.
-- Use config from Section 3 (e.g. `RERANK_TIMEOUT_S`).
+- Parallelize `expand -> search -> rerank -> answer` per sub-question with bounded workers.
+- Preserve deterministic output order by reindexing results to original sub-question order.
+- Emit stage snapshots required by async status and progressive UI.
+- Keep business logic unchanged from sequential runner; this section is orchestration-only.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): optional env for max workers.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap reranking in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/backend/services/agent_service.py` | Add bounded parallel fanout and snapshot emission. |
+| `src/backend/tests/services/test_agent_service.py` | Verify deterministic ordering and snapshot payload correctness under parallel execution. |
 
-**How to test:** Unit test: slow rerank triggers timeout; normal path completes. Restart app and run one query.
+**How to test:** Run agent-service tests with multiple sub-questions to verify ordering is stable and snapshots emit expected stage data.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `39 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 11 change-specific runtime exceptions (verification timeout guardrail logs and fallbacks are present in unit test coverage)
+## Section 10: Migrate API endpoint to graph backend - deep-agent decoupling
 
----
-
-## Section 10: Time guardrail — per-subquestion subanswer generation
-
-**Single goal:** Enforce a maximum time for the subanswer generation step (LLM call per sub-question).
+**Single goal:** Switch `/api/agents/run` to execute the new graph runner instead of deep-agents.
 
 **Details:**
-- Wrap the subanswer generation call in a timeout; on timeout, **do not fail**—use fallback text (e.g. “Answer not available in time”) or mark unanswerable and continue so the pipeline returns an answer.
-- Use config from Section 3 (e.g. `SUBANSWER_GENERATION_TIMEOUT_S`).
+- Route runtime requests through graph runner in `run_runtime_agent`.
+- Keep request/response API contract unchanged for frontend compatibility.
+- Add feature flag for rollback during migration window (temporary).
+- Isolate deep-agent-specific callbacks from the primary runtime path, but do not delete legacy files yet.
+- Preserve `langfuse` integration on the primary runtime path; ensure graph runs emit traces with stage/node context.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): optional env feature flag.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap subanswer generation in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/backend/routers/agent.py` | Keep endpoint stable while swapping backend orchestration. |
+| `src/backend/services/agent_service.py` | Use graph runner as primary execution path. |
+| `src/backend/utils/langfuse_tracing.py` | Keep tracing callback wiring stable across migration and flag states. |
+| `src/backend/tests/api/test_agent_run.py` | Confirm endpoint behavior is preserved post-migration. |
 
-**How to test:** Unit test: slow subanswer triggers timeout; normal path completes. Restart app and run one query.
+**How to test:** Run API + service tests and confirm `/api/agents/run` returns compatible payloads using graph execution with feature flag on/off.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `37 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no change-specific backend exceptions
+## Section 11: Async run-status for progressive subquestion visibility
 
----
-
-## Section 11: Time guardrail — per-subquestion subanswer verification
-
-**Single goal:** Enforce a maximum time for the subanswer verification step per sub-question.
+**Single goal:** Expose staged graph progress so UI can show subquestions as soon as decomposition completes.
 
 **Details:**
-- Wrap the verification call in a timeout; on timeout, **do not fail**—mark as not answerable (or use default reason) and continue so the pipeline returns an answer.
-- Use config from Section 3 (e.g. `SUBANSWER_VERIFICATION_TIMEOUT_S`).
+- Add async run job endpoints: start, status, optional cancel.
+- Emit run stages including `subquestions_ready` immediately after decomposition node.
+- Return partial graph state (`decomposition_sub_questions`, stage metadata) in status payload.
+- Keep sync endpoint intact for compatibility.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies; reuse current in-memory job pattern.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap subanswer verification in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/backend/services/agent_jobs.py` | Manage graph run jobs and staged updates. |
+| `src/backend/routers/agent.py` | Add async run/status/cancel endpoints. |
+| `src/backend/schemas/agent.py` | Define staged async response payloads. |
+| `src/backend/tests/api/test_agent_run.py` | Verify staged status behavior and partial outputs. |
 
-**How to test:** Unit test: slow verify triggers timeout; normal path completes. Restart app and run one query.
+**How to test:** Run API/job tests and manually confirm status returns subquestions before final answer completion.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `41 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; backend guardrail and request logs present, no Section 12 change-specific runtime exceptions
+## Section 12: Frontend run timeline shell - progressive container and stage rail
 
----
-
-## Section 12: Time guardrail — entire per-subquestion pipeline
-
-**Single goal:** Enforce a maximum total time for `run_pipeline_for_subquestions` (all sub-questions, parallel) so the whole lane is capped even if individual steps pass.
+**Single goal:** Add a reusable progressive run shell that displays ordered stages for the full flow.
 
 **Details:**
-- Wrap `run_pipeline_for_subquestions(sub_qa)` in a timeout; on timeout, **do not fail**—return whatever sub_qa items completed so far and treat the rest as skipped/unanswerable so synthesis still runs and the user gets an answer.
-- Use config from Section 3 (e.g. `SUBQUESTION_PIPELINE_TOTAL_TIMEOUT_S`).
+- Add a stage rail/timeline with canonical order: `decompose -> expand -> search -> rerank -> answer -> final`.
+- Render per-stage status (`pending`, `in_progress`, `completed`, `error`) from async run-status payloads.
+- Keep this section focused on container and status wiring only (no stage-specific payload rendering yet).
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern; coordinate with ThreadPoolExecutor usage.
+- Libraries/packages (pip, npm, uv, etc.): no new frontend dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap run_pipeline_for_subquestions in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout (partial results) and normal path. |
+| `src/frontend/src/utils/api.ts` | Add stage-status types required by timeline shell. |
+| `src/frontend/src/App.tsx` | Add progressive run shell and stage rail UI. |
+| `src/frontend/src/App.test.tsx` | Verify ordered stage rail and status transitions. |
 
-**How to test:** Unit test: pipeline that would exceed limit returns partial results or error; normal path returns full sub_qa. Restart app and run one query.
+**How to test:** Run frontend tests and verify stage rail status updates correctly during polling.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `41 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; backend guardrail and request logs present, no Section 12 change-specific runtime exceptions
+## Section 13: Decompose stage view - immediate sub-question display
 
----
-
-## Section 13: Time guardrail — initial answer generation
-
-**Single goal:** Enforce a maximum time for generating the initial answer from context and sub_qa (`generate_initial_answer`).
+**Single goal:** Render decomposed sub-questions as soon as decomposition completes.
 
 **Details:**
-- Wrap `generate_initial_answer(...)` in a timeout; on timeout, **do not fail**—return a fallback string (e.g. concatenate available subanswers or “Answer generation timed out; partial context only”) so the API still returns a response.
-- Use config from Section 3 (e.g. `INITIAL_ANSWER_TIMEOUT_S`).
+- At `subquestions_ready`, render `decomposition_sub_questions` in a dedicated Decompose panel.
+- Show question count and normalization status indicators.
+- Keep panel independent from later stage artifacts.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap generate_initial_answer in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/frontend/src/App.tsx` | Add Decompose panel and subquestion list rendering. |
+| `src/frontend/src/App.test.tsx` | Verify Decompose panel appears before later stages complete. |
 
-**How to test:** Unit test: slow generate_initial_answer triggers timeout; normal path returns output. Restart app and run one query.
+**How to test:** Run frontend tests and manual run to confirm sub-questions appear before expansion/search/rerank results.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `43 passed`
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_uses_partial_fallback_when_initial_answer_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed` with initial-answer timeout guardrail logs
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; backend showed normal restart/watch reload plus request logs, no Section 13 runtime exceptions
+## Section 14: Expand stage view - per-subquestion expanded query list
 
----
-
-## Section 14: Time guardrail — refinement decision
-
-**Single goal:** Enforce a maximum time for the refinement decision step (`should_refine`).
+**Single goal:** Render expansion outputs for each sub-question in a dedicated Expand panel.
 
 **Details:**
-- Wrap `should_refine(...)` in a timeout; on timeout, **do not fail**—treat as no refinement (safe default: return initial answer) and continue.
-- Use config from Section 3 (e.g. `REFINEMENT_DECISION_TIMEOUT_S`).
+- Show original sub-question and generated expanded queries list.
+- Show fallback badge when expansion collapses to original query only.
+- Keep data grouped by sub-question index for stable traceability.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap should_refine in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/frontend/src/utils/api.ts` | Add expansion artifact fields to staged payload types. |
+| `src/frontend/src/App.tsx` | Add Expand panel UI grouped by sub-question. |
+| `src/frontend/src/App.test.tsx` | Verify expanded query lists and fallback badges render correctly. |
 
-**How to test:** Unit test: slow should_refine triggers timeout; normal path returns decision. Restart app and run one query.
+**How to test:** Run frontend tests and confirm expanded queries show per sub-question after expansion stage.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `44 passed`
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_skips_refinement_when_decision_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed` with refinement decision timeout guardrail logs
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 14 change-specific runtime exceptions
+## Section 15: Search stage view - retrieval candidates and merge provenance
 
----
-
-## Section 15: Time guardrail — refinement decomposition
-
-**Single goal:** Enforce a maximum time for refinement decomposition (`refine_subquestions`).
+**Single goal:** Render search-stage outputs showing merged retrieval candidates before reranking.
 
 **Details:**
-- Wrap `refine_subquestions(...)` in a timeout; on timeout, **do not fail**—use empty list (no refined sub-questions) and return initial answer as final output so the user still gets a response.
-- Use config from Section 3 (e.g. `REFINEMENT_DECOMPOSITION_TIMEOUT_S`).
+- Show per-subquestion candidate count after multi-query merge/dedupe.
+- Render top candidate preview rows with source/title snippets.
+- Show merge stats (`raw_hits`, `deduped_hits`) for transparency.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap refine_subquestions in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/frontend/src/utils/api.ts` | Add search merge stats/candidate preview types. |
+| `src/frontend/src/App.tsx` | Add Search panel for merged candidate previews. |
+| `src/frontend/src/App.test.tsx` | Verify search candidate counts and merge stats rendering. |
 
-**How to test:** Unit test: slow refine_subquestions triggers timeout; normal path returns list. Restart app and run one query that triggers refinement.
+**How to test:** Run frontend tests and verify Search panel displays merged candidate stats before rerank completes.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `45 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 15 change-specific runtime exceptions
+## Section 16: Rerank stage view - reordered top_n evidence
 
----
-
-## Section 16: Time guardrail — refinement retrieval
-
-**Single goal:** Enforce a maximum time for refinement retrieval (`_seed_refined_sub_qa_from_retrieval`).
+**Single goal:** Render reranked evidence and score/order changes per sub-question.
 
 **Details:**
-- Wrap `_seed_refined_sub_qa_from_retrieval(...)` in a timeout; on timeout, **do not fail**—return partial list or empty and continue (use initial answer as final if refinement path yields nothing).
-- Use config from Section 3 (e.g. `REFINEMENT_RETRIEVAL_TIMEOUT_S`).
+- Show reranked top_n list for each sub-question with final order and optional score.
+- Display rerank fallback notice when reranking was bypassed.
+- Keep links/snippets aligned with citation index that answer stage will use.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap _seed_refined_sub_qa_from_retrieval in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/frontend/src/utils/api.ts` | Add rerank artifact/fallback fields to payload types. |
+| `src/frontend/src/App.tsx` | Add Rerank panel for top_n evidence rendering. |
+| `src/frontend/src/App.test.tsx` | Verify rerank order and fallback indicator behavior. |
 
-**How to test:** Unit test: slow refinement retrieval triggers timeout; normal path returns seeded sub_qa. Restart app and run one query that triggers refinement.
+**How to test:** Run frontend tests and ensure reranked ordering displays before subanswers/final answer.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `46 passed`
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_skips_refinement_when_retrieval_times_out -o log_cli=true --log-cli-level=WARNING'` -> `1 passed` with refinement retrieval timeout guardrail logs
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 16 change-specific runtime exceptions
+## Section 17: Subanswer stage view - per-subquestion answer with citations
 
----
-
-## Section 17: Time guardrail — refinement pipeline run
-
-**Single goal:** Enforce a maximum time for the refinement path’s per-subquestion pipeline run (second `run_pipeline_for_subquestions` on refined sub_qa).
+**Single goal:** Render per-subquestion answers as they become available, including citation markers.
 
 **Details:**
-- Reuse the same whole-pipeline timeout as Section 12, or define `REFINEMENT_PIPELINE_TOTAL_TIMEOUT_S`; wrap the refinement pipeline call in that timeout; on timeout, **do not fail**—return partial refined results or keep initial answer as final so the user still gets a response.
+- Show each sub-question with its generated subanswer and citation markers (`[1]`, `[2]`, ...).
+- Highlight explicit fallback `nothing relevant found` when returned.
+- Link visible citation markers to reranked evidence rows in the Rerank panel.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap refinement run_pipeline_for_subquestions in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/frontend/src/utils/api.ts` | Add subanswer citation/fallback fields to stage payload types. |
+| `src/frontend/src/App.tsx` | Add Subanswer panel and citation-to-evidence linkage. |
+| `src/frontend/src/App.test.tsx` | Verify subanswer rendering, citation markers, and fallback display. |
 
-**How to test:** Unit test: refinement pipeline timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
+**How to test:** Run frontend tests and confirm subanswers/citations render per sub-question during answering stage.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `48 passed`
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_refinement_pipeline_timeout_returns_partial -o log_cli=true --log-cli-level=INFO'` -> `1 passed` with refinement pipeline timeout warning log
-- `docker compose restart backend` -> backend restarted successfully
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What is pgvector used for?"}'` -> `200 OK` with unchanged response shape (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=220 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; no Section 17 change-specific runtime exceptions
+## Section 18: Final synthesis view - final answer with supporting subanswer summary
 
----
-
-## Section 18: Time guardrail — refined answer generation
-
-**Single goal:** Enforce a maximum time for generating the refined final answer (second `generate_initial_answer` call in the refinement path).
+**Single goal:** Render the final answer stage as a distinct panel that summarizes supporting subanswers and citations.
 
 **Details:**
-- Wrap the refined-answer `generate_initial_answer(...)` call in a timeout; on timeout, **do not fail**—keep initial answer as final output so the user always gets a response.
-- Use config from Section 3 (e.g. same `INITIAL_ANSWER_TIMEOUT_S` or `REFINED_ANSWER_TIMEOUT_S`).
+- Show final answer only when synthesis stage completes.
+- Display compact summary of contributing subanswers and citation coverage.
+- Preserve previous successful final answer while a new run is in progress.
 
 **Tech stack and dependencies**
-- Python stdlib; same timeout pattern.
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
 
 **Files and purpose**
 
 | File | Purpose |
 |------|--------|
-| `src/backend/services/agent_service.py` | Wrap refined generate_initial_answer in timeout. |
-| `src/backend/tests/services/test_agent_service.py` | Test timeout and normal path. |
+| `src/frontend/src/App.tsx` | Add Final panel with synthesis completion behavior. |
+| `src/frontend/src/App.test.tsx` | Verify final panel only updates on synthesis completion. |
 
-**How to test:** Unit test: slow refined answer generation triggers timeout; normal path returns refined output. Restart app and run one query that triggers refinement.
+**How to test:** Run frontend tests and manual run to confirm final panel updates only at terminal synthesis stage.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
 
-**Test results:**
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py::test_run_runtime_agent_keeps_initial_answer_when_refined_answer_generation_times_out tests/services/test_agent_service.py::test_run_runtime_agent_refinement_pipeline_completes_within_timeout tests/services/test_agent_service.py::test_run_runtime_agent_flags_refinement_path_when_decision_true -q'` -> `3 passed`
-- `docker compose exec backend sh -lc 'cd /app && uv run pytest tests/services/test_agent_service.py'` -> `49 passed`
-- `docker compose restart backend` -> backend restarted successfully
-- `docker compose ps` -> `backend`, `frontend`, and `db` all running (`backend` restarted; `db` healthy)
-- `curl -sS http://localhost:8000/api/health` -> `{"status":"ok"}`
-- `curl -sS -X POST http://localhost:8000/api/agents/run -H 'Content-Type: application/json' -d '{"query":"What changed in policy?"}'` -> `200 OK`, refinement path executed, and response schema remained unchanged (`main_question`, `sub_qa`, `output`)
-- `docker compose logs --tail=260 backend`, `docker compose logs --tail=120 frontend`, `docker compose logs --tail=120 db` -> reviewed for visibility; backend includes `Refinement answer generation completed within timeout timeout_s=60 ...` with no Section 18 runtime exceptions
+## Section 19: Parity evals - deep-agent path vs graph path
 
----
+**Single goal:** Prove graph workflow preserves baseline behavior compared to deep-agent path during migration.
+
+**Details:**
+- Build fixed-question parity suite across both paths.
+- Compare main output shape, sub_qa completeness, and fallback behavior.
+- Keep this section focused on parity only; quality/cost deltas are handled in Sections 20-21.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required initially.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Add graph vs deep-agent parity regression tests. |
+| `README.md` | Document parity test scope and acceptance thresholds. |
+
+**How to test:** Run parity suite and verify graph path meets agreed parity thresholds before cleanup sections begin.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+## Section 20: Retrieval quality evals - search-only vs search+rerank
+
+**Single goal:** Quantify retrieval-quality gains from reranking without mixing in cost metrics.
+
+**Details:**
+- Compare `search-only` vs `search+rerank` on benchmark queries.
+- Track hit-quality metrics and citation-grounding consistency.
+- Include hard queries where relevant evidence is outside naive top-k.
+- Keep this section focused on quality metrics only.
+- Include eval slices for the actual library stack (`MultiQueryRetriever` + `flashrank`) versus non-expanded/non-reranked baselines.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required initially.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Add retrieval quality regression tests for rerank impact. |
+| `src/backend/tests/services/test_reranker_service.py` | Add rerank quality/fallback tests used by eval cases. |
+| `README.md` | Document retrieval-quality eval methodology. |
+
+**How to test:** Run quality eval suite and verify rerank path improves retrieval/citation metrics on selected hard queries.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+## Section 21: Efficiency evals - context size and token budget impact
+
+**Single goal:** Quantify efficiency impact of reranked top_n context vs naive large-context baselines.
+
+**Details:**
+- Compare token usage for reranked top_n vs larger unfiltered context windows.
+- Track answer quality floor while reducing token cost.
+- Record target operating ranges for `k_fetch` and `top_n`.
+- Keep this section focused on cost/efficiency metrics only.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required initially.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Add efficiency-oriented regression checks and fixtures. |
+| `README.md` | Document token/cost eval method and recommended defaults. |
+
+**How to test:** Run efficiency suite and verify reranked context achieves lower token usage without unacceptable quality loss.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+## Section 22: Remove deep-agent runtime code - post-cutover cleanup
+
+**Single goal:** Delete unused deep-agent runtime orchestration code after graph path is validated.
+
+**Details:**
+- Remove coordinator/deep-agent invocation from active runtime execution.
+- Delete deep-agent-only helpers, callbacks, and prompt contracts that are no longer referenced.
+- Keep only code required for historical docs/tests if explicitly needed; otherwise remove.
+- Ensure imports and schemas no longer reference deep-agent-specific artifacts.
+- Do not remove `langfuse` tracing integration; retain/cleanly re-home it as graph runtime observability.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agents/coordinator.py` | Remove or archive deep-agent runtime path if fully unused. |
+| `src/backend/services/agent_service.py` | Remove deep-agent branches and callback plumbing. |
+| `src/backend/utils/agent_callbacks.py` | Remove deep-agent callback capture code if no longer used. |
+| `src/backend/tests/agents/test_coordinator_agent.py` | Remove/replace tests tied only to removed runtime code. |
+
+**How to test:** Run full backend tests and static import checks to confirm no dead deep-agent references remain.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+## Section 23: Remove migration scaffolding - flags, dual paths, and temporary parity code
+
+**Single goal:** Remove temporary migration switches and dual-path code once graph runner is the only production path.
+
+**Details:**
+- Remove feature flags used only for migration rollback.
+- Remove dual-path branching and temporary adapters used for parity comparisons.
+- Remove migration-only fixtures and temporary eval wiring that is no longer needed.
+- Keep permanent quality tests, but drop one-off migration parity harnesses.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): remove migration-only env vars from docs/config.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Delete dual-path/flagged branches. |
+| `src/backend/tests/services/test_agent_service.py` | Remove migration-only parity fixtures while keeping permanent regressions. |
+| `README.md` | Remove migration-only flags and rollout instructions. |
+
+**How to test:** Run backend tests with migration flags removed and verify runtime behavior is unchanged.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+## Section 24: Final architecture docs reconciliation - canonical state-graph docs only
+
+**Single goal:** Ensure repository docs and flow diagrams reflect only the final state-graph architecture.
+
+**Details:**
+- Update the architecture content in `README.md` to remove deep-agent runtime references.
+- Update `run-flow.html` to show the canonical lane: `decompose -> expand -> search -> rerank -> answer -> synthesize`.
+- Ensure README examples and terminology match actual code paths and endpoint behavior.
+- Confirm no contradictory legacy flow descriptions remain across docs.
+- Document concrete library usage in architecture docs: `langchain` `MultiQueryRetriever` for expansion and `flashrank` for reranking.
+- Add a "How the flow works" explainer covering each stage:
+  - `decompose`: split main question into atomic sub-questions.
+  - `expand`: generate related queries per sub-question.
+  - `search`: retrieve candidate chunks with vector similarity.
+  - `rerank`: reorder retrieved chunks by query-specific relevance.
+  - `answer`: produce subanswer with citations from reranked evidence.
+  - `synthesize`: build final answer from subanswers.
+- Add a retrieval fundamentals explainer:
+  - embedding vectors and nearest-neighbor retrieval basics.
+  - cosine similarity intuition (`-1..1`, direction similarity, higher is closer).
+  - why over-fetch (`k_fetch`) then rerank (`top_n`) improves precision.
+  - merge/dedupe behavior across expanded queries and citation index stability.
+- Add a reranking explainer:
+  - difference between initial vector retrieval score and reranker score.
+  - why reranking can surface relevant chunks that were not in naive top-k.
+  - fallback behavior when reranker is unavailable.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `README.md` | Canonical architecture and usage docs for state-graph runtime. |
+| `src/frontend/public/run-flow.html` | Final flow visualization aligned with implementation. |
+
+**How to test:** Manually validate docs against real runtime traces; confirm every stage in UI/run-status has a matching explanation, and verify retrieval/rerank examples are technically consistent with implementation (`k_fetch`, `top_n`, cosine similarity, dedupe/citation behavior).
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.

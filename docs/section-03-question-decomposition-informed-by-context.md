@@ -46,4 +46,4 @@ Keep decomposition isolated from execution. Sections 1-2 produce the normalized 
 
 ## Notes
 - This section intentionally separates planning from execution per the RAG architecture goals.
-- Initial retrieval context is used only by the decomposition-only call in Sections 1-2, not by the coordinator input message in Section 3.
+- Initial retrieval context is not injected into decomposition; the coordinator only sees the provided sub-question list.

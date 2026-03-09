@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Run Flow: UI Button to Full Backend Pipeline</title>
+    <style>
+      :root {
+        --bg: #f3f6fb;
+        --panel: #ffffff;
+        --text: #142033;
+        --muted: #4f5d75;
+        --line: #d8e1ee;
+        --accent: #0b6bcb;
+        --accent-soft: #e8f2ff;
+        --good: #1f8a4c;
+        --warn: #a56b00;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 0% 0%, #e8f2ff 0%, transparent 40%),
+          radial-gradient(circle at 100% 100%, #edf7f0 0%, transparent 35%),
+          var(--bg);
+        line-height: 1.45;
+      }
+
+      .wrap {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 28px 20px 60px;
+      }
+
+      h1, h2, h3 { margin: 0 0 10px; line-height: 1.2; }
+      h1 { font-size: 30px; }
+      h2 { font-size: 22px; margin-top: 24px; }
+      h3 { font-size: 18px; margin-top: 18px; }
+      p { margin: 0 0 10px; }
+      code { font-family: "JetBrains Mono", "Consolas", monospace; background: #f4f7fc; padding: 1px 5px; border-radius: 6px; }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+        margin-top: 14px;
+      }
+
+      .badge {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 12px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        border: 1px solid #c5ddfb;
+        margin-right: 8px;
+        margin-bottom: 8px;
+      }
+
+      .badge.good { background: #e9f8ef; color: var(--good); border-color: #c7e9d4; }
+      .badge.warn { background: #fff4df; color: var(--warn); border-color: #f1d7a4; }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th, td {
+        border: 1px solid var(--line);
+        padding: 8px;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th { background: #f4f8ff; }
+
+      .mono-block {
+        background: #0d1422;
+        color: #e5edf8;
+        border-radius: 12px;
+        padding: 14px;
+        overflow-x: auto;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 13px;
+        white-space: pre;
+      }
+
+      ul { margin: 8px 0 0 20px; }
+      li { margin: 5px 0; }
+
+      .small { color: var(--muted); font-size: 13px; }
+
+      details {
+        margin-top: 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fbfdff;
+      }
+
+      summary {
+        cursor: pointer;
+        padding: 10px 12px;
+        font-weight: 600;
+        background: #f4f8ff;
+        border-radius: 10px;
+      }
+
+      details[open] summary {
+        border-bottom: 1px solid var(--line);
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Run Button Flow: End-to-End Data Path</h1>
+      <p>
+        This document traces exactly what runs when you click <code>Run</code> in the UI, from frontend submit
+        to backend completion and response rendering.
+      </p>
+
+      <div class="panel">
+        <h2>High-Level Path</h2>
+        <div>
+          <span class="badge">Frontend: <code>App.tsx::handleRun</code></span>
+          <span class="badge">API client: <code>runAgent()</code></span>
+          <span class="badge">Backend route: <code>POST /api/agents/run</code></span>
+          <span class="badge">Service: <code>run_runtime_agent()</code></span>
+          <span class="badge">Pipeline: decomposition -> coordinator -> subquestion processing -> initial answer -> optional refinement</span>
+          <span class="badge good">Response model: <code>RuntimeAgentRunResponse</code></span>
+        </div>
+        <p style="margin-top: 10px;">
+          Jump to code dropdowns:
+          <a href="#core-code-dropdowns">Core Runtime Pipeline Code Drop-downs</a>
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>Exact Function Call Chain</h2>
+        <div class="mono-block">UI click/submit
+  -> src/frontend/src/App.tsx
+     handleRun(event)
+       -> runAgent(submittedQuery)
+          -> requestJson("/api/agents/run", { method:"POST", payload:{ query }, timeoutMs })
+             -> fetch("http://localhost:8000/api/agents/run", ...)
+
+Backend
+  -> src/backend/routers/agent.py
+     runtime_agent_run(payload, db)
+       -> run_runtime_agent(payload, db)
+
+run_runtime_agent() internals
+  1) get_vector_store(...)
+  2) search_documents_for_context(...)  // initial context retrieval
+  3) build_initial_search_context(...)
+  4) _run_decomposition_only_llm_call(...)
+  5) _parse_decomposition_output(...)
+  6) create_coordinator_agent(...)
+  7) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
+  8) _extract_sub_qa(messages, search_database_calls)
+  9) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
+ 10) generate_initial_answer(...)
+ 11) should_refine(...)
+ 12) if refinement_needed:
+       refine_subquestions(...)
+       _seed_refined_sub_qa_from_retrieval(...)  // PARALLEL
+       run_pipeline_for_subquestions(...)         // PARALLEL
+       generate_initial_answer(...)               // refined final output
+ 13) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+      </div>
+
+      <div class="panel">
+        <h2>Frontend Details (Button -> Network)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Step</th>
+              <th>Function</th>
+              <th>What Happens</th>
+              <th>Data In/Out</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><code>App.tsx::handleRun</code></td>
+              <td>Prevents default form submit, trims query, sets <code>runState="loading"</code>, clears answer/readout.</td>
+              <td>In: textarea text. Out: local React state update.</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><code>utils/api.ts::runAgent</code></td>
+              <td>Calls <code>requestJson</code> with POST payload and long timeout (default 10 min).</td>
+              <td>In: <code>{ query: string }</code>. Out: <code>ApiResult&lt;RuntimeAgentRunResponse&gt;</code>.</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><code>utils/api.ts::requestJson</code></td>
+              <td>Runs <code>fetch</code> against <code>API_BASE_URL + /api/agents/run</code>, validates JSON shape.</td>
+              <td>Base URL from <code>VITE_API_BASE_URL</code> or <code>http://localhost:8000</code>.</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><code>App.tsx::handleRun</code> success/error branch</td>
+              <td>On success: stores <code>output</code> + <code>sub_qa</code>. On failure: sets error state/message.</td>
+              <td>UI renders final answer and expandable subquestion rows.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Backend HTTP Entry</h2>
+        <p>
+          Route: <code>src/backend/routers/agent.py::runtime_agent_run</code><br />
+          Endpoint: <code>POST /api/agents/run</code><br />
+          Request model: <code>RuntimeAgentRunRequest { query }</code><br />
+          Response model: <code>RuntimeAgentRunResponse { main_question, sub_qa[], output }</code>
+        </p>
+        <p class="small">DB session is injected by FastAPI dependency <code>get_db()</code>; this route passes it to the service but current run logic primarily uses PGVector connection directly.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Core Runtime Pipeline (<code>run_runtime_agent</code>)</h2>
+        <h3>Reference Diagram</h3>
+        <p class="small">
+          Source image: <code>flow.jpg</code>. This is now embedded and used for the 1-15 mapping below.
+        </p>
+        <img
+          src="/flow.jpg"
+          alt="Pipeline flow diagram with exploratory search, decomposition, per-subquestion processing, initial answer, refinement decision, and refined answer path"
+          style="width: 100%; max-width: 980px; border: 1px solid var(--line); border-radius: 10px; background: #fff; display: block; margin-bottom: 14px;"
+        />
+
+        <h3>Step-to-Diagram Mapping (Orders 1-15)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Code Step</th>
+              <th>Mapped Diagram Box/Region</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td><code>get_vector_store</code></td><td>Pre-step infrastructure for all retrieval boxes (before "Conduct Exploratory (Fast &amp; Simple) Search").</td></tr>
+            <tr><td>2</td><td><code>search_documents_for_context</code></td><td>"Conduct Exploratory (Fast &amp; Simple) Search" and the initial context retrieval for later synthesis (not passed to decomposition).</td></tr>
+            <tr><td>3</td><td><code>build_initial_search_context</code></td><td>Structured handoff between initial search and "Decompose Question into Sub-Questions".</td></tr>
+            <tr><td>4</td><td><code>_run_decomposition_only_llm_call</code></td><td>"Decompose Question into Sub-Questions".</td></tr>
+            <tr><td>5</td><td><code>_parse_decomposition_output</code></td><td>Normalize/dedupe/limit the provided sub-question list for "Initial Subquestion 1..n" lanes.</td></tr>
+            <tr><td>6</td><td><code>create_coordinator_agent</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
+            <tr><td>7</td><td><code>agent.invoke</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Validate -&gt; Rerank -&gt; Answer -&gt; Check.</td></tr>
+            <tr><td>8</td><td><code>_extract_sub_qa</code></td><td>Post-lane collection feeding "Generate Initial Answer".</td></tr>
+            <tr><td>9</td><td><code>run_pipeline_for_subquestions</code></td><td>Explicit per-subquestion stage stack shown in each lane (Expand/Search/Validate/Rerank/Answer/Check), run in parallel.</td></tr>
+            <tr><td>10</td><td><code>generate_initial_answer</code></td><td>"Generate Initial Answer".</td></tr>
+            <tr><td>11</td><td><code>should_refine</code></td><td>"Need refinement?" decision node.</td></tr>
+            <tr><td>12</td><td><code>refine_subquestions</code></td><td>"Entity/Relationship/Term Extraction" + "Generate new &amp; informed subquestions".</td></tr>
+            <tr><td>13</td><td><code>_seed_refined_sub_qa_from_retrieval</code> + <code>run_pipeline_for_subquestions</code></td><td>"Refined Subquestion 1..n" lanes (Expand/Search/Validate/Rerank/Answer/Check).</td></tr>
+            <tr><td>14</td><td><code>generate_initial_answer</code> (refined)</td><td>Corresponds to refinement answer production path ("Produce &amp; Validate Refined Answer", with refinement evidence folded into final synthesis).</td></tr>
+            <tr><td>15</td><td>Return <code>RuntimeAgentRunResponse</code></td><td>Output arrow to <code>&lt;answers&gt;</code>.</td></tr>
+          </tbody>
+        </table>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Function</th>
+              <th>Core Logic</th>
+              <th>Output</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><code>get_vector_store</code></td>
+              <td>Gets/creates PGVector collection (by <code>VECTOR_COLLECTION_NAME</code>).</td>
+              <td>Vector store handle.</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><code>search_documents_for_context</code></td>
+              <td>Initial semantic retrieval on original user question.</td>
+              <td>Top-k context documents.</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><code>build_initial_search_context</code></td>
+              <td>Normalizes docs into compact dicts: rank, doc_id, title, source, snippet.</td>
+              <td><code>initial_search_context[]</code>.</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><code>_run_decomposition_only_llm_call</code></td>
+              <td>Calls decomposition LLM with question-only input and structured output. If no API key/failure, falls back to one normalized question.</td>
+              <td>Structured sub-question list.</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td><code>_parse_decomposition_output</code></td>
+              <td>Normalizes/dedupes/limits subquestions ending in <code>?</code> (structured list preferred; JSON/lines kept as fallback).</td>
+              <td><code>decomposition_sub_questions[]</code>.</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td><code>create_coordinator_agent</code></td>
+              <td>Builds deep-agents coordinator + one RAG subagent using retriever tool <code>search_database</code>.</td>
+              <td>Runnable coordinator.</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td><code>agent.invoke</code></td>
+              <td>Coordinator delegates each provided subquestion via <code>task(...)</code>; subagent calls <code>search_database(query, expanded_query, limit)</code>.</td>
+              <td>Agent message list + tool interactions.</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td><code>_extract_sub_qa</code></td>
+              <td>Builds <code>SubQuestionAnswer[]</code> from captured retriever calls and tool outputs, including <code>tool_call_input</code> and <code>expanded_query</code>.</td>
+              <td>Raw per-subquestion results.</td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td><code>run_pipeline_for_subquestions</code></td>
+              <td>Processes each subquestion in thread pool: validate docs -> rerank -> generate subanswer -> verify grounding.</td>
+              <td>Enriched <code>sub_qa[]</code> with <code>answerable</code>, <code>verification_reason</code>.</td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td><code>generate_initial_answer</code></td>
+              <td>Synthesizes main answer from initial context + verified subanswers (LLM or fallback).</td>
+              <td><code>output</code> draft.</td>
+            </tr>
+            <tr>
+              <td>11</td>
+              <td><code>should_refine</code></td>
+              <td>Checks insufficiency patterns and answerable ratio threshold.</td>
+              <td>Refinement decision + reason.</td>
+            </tr>
+            <tr>
+              <td>12</td>
+              <td><code>refine_subquestions</code> (conditional)</td>
+              <td>If needed, creates new targeted subquestions for missing evidence.</td>
+              <td><code>refined_subquestions[]</code>.</td>
+            </tr>
+            <tr>
+              <td>13</td>
+              <td><code>_seed_refined_sub_qa_from_retrieval</code> + pipeline (conditional)</td>
+              <td>Parallel retrieval for refined questions, then same per-subquestion pipeline again.</td>
+              <td><code>refined_sub_qa[]</code>.</td>
+            </tr>
+            <tr>
+              <td>14</td>
+              <td><code>generate_initial_answer</code> again (conditional)</td>
+              <td>Builds final output from refined evidence.</td>
+              <td>Final <code>output</code>.</td>
+            </tr>
+            <tr>
+              <td>15</td>
+              <td>Return response model</td>
+              <td>Returns JSON to frontend.</td>
+              <td><code>{ main_question, sub_qa, output }</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+        <h3 id="core-code-dropdowns">Code Drop-downs (Orders 1-15)</h3>
+        <p class="small">Click each step to view the key code path currently implemented.</p>
+
+        <details open>
+          <summary><strong>Order 1:</strong> <code>get_vector_store</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py (inside run_runtime_agent)
+vector_store = get_vector_store(
+    connection=DATABASE_URL,
+    collection_name=_VECTOR_COLLECTION_NAME,
+    embeddings=get_embedding_model(),
+)
+
+# src/backend/services/vector_store_service.py
+def get_vector_store(connection: str, collection_name: str, embeddings: Embeddings) -&gt; PGVector:
+    existed_before = _collection_exists(connection=connection, collection_name=collection_name, use_jsonb=True)
+    vector_store = PGVector(
+        connection_string=connection,
+        embedding_function=embeddings,
+        collection_name=collection_name,
+        use_jsonb=True,
+    )
+    return vector_store</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 2:</strong> <code>search_documents_for_context</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+initial_context_docs = search_documents_for_context(
+    vector_store=vector_store,
+    query=payload.query,
+    k=_INITIAL_SEARCH_CONTEXT_K,
+    score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+)
+
+# src/backend/services/vector_store_service.py
+def search_documents_for_context(...):
+    if score_threshold is not None and hasattr(vector_store, "similarity_search_with_relevance_scores"):
+        docs_with_scores = vector_store.similarity_search_with_relevance_scores(
+            query, k=safe_k, score_threshold=score_threshold
+        )
+        return [doc for doc, _score in docs_with_scores]
+    return vector_store.similarity_search(query, k=safe_k)</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 3:</strong> <code>build_initial_search_context</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+initial_search_context = build_initial_search_context(initial_context_docs)
+
+# src/backend/services/vector_store_service.py
+def build_initial_search_context(documents):
+    context_items = []
+    for rank, document in enumerate(documents, start=1):
+        context_items.append({
+            "rank": rank,
+            "document_id": str(document.id or ""),
+            "title": str(metadata.get("title") or metadata.get("wiki_page") or ""),
+            "source": str(metadata.get("source") or metadata.get("wiki_url") or ""),
+            "snippet": snippet[:250],
+        })
+    return context_items</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 4:</strong> <code>_run_decomposition_only_llm_call</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+decomposition_raw_output = _run_decomposition_only_llm_call(query=payload.query)
+
+def _run_decomposition_only_llm_call(*, query: str) -&gt; list[str]:
+    if not _OPENAI_API_KEY:
+        return [fallback_question]
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", get_decomposition_only_prompt()),
+        ("human", "{input_message}"),
+    ])
+    llm = ChatOpenAI(model=_DECOMPOSITION_ONLY_MODEL, temperature=_DECOMPOSITION_ONLY_TEMPERATURE)
+    chain = prompt | llm.with_structured_output(DecompositionPlan)
+    return chain.invoke({"input_message": _build_decomposition_only_input_message(query)}).sub_questions</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 5:</strong> <code>_parse_decomposition_output</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+decomposition_sub_questions = _parse_decomposition_output(
+    raw_output=decomposition_raw_output,
+    query=payload.query,
+)
+
+def _parse_decomposition_output(*, raw_output: Any, query: str) -&gt; list[str]:
+    # 1) try JSON list/dict keys: sub_questions/subquestions/questions
+    # 2) fallback to line/bullet parsing
+    # 3) normalize each question (trim, dedupe, force trailing '?')
+    # 4) fallback to normalized main question if malformed/empty
+    return normalized</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 6:</strong> <code>create_coordinator_agent</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+agent = create_coordinator_agent(
+    vector_store=vector_store,
+    model=_RUNTIME_AGENT_MODEL,
+)
+
+# src/backend/agents/coordinator.py
+def create_coordinator_agent(vector_store, model, ...):
+    retriever_tool = make_retriever_tool(vector_store)
+    rag_subagent = {
+        "name": "rag_retriever",
+        "system_prompt": _RAG_SUBAGENT_PROMPT,
+        "tools": [retriever_tool],
+    }
+    runnable = create_deep_agent_impl(
+        model=model,
+        tools=[],
+        system_prompt=_COORDINATOR_PROMPT,
+        subagents=[rag_subagent],
+        backend=StateBackend,
+        checkpointer=_COORDINATOR_CHECKPOINTER,
+    )
+    return _LoggingRunnable(runnable)</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 7:</strong> <code>agent.invoke</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+search_db_capture = SearchDatabaseCaptureCallback()
+callbacks = [AgentLoggingCallbackHandler(), search_db_capture]
+langfuse_callback = build_langfuse_callback_handler()
+if langfuse_callback is not None:
+    callbacks.append(langfuse_callback)
+run_thread_id = str(uuid.uuid4())
+config = {
+    "callbacks": callbacks,
+    "configurable": {"thread_id": run_thread_id},
+}
+
+coordinator_message = _build_coordinator_input_message(decomposition_sub_questions)
+result = agent.invoke(
+    {"messages": [HumanMessage(content=coordinator_message)]},
+    config=config,
+)</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 8:</strong> <code>_extract_sub_qa</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+search_database_calls = search_db_capture.get_calls()
+sub_qa = _extract_sub_qa(messages, search_database_calls=search_database_calls or None)
+
+def _extract_sub_qa(messages, search_database_calls=None):
+    if search_database_calls:
+        for input_str, output_str in search_database_calls:
+            sub_qa.append(SubQuestionAnswer(
+                sub_question=_parse_tool_input_for_query(input_str) or "Search",
+                sub_answer=output_str,
+                tool_call_input=input_str,
+                expanded_query=_parse_tool_input_for_expanded_query(input_str),
+                sub_agent_response=matched_task_answer,
+            ))
+        return _normalize_sub_qa_questions(sub_qa)
+    # fallback path parses top-level AI/Tool messages</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 9:</strong> <code>run_pipeline_for_subquestions</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+sub_qa = run_pipeline_for_subquestions(sub_qa)
+
+def run_pipeline_for_subquestions(sub_qa):
+    max_workers = min(max(1, _SUBQUESTION_PIPELINE_MAX_WORKERS), len(sub_qa))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_run_pipeline_for_single_subquestion, item): index for index, item in enumerate(sub_qa)}
+        for future in as_completed(futures):
+            output[index] = future.result()
+    return [item for item in output if item is not None]
+
+def _run_pipeline_for_single_subquestion(item):
+    working_item = _apply_document_validation_to_sub_qa([item])[0]
+    working_item = _apply_reranking_to_sub_qa([working_item])[0]
+    reranked_output = working_item.sub_answer
+    working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
+    working_item = _apply_subanswer_verification_to_sub_qa([working_item], reranked_output_by_sub_question={...})[0]
+    return working_item</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 10:</strong> <code>generate_initial_answer</code> (first pass)</summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+output = generate_initial_answer(
+    main_question=payload.query,
+    initial_search_context=initial_search_context,
+    sub_qa=sub_qa,
+)
+
+# src/backend/services/initial_answer_service.py
+def generate_initial_answer(...):
+    fallback_answer = _build_fallback_initial_answer(...)
+    if not _OPENAI_API_KEY:
+        return fallback_answer
+    prompt = "... preserve citation markers [1], [2] ... include source attribution ..."
+    response = ChatOpenAI(model=_INITIAL_ANSWER_MODEL, temperature=_INITIAL_ANSWER_TEMPERATURE).invoke(prompt)
+    return llm_answer_or_fallback</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 11:</strong> <code>should_refine</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+refinement_decision = should_refine(
+    question=payload.query,
+    initial_answer=output,
+    sub_qa=sub_qa,
+)
+
+# src/backend/services/refinement_decision_service.py
+def should_refine(...):
+    if not initial_answer.strip(): return RefinementDecision(True, "initial_answer_empty")
+    if "insufficient evidence" pattern in initial_answer: return RefinementDecision(True, "initial_answer_reports_insufficient_evidence")
+    if not sub_qa: return RefinementDecision(True, "no_subquestion_answers")
+    answerable_ratio = answerable_count / len(sub_qa)
+    if answerable_ratio &lt; _MIN_ANSWERABLE_RATIO: return RefinementDecision(True, f"low_answerable_ratio:{answerable_ratio:.2f}")
+    return RefinementDecision(False, f"sufficient_answerable_ratio:{answerable_ratio:.2f}")</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 12:</strong> <code>refine_subquestions</code> (conditional)</summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+if refinement_decision.refinement_needed:
+    refined_subquestions = refine_subquestions(
+        question=payload.query,
+        initial_answer=output,
+        sub_qa=sub_qa,
+    )
+
+# src/backend/services/refinement_decomposition_service.py
+def refine_subquestions(...):
+    if not _OPENAI_API_KEY:
+        return _fallback_refined_subquestions(...)
+    prompt = "... target gaps, no repeats, JSON array of refined questions ..."
+    response = ChatOpenAI(model=_REFINEMENT_DECOMPOSITION_MODEL, temperature=_REFINEMENT_DECOMPOSITION_TEMPERATURE).invoke(prompt)
+    refined = _sanitize_refined_subquestions(candidates=raw_candidates, existing_subquestions=[...])
+    return refined_or_fallback</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 13:</strong> <code>_seed_refined_sub_qa_from_retrieval</code> + pipeline (conditional)</summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+refined_seed_sub_qa = _seed_refined_sub_qa_from_retrieval(
+    vector_store=vector_store,
+    refined_subquestions=refined_subquestions,
+)
+refined_sub_qa = run_pipeline_for_subquestions(refined_seed_sub_qa)
+
+def _seed_refined_sub_qa_from_retrieval(...):
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_retrieve, (index, question)): index for index, question in enumerate(refined_subquestions)}
+    # _retrieve does similarity search + format_retrieved_documents + creates SubQuestionAnswer seed</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 14:</strong> <code>generate_initial_answer</code> again (conditional)</summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+refined_output = generate_initial_answer(
+    main_question=payload.query,
+    initial_search_context=initial_search_context,
+    sub_qa=refined_sub_qa,
+)
+output = refined_output
+sub_qa = refined_sub_qa</div>
+        </details>
+
+        <details>
+          <summary><strong>Order 15:</strong> Return response model</summary>
+          <div class="mono-block"># src/backend/services/agent_service.py
+return RuntimeAgentRunResponse(
+    main_question=payload.query,
+    sub_qa=sub_qa,
+    output=output,
+)</div>
+        </details>
+
+      <div class="panel">
+        <h2>Where Parallelism Happens</h2>
+        <ul>
+          <li><code>run_pipeline_for_subquestions</code> uses <code>ThreadPoolExecutor</code> with <code>max_workers = min(SUBQUESTION_PIPELINE_MAX_WORKERS, len(sub_qa))</code>.</li>
+          <li>Each worker runs <code>_run_pipeline_for_single_subquestion</code> independently.</li>
+          <li>Inside each worker, document validation calls <code>validate_subquestion_documents</code>, which itself parallelizes per-document validation using another <code>ThreadPoolExecutor</code>.</li>
+          <li>Refinement branch retrieval (<code>_seed_refined_sub_qa_from_retrieval</code>) also runs in parallel across refined subquestions.</li>
+          <li>Order is preserved after parallel execution by writing each future result back to its original index before returning the final list.</li>
+        </ul>
+        <div>
+          <span class="badge good">Parallel by subquestion</span>
+          <span class="badge good">Parallel by document validation</span>
+          <span class="badge warn">Nested thread pools can increase concurrency load</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Architecture Improvements from the Onyx/NYX Blog (from <code>completed.md</code>)</h2>
+        <p>
+          Your implementation history in <code>completed.md</code> shows a direct adoption of Onyx article lessons
+          (you referred to it as NYX). These are the architectural improvements now active in the run path:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Article Lesson</th>
+              <th>Improvement Implemented</th>
+              <th>Where in Code</th>
+              <th>Architecture Impact</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Lesson 1: Planning isolated from execution</td>
+              <td>Dedicated decomposition-only LLM call before coordinator invocation.</td>
+              <td><code>agent_service._run_decomposition_only_llm_call</code>, <code>coordinator.get_decomposition_only_prompt</code></td>
+              <td>Cleaner separation of concerns: planning output is explicit input to execution.</td>
+            </tr>
+            <tr>
+              <td>Lesson 1: Plan format contract</td>
+              <td>Normalize/dedupe/limit contract for decomposition output (structured list preferred; JSON/lines fallback).</td>
+              <td><code>agent_service._parse_decomposition_output</code></td>
+              <td>Prevents malformed planner output from breaking downstream delegation.</td>
+            </tr>
+            <tr>
+              <td>Lesson 1 + Lesson 2: Orchestrator role clarity</td>
+              <td>Coordinator receives provided subquestions only and delegates; no final synthesis.</td>
+              <td><code>agent_service._build_coordinator_input_message</code>, <code>coordinator._COORDINATOR_PROMPT</code></td>
+              <td>Coordinator is now a control-plane component; answer synthesis moved to service layer.</td>
+            </tr>
+            <tr>
+              <td>Lesson 4: Preserve source identity</td>
+              <td>Stable citation contract across retrieval and processing: <code>{index}. title=... source=... content=...</code>.</td>
+              <td><code>retriever_tool._format_results</code>, <code>document_validation_service.format_retrieved_documents</code>, <code>agent_service._format_retrieved_documents_for_pipeline</code></td>
+              <td>Evidence remains traceable through validation, reranking, generation, and verification.</td>
+            </tr>
+            <tr>
+              <td>Lesson 4: Avoid lossy summarization in evidence path</td>
+              <td>Subanswer and initial answer prompts explicitly preserve citations and source references.</td>
+              <td><code>subanswer_service.generate_subanswer</code>, <code>initial_answer_service.generate_initial_answer</code></td>
+              <td>Higher factual grounding and better auditability of final outputs.</td>
+            </tr>
+            <tr>
+              <td>Lesson 3: Co-locate instructions + end reminders + simplify prompts</td>
+              <td>RAG subagent prompt consolidated around tool contract, with final reminder and reduced branch complexity.</td>
+              <td><code>coordinator._RAG_SUBAGENT_PROMPT</code></td>
+              <td>Improves instruction adherence for tool usage and output formatting under long contexts.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="small">
+          Net effect: the system moved from a loosely-coupled prompt flow to a more explicit pipeline architecture:
+          isolated planning, strict handoff contracts, coordinator-as-delegator, and evidence identity preserved end-to-end.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>Subquestion Worker Logic (Exact)</h2>
+        <div class="mono-block">_run_pipeline_for_single_subquestion(item):
+  working_item = deep copy of item
+
+  # 1) Document validation
+  working_item.sub_answer = validate/filter retrieved docs
+
+  # 2) Reranking
+  rerank_query = expanded_query or sub_question
+  working_item.sub_answer = reranked citation-contract lines
+  reranked_output = working_item.sub_answer  # snapshot for verification evidence
+
+  # 3) Subanswer generation
+  working_item.sub_answer = generate_subanswer(sub_question, reranked_output)
+
+  # 4) Verification
+  verification = verify_subanswer(sub_question, sub_answer, reranked_output)
+  working_item.answerable = verification.answerable
+  working_item.verification_reason = verification.reason
+
+  return working_item</div>
+      </div>
+
+      <div class="panel">
+        <h2>Retriever Tool Contract and Data Shape</h2>
+        <p>
+          The RAG subagent calls <code>search_database(query, expanded_query, limit, wiki_source_filter)</code> in
+          <code>src/backend/tools/retriever_tool.py</code>.
+        </p>
+        <p>It returns line-oriented evidence in a stable contract:</p>
+        <div class="mono-block">1. title={title} source={source} content={content}
+2. title={title} source={source} content={content}
+...</div>
+        <p>
+          This same line contract is parsed and reused by validation, reranking, subanswer generation, and verification.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2>Bottlenecks, Trade-offs, and Improvements</h2>
+        <h3>Latency Bottlenecks</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Bottleneck</th>
+              <th>Why It Costs Time</th>
+              <th>Current Trade-off</th>
+              <th>Potential Improvement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Multiple LLM calls in one run</td>
+              <td>Decomposition + subanswer generation (per subquestion) + initial synthesis + optional refinement path can stack sequentially.</td>
+              <td>Higher answer quality and structure at the expense of wall-clock latency.</td>
+              <td>Use a fast model for decomposition/verification, keep stronger model only for final synthesis; skip optional steps when confidence is high.</td>
+            </tr>
+            <tr>
+              <td>Nested parallelism</td>
+              <td>Subquestion thread pool plus per-document validation thread pool can oversubscribe CPU under load.</td>
+              <td>Maximizes throughput for small/medium loads, but can degrade tail latency at high concurrency.</td>
+              <td>Use bounded global worker pools or async queue; cap inner pool to 1 when outer pool is saturated.</td>
+            </tr>
+            <tr>
+              <td>Refinement second pass</td>
+              <td>When triggered, pipeline effectively runs retrieval + subquestion processing + synthesis again.</td>
+              <td>Improves recall/coverage for weak first-pass answers.</td>
+              <td>Add stricter refinement gate (confidence + gap score), or partial refinement only on unresolved subquestions.</td>
+            </tr>
+            <tr>
+              <td>Context retrieval and formatter passes</td>
+              <td>Multiple retrieval and parse/format passes occur at different stages.</td>
+              <td>Keeps stages decoupled and observable.</td>
+              <td>Cache parsed document objects and reuse across validation/rerank/verification functions.</td>
+            </tr>
+            <tr>
+              <td>Frontend timeout set to 10 minutes</td>
+              <td>Long-running requests tie up client wait states and can hide slow regressions.</td>
+              <td>Avoids premature timeout for complex runs.</td>
+              <td>Add progress streaming (SSE/WebSocket), intermediate stage updates, and server-side hard limits per stage.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Accuracy Bottlenecks</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Bottleneck</th>
+              <th>Accuracy Risk</th>
+              <th>Current Trade-off</th>
+              <th>Potential Improvement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Decomposition parser fallback</td>
+              <td>If decomposition output is malformed, flow falls back to the original question as one subquestion, reducing decomposition quality.</td>
+              <td>Robustness over optimal decomposition.</td>
+              <td>Schema-constrained LLM output (JSON mode/tool schema) and automatic retry on parse failure.</td>
+            </tr>
+            <tr>
+              <td>Heuristic document validation</td>
+              <td>Token-overlap relevance can reject semantically relevant docs and keep lexical false positives.</td>
+              <td>Fast and deterministic filtering.</td>
+              <td>Cross-encoder relevance scoring or hybrid lexical+semantic recheck for borderline documents.</td>
+            </tr>
+            <tr>
+              <td>Lightweight reranker scoring</td>
+              <td>Weighted overlap + rank bias may mis-rank nuanced evidence.</td>
+              <td>No extra model cost, predictable behavior.</td>
+              <td>Learned reranker (cross-encoder) on top-N candidates; keep heuristic reranker as low-latency fallback.</td>
+            </tr>
+            <tr>
+              <td>Verification heuristic</td>
+              <td>Token-overlap grounding check can mark paraphrased but correct answers as ungrounded (false negatives) or vice versa.</td>
+              <td>Cheap guardrail with no extra model call.</td>
+              <td>Use LLM-as-judge with strict citation entailment checks and calibrated thresholds; log disagreement cases.</td>
+            </tr>
+            <tr>
+              <td>Final synthesis may compress evidence</td>
+              <td><code>generate_initial_answer</code> may over-summarize and lose uncertainty nuance despite constraints.</td>
+              <td>Readable final answer for UX.</td>
+              <td>Add structured output (claims + citations + confidence), then render final prose from that structure.</td>
+            </tr>
+            <tr>
+              <td>Citation contract is line-based text</td>
+              <td>Parsing depends on strict line format; malformed lines drop evidence silently from downstream stages.</td>
+              <td>Simple interoperability across stages.</td>
+              <td>Replace with typed JSON evidence objects end-to-end; keep line rendering only for logs/UI.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>High-Impact, Low-Risk First Improvements</h3>
+        <ul>
+          <li>Move evidence representation from line text to strict JSON objects between stages.</li>
+          <li>Add stage timing metrics (decomposition, coordinator invoke, subquestion pipeline, refinement) and p95 dashboards.</li>
+          <li>Calibrate <code>SUBQUESTION_PIPELINE_MAX_WORKERS</code> and <code>DOCUMENT_VALIDATION_MAX_WORKERS</code> together to avoid oversubscription.</li>
+          <li>Gate refinement with stronger criteria to avoid unnecessary second-pass runs.</li>
+          <li>Add retry-on-parse for decomposition output before fallback to single question.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>Coordinator vs Final Answer Responsibility</h2>
+        <ul>
+          <li>Coordinator agent is instructed to delegate and gather subagent outputs, not to synthesize final user answer.</li>
+          <li>Main final answer is generated in backend service layer by <code>generate_initial_answer</code>.</li>
+          <li>UI displays that service-generated <code>output</code>, not raw coordinator completion text.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>Fallback Behavior You Should Know</h2>
+        <ul>
+          <li>If <code>OPENAI_API_KEY</code> is missing, decomposition/subanswer/initial-answer/refinement-decomposition functions fall back to deterministic local logic.</li>
+          <li>Malformed decomposition output falls back to normalized original question.</li>
+          <li>No parseable retrieved docs yields "No relevant documents found." and likely non-answerable verification.</li>
+          <li>Refinement triggers when initial answer is empty/insufficient, no subanswers, or low answerable ratio (<code>REFINEMENT_MIN_ANSWERABLE_RATIO</code>, default 0.5).</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>How to View This File</h2>
+        <p>
+          With frontend running, open:
+          <code>http://localhost:5173/run-flow.html</code>
+        </p>
+        <p class="small">File path: <code>src/frontend/public/run-flow.html</code></p>
+      </div>
+    </div>
+  </body>
+</html>

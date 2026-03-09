@@ -58,7 +58,7 @@ flowchart TD
 1. Frontend loads wiki source options and current loaded-state.
 2. User loads a curated wiki source; backend resolves source content, chunks it, embeds it, and stores vectors + source metadata.
 3. User submits a query.
-4. Backend runs initial context retrieval, then coordinator-driven subquestion decomposition and retrieval calls.
+4. Backend runs initial context retrieval, then a decomposition-only LLM call, then coordinator-driven subquestion retrieval calls.
 5. Per-subquestion pipeline runs in parallel: validate documents, rerank, generate subanswer, verify answer grounding.
 6. Backend synthesizes an initial answer from initial context + verified subanswers.
 7. Backend decides whether refinement is needed.
@@ -71,7 +71,7 @@ flowchart TD
 - Internal data ingestion (`src/backend/services/internal_data_service.py`, `wiki_ingestion_service.py`): curated source resolution, chunking, loading, load-state reporting, data wipe.
 - Vector store adapter (`src/backend/services/vector_store_service.py`): PGVector collection lifecycle, document add, context retrieval.
 - Runtime orchestrator (`src/backend/services/agent_service.py`): end-to-end execution and branch control.
-- Coordinator + retriever (`src/backend/agents/coordinator.py`, `src/backend/tools/retriever_tool.py`): decomposition/delegation + semantic search.
+- Coordinator + retriever (`src/backend/agents/coordinator.py`, `src/backend/tools/retriever_tool.py`): delegation + semantic search.
 - Per-subquestion processing services (`document_validation_service.py`, `reranker_service.py`, `subanswer_service.py`, `subanswer_verification_service.py`): retrieval-to-grounded-answer transforms.
 - Synthesis + refinement (`initial_answer_service.py`, `refinement_decision_service.py`, `refinement_decomposition_service.py`): answer assembly and fallback/refinement loop.
 - Persistence (`src/backend/models.py`, `src/backend/alembic/versions/001_add_internal_documents_tables.py`): relational + vector schema.
@@ -95,8 +95,9 @@ flowchart TD
 - Inputs:
   - `POST /api/agents/run` with `{ query }`.
 - Transformations:
-  - Initial retrieval (`k`, optional threshold) becomes structured decomposition context.
-  - Coordinator creates subquestions and delegates retrieval to subagent.
+  - Initial retrieval (`k`, optional threshold) becomes structured context for later synthesis.
+  - Decomposition-only LLM call produces initial subquestions (question-only input).
+  - Coordinator delegates retrieval to the subagent for each provided subquestion.
   - Callback capture maps each retrieval call to subquestion artifacts.
   - Parallel per-subquestion pipeline applies:
     - validation filters,
@@ -115,6 +116,8 @@ flowchart TD
 - Callback handlers capture `search_database` input/output pairs for deterministic `sub_qa` extraction.
 - Logging tracks each stage and branch (`refinement_needed`, per-subquestion verification reasons, final output length).
 - Coordinator keeps internal flow state in deep-agents virtual filesystem (`/runtime/coordinator_flow.md`) plus todo updates.
+- Coordinator runtime also uses a LangGraph in-memory checkpointer; each `/api/agents/run` invocation is assigned a fresh UUID `thread_id` so checkpoints are isolated per run.
+- Optional Langfuse callback is attached per run when `LANGFUSE_ENABLED=true` with valid credentials and flushed at invoke completion.
 
 ## Key Interfaces and APIs
 - Backend HTTP APIs:
@@ -132,7 +135,7 @@ flowchart TD
   - `internal_document_chunks` with `embedding Vector(1536)` and metadata.
 
 ## Section Connectivity (1-14)
-- Sections 1-3 establish coordinator flow tracking + context-aware decomposition entry.
+- Sections 1-3 establish coordinator flow tracking + decomposition-only handoff.
 - Sections 4-9 define one subquestion processing lane from query expansion through verification.
 - Section 10 parallelizes that lane across all decomposed subquestions.
 - Section 11 synthesizes initial answer from lane outputs + initial context.
@@ -151,7 +154,7 @@ flowchart TD
 
 ## Tradeoffs
 - Agent-driven orchestration vs deterministic pipeline-only orchestration:
-  - Choice: keep deep-agent coordinator for decomposition/delegation, then deterministic Python services for post-retrieval stages.
+  - Choice: keep deep-agent coordinator for delegation, then deterministic Python services for post-retrieval stages.
   - Pros: flexible decomposition quality + predictable downstream transforms.
   - Cons: mixed control model increases tracing complexity.
 - String-formatted retrieved-doc payloads vs strict typed objects across all stages:

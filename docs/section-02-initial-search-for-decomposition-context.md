@@ -1,7 +1,7 @@
 # Section 2 Architecture: Initial Search for Decomposition Context
 
 ## Purpose
-Run one retrieval on the raw user question before decomposition so the coordinator starts with grounded context instead of decomposing from the question alone.
+Run one retrieval on the raw user question before decomposition to build a bounded context bundle for later synthesis and diagnostics (not injected into the decomposition-only LLM call).
 
 ## Components
 - Runtime orchestration: [`src/backend/services/agent_service.py`](/Users/nickbohm/Desktop/worktree/agent-search/src/backend/services/agent_service.py)
@@ -36,8 +36,8 @@ Run one retrieval on the raw user question before decomposition so the coordinat
 |  |    -> [{rank, document_id, title, source, snippet}, ...]|  |
 |  +----------------------------------------------------------+  |
 |  +----------------------------------------------------------+  |
-|  | 4) _build_coordinator_input_message(query, context)      |  |
-|  |    embeds serialized context JSON into HumanMessage      |  |
+|  | 4) _run_decomposition_only_llm_call(query)               |  |
+|  |    question-only decomposition input (no context)        |  |
 |  +----------------------------------------------------------+  |
 +-------------------------------+--------------------------------+
                                 |
@@ -45,14 +45,14 @@ Run one retrieval on the raw user question before decomposition so the coordinat
 +----------------------------------------------------------------+
 | Coordinator Agent Invocation                                   |
 |  - agent.invoke({messages: [HumanMessage(content=...)]})       |
-|  - decomposition sees initial retrieval context in first turn  |
+|  - coordinator consumes provided sub-questions only            |
 +-------------------------------+--------------------------------+
                                 |
                                 v
 +----------------------------------------------------------------+
 | Downstream Sections                                            |
-|  - Section 3 decomposition uses context signals                |
-|  - Later stages consume sub-questions produced from this input |
+|  - Section 3 consumes provided sub-questions                   |
+|  - Initial search context is used in later synthesis           |
 +----------------------------------------------------------------+
 ```
 
@@ -74,26 +74,24 @@ Transformations:
 - `document_id`: stringified document id
 - `title`: `metadata.title` or `metadata.wiki_page`
 - `source`: `metadata.source` or `metadata.wiki_url`
-- `snippet`: newline-normalized `page_content`, truncated to 500 chars
-4. `_build_coordinator_input_message(...)` serializes this list as JSON and injects it into the first coordinator `HumanMessage` under “Initial retrieval context for decomposition”.
+- `snippet`: newline-normalized `page_content`, truncated to 250 chars
+4. `initial_search_context` is retained for later answer synthesis; decomposition input uses only the user question.
 
 Outputs:
 - In-memory `initial_search_context: list[dict[str, str | int]]`
-- Coordinator input message containing both:
-- raw user question
-- structured retrieval context
+- Structured initial context bundle retained for downstream synthesis.
 - Log events showing query, `k`, threshold, and number of retrieved/context items
 
 Data movement boundaries:
 - HTTP boundary: query enters at API request.
 - Retrieval boundary: query and config cross into vector store search.
-- Prompt boundary: structured retrieval results are converted into LLM-readable JSON text.
+- Synthesis boundary: structured retrieval results are converted into LLM-readable JSON text for initial answer.
 
 ## Key Interfaces / APIs
 - `run_runtime_agent(payload: RuntimeAgentRunRequest, db: Session) -> RuntimeAgentRunResponse`
 - `search_documents_for_context(vector_store: Any, query: str, *, k: int, score_threshold: float | None) -> list[Document]`
 - `build_initial_search_context(documents: list[Document]) -> list[dict[str, str | int]]`
-- `_build_coordinator_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str`
+- `_build_decomposition_only_input_message(query: str) -> str`
 
 Relevant config surface:
 - `INITIAL_SEARCH_CONTEXT_K`
@@ -101,28 +99,28 @@ Relevant config surface:
 
 ## How It Fits Adjacent Sections
 - Depends on Section 1 orchestration entrypoint (`run_runtime_agent`) and coordinator invocation path.
-- Supplies decomposition context to Section 3 so sub-question generation can anchor on retrieved entities and claims.
-- Improves later sections indirectly (query expansion, retrieval, reranking, subanswers) by improving sub-question quality at the source.
+- Supplies initial context to later synthesis (initial answer and refinement paths).
+- Sub-question quality depends on the decomposition-only call, which now sees question-only input.
 
 ## Tradeoffs
-1. One pre-decomposition retrieval vs no pre-retrieval
-- Chosen: one initial search before decomposition.
-- Pros: decomposition is grounded in real corpus signals; fewer abstract or off-target sub-questions.
+1. One early retrieval vs fully deferred retrieval
+- Chosen: one initial search before decomposition (for later synthesis).
+- Pros: initial answer has a grounded context bundle even if downstream retrieval is sparse.
 - Cons: adds latency and one extra vector search per run.
 
 2. Structured compact context vs passing raw full documents
-- Chosen: pass bounded fields (`rank`, ids, title/source, 500-char snippet).
-- Pros: predictable prompt size and cleaner decomposition cues.
-- Cons: truncation can hide details needed for nuanced decomposition.
+- Chosen: keep bounded fields (`rank`, ids, title/source, 250-char snippet).
+- Pros: predictable prompt size and concise synthesis context.
+- Cons: truncation can hide details needed for nuanced answers.
 
 3. Optional relevance-threshold mode vs fixed top-k only
 - Chosen: configurable threshold when backend supports relevance-score API.
 - Pros: can reduce low-quality context items in noisy corpora.
 - Cons: threshold tuning is corpus-dependent; unsupported stores fall back to unthresholded search.
 
-4. Embedding context as JSON in prompt text vs separate tool/state channel
-- Chosen: inline JSON in first `HumanMessage`.
-- Pros: simple wiring with existing coordinator contract and no extra agent tooling.
+4. Embedding context as JSON in synthesis prompt vs separate tool/state channel
+- Chosen: inline JSON for the initial answer step.
+- Pros: simple wiring with existing service contracts and no extra tooling.
 - Cons: context becomes token payload; large contexts directly increase model cost.
 
 5. Runtime env-configured `k` and threshold vs hardcoded constants

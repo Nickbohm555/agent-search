@@ -44,11 +44,12 @@ def get_vector_store(connection: str, collection_name: str, embeddings: Embeddin
 
 
 def _normalize_document_metadata(document: Document) -> Document:
-    """Ensure required wiki metadata fields are present for retrieval/filtering."""
-    metadata = dict(document.metadata or {})
-    metadata["wiki_page"] = str(metadata.get("wiki_page") or metadata.get("title") or "").strip()
-    metadata["wiki_url"] = str(metadata.get("wiki_url") or metadata.get("source") or "").strip()
-    return Document(page_content=document.page_content, metadata=metadata, id=document.id)
+    """Keep only required wiki metadata fields for retrieval/filtering."""
+    metadata = document.metadata or {}
+    topic = str(metadata.get("title") or metadata.get("wiki_page") or "").strip()
+    wiki_url = str(metadata.get("source") or metadata.get("wiki_url") or "").strip()
+    slim_metadata = {"topic": topic, "wiki_url": wiki_url}
+    return Document(page_content=document.page_content, metadata=slim_metadata, id=document.id)
 
 
 def add_documents_to_store(vector_store: PGVector, documents: list[Document]) -> list[str]:
@@ -113,9 +114,9 @@ def build_initial_search_context(documents: list[Document]) -> list[dict[str, st
             {
                 "rank": rank,
                 "document_id": str(document.id or ""),
-                "title": str(metadata.get("title") or metadata.get("wiki_page") or ""),
-                "source": str(metadata.get("source") or metadata.get("wiki_url") or ""),
-                "snippet": snippet[:500],
+                "title": str(metadata.get("topic") or metadata.get("title") or metadata.get("wiki_page") or ""),
+                "source": str(metadata.get("wiki_url") or metadata.get("source") or ""),
+                "snippet": snippet[:250],
             }
         )
     return context_items

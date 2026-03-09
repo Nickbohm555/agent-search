@@ -2,6 +2,12 @@ import { WikiSourceOption } from "./api";
 
 export const DEFAULT_WIKI_SOURCES: WikiSourceOption[] = [
   {
+    source_id: "all",
+    label: "All Sources",
+    article_query: "All sources",
+    already_loaded: false,
+  },
+  {
     source_id: "geopolitics",
     label: "Geopolitics",
     article_query: "Geopolitics",

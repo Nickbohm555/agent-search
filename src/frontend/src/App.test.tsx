@@ -13,6 +13,7 @@ describe("App wiki source dropdown", () => {
 
     render(<App />);
 
+    expect(await screen.findByRole("option", { name: "All Sources" })).toBeInTheDocument();
     expect(await screen.findByRole("option", { name: "Geopolitics" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Strait of Hormuz" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "NATO" })).toBeInTheDocument();
@@ -39,6 +40,7 @@ describe("App wiki source dropdown", () => {
 
     render(<App />);
 
+    expect(await screen.findByRole("option", { name: "All Sources" })).toBeInTheDocument();
     expect(await screen.findByRole("option", { name: "Geopolitics (loaded)" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "NATO" })).toBeInTheDocument();
   });

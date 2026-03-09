@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import Column, ForeignKey, Integer, MetaData, Table, delete
+from sqlalchemy import Column, ForeignKey, Integer, MetaData, Table, delete, text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,22 @@ _internal_document_chunks = Table(
 
 def wipe_all_internal_data(session: Session) -> None:
     """Delete internal chunks first, then internal documents."""
+    dialect = session.bind.dialect.name if session.bind is not None else ""
+    if dialect == "postgresql":
+        session.execute(
+            text(
+                "TRUNCATE "
+                "internal_document_chunks, "
+                "internal_documents, "
+                "langchain_pg_embedding, "
+                "langchain_pg_collection "
+                "RESTART IDENTITY CASCADE",
+            ),
+        )
+        session.flush()
+        logger.info("Wiped internal data via TRUNCATE.")
+        return
+
     chunk_result = session.execute(delete(_internal_document_chunks))
     document_result = session.execute(delete(_internal_documents))
     session.flush()
@@ -32,4 +48,3 @@ def wipe_all_internal_data(session: Session) -> None:
         chunks_deleted,
         documents_deleted,
     )
-

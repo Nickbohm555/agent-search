@@ -3,8 +3,10 @@ import {
   RequestState,
   RuntimeAgentRunResponse,
   WikiSourceOption,
+  cancelInternalDataLoad,
+  getInternalDataLoadStatus,
   listWikiSources,
-  loadWikiSource,
+  startInternalDataLoad,
   runAgent,
   wipeInternalData,
 } from "./utils/api";
@@ -22,6 +24,9 @@ export default function App() {
   const [wikiSourceId, setWikiSourceId] = useState(DEFAULT_WIKI_SOURCES[0]?.source_id ?? "");
   const [loadState, setLoadState] = useState<RequestState>("idle");
   const [loadMessage, setLoadMessage] = useState("Not started.");
+  const [loadJobId, setLoadJobId] = useState<string | null>(null);
+  const [loadProgress, setLoadProgress] = useState({ completed: 0, total: 0 });
+  const [loadProgressMessage, setLoadProgressMessage] = useState("");
   const [wipeState, setWipeState] = useState<RequestState>("idle");
   const [wipeMessage, setWipeMessage] = useState("");
 
@@ -35,6 +40,7 @@ export default function App() {
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
     [wikiSources, wikiSourceId],
   );
+  const isLoadAll = selectedWikiSource?.source_id === "all";
 
   useEffect(() => {
     let mounted = true;
@@ -57,19 +63,84 @@ export default function App() {
     if (!selectedWikiSource || selectedWikiSource.already_loaded || loadState === "loading") return;
 
     setLoadState("loading");
-    setLoadMessage("Loading wiki source...");
-    const result = await loadWikiSource(selectedWikiSource.source_id);
+    setLoadMessage(isLoadAll ? "Loading all wiki sources..." : "Loading wiki source...");
+    setLoadProgress({ completed: 0, total: 0 });
+    setLoadProgressMessage("Starting...");
 
-    if (result.ok) {
-      setLoadState("success");
-      setLoadMessage(`Loaded ${result.data.documents_loaded} docs (${result.data.chunks_created} chunks).`);
-      const refresh = await listWikiSources();
-      if (refresh.ok) setWikiSources(mergeWikiSourcesWithFallback(refresh.data.sources));
+    const startResult = await startInternalDataLoad(selectedWikiSource.source_id);
+    if (!startResult.ok) {
+      setLoadState("error");
+      setLoadMessage(startResult.error.message);
       return;
     }
 
-    setLoadState("error");
-    setLoadMessage(result.error.message);
+    const jobId = startResult.data.job_id;
+    setLoadJobId(jobId);
+
+    const poll = async () => {
+      const statusResult = await getInternalDataLoadStatus(jobId);
+      if (!statusResult.ok) {
+        setLoadState("error");
+        setLoadMessage(statusResult.error.message);
+        setLoadJobId(null);
+        return;
+      }
+      const status = statusResult.data;
+      setLoadProgress({ completed: status.completed, total: status.total });
+      setLoadProgressMessage(status.message);
+
+      if (status.status === "success") {
+        setLoadState("success");
+        if (status.response) {
+          setLoadMessage(
+            `Loaded ${status.response.documents_loaded} docs (${status.response.chunks_created} chunks).`,
+          );
+        } else {
+          setLoadMessage("Load completed.");
+        }
+        setLoadJobId(null);
+        const refresh = await listWikiSources();
+        if (refresh.ok) setWikiSources(mergeWikiSourcesWithFallback(refresh.data.sources));
+        return;
+      }
+
+      if (status.status === "error") {
+        setLoadState("error");
+        setLoadMessage(status.error ?? "Load failed.");
+        setLoadJobId(null);
+        return;
+      }
+
+      if (status.status === "cancelled") {
+        setLoadState("error");
+        setLoadMessage("Load cancelled.");
+        setLoadJobId(null);
+        return;
+      }
+
+      setTimeout(poll, 1000);
+    };
+
+    poll();
+  }
+
+  async function handleCancelLoad(): Promise<void> {
+    if (!loadJobId || loadState !== "loading") return;
+    const result = await cancelInternalDataLoad(loadJobId);
+    if (!result.ok) {
+      setLoadState("error");
+      setLoadMessage(result.error.message);
+      return;
+    }
+    setLoadProgressMessage("Cancelling...");
+  }
+
+  async function handleLoadAction(): Promise<void> {
+    if (loadState === "loading") {
+      await handleCancelLoad();
+      return;
+    }
+    await handleLoadWiki();
   }
 
   async function handleWipe(): Promise<void> {
@@ -82,6 +153,11 @@ export default function App() {
     if (result.ok) {
       setWipeState("success");
       setWipeMessage(result.data.message);
+      setLoadState("idle");
+      setLoadMessage("Not started.");
+      setLoadJobId(null);
+      setLoadProgress({ completed: 0, total: 0 });
+      setLoadProgressMessage("");
       const refresh = await listWikiSources();
       if (refresh.ok) setWikiSources(mergeWikiSourcesWithFallback(refresh.data.sources));
       return;
@@ -150,18 +226,36 @@ export default function App() {
         <div className="row">
           <button
             type="button"
-            onClick={handleLoadWiki}
-            disabled={!selectedWikiSource || selectedWikiSource.already_loaded || loadState === "loading"}
+            onClick={handleLoadAction}
+            disabled={!selectedWikiSource || selectedWikiSource.already_loaded}
           >
-            {loadState === "loading" ? "Loading..." : "Load Wiki Source"}
+            {loadState === "loading"
+              ? "Cancel Load"
+              : isLoadAll
+                ? "Load All Sources"
+                : "Load Wiki Source"}
           </button>
           <button type="button" onClick={handleWipe} disabled={wipeState === "loading"}>
             {wipeState === "loading" ? "Wiping..." : "Wipe Data"}
           </button>
         </div>
 
+        <div className="progress-row">
+          <progress
+            max={loadProgress.total || 1}
+            value={loadProgress.completed}
+            aria-label="Load progress"
+          />
+          <span className="progress-label">
+            {loadProgress.total > 0
+              ? `${Math.min(100, Math.round((loadProgress.completed / loadProgress.total) * 100))}%`
+              : "0%"}
+          </span>
+        </div>
+        {loadProgressMessage ? <p>Progress: {loadProgressMessage}</p> : null}
+
         <p>Load status: {loadMessage}</p>
-        {wipeMessage ? <p>Wipe status: {wipeMessage}</p> : null}
+        {loadState !== "loading" && wipeMessage ? <p>Wipe status: {wipeMessage}</p> : null}
       </section>
 
       <section className="panel">

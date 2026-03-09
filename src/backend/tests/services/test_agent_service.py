@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+import uuid
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
@@ -13,6 +14,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from schemas import RuntimeAgentRunRequest
+from schemas.decomposition import DecompositionPlan
 from services import document_validation_service
 from services import agent_service
 
@@ -336,6 +338,13 @@ def test_run_runtime_agent_generates_initial_answer_and_logs(monkeypatch, caplog
     assert captured["initial_answer_input"]["main_question"] == "What happened in NATO policy?"
     assert captured["initial_answer_input"]["sub_qa_count"] == 1
     assert captured["initial_answer_input"]["initial_search_context"][0]["title"] == "NATO"
+    invoke_config = captured["config"]
+    assert isinstance(invoke_config, dict)
+    assert "callbacks" in invoke_config
+    assert isinstance(invoke_config.get("configurable"), dict)
+    thread_id = invoke_config["configurable"].get("thread_id")
+    assert isinstance(thread_id, str) and thread_id
+    assert str(uuid.UUID(thread_id)) == thread_id
     coordinator_message = captured["payload"]["messages"][0].content
     assert "Provided sub-questions for delegation:" in coordinator_message
     assert '"What changed in NATO policy?"' in coordinator_message
@@ -2313,6 +2322,85 @@ def test_run_runtime_agent_flags_refinement_path_when_decision_true(monkeypatch,
     assert "Runtime agent run complete" in caplog.text
 
 
+def test_run_runtime_agent_includes_langfuse_callback_and_flushes(monkeypatch) -> None:
+    captured: dict[str, object] = {"flushed_handler": None}
+
+    class _FakeAgent:
+        def invoke(self, payload, **kwargs):
+            captured["payload"] = payload
+            captured["config"] = kwargs.get("config")
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_task_1",
+                                "name": "task",
+                                "args": {"description": "What changed in NATO policy?", "subagent_type": "rag_retriever"},
+                            }
+                        ],
+                    ),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_sd_1",
+                                "name": "search_database",
+                                "args": {"query": "What changed in NATO policy?", "limit": 10},
+                            }
+                        ],
+                    ),
+                    ToolMessage(content="Policy shifted in 2025.", tool_call_id="call_sd_1", name="search_database"),
+                    AIMessage(content="Subagent completed the delegated lookup."),
+                ]
+            }
+
+    class _FakeLangfuseCallback:
+        pass
+
+    langfuse_callback = _FakeLangfuseCallback()
+
+    monkeypatch.setattr(agent_service, "get_vector_store", lambda **_: "fake-vector-store")
+    monkeypatch.setattr(agent_service, "create_coordinator_agent", lambda **_: _FakeAgent())
+    monkeypatch.setattr(agent_service, "get_embedding_model", lambda: "fake-embeddings")
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **_: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda documents: list(documents))
+    monkeypatch.setattr(agent_service, "_run_decomposition_only_llm_call", lambda **_: '["What changed in NATO policy?"]')
+    monkeypatch.setattr(agent_service, "generate_initial_answer", lambda **_: "Initial synthesized answer")
+    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda: langfuse_callback)
+    monkeypatch.setattr(
+        agent_service,
+        "flush_langfuse_callback_handler",
+        lambda handler: captured.__setitem__("flushed_handler", handler),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "Generated subanswer from reranked docs.",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    _ = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="What happened in NATO policy?"),
+        db=_make_session(),
+    )
+
+    invoke_config = captured["config"]
+    assert isinstance(invoke_config, dict)
+    callbacks = invoke_config.get("callbacks")
+    assert isinstance(callbacks, list)
+    assert langfuse_callback in callbacks
+    assert captured["flushed_handler"] is langfuse_callback
+
+
 def test_build_coordinator_input_message_lists_provided_sub_questions_for_delegation() -> None:
     message = agent_service._build_coordinator_input_message(["What changed in VAT policy?"])
 
@@ -2324,6 +2412,36 @@ def test_build_coordinator_input_message_lists_provided_sub_questions_for_delega
 
 def test_parse_decomposition_output_accepts_json_array_and_normalizes_questions() -> None:
     output = '["What changed in VAT policy", "What changed in VAT policy?", "Why did it change"]'
+
+    parsed = agent_service._parse_decomposition_output(
+        raw_output=output,
+        query="Explain VAT changes",
+    )
+
+    assert parsed == [
+        "What changed in VAT policy?",
+        "Why did it change?",
+    ]
+
+
+def test_parse_decomposition_output_accepts_list_and_normalizes_questions() -> None:
+    output = ["What changed in VAT policy", "What changed in VAT policy?", "Why did it change"]
+
+    parsed = agent_service._parse_decomposition_output(
+        raw_output=output,
+        query="Explain VAT changes",
+    )
+
+    assert parsed == [
+        "What changed in VAT policy?",
+        "Why did it change?",
+    ]
+
+
+def test_parse_decomposition_output_accepts_decomposition_plan() -> None:
+    output = DecompositionPlan(
+        sub_questions=["What changed in VAT policy", "What changed in VAT policy?", "Why did it change"]
+    )
 
     parsed = agent_service._parse_decomposition_output(
         raw_output=output,

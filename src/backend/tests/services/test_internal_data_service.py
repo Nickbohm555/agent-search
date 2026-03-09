@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from langchain_core.documents import Document
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, insert, select
@@ -126,7 +127,97 @@ def test_list_wiki_sources_with_load_state_marks_already_loaded_sources() -> Non
     response = internal_data_service.list_wiki_sources_with_load_state(session)
     by_id = {source.source_id: source for source in response.sources}
 
+    assert by_id["all"].already_loaded is False
     assert by_id["geopolitics"].already_loaded is True
     assert by_id["nato"].already_loaded is False
+
+    session.close()
+
+
+def test_load_internal_data_all_skips_loaded_sources_and_aggregates(monkeypatch) -> None:
+    session = _make_session()
+
+    internal_documents = Table("internal_documents", MetaData(), autoload_with=session.bind)
+    session.execute(
+        insert(internal_documents),
+        [
+            {
+                "source_type": "wiki",
+                "source_ref": "geopolitics",
+                "title": "Geopolitics",
+                "content": "Geopolitics content",
+            },
+        ],
+    )
+    session.commit()
+
+    sources = (
+        SimpleNamespace(source_id="geopolitics", label="Geopolitics", article_query="Geopolitics"),
+        SimpleNamespace(source_id="nato", label="NATO", article_query="NATO"),
+    )
+
+    def fake_list_wiki_sources():
+        return sources
+
+    def fake_resolve_wiki_documents(wiki_input):
+        if wiki_input.source_id == "geopolitics":
+            raise AssertionError("Loaded source should be skipped for all-source load.")
+        return [
+            Document(
+                page_content="NATO content",
+                metadata={
+                    "title": "NATO",
+                    "source": "https://en.wikipedia.org/wiki/NATO",
+                },
+            )
+        ]
+
+    def fake_chunk_wiki_documents(docs):
+        assert len(docs) == 1
+        return [
+            Document(page_content="chunk 1", metadata={"title": "NATO"}),
+            Document(page_content="chunk 2", metadata={"title": "NATO"}),
+        ]
+
+    def fake_get_embedding_model():
+        return object()
+
+    def fake_get_vector_store(connection: str, collection_name: str, embeddings):
+        return "vector-store"
+
+    captured: dict[str, object] = {}
+
+    def fake_add_documents_to_store(vector_store, documents):
+        captured["vector_store"] = vector_store
+        captured["documents"] = documents
+        return ["id-1", "id-2"]
+
+    monkeypatch.setattr(internal_data_service, "list_wiki_sources", fake_list_wiki_sources)
+    monkeypatch.setattr(internal_data_service, "resolve_wiki_documents", fake_resolve_wiki_documents)
+    monkeypatch.setattr(internal_data_service, "chunk_wiki_documents", fake_chunk_wiki_documents)
+    monkeypatch.setattr(internal_data_service, "get_embedding_model", fake_get_embedding_model)
+    monkeypatch.setattr(internal_data_service, "get_vector_store", fake_get_vector_store)
+    monkeypatch.setattr(internal_data_service, "add_documents_to_store", fake_add_documents_to_store)
+
+    response = internal_data_service.load_internal_data(
+        InternalDataLoadRequest(source_type="wiki", wiki=WikiLoadInput(source_id="all")),
+        session,
+    )
+
+    assert response.status == "success"
+    assert response.source_type == "wiki"
+    assert response.documents_loaded == 1
+    assert response.chunks_created == 2
+    assert captured["vector_store"] == "vector-store"
+    assert len(captured["documents"]) == 2
+
+    persisted = session.execute(
+        select(
+            internal_documents.c.source_type,
+            internal_documents.c.source_ref,
+            internal_documents.c.title,
+        ).where(internal_documents.c.source_ref == "nato"),
+    ).all()
+    assert persisted == [("wiki", "nato", "NATO")]
 
     session.close()

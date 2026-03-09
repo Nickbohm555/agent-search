@@ -67,12 +67,12 @@ Current section to work on: 17
 
 ---
 
-## Test Section 3: Initial search for decomposition context (Section 2)
+## Test Section 3: Initial search for synthesis context (Section 2)
 
-**Single goal:** After loading NATO wiki data, one agent run produces backend logs showing initial context search and decomposition context built with non-zero docs.
+**Single goal:** After loading NATO wiki data, one agent run produces backend logs showing initial context search and context built with non-zero docs.
 
 **Details:**
-- Wipe internal data, load NATO wiki, run one query. Logs must show context search completion and "Initial decomposition context built" with `docs=5` (or similar) and `context_items` ≥ 1.
+- Wipe internal data, load NATO wiki, run one query. Logs must show context search completion and "Initial decomposition context built" with `docs=5` (or similar).
 
 **Tech stack and dependencies**
 - Docker backend; vector store and internal-data API.
@@ -82,7 +82,7 @@ Current section to work on: 17
 | File | Purpose |
 |------|--------|
 | `src/backend/services/vector_store_service.py` | Context search and context building. |
-| `src/backend/services/agent_service.py` | Invokes context search and passes context to decomposition. |
+| `src/backend/services/agent_service.py` | Invokes context search and retains context for later synthesis. |
 
 **How to test:**
 1. Wipe: `POST /api/internal-data/wipe` → 200.
@@ -90,18 +90,18 @@ Current section to work on: 17
 3. Run: `POST /api/agents/run` with `{"query":"What changed in NATO policy?"}` → 200.
 4. Backend logs: `docker compose logs --tail=200 backend`. Require:
    - A line matching `Context search complete` with the query and `results=` (e.g. `results=5`).
-   - A line matching `Initial decomposition context built` with `docs=` and `context_items=` (e.g. `docs=5`, `context_items=5`).
+   - A line matching `Initial decomposition context built` with `docs=` (e.g. `docs=5`).
 
 **Test results:** (Add when section is complete.)
 
 ---
 
-## Test Section 4: Context-aware decomposition (Section 3)
+## Test Section 4: Question-only decomposition (Section 3)
 
-**Single goal:** Same run as Section 3 produces logs showing coordinator decomposition input prepared with context, and API response contains non-empty `sub_qa` aligned with the query.
+**Single goal:** Same run as Section 3 produces logs showing coordinator sub-question input prepared, and API response contains non-empty `sub_qa` aligned with the query.
 
 **Details:**
-- Reuse data and run from Test Section 3 (or repeat wipe/load/run). Assert "Coordinator decomposition input prepared" with `context_items=5` (or > 0) and response `sub_qa` length ≥ 1 with sub-questions ending in "?".
+- Reuse data and run from Test Section 3 (or repeat wipe/load/run). Assert "Coordinator sub-question input prepared" with `parsed_sub_questions` > 0 and response `sub_qa` length ≥ 1 with sub-questions ending in "?".
 
 **Tech stack and dependencies**
 - Same as Test Section 3.
@@ -110,12 +110,12 @@ Current section to work on: 17
 
 | File | Purpose |
 |------|--------|
-| `src/backend/agents/coordinator.py` | Context-aware decomposition instructions. |
-| `src/backend/services/agent_service.py` | Builds decomposition input with context. |
+| `src/backend/agents/coordinator.py` | Coordinator delegation instructions (sub-questions provided). |
+| `src/backend/services/agent_service.py` | Builds coordinator input from the provided sub-questions. |
 
 **How to test:**
 1. If not already done: wipe, load NATO wiki, run with "What changed in NATO policy?" (see Test Section 3).
-2. Backend logs: require a line like `Coordinator decomposition input prepared ... context_items=5` (or positive `context_items`).
+2. Backend logs: require a line like `Coordinator sub-question input prepared ... parsed_sub_questions=`.
 3. From the same run’s response: `sub_qa` is present and non-empty; each `sub_question` is a string ending with `?`.
 
 **Test results:** (Add when section is complete.)

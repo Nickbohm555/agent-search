@@ -5,18 +5,21 @@ import json
 import logging
 import os
 import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed, wait
 from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
 from agents import create_coordinator_agent, get_decomposition_only_prompt
 from db import DATABASE_URL
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas.decomposition import DecompositionPlan
 from services.document_validation_service import (
     RetrievedDocument,
     build_document_validation_config_from_env,
@@ -55,6 +58,7 @@ _VECTOR_COLLECTION_NAME = os.getenv("VECTOR_COLLECTION_NAME", "agent_search_inte
 _RUNTIME_AGENT_MODEL = os.getenv("RUNTIME_AGENT_MODEL", "gpt-4.1-mini")
 _DECOMPOSITION_ONLY_MODEL = os.getenv("DECOMPOSITION_ONLY_MODEL", _RUNTIME_AGENT_MODEL)
 _DECOMPOSITION_ONLY_TEMPERATURE = float(os.getenv("DECOMPOSITION_ONLY_TEMPERATURE", "0"))
+_DECOMPOSITION_ONLY_MAX_SUBQUESTIONS_RAW = os.getenv("DECOMPOSITION_ONLY_MAX_SUBQUESTIONS", "8")
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _MAIN_AGENT_TASK_TOOL_NAME = "task"
 _SEARCH_DATABASE_TOOL_NAME = "search_database"
@@ -148,6 +152,19 @@ def build_runtime_timeout_config_from_env() -> RuntimeTimeoutConfig:
 _RUNTIME_TIMEOUT_CONFIG = build_runtime_timeout_config_from_env()
 
 
+def _coerce_decomposition_max_subquestions(raw_value: str) -> int:
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        parsed = 8
+    return min(10, max(5, parsed))
+
+
+_DECOMPOSITION_ONLY_MAX_SUBQUESTIONS = _coerce_decomposition_max_subquestions(
+    _DECOMPOSITION_ONLY_MAX_SUBQUESTIONS_RAW
+)
+
+
 def _truncate_query(q: str) -> str:
     return q[: _QUERY_LOG_MAX] + "..." if len(q) > _QUERY_LOG_MAX else q
 
@@ -162,13 +179,8 @@ def _normalize_sub_question(text: str) -> str:
     return f"{normalized}?"
 
 
-def _parse_decomposition_output(*, raw_output: str, query: str) -> list[str]:
+def _parse_decomposition_output(*, raw_output: Any, query: str) -> list[str]:
     fallback_question = _normalize_sub_question(query) or "What is the main question?"
-    text = (raw_output or "").strip()
-    if not text:
-        logger.warning("Decomposition output empty; using fallback question")
-        return [fallback_question]
-
     candidates: list[str] = []
 
     def _extend_candidates_from_json(value: Any) -> bool:
@@ -187,26 +199,41 @@ def _parse_decomposition_output(*, raw_output: str, query: str) -> list[str]:
                     return True
         return False
 
-    parsed_json: Any | None = None
-    json_parse_attempted = False
-    try:
-        json_parse_attempted = True
-        parsed = json.loads(text)
-        parsed_json = parsed
-        _extend_candidates_from_json(parsed)
-    except json.JSONDecodeError:
-        pass
+    if isinstance(raw_output, DecompositionPlan):
+        candidates = list(raw_output.sub_questions or [])
+    elif isinstance(raw_output, list):
+        for item in raw_output:
+            if isinstance(item, str) and item.strip():
+                candidates.append(item.strip())
+        if not candidates:
+            logger.warning("Decomposition output empty; using fallback question")
+            return [fallback_question]
+    else:
+        text = str(raw_output or "").strip()
+        if not text:
+            logger.warning("Decomposition output empty; using fallback question")
+            return [fallback_question]
 
-    if not candidates and not (
-        json_parse_attempted and parsed_json is not None and isinstance(parsed_json, (dict, list))
-    ):
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        bullet_prefix = re.compile(r"^(?:[-*]|\d+[.)])\s*")
-        for line in lines:
-            line = bullet_prefix.sub("", line).strip()
-            line = line.strip("\"'")
-            if line:
-                candidates.append(line)
+        parsed_json: Any | None = None
+        json_parse_attempted = False
+        try:
+            json_parse_attempted = True
+            parsed = json.loads(text)
+            parsed_json = parsed
+            _extend_candidates_from_json(parsed)
+        except json.JSONDecodeError:
+            pass
+
+        if not candidates and not (
+            json_parse_attempted and parsed_json is not None and isinstance(parsed_json, (dict, list))
+        ):
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            bullet_prefix = re.compile(r"^(?:[-*]|\d+[.)])\s*")
+            for line in lines:
+                line = bullet_prefix.sub("", line).strip()
+                line = line.strip("\"'")
+                if line:
+                    candidates.append(line)
 
     normalized: list[str] = []
     seen: set[str] = set()
@@ -221,12 +248,22 @@ def _parse_decomposition_output(*, raw_output: str, query: str) -> list[str]:
         seen.add(lowered)
 
     if normalized:
+        if len(normalized) > _DECOMPOSITION_ONLY_MAX_SUBQUESTIONS:
+            logger.info(
+                "Decomposition output truncated count=%s max=%s",
+                len(normalized),
+                _DECOMPOSITION_ONLY_MAX_SUBQUESTIONS,
+            )
+            normalized = normalized[:_DECOMPOSITION_ONLY_MAX_SUBQUESTIONS]
+        if len(normalized) < 5:
+            logger.info(
+                "Decomposition output below target_min count=%s target_min=%s",
+                len(normalized),
+                5,
+            )
         return normalized
 
-    logger.warning(
-        "Decomposition output malformed; using fallback question output_preview=%s",
-        _truncate_query(text),
-    )
+    logger.warning("Decomposition output malformed; using fallback question")
     return [fallback_question]
 
 
@@ -363,19 +400,21 @@ def _run_decomposition_only_llm_call(
     query: str,
     initial_search_context: list[dict[str, Any]],
     model: BaseChatModel | None = None,
-) -> str:
+) -> list[str]:
     fallback_question = _normalize_sub_question(query) or f"{query.strip()}?"
     if model is None and not _OPENAI_API_KEY:
         logger.info(
             "Decomposition-only LLM call using fallback; OPENAI_API_KEY is not set model=%s",
             _DECOMPOSITION_ONLY_MODEL,
         )
-        return json.dumps([fallback_question], ensure_ascii=True)
+        return [fallback_question]
 
-    messages = [
-        SystemMessage(content=get_decomposition_only_prompt()),
-        HumanMessage(content=_build_decomposition_only_input_message(query, initial_search_context)),
-    ]
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", get_decomposition_only_prompt()),
+            ("human", "{input_message}"),
+        ]
+    )
     try:
         llm = model or ChatOpenAI(
             model=_DECOMPOSITION_ONLY_MODEL,
@@ -386,10 +425,12 @@ def _run_decomposition_only_llm_call(
             model is not None,
             _DECOMPOSITION_ONLY_MODEL,
         )
-        response = llm.invoke(messages)
-        content = _stringify_message_content(getattr(response, "content", "")).strip()
-        if content:
-            return content
+        chain = prompt | llm.with_structured_output(DecompositionPlan)
+        result = chain.invoke(
+            {"input_message": _build_decomposition_only_input_message(query, initial_search_context)}
+        )
+        if isinstance(result, DecompositionPlan) and result.sub_questions:
+            return result.sub_questions
         logger.warning(
             "Decomposition-only LLM call returned empty content; using fallback model=%s",
             _DECOMPOSITION_ONLY_MODEL,
@@ -399,7 +440,7 @@ def _run_decomposition_only_llm_call(
             "Decomposition-only LLM call failed; using fallback model=%s",
             _DECOMPOSITION_ONLY_MODEL,
         )
-    return json.dumps([fallback_question], ensure_ascii=True)
+    return [fallback_question]
 
 
 def _is_main_agent_turn(msg: AIMessage) -> bool:
@@ -1136,17 +1177,18 @@ def run_runtime_agent(
         )
     except FuturesTimeoutError:
         fallback_sub_question = _normalize_sub_question(payload.query) or "What is the main question?"
-        decomposition_raw_output = json.dumps([fallback_sub_question], ensure_ascii=True)
+        decomposition_raw_output = [fallback_sub_question]
         logger.warning(
             "Decomposition LLM timeout; continuing with fallback sub-question query=%s timeout_s=%s fallback=%s",
             _truncate_query(payload.query),
             _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
             _truncate_query(fallback_sub_question),
         )
+    decomposition_raw_output_preview = json.dumps(decomposition_raw_output, ensure_ascii=True)
     logger.info(
         "Decomposition-only LLM output captured output_length=%s output_preview=%s",
         len(decomposition_raw_output),
-        _truncate_query(decomposition_raw_output),
+        _truncate_query(decomposition_raw_output_preview),
     )
     decomposition_sub_questions = _parse_decomposition_output(
         raw_output=decomposition_raw_output,
@@ -1166,12 +1208,14 @@ def run_runtime_agent(
     langfuse_callback = build_langfuse_callback_handler()
     if langfuse_callback is not None:
         callbacks.append(langfuse_callback)
+    run_thread_id = str(uuid.uuid4())
     logger.info(
-        "Runtime agent callback configuration callback_count=%s langfuse_enabled=%s",
+        "Runtime agent callback configuration callback_count=%s langfuse_enabled=%s thread_id=%s",
         len(callbacks),
         langfuse_callback is not None,
+        run_thread_id,
     )
-    config = {"callbacks": callbacks}
+    config = {"callbacks": callbacks, "configurable": {"thread_id": run_thread_id}}
     coordinator_message = _build_coordinator_input_message(decomposition_sub_questions)
     logger.info(
         "Coordinator sub-question input prepared parsed_sub_questions=%s sub_questions=%s",

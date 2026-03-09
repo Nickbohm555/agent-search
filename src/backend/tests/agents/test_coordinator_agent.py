@@ -40,12 +40,13 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
             tool_output = self._tool.invoke({"query": "strait of hormuz", "limit": 1})
             return {"messages": [SimpleNamespace(content=f"Answer based on retrieval: {tool_output}")]}
 
-    def fake_create_deep_agent(*, model, tools, system_prompt, subagents, backend):
+    def fake_create_deep_agent(*, model, tools, system_prompt, subagents, backend, checkpointer):
         captured["model"] = model
         captured["tools"] = tools
         captured["system_prompt"] = system_prompt
         captured["subagents"] = subagents
         captured["backend"] = backend
+        captured["checkpointer"] = checkpointer
         # Retriever is on the subagent only; main agent has no tools.
         retriever = subagents[0]["tools"][0]
         return _FakeDeepAgent(retriever)
@@ -63,6 +64,7 @@ def test_create_coordinator_agent_returns_invocable_and_uses_rag_subagent(caplog
     assert captured["model"] == "fake-model"
     assert captured["tools"] == []
     assert captured["backend"] == StateBackend
+    assert captured["checkpointer"] is not None
     assert "Call write_todos at the beginning to seed all pipeline stages" in str(captured["system_prompt"])
     assert "Use read_file and write_file" in str(captured["system_prompt"])
     assert "Create /runtime/coordinator_flow.md once with write_file, then use read_file + edit_file for updates." in str(
@@ -116,8 +118,9 @@ def test_create_coordinator_agent_accepts_backend_override() -> None:
         def invoke(self, payload):
             return {"messages": [SimpleNamespace(content="ok")]}
 
-    def fake_create_deep_agent(*, model, tools, system_prompt, subagents, backend):
+    def fake_create_deep_agent(*, model, tools, system_prompt, subagents, backend, checkpointer):
         captured["backend"] = backend
+        captured["checkpointer"] = checkpointer
         return _FakeDeepAgent()
 
     class _CustomBackend:
@@ -132,3 +135,4 @@ def test_create_coordinator_agent_accepts_backend_override() -> None:
 
     assert hasattr(agent, "invoke")
     assert captured["backend"] == _CustomBackend
+    assert captured["checkpointer"] is not None

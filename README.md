@@ -65,8 +65,8 @@ The pipeline is documented as **14 sections** in `docs/`. Each section covers on
 | Section | Role | Doc |
 |--------|------|-----|
 | **1** | Coordinator flow tracking (`write_todos` + virtual file system) | [section-01-coordinator-flow-tracking](docs/section-01-coordinator-flow-tracking.md) |
-| **2** | Initial search for decomposition context (one retrieval before decompose) | [section-02-initial-search-for-decomposition-context](docs/section-02-initial-search-for-decomposition-context.md) |
-| **3** | Question decomposition informed by context (sub-questions from coordinator) | [section-03-question-decomposition-informed-by-context](docs/section-03-question-decomposition-informed-by-context.md) |
+| **2** | Initial search for synthesis context (one retrieval before decomposition) | [section-02-initial-search-for-decomposition-context](docs/section-02-initial-search-for-decomposition-context.md) |
+| **3** | Question decomposition (question-only input) | [section-03-question-decomposition-informed-by-context](docs/section-03-question-decomposition-informed-by-context.md) |
 | **4** | Per-subquestion query expansion (expanded retrieval query) | [section-04-per-subquestion-query-expansion](docs/section-04-per-subquestion-query-expansion.md) |
 | **5** | Per-subquestion search (retriever tool + callback capture) | [section-05-per-subquestion-search](docs/section-05-per-subquestion-search.md) |
 | **6** | Per-subquestion document validation (parallel) | [section-06-per-subquestion-document-validation-parallel](docs/section-06-per-subquestion-document-validation-parallel.md) |
@@ -167,6 +167,104 @@ flowchart LR
     SYNTH --> OUT
     OUT --> API --> FE --> U
 ```
+
+<p align="center">
+  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
+</p>
+
+---
+
+## Run Flow — UI to Backend to Response
+
+```text
+[ RUN FLOW // EXECUTION TRACE ]
+```
+
+This section migrates the runtime logic formerly documented in `src/frontend/public/run-flow.html` into this README.
+
+### Reference image (same run-flow diagram)
+
+<p align="center">
+  <img src="flow.jpg" alt="Pipeline flow diagram with exploratory search, decomposition, per-subquestion processing, initial answer, refinement decision, and refined answer path" width="100%" data-darkreader-ignore />
+</p>
+
+### Exact function call chain
+
+```text
+UI click/submit
+  -> src/frontend/src/App.tsx
+     handleRun(event)
+       -> runAgent(submittedQuery)
+          -> requestJson("/api/agents/run", { method:"POST", payload:{ query }, timeoutMs })
+             -> fetch("http://localhost:8000/api/agents/run", ...)
+
+Backend
+  -> src/backend/routers/agent.py
+     runtime_agent_run(payload, db)
+       -> run_runtime_agent(payload, db)
+```
+
+### Frontend path (Run button -> network)
+
+| Step | Function | What happens | Data in/out |
+|------|----------|--------------|-------------|
+| 1 | `App.tsx::handleRun` | Prevent default submit, trim query, set `runState="loading"`, clear previous output. | In: textarea text. Out: React state updates. |
+| 2 | `utils/api.ts::runAgent` | Calls `requestJson` with `POST` and long timeout (10 min default). | In: `{ query }`. Out: `ApiResult<RuntimeAgentRunResponse>`. |
+| 3 | `utils/api.ts::requestJson` | Calls `fetch` against `API_BASE_URL + /api/agents/run`. | Base URL: `VITE_API_BASE_URL` or `http://localhost:8000`. |
+| 4 | `App.tsx::handleRun` success/error branch | Success stores `output` + `sub_qa`; failure sets UI error state. | UI renders final answer and subquestion details. |
+
+### Backend HTTP entry
+
+- Route: `src/backend/routers/agent.py::runtime_agent_run`
+- Endpoint: `POST /api/agents/run`
+- Request: `RuntimeAgentRunRequest { query }`
+- Response: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
+
+### Runtime pipeline map (orders 1-15)
+
+| Order | Function | Core logic | Output |
+|------|----------|------------|--------|
+| 1 | `get_vector_store` | Opens/creates PGVector collection. | Vector store handle. |
+| 2 | `search_documents_for_context` | Initial retrieval on user question. | Top-k context docs. |
+| 3 | `build_initial_search_context` | Normalizes docs to rank/doc_id/title/source/snippet. | `initial_search_context[]`. |
+| 4 | `_run_decomposition_only_llm_call` | Decomposition-only LLM call with fallback. | Candidate subquestions. |
+| 5 | `_parse_decomposition_output` | Normalize/dedupe/limit questions; enforce valid shape. | `decomposition_sub_questions[]`. |
+| 6 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
+| 7 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
+| 8 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
+| 9 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
+| 10 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
+| 11 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
+| 12 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
+| 13 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
+| 14 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
+| 15 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
+
+### Parallelism points
+
+- `run_pipeline_for_subquestions` parallelizes by subquestion with `ThreadPoolExecutor`.
+- Per-document validation inside document validation service is also parallelized.
+- Refinement retrieval seeding (`_seed_refined_sub_qa_from_retrieval`) is parallelized across refined subquestions.
+- Output order is restored by writing future results back to original indices.
+
+### Retriever contract and evidence shape
+
+The RAG subagent calls `search_database(query, expanded_query, limit, wiki_source_filter)` in `src/backend/tools/retriever_tool.py` and returns line-oriented evidence:
+
+```text
+1. title={title} source={source} content={content}
+2. title={title} source={source} content={content}
+...
+```
+
+That stable line contract is reused across validation, reranking, subanswer generation, and verification.
+
+### Fallback behavior
+
+- Missing `OPENAI_API_KEY`: decomposition/subanswer/synthesis/refinement-decomposition use deterministic fallback logic.
+- Malformed decomposition output: falls back to normalized original question.
+- No parseable retrieved docs: pipeline carries `"No relevant documents found."` style evidence and often marks item non-answerable.
+- Refinement triggers when answer is empty/insufficient, no subanswers exist, or answerable ratio is below threshold.
 
 <p align="center">
   <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
@@ -279,5 +377,22 @@ Generate Python SDK with the repo script (single invocation):
 | **System architecture** | [docs/SYSTEM_ARCHITECTURE.md](docs/SYSTEM_ARCHITECTURE.md) |
 | **Section docs (1–14)** | [docs/section-01-coordinator-flow-tracking.md](docs/section-01-coordinator-flow-tracking.md) … [docs/section-14-refinement-answer-path.md](docs/section-14-refinement-answer-path.md) |
 | **Agent/runtime guidance** | [AGENTS.md](AGENTS.md) |
+
+<p align="center">
+  <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
+</p>
+
+---
+
+## Inspiration / Articles Used
+
+```text
+[ INSPIRATION // EXTERNAL SIGNAL ]
+```
+
+- Toloka: [RAG Evaluation: A Technical Guide to Measuring Retrieval-Augmented Generation](https://toloka.ai/blog/rag-evaluation-a-technical-guide-to-measuring-retrieval-augmented-generation/?utm_source=chatgpt.com)
+- LangChain: [Beyond RAG: Implementing Agent Search with LangGraph for Smarter Knowledge Retrieval](https://blog.langchain.com/beyond-rag-implementing-agent-search-with-langgraph-for-smarter-knowledge-retrieval/)
+- Onyx: [Building the Best Deep Research](https://onyx.app/blog/building-the-best-deep-research)
+- Onyx: [Benchmarking Agentic RAG on Workplace Questions](https://onyx.app/blog/benchmarking-agentic-rag-on-workplace-questions)
 
 ---

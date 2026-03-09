@@ -36,7 +36,7 @@ _COORDINATOR_PROMPT = (
     "- Keep write_todos and the flow file in sync: mark in_progress and completed as work advances.\n"
     "- Do not use custom file I/O. Use only deep-agents virtual filesystem tools.\n\n"
     "Flow stages to mirror in write_todos and flow file:\n"
-    "1. Initial exploratory/full search on original question plus decomposition setup.\n"
+    "1. Initial exploratory/full search on original question plus decomposition setup (already completed before coordinator invocation).\n"
     "2. Consume provided initial sub-questions (already decomposed) and prepare delegation.\n"
     "3. For each initial sub-question (parallel): Expand -> Search -> Validate -> Rerank -> Answer -> Check.\n"
     "4. Confirm delegation complete and subagent responses are gathered for handoff.\n"
@@ -73,14 +73,43 @@ def get_decomposition_only_prompt() -> str:
     return _DECOMPOSITION_ONLY_PROMPT
 
 
+def _build_default_checkpointer() -> Any:
+    try:
+        from langgraph.checkpoint.memory import InMemorySaver
+    except Exception:  # pragma: no cover - compatibility fallback across langgraph versions.
+        from langgraph.checkpoint.memory import MemorySaver
+
+        return MemorySaver()
+    return InMemorySaver()
+
+
+_COORDINATOR_CHECKPOINTER = _build_default_checkpointer()
+
+
 class _LoggingRunnable:
     def __init__(self, runnable: Any) -> None:
         self._runnable = runnable
 
     def invoke(self, input: Any, *args: Any, **kwargs: Any) -> Any:
-        logger.info("Coordinator agent invoke start subagent=%s", _RAG_SUBAGENT_NAME)
+        config = kwargs.get("config")
+        thread_id: str | None = None
+        if isinstance(config, dict):
+            configurable = config.get("configurable")
+            if isinstance(configurable, dict):
+                candidate = configurable.get("thread_id")
+                if isinstance(candidate, str) and candidate:
+                    thread_id = candidate
+        logger.info(
+            "Coordinator agent invoke start subagent=%s thread_id=%s",
+            _RAG_SUBAGENT_NAME,
+            thread_id or "none",
+        )
         result = self._runnable.invoke(input, *args, **kwargs)
-        logger.info("Coordinator agent invoke complete subagent=%s", _RAG_SUBAGENT_NAME)
+        logger.info(
+            "Coordinator agent invoke complete subagent=%s thread_id=%s",
+            _RAG_SUBAGENT_NAME,
+            thread_id or "none",
+        )
         return result
 
     def __getattr__(self, attr: str) -> Any:
@@ -102,6 +131,7 @@ def create_coordinator_agent(
     *,
     create_deep_agent_fn: Callable[..., Any] | None = None,
     backend_factory: Callable[..., Any] | None = None,
+    checkpointer: Any | None = None,
 ) -> Any:
     """Create a coordinator agent with one RAG subagent backed by the retriever tool."""
     create_deep_agent_impl = create_deep_agent_fn or _default_create_deep_agent()
@@ -135,6 +165,7 @@ def create_coordinator_agent(
         system_prompt=_COORDINATOR_PROMPT,
         subagents=[rag_subagent],
         backend=backend,
+        checkpointer=checkpointer or _COORDINATOR_CHECKPOINTER,
     )
 
     logger.info(

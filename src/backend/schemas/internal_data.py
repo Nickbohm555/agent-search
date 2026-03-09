@@ -43,6 +43,26 @@ class InternalDataLoadResponse(BaseModel):
     chunks_created: int
 
 
+class InternalDataLoadJobStartResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+class InternalDataLoadJobStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    total: int
+    completed: int
+    message: str
+    error: Optional[str] = None
+    response: Optional[InternalDataLoadResponse] = None
+
+
+class InternalDataLoadJobCancelResponse(BaseModel):
+    status: Literal["success"]
+    message: str
+
+
 class WipeResponse(BaseModel):
     status: Literal["success"]
     message: str

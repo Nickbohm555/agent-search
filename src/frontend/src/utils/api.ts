@@ -27,6 +27,26 @@ export interface InternalDataLoadResponse {
   chunks_created: number;
 }
 
+export interface InternalDataLoadJobStartResponse {
+  job_id: string;
+  status: string;
+}
+
+export interface InternalDataLoadJobStatusResponse {
+  job_id: string;
+  status: string;
+  total: number;
+  completed: number;
+  message: string;
+  error?: string;
+  response?: InternalDataLoadResponse;
+}
+
+export interface InternalDataLoadJobCancelResponse {
+  status: "success";
+  message: string;
+}
+
 export interface WipeInternalDataResponse {
   status: "success";
   message: string;
@@ -47,10 +67,20 @@ export interface RuntimeAgentRunResponse {
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const DEFAULT_INTERNAL_DATA_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const DEFAULT_WIPE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 /** Agent run can take longer (LLM + RAG + subagent). */
 const AGENT_RUN_TIMEOUT_MS = parseTimeoutMs(
   import.meta.env.VITE_AGENT_RUN_TIMEOUT_MS,
   DEFAULT_AGENT_RUN_TIMEOUT_MS,
+);
+const INTERNAL_DATA_TIMEOUT_MS = parseTimeoutMs(
+  import.meta.env.VITE_INTERNAL_DATA_TIMEOUT_MS,
+  DEFAULT_INTERNAL_DATA_TIMEOUT_MS,
+);
+const WIPE_TIMEOUT_MS = parseTimeoutMs(
+  import.meta.env.VITE_WIPE_TIMEOUT_MS,
+  DEFAULT_WIPE_TIMEOUT_MS,
 );
 
 export async function listWikiSources(): Promise<ApiResult<WikiSourcesResponse>> {
@@ -71,6 +101,51 @@ export async function loadWikiSource(sourceId: string): Promise<ApiResult<Intern
       typeof v.source_type === "string" &&
       typeof v.documents_loaded === "number" &&
       typeof v.chunks_created === "number",
+    timeoutMs: INTERNAL_DATA_TIMEOUT_MS,
+  });
+}
+
+export async function startInternalDataLoad(sourceId: string): Promise<ApiResult<InternalDataLoadJobStartResponse>> {
+  return requestJson<InternalDataLoadJobStartResponse>("/api/internal-data/load-async", {
+    method: "POST",
+    payload: { source_type: "wiki", wiki: { source_id: sourceId } },
+    validate: (v): v is InternalDataLoadJobStartResponse =>
+      isObject(v) && typeof v.job_id === "string" && typeof v.status === "string",
+    timeoutMs: INTERNAL_DATA_TIMEOUT_MS,
+  });
+}
+
+export async function getInternalDataLoadStatus(
+  jobId: string,
+): Promise<ApiResult<InternalDataLoadJobStatusResponse>> {
+  return requestJson<InternalDataLoadJobStatusResponse>(`/api/internal-data/load-status/${jobId}`, {
+    method: "GET",
+    validate: (v): v is InternalDataLoadJobStatusResponse =>
+      isObject(v) &&
+      typeof v.job_id === "string" &&
+      typeof v.status === "string" &&
+      typeof v.total === "number" &&
+      typeof v.completed === "number" &&
+      typeof v.message === "string" &&
+      (v.error === undefined || v.error === null || typeof v.error === "string") &&
+      (v.response === undefined ||
+        v.response === null ||
+        (isObject(v.response) &&
+          v.response.status === "success" &&
+          typeof v.response.source_type === "string" &&
+          typeof v.response.documents_loaded === "number" &&
+          typeof v.response.chunks_created === "number")),
+    timeoutMs: INTERNAL_DATA_TIMEOUT_MS,
+  });
+}
+
+export async function cancelInternalDataLoad(jobId: string): Promise<ApiResult<InternalDataLoadJobCancelResponse>> {
+  return requestJson<InternalDataLoadJobCancelResponse>(`/api/internal-data/load-cancel/${jobId}`, {
+    method: "POST",
+    payload: {},
+    validate: (v): v is InternalDataLoadJobCancelResponse =>
+      isObject(v) && v.status === "success" && typeof v.message === "string",
+    timeoutMs: INTERNAL_DATA_TIMEOUT_MS,
   });
 }
 
@@ -80,6 +155,7 @@ export async function wipeInternalData(): Promise<ApiResult<WipeInternalDataResp
     payload: {},
     validate: (v): v is WipeInternalDataResponse =>
       isObject(v) && v.status === "success" && typeof v.message === "string",
+    timeoutMs: WIPE_TIMEOUT_MS,
   });
 }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,8 +43,19 @@ _WIKI_SOURCE_DEFINITIONS: tuple[WikiSourceDefinition, ...] = (
 _WIKI_SOURCES_BY_ID = {item.source_id: item for item in _WIKI_SOURCE_DEFINITIONS}
 _MIN_WIKI_CHARS = 1000
 _WIKI_DOC_CHARS_MAX = 8000
-_DEFAULT_CHUNK_SIZE = 1000
-_DEFAULT_CHUNK_OVERLAP = 200
+_DEFAULT_CHUNK_SIZE = 2000
+_DEFAULT_CHUNK_OVERLAP = 100
+
+
+def _read_int_env(name: str, fallback: int) -> int:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return fallback
+    try:
+        parsed = int(value)
+    except ValueError:
+        return fallback
+    return parsed if parsed > 0 else fallback
 
 
 def list_wiki_sources() -> tuple[WikiSourceDefinition, ...]:
@@ -99,10 +111,8 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[Document]:
         metadata = getattr(loaded, "metadata", {}) or {}
         title = str(metadata.get("title") or source.label).strip()
         source_ref = str(metadata.get("source") or source.source_id).strip() or source.source_id
-        normalized_metadata = dict(metadata)
-        normalized_metadata["source"] = source_ref
-        normalized_metadata["title"] = title
-        metadata_keys.update(str(key) for key in normalized_metadata.keys())
+        normalized_metadata = {"title": title, "source": source_ref}
+        metadata_keys.update(normalized_metadata.keys())
         total_chars += len(content)
         resolved_documents.append(
             Document(
@@ -130,8 +140,8 @@ def resolve_wiki_documents(wiki: WikiLoadInput) -> list[Document]:
 
 def chunk_wiki_documents(
     documents: list[Document],
-    chunk_size: int = _DEFAULT_CHUNK_SIZE,
-    chunk_overlap: int = _DEFAULT_CHUNK_OVERLAP,
+    chunk_size: int = _read_int_env("WIKI_CHUNK_SIZE", _DEFAULT_CHUNK_SIZE),
+    chunk_overlap: int = _read_int_env("WIKI_CHUNK_OVERLAP", _DEFAULT_CHUNK_OVERLAP),
 ) -> list[Document]:
     """Chunk wiki documents while preserving per-document metadata."""
     if chunk_size <= 0:
