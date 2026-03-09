@@ -105,7 +105,10 @@ def test_search_documents_for_context_uses_threshold_when_available() -> None:
         score_threshold=0.5,
     )
 
-    assert docs == expected_docs
+    assert len(docs) == 1
+    assert docs[0].page_content == "doc one"
+    assert docs[0].metadata["title"] == "One"
+    assert docs[0].metadata["score"] == 0.91
     assert captured == {"query": "nato policy", "k": 3, "score_threshold": 0.5}
 
 

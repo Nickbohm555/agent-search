@@ -2,7 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Table, create_engine, event, func, select
+from sqlalchemy import Column, ForeignKey, Integer, MetaData, String, Table, create_engine, event, func, select
 from sqlalchemy.orm import Session
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -10,9 +10,6 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from common.db import wipe_all_internal_data
-from db import Base
-
-
 def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
@@ -22,21 +19,22 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
 def test_wipe_all_internal_data_deletes_chunks_then_documents_and_logs(caplog) -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     event.listen(engine, "connect", _enable_sqlite_foreign_keys)
+    metadata = MetaData()
 
     documents = Table(
         "internal_documents",
-        Base.metadata,
+        metadata,
         Column("id", Integer, primary_key=True),
         Column("title", String(255), nullable=False),
     )
     chunks = Table(
         "internal_document_chunks",
-        Base.metadata,
+        metadata,
         Column("id", Integer, primary_key=True),
         Column("document_id", Integer, ForeignKey("internal_documents.id"), nullable=False),
         Column("content", String, nullable=False),
     )
-    Base.metadata.create_all(engine, tables=[documents, chunks])
+    metadata.create_all(engine, tables=[documents, chunks])
 
     with Session(engine) as session:
         session.execute(

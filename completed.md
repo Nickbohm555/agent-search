@@ -3348,3 +3348,98 @@ Local:   http://localhost:5173/
 db logs:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 50
+
+## Section 50: End-to-end integrated acceptance - full system completion gate
+
+**Single goal:** Validate full integrated system from SDK runtime through benchmark dashboard.
+
+**Why:** This verifies the full integrated stack works end-to-end before observability and documentation hardening.
+
+
+**Details:**
+- Required path: corpus load -> benchmark run create -> completion -> compare endpoint -> dashboard list/detail verification.
+- Include negative paths: invalid mode, dataset missing, judge timeout/failure, cancellation.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): use existing docker compose test flows.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/e2e/test_benchmark_pipeline.py` | Backend E2E acceptance flow. |
+| `src/backend/tests/sdk/test_sdk_run_e2e.py` | SDK E2E sync acceptance. |
+| `src/backend/tests/sdk/test_sdk_async_e2e.py` | SDK E2E async acceptance. |
+| `src/frontend/src/components/BenchmarkRunList.test.tsx` | Frontend benchmark list acceptance. |
+| `src/frontend/src/components/BenchmarkRunDetail.test.tsx` | Frontend benchmark detail acceptance. |
+| `test_completed.md` | Final integrated test command/results log. |
+
+**How to test:**
+- `docker compose exec backend uv run pytest`
+- `docker compose exec frontend npm run test`
+- Manual end-to-end verification at `http://localhost:5173`.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added backend integrated acceptance suite at `src/backend/tests/e2e/test_benchmark_pipeline.py` covering:
+  - corpus load endpoint -> benchmark run create -> run completion -> compare endpoint -> list/detail endpoint checks
+  - negative paths for invalid mode request, missing dataset, judge timeout/failure handling, and cancellation behavior.
+- Reused existing runtime/benchmark services and API routes, with deterministic monkeypatching for benchmark execution dependencies and quality scoring to keep E2E tests fast and stable.
+- Updated backend baseline tests for current route inventory and compatibility fixes that surfaced during full-suite validation:
+  - `src/backend/tests/api/test_health.py` route snapshot now includes benchmark endpoints.
+  - `src/backend/tests/db/test_wipe.py` now uses isolated `MetaData()` to avoid global metadata collisions.
+  - `src/backend/tests/services/test_reranker_service.py` pins provider behavior explicitly and updates OpenAI mock signatures to match current runtime callback kwargs.
+  - `src/backend/tests/services/test_vector_store_service.py` now asserts enriched score metadata returned by thresholded search.
+- Restarted containers and verified backend/frontend/db logs and endpoint health after implementation.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/e2e/test_benchmark_pipeline.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/api/test_health.py tests/db/test_wipe.py tests/services/test_reranker_service.py tests/services/test_vector_store_service.py tests/e2e/test_benchmark_pipeline.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest"`
+- `docker compose exec frontend npm run test`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `curl -sS -I http://localhost:5173`
+- `docker compose logs --no-color --tail=140 backend`
+- `docker compose logs --no-color --tail=140 frontend`
+- `docker compose logs --no-color --tail=140 db`
+
+**Useful logs (excerpt):**
+```text
+backend tests:
+pytest: tests/e2e/test_benchmark_pipeline.py ..... [100%]
+pytest: 245 passed, 1 warning in 12.31s
+
+frontend tests:
+vitest: Test Files 3 passed (3)
+vitest: Tests 12 passed (12)
+
+post-restart checks:
+HTTP/1.1 200 OK
+{"status":"ok"}
+
+frontend HTTP check:
+HTTP/1.1 200 OK
+
+backend logs:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+
+frontend logs:
+VITE v5.4.21 ready
+Local:   http://localhost:5173/
+
+db logs:
+database system is ready to accept connections
+```

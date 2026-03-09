@@ -26,11 +26,12 @@ def test_rerank_documents_orders_by_flashrank_scores(monkeypatch) -> None:
             ]
 
     monkeypatch.setattr("services.reranker_service._build_ranker", lambda *_: _FakeRanker())
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "")
 
     reranked = rerank_documents(
         query="What changed in NATO policy?",
         documents=documents,
-        config=RerankerConfig(enabled=True, top_n=None),
+        config=RerankerConfig(enabled=True, top_n=None, provider="flashrank"),
     )
 
     assert len(reranked) == 3
@@ -52,11 +53,12 @@ def test_rerank_documents_honors_top_n_after_rerank(monkeypatch) -> None:
             return [{"id": "2", "score": 0.9}, {"id": "1", "score": 0.7}, {"id": "0", "score": 0.2}]
 
     monkeypatch.setattr("services.reranker_service._build_ranker", lambda *_: _FakeRanker())
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "")
 
     reranked = rerank_documents(
         query="a",
         documents=documents,
-        config=RerankerConfig(enabled=True, top_n=2),
+        config=RerankerConfig(enabled=True, top_n=2, provider="flashrank"),
     )
 
     assert len(reranked) == 2
@@ -92,11 +94,12 @@ def test_rerank_documents_falls_back_when_ranker_errors(monkeypatch) -> None:
             raise RuntimeError("boom")
 
     monkeypatch.setattr("services.reranker_service._build_ranker", lambda *_: _BrokenRanker())
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "")
 
     reranked = rerank_documents(
         query="a",
         documents=documents,
-        config=RerankerConfig(enabled=True, top_n=None),
+        config=RerankerConfig(enabled=True, top_n=None, provider="flashrank"),
     )
 
     assert [entry.document.title for entry in reranked] == ["A", "B"]
@@ -144,6 +147,7 @@ def test_reranker_quality_eval_improves_hit_at_1_over_non_reranked_baseline(monk
             return ranked
 
     monkeypatch.setattr("services.reranker_service._build_ranker", lambda *_: _FakeRanker())
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "")
 
     baseline_hit_at_1 = 0
     reranked_hit_at_1 = 0
@@ -156,7 +160,7 @@ def test_reranker_quality_eval_improves_hit_at_1_over_non_reranked_baseline(monk
         reranked = rerank_documents(
             query=query,
             documents=docs,
-            config=RerankerConfig(enabled=True, top_n=1),
+            config=RerankerConfig(enabled=True, top_n=1, provider="flashrank"),
         )
         if baseline[0].document.title == gold_title:
             baseline_hit_at_1 += 1
@@ -182,11 +186,12 @@ def test_reranker_quality_eval_fallback_remains_deterministic_when_ranker_return
             return [{"id": "unknown-1", "score": 0.98}, {"id": "unknown-2", "score": 0.96}]
 
     monkeypatch.setattr("services.reranker_service._build_ranker", lambda *_: _FakeRanker())
+    monkeypatch.setattr("services.reranker_service._OPENAI_API_KEY", "")
 
     reranked = rerank_documents(
         query="fallback check",
         documents=documents,
-        config=RerankerConfig(enabled=True, top_n=2),
+        config=RerankerConfig(enabled=True, top_n=2, provider="flashrank"),
     )
 
     assert [entry.document.title for entry in reranked] == ["First", "Second"]
@@ -199,7 +204,8 @@ def test_rerank_documents_uses_openai_provider_when_api_key_is_available(monkeyp
         RetrievedDocument(rank=2, title="NATO Policy Changes", source="wiki://nato", content="policy changed"),
     ]
 
-    def _fake_rerank_with_openai(*, query, documents, config):
+    def _fake_rerank_with_openai(*, query, documents, config, callbacks=None):
+        assert callbacks is None
         assert query == "What changed in NATO policy?"
         assert config.openai_model_name == "gpt-4.1-mini"
         assert config.openai_temperature == 0.0
@@ -224,8 +230,8 @@ def test_rerank_documents_openai_falls_back_to_flashrank_when_openai_fails(monke
         RetrievedDocument(rank=2, title="B", source="wiki://b", content="b"),
     ]
 
-    def _broken_rerank_with_openai(*, query, documents, config):
-        _ = (query, documents, config)
+    def _broken_rerank_with_openai(*, query, documents, config, callbacks=None):
+        _ = (query, documents, config, callbacks)
         raise RuntimeError("openai-failed")
 
     class _FakeRanker:
