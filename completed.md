@@ -596,3 +596,71 @@ docker compose logs --tail=120 backend
 docker compose logs --tail=120 db
 -> PostgreSQL ready to accept connections; no DB errors
 ```
+
+## Section 13: Decompose stage view - immediate sub-question display
+
+**Single goal:** Render decomposed sub-questions as soon as decomposition completes.
+
+**Details completed:**
+- Added a dedicated `Decompose` panel in `src/frontend/src/App.tsx` that renders `decomposition_sub_questions` from async run-status polling, independent from later-stage artifacts.
+- Added decompose-stage state wiring:
+  - `decompositionSubQuestions` state reset on new run.
+  - Polling now stores `status.decomposition_sub_questions` every status tick.
+- Added normalization status indicators in the panel:
+  - `Ends with ?` indicator based on sub-question punctuation compliance.
+  - `Dedupe` indicator based on normalized uniqueness check.
+- Added visibility logging for this item:
+  - stage update logs now include `decompositionSubQuestionCount`.
+- Added dedicated decompose panel styling in `src/frontend/src/styles.css`.
+- Updated frontend tests in `src/frontend/src/App.test.tsx` to verify:
+  - Decompose panel appears at `subquestions_ready` before final completion.
+  - Subquestion list, count, and normalization indicators render correctly.
+  - Existing subanswer test was adjusted to scope duplicate subquestion text lookup to the final readout section.
+- Updated docs for this section:
+  - `README.md` run-flow notes include section-13 decompose view behavior.
+  - `src/frontend/public/run-flow.html` frontend details table now includes decompose panel rendering at `subquestions_ready`.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> containers/images/volumes removed
+
+docker compose build
+-> backend/frontend images built successfully
+
+docker compose up -d
+-> db healthy, backend/frontend/chrome started
+
+Container state and runtime logs (post-restart):
+docker compose ps
+-> backend up, frontend up, db healthy, chrome up
+
+docker compose logs --tail=200 backend
+-> alembic upgrade applied; uvicorn startup complete; no runtime errors
+
+docker compose logs --tail=200 frontend
+-> Vite ready on http://localhost:5173
+
+docker compose logs --tail=200 db
+-> PostgreSQL ready to accept connections
+
+Changed container restart for this section:
+docker compose restart frontend
+-> frontend restarted successfully
+
+Required section tests/checks:
+docker compose exec frontend npm run test
+-> PASS (5/5)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite production build complete)
+
+Frontend runtime visibility logs from tests include:
+-> Async run stage update ... backendStage: 'subquestions_ready' ... decompositionSubQuestionCount: 1
+-> Async run stage update ... backendStage: 'synthesize_final' ... decompositionSubQuestionCount: 1
+```

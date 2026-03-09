@@ -255,6 +255,12 @@ run_runtime_agent() internals
               <td>On success stores final <code>output</code> + <code>sub_qa</code>; on failure sets error state/message.</td>
               <td>UI renders timeline rail and final readout panel.</td>
             </tr>
+            <tr>
+              <td>6</td>
+              <td><code>App.tsx</code> decompose panel render</td>
+              <td>At <code>subquestions_ready</code>, renders <code>decomposition_sub_questions</code> immediately with count and normalization indicators.</td>
+              <td>Independent from expansion/search/rerank/answer/final stage outputs.</td>
+            </tr>
           </tbody>
         </table>
       </div>

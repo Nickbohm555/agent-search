@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -120,6 +120,13 @@ describe("App run query flow", () => {
     expect(await screen.findByText("Run status: Stage completed: subquestions_ready")).toBeInTheDocument();
     expect(getStageStatusText("decompose")).toContain("in_progress");
     expect(getStageStatusText("search")).toContain("pending");
+    expect(screen.getByRole("heading", { name: "Decompose" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Decomposed subquestions" })).toBeInTheDocument();
+    expect(screen.getByText("First subquestion?")).toBeInTheDocument();
+    expect(screen.getByText("Subquestion count: 1")).toBeInTheDocument();
+    expect(screen.getByText("Ends with ?: yes")).toBeInTheDocument();
+    expect(screen.getByText("Dedupe: pass")).toBeInTheDocument();
+    expect(screen.getByText("No answer yet.")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
@@ -229,7 +236,10 @@ describe("App run query flow", () => {
     expect(screen.getByText("NATO was formed in 1949.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Subquestions & subanswers" })).toBeInTheDocument();
 
-    const firstSubQuestion = screen.getByText("Which treaty created NATO?");
+    const subanswersHeading = screen.getByRole("heading", { name: "Subquestions & subanswers" });
+    const subanswersSection = subanswersHeading.closest("section");
+    expect(subanswersSection).toBeTruthy();
+    const firstSubQuestion = within(subanswersSection as HTMLElement).getByText("Which treaty created NATO?");
     fireEvent.click(firstSubQuestion);
 
     expect(screen.getByText(/The North Atlantic Treaty created NATO\./)).toBeInTheDocument();

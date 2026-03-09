@@ -233,6 +233,7 @@ Backend
 - Async status endpoint: `GET /api/agents/run-status/{job_id}` returns staged progress including `stage`, `stages[]`, `decomposition_sub_questions`, and partial `sub_qa`/`output`.
 - Async cancel endpoint: `POST /api/agents/run-cancel/{job_id}` sets cancellation requested for running jobs.
 - Frontend section 12 timeline shell: ordered rail is `decompose -> expand -> search -> rerank -> answer -> final`, with visible state transitions based on async status polling.
+- Frontend section 13 decompose view: a dedicated Decompose panel now renders `decomposition_sub_questions` immediately at `subquestions_ready`, including count and normalization indicators (`Ends with ?`, `Dedupe`), independent from later stage artifacts.
 
 ### Runtime pipeline map (orders 1-18)
 

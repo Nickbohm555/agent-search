@@ -40,6 +40,7 @@ export default function App() {
   const [runJobId, setRunJobId] = useState<string | null>(null);
   const [runStatusMessage, setRunStatusMessage] = useState("Not started.");
   const [runCurrentStage, setRunCurrentStage] = useState("");
+  const [decompositionSubQuestions, setDecompositionSubQuestions] = useState<string[]>([]);
   const [stageStatuses, setStageStatuses] = useState<Record<AgentStageName, AgentStageRuntimeStatus>>({
     decompose: "pending",
     expand: "pending",
@@ -192,6 +193,7 @@ export default function App() {
     setRunJobId(null);
     setRunStatusMessage("Submitting run...");
     setRunCurrentStage("");
+    setDecompositionSubQuestions([]);
     setStageStatuses({
       decompose: "pending",
       expand: "pending",
@@ -238,6 +240,7 @@ export default function App() {
 
       const status = statusResult.data;
       setRunCurrentStage(status.stage);
+      setDecompositionSubQuestions(status.decomposition_sub_questions);
       setRunStatusMessage(status.message || `Run status: ${status.status}`);
       const nextStatuses = computeStageStatuses(orderedStages, status.stage, status.status);
       setStageStatuses(nextStatuses);
@@ -246,6 +249,7 @@ export default function App() {
         jobId,
         backendStage: status.stage,
         backendStatus: status.status,
+        decompositionSubQuestionCount: status.decomposition_sub_questions.length,
         stageStatuses: nextStatuses,
       });
 
@@ -385,6 +389,30 @@ export default function App() {
         </ol>
       </section>
 
+      <section className="panel decompose-panel">
+        <h2>Decompose</h2>
+        <p>Subquestion count: {decompositionSubQuestions.length}</p>
+        <div className="decompose-indicators" aria-label="Decompose normalization indicators">
+          <span className={`decompose-indicator ${endsWithQuestionMark(decompositionSubQuestions) ? "ok" : "warn"}`}>
+            Ends with ?: {endsWithQuestionMark(decompositionSubQuestions) ? "yes" : "no"}
+          </span>
+          <span className={`decompose-indicator ${hasNoDuplicateQuestions(decompositionSubQuestions) ? "ok" : "warn"}`}>
+            Dedupe: {hasNoDuplicateQuestions(decompositionSubQuestions) ? "pass" : "duplicates found"}
+          </span>
+        </div>
+        {decompositionSubQuestions.length > 0 ? (
+          <ol className="decompose-question-list" aria-label="Decomposed subquestions">
+            {decompositionSubQuestions.map((subQuestion, index) => (
+              <li key={`${index}-${subQuestion}`} className="decompose-question-item">
+                {subQuestion.trim() || `Subquestion ${index + 1}`}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>No decomposed subquestions yet.</p>
+        )}
+      </section>
+
       <section className="panel final-readout-panel">
         <h2>Final Readout</h2>
         <section className="final-readout-section" aria-labelledby="final-readout-main-question">
@@ -491,4 +519,15 @@ function mergeWikiSourcesWithFallback(apiSources: WikiSourceOption[]): WikiSourc
   });
   const extraApiSources = apiSources.filter((source) => !DEFAULT_WIKI_SOURCES.some((item) => item.source_id === source.source_id));
   return merged.concat(extraApiSources);
+}
+
+function endsWithQuestionMark(subQuestions: string[]): boolean {
+  if (subQuestions.length === 0) return false;
+  return subQuestions.every((subQuestion) => subQuestion.trim().endsWith("?"));
+}
+
+function hasNoDuplicateQuestions(subQuestions: string[]): boolean {
+  if (subQuestions.length === 0) return false;
+  const normalized = subQuestions.map((subQuestion) => subQuestion.trim().toLowerCase());
+  return normalized.length === new Set(normalized).size;
 }
