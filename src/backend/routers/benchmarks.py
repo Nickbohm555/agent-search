@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from common.db import wipe_all_benchmark_data
 from db import get_db
 from schemas import (
     BenchmarkMode,
@@ -13,6 +14,7 @@ from schemas import (
     BenchmarkRunCreateResponse,
     BenchmarkRunListResponse,
     BenchmarkRunStatusResponse,
+    BenchmarkWipeResponse,
 )
 from services.benchmark_jobs import (
     cancel_benchmark_run,
@@ -104,4 +106,23 @@ def compare_run_modes(run_id: str, db: Session = Depends(get_db)) -> BenchmarkRu
         run_id=run_id,
         baseline_mode=baseline_mode,
         comparisons=comparisons,
+    )
+
+
+@router.post("/wipe", response_model=BenchmarkWipeResponse)
+def wipe_benchmark_data(db: Session = Depends(get_db)) -> BenchmarkWipeResponse:
+    logger.info("Benchmarks router wipe requested")
+    try:
+        deleted_runs = wipe_all_benchmark_data(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Benchmarks router wipe failed")
+        raise HTTPException(status_code=500, detail="Failed to wipe benchmark data.") from None
+
+    logger.info("Benchmarks router wipe completed deleted_runs=%s", deleted_runs)
+    return BenchmarkWipeResponse(
+        status="success",
+        message="All benchmark run data removed.",
+        deleted_runs=deleted_runs,
     )

@@ -166,3 +166,9 @@ class BenchmarkRunCompareResponse(BaseModel):
 class BenchmarkRunCancelResponse(BaseModel):
     status: Literal["success"]
     message: str
+
+
+class BenchmarkWipeResponse(BaseModel):
+    status: Literal["success"]
+    message: str
+    deleted_runs: int = Field(ge=0)

@@ -250,3 +250,30 @@ def test_cancel_benchmark_run_returns_404_when_missing(monkeypatch) -> None:
     response = client.post("/api/benchmarks/runs/nope/cancel")
     assert response.status_code == 404
     assert response.json() == {"detail": "Benchmark run not found or already finished."}
+
+
+def test_wipe_benchmark_data_returns_success_shape(monkeypatch) -> None:
+    from routers import benchmarks as benchmarks_router_module
+
+    monkeypatch.setattr(benchmarks_router_module, "wipe_all_benchmark_data", lambda db: 7)
+    client = _build_client()
+    response = client.post("/api/benchmarks/wipe")
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "message": "All benchmark run data removed.",
+        "deleted_runs": 7,
+    }
+
+
+def test_wipe_benchmark_data_returns_500_on_error(monkeypatch) -> None:
+    from routers import benchmarks as benchmarks_router_module
+
+    def _raise(_db):  # noqa: ANN001
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(benchmarks_router_module, "wipe_all_benchmark_data", _raise)
+    client = _build_client()
+    response = client.post("/api/benchmarks/wipe")
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Failed to wipe benchmark data."}

@@ -2586,3 +2586,82 @@ backend: GET /api/benchmarks/runs/nonexistent/compare HTTP/1.1" 404 Not Found
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 41
+
+## Section 41: Benchmark admin controls - benchmark-only wipe and retention
+
+**Single goal:** Add safe benchmark maintenance controls.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Add benchmark-only wipe endpoint/utility.
+- Add retention command for old benchmark runs.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/common/db/benchmark_wipe.py` | Benchmark-only cleanup utility. |
+| `src/backend/benchmarks/retention.py` | Retention command utility. |
+| `src/backend/tests/db/test_benchmark_wipe.py` | Cleanup safety tests. |
+
+**How to test:** Run cleanup tests and verify non-benchmark tables untouched.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `wipe_all_benchmark_data` in `common/db/benchmark_wipe.py` with safe benchmark-table-only deletion and explicit logging for both PostgreSQL (`TRUNCATE ... CASCADE`) and SQLite test paths.
+- Added retention utility/command in `benchmarks/retention.py`:
+  - `purge_old_benchmark_runs(...)` for age/status filtered cleanup with dry-run support.
+  - CLI entrypoint with flags: `--older-than-days`, `--status`, `--limit`, `--dry-run`.
+- Added benchmark admin endpoint `POST /api/benchmarks/wipe` with commit/rollback safety and visibility logs.
+- Added `BenchmarkWipeResponse` schema and exports.
+- Added API tests for wipe endpoint success/failure shape and DB tests verifying benchmark cleanup + retention do not affect internal tables.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose restart backend`
+- `docker compose exec backend uv run --with pytest pytest tests/db/test_benchmark_wipe.py tests/api/test_benchmark_runs_api.py`
+- `curl -sS -i http://localhost:8000/api/health`
+- `curl -sS -i -X POST http://localhost:8000/api/benchmarks/wipe`
+- `docker compose exec backend uv run python benchmarks/retention.py --dry-run --older-than-days 1`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=60 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/db/test_benchmark_wipe.py ..
+pytest: tests/api/test_benchmark_runs_api.py ........
+pytest: 10 passed in 1.81s
+
+health: HTTP/1.1 200 OK
+{"status":"ok"}
+
+benchmark wipe: HTTP/1.1 200 OK
+{"status":"success","message":"All benchmark run data removed.","deleted_runs":0}
+
+retention dry-run:
+benchmark_retention candidate_runs=0 deleted_runs=0 dry_run=True cutoff_utc=2026-03-08T19:40:38.283843+00:00 statuses=completed,failed,cancelled limit=None
+
+backend:
+Benchmarks router wipe requested
+Wiped benchmark data via TRUNCATE deleted_runs=0
+Benchmarks router wipe completed deleted_runs=0
+
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```

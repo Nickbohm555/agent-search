@@ -44,6 +44,7 @@ from .benchmark import (
     BenchmarkRunStatus,
     BenchmarkRunStatusResponse,
     BenchmarkTargets,
+    BenchmarkWipeResponse,
 )
 from .internal_data import (
     InternalDataLoadRequest,
@@ -105,6 +106,7 @@ __all__ = [
     "BenchmarkRunStatus",
     "BenchmarkRunStatusResponse",
     "BenchmarkTargets",
+    "BenchmarkWipeResponse",
     "InternalDocumentInput",
     "InternalDataLoadRequest",
     "InternalDataLoadResponse",
