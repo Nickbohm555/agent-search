@@ -13,6 +13,11 @@ from agent_search.errors import SDKConfigurationError
 from schemas import RuntimeAgentRunResponse
 
 
+class _CompatibleVectorStore:
+    def similarity_search(self, query: str, k: int, filter=None) -> list[object]:
+        return []
+
+
 def test_run_sync_signature_requires_query_vector_store_and_model() -> None:
     signature = inspect.signature(public_api.run)
     assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None) -> 'RuntimeAgentRunResponse'"
@@ -34,7 +39,7 @@ def test_run_sync_returns_runtime_response_model(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
     sentinel_model = object()
-    sentinel_vector_store = object()
+    sentinel_vector_store = _CompatibleVectorStore()
     response = public_api.run(
         "sdk contract query",
         model=sentinel_model,
@@ -54,7 +59,7 @@ def test_run_sync_returns_runtime_response_model(monkeypatch) -> None:
 
 def test_run_sync_raises_configuration_error_when_model_is_none() -> None:
     try:
-        public_api.run("q", model=None, vector_store=object())
+        public_api.run("q", model=None, vector_store=_CompatibleVectorStore())
     except SDKConfigurationError as exc:
         assert str(exc) == "model is required and cannot be None"
     else:

@@ -298,3 +298,65 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 6
+
+## Section 6: VectorStore protocol contract - runtime storage abstraction
+
+**Single goal:** Define SDK retrieval protocol boundary.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Specify required retrieval methods and document semantics.
+- Fail fast on protocol-incompatible stores.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/vectorstore/protocol.py` | `VectorStoreProtocol` definition. |
+| `src/backend/tests/sdk/test_vectorstore_protocol.py` | Protocol compatibility tests. |
+
+**How to test:** Run protocol contract tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.vectorstore.protocol.VectorStoreProtocol` as the SDK retrieval boundary with documented similarity-search semantics and optional filtering behavior.
+- Added `assert_vector_store_compatible` fail-fast validator with structured logging and signature checks for `similarity_search(query, k, filter=None)`.
+- Wired fail-fast vector-store validation into SDK entrypoints `run` and `run_async` in `agent_search.public_api`.
+- Added protocol tests in `tests/sdk/test_vectorstore_protocol.py` for compatible/incompatible stores and early rejection before runtime/job invocation.
+- Updated existing SDK tests to use minimal protocol-compatible fake vector stores so error-mapping and response-shape contracts continue to execute.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose restart backend`
+- `docker compose exec backend sh -lc 'cd /app && /app/.venv/bin/python -m pytest tests/sdk/test_vectorstore_protocol.py -q'`
+- `docker compose exec backend sh -lc 'cd /app && /app/.venv/bin/python -m pytest tests/sdk/test_public_api.py tests/sdk/test_public_api_async.py tests/sdk/test_errors.py -q'`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose ps`
+- `docker compose logs --tail=150 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_vectorstore_protocol.py ..... [100%]
+pytest: 5 passed in 1.50s
+pytest: tests/sdk/test_public_api.py tests/sdk/test_public_api_async.py tests/sdk/test_errors.py ............... [100%]
+pytest: 15 passed in 1.61s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```

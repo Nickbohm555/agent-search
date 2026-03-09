@@ -12,6 +12,7 @@ from agent_search.errors import (
     SDKRetrievalError,
     SDKTimeoutError,
 )
+from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
@@ -62,13 +63,18 @@ def run(
     if vector_store is None:
         logger.error("SDK sync run rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
+    compatible_vector_store = assert_vector_store_compatible(vector_store)
+    logger.info(
+        "SDK sync run vector_store validated vector_store_type=%s",
+        type(compatible_vector_store).__name__,
+    )
 
     try:
         response = run_runtime_agent(
             RuntimeAgentRunRequest(query=query),
             db=cast(Any, None),
             model=model,
-            vector_store=vector_store,
+            vector_store=compatible_vector_store,
         )
     except Exception as exc:  # noqa: BLE001
         mapped = _map_sdk_error(operation="run", exc=exc)
@@ -106,6 +112,11 @@ def run_async(
     if vector_store is None:
         logger.error("SDK async run rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
+    compatible_vector_store = assert_vector_store_compatible(vector_store)
+    logger.info(
+        "SDK async run vector_store validated vector_store_type=%s",
+        type(compatible_vector_store).__name__,
+    )
 
     try:
         # Async runtime currently resolves dependencies in service layer.

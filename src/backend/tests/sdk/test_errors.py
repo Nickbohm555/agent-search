@@ -17,6 +17,11 @@ from agent_search.errors import (
 )
 
 
+class _CompatibleVectorStore:
+    def similarity_search(self, query: str, k: int, filter=None) -> list[object]:
+        return []
+
+
 def test_sdk_error_hierarchy_is_explicit() -> None:
     assert issubclass(SDKConfigurationError, SDKError)
     assert issubclass(SDKRetrievalError, SDKError)
@@ -31,7 +36,7 @@ def test_run_maps_retrieval_errors(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
     try:
-        public_api.run("query", vector_store=object(), model=object())
+        public_api.run("query", vector_store=_CompatibleVectorStore(), model=object())
     except SDKRetrievalError as exc:
         assert str(exc) == "run failed during retrieval."
     else:
@@ -45,7 +50,7 @@ def test_run_maps_model_errors(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
     try:
-        public_api.run("query", vector_store=object(), model=object())
+        public_api.run("query", vector_store=_CompatibleVectorStore(), model=object())
     except SDKModelError as exc:
         assert str(exc) == "run failed during model execution."
     else:
@@ -59,7 +64,7 @@ def test_run_maps_timeout_errors(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
     try:
-        public_api.run("query", vector_store=object(), model=object())
+        public_api.run("query", vector_store=_CompatibleVectorStore(), model=object())
     except SDKTimeoutError as exc:
         assert str(exc) == "run timed out."
     else:
@@ -73,7 +78,7 @@ def test_run_async_maps_configuration_errors(monkeypatch) -> None:
     monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
 
     try:
-        public_api.run_async("query", vector_store=object(), model=object())
+        public_api.run_async("query", vector_store=_CompatibleVectorStore(), model=object())
     except SDKConfigurationError as exc:
         assert str(exc) == "run_async failed due to invalid SDK input or configuration."
     else:

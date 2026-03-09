@@ -14,6 +14,11 @@ from agent_search.errors import SDKConfigurationError
 from schemas import AgentRunStageMetadata, RuntimeAgentRunResponse, SubQuestionAnswer
 
 
+class _CompatibleVectorStore:
+    def similarity_search(self, query: str, k: int, filter=None) -> list[object]:
+        return []
+
+
 def test_run_async_signature_requires_query_vector_store_and_model() -> None:
     signature = inspect.signature(public_api.run_async)
     assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None) -> 'RuntimeAgentRunAsyncStartResponse'"
@@ -29,7 +34,7 @@ def test_run_async_returns_job_start_shape(monkeypatch) -> None:
 
     monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
 
-    response = public_api.run_async("Show me async flow", vector_store=object(), model=object())
+    response = public_api.run_async("Show me async flow", vector_store=_CompatibleVectorStore(), model=object())
 
     assert response.model_dump() == {
         "job_id": "job-123",
