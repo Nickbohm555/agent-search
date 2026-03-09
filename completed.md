@@ -428,3 +428,72 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 8
+
+## Section 8: Runtime configuration model - explicit SDK knobs
+
+**Single goal:** Add public `RuntimeConfig` for SDK execution controls.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Include timeout, retrieval, and rerank controls.
+- Defaults must preserve current behavior.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/config.py` | SDK runtime configuration model. |
+| `src/backend/tests/sdk/test_runtime_config.py` | Config defaults/override tests. |
+
+**How to test:** Run runtime config tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.config` with public `RuntimeConfig` and nested `RuntimeTimeoutConfig`, `RuntimeRetrievalConfig`, and `RuntimeRerankConfig`.
+- Added default-preserving coercion for timeout/retrieval/rerank overrides to keep runtime behavior stable when config is omitted or malformed.
+- Added structured logging in config coercion and in SDK `run`/`run_async` to make effective runtime controls visible.
+- Exported runtime config types from `agent_search.__init__` so SDK consumers can import them directly.
+- Added `tests/sdk/test_runtime_config.py` validating defaults, nested overrides, and invalid override fallback behavior.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `docker compose restart backend`
+- `docker compose exec backend uv run pytest tests/sdk/test_runtime_config.py` (failed: `pytest` not found in base env)
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_runtime_config.py`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_public_api.py tests/sdk/test_public_api_async.py`
+- `docker compose exec backend uv run python -c "from agent_search.config import RuntimeConfig; print(RuntimeConfig.from_dict({'timeout': {'initial_search_timeout_s': 55}, 'rerank': {'provider': 'flashrank', 'top_n': 5}}))"`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=60 frontend`
+- `docker compose logs --tail=60 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_runtime_config.py ... [100%]
+pytest: 3 passed in 1.43s
+pytest: tests/sdk/test_public_api.py tests/sdk/test_public_api_async.py ......... [100%]
+pytest: 9 passed in 1.46s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```

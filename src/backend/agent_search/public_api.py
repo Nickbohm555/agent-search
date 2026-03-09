@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Any, cast
 
+from agent_search.config import RuntimeConfig
 from agent_search.errors import (
     SDKConfigurationError,
     SDKError,
@@ -57,6 +58,13 @@ def run(
         type(model).__name__,
         config is not None,
     )
+    runtime_config = RuntimeConfig.from_dict(config)
+    logger.info(
+        "SDK sync runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
+        runtime_config.retrieval.initial_search_context_k,
+        runtime_config.rerank.enabled,
+        runtime_config.rerank.provider,
+    )
     if model is None:
         logger.error("SDK sync run rejected missing model")
         raise SDKConfigurationError("model is required and cannot be None")
@@ -105,6 +113,13 @@ def run_async(
         type(vector_store).__name__,
         type(model).__name__,
         config is not None,
+    )
+    runtime_config = RuntimeConfig.from_dict(config)
+    logger.info(
+        "SDK async runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
+        runtime_config.retrieval.initial_search_context_k,
+        runtime_config.rerank.enabled,
+        runtime_config.rerank.provider,
     )
     if model is None:
         logger.error("SDK async run rejected missing model")

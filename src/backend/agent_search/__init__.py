@@ -1,3 +1,4 @@
+from .config import RuntimeConfig, RuntimeRerankConfig, RuntimeRetrievalConfig, RuntimeTimeoutConfig
 from .errors import (
     SDKConfigurationError,
     SDKError,
@@ -12,6 +13,10 @@ __all__ = [
     "run_async",
     "get_run_status",
     "cancel_run",
+    "RuntimeConfig",
+    "RuntimeTimeoutConfig",
+    "RuntimeRetrievalConfig",
+    "RuntimeRerankConfig",
     "SDKError",
     "SDKConfigurationError",
     "SDKRetrievalError",
