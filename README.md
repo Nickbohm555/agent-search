@@ -224,6 +224,10 @@ Backend
 
 ### Runtime pipeline map (orders 1-18)
 
+Section 8 migration note: a sequential graph runner now exists as `run_sequential_graph_runner`, executing strict lane order:
+`decompose -> (expand -> search -> rerank -> answer per sub-question, sequentially) -> synthesize_final`.
+The existing coordinator/deep-agent runtime path remains available while migration continues.
+
 | Order | Function | Core logic | Output |
 |------|----------|------------|--------|
 | 1 | `get_vector_store` | Opens/creates PGVector collection. | Vector store handle. |

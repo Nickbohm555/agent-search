@@ -156,6 +156,11 @@
           Observability identifiers are carried in <code>GraphRunMetadata</code>:
           <code>run_id</code>, <code>thread_id</code>, <code>trace_id</code>, <code>correlation_id</code>.
         </p>
+        <p class="small">
+          Section 8 adds <code>run_sequential_graph_runner(...)</code> for strict sequential execution:
+          <code>decompose -&gt; (expand -&gt; search -&gt; rerank -&gt; answer per sub-question) -&gt; synthesize_final</code>.
+          The coordinator/deep-agent path is still present during migration.
+        </p>
       </div>
 
       <div class="panel">

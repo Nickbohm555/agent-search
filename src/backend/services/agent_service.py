@@ -1088,6 +1088,35 @@ def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentR
     return response
 
 
+def apply_decompose_node_output_to_graph_state(
+    *,
+    state: AgentGraphState,
+    node_output: DecomposeNodeOutput,
+) -> AgentGraphState:
+    next_state = state.model_copy(deep=True)
+    decomposition_sub_questions = list(node_output.decomposition_sub_questions)
+    next_state.decomposition_sub_questions = decomposition_sub_questions
+    next_state.sub_question_artifacts = [SubQuestionArtifacts(sub_question=item) for item in decomposition_sub_questions]
+    next_state.sub_qa = [
+        SubQuestionAnswer(
+            sub_question=item,
+            sub_answer="",
+            tool_call_input=json.dumps({"query": item}, ensure_ascii=True),
+            expanded_query="",
+            sub_agent_response="",
+            answerable=False,
+            verification_reason="",
+        )
+        for item in decomposition_sub_questions
+    ]
+    logger.info(
+        "Decomposition node state update sub_question_count=%s run_id=%s",
+        len(decomposition_sub_questions),
+        next_state.run_metadata.run_id,
+    )
+    return next_state
+
+
 def _select_compat_expanded_query(*, sub_question: str, expanded_queries: list[str]) -> str:
     for query in expanded_queries:
         if query.strip() and query.casefold() != sub_question.casefold():
@@ -1687,6 +1716,151 @@ def apply_synthesize_final_node_output_to_graph_state(
         next_state.run_metadata.run_id,
     )
     return next_state
+
+
+def run_sequential_graph_runner(
+    *,
+    payload: RuntimeAgentRunRequest,
+    vector_store: Any,
+    model: BaseChatModel | None = None,
+    run_metadata: GraphRunMetadata | None = None,
+    initial_search_context: list[dict[str, Any]] | None = None,
+) -> AgentGraphState:
+    resolved_run_metadata = run_metadata or build_graph_run_metadata()
+    resolved_initial_search_context = list(initial_search_context or [])
+    state = build_agent_graph_state(
+        main_question=payload.query,
+        decomposition_sub_questions=[],
+        sub_qa=[],
+        final_answer="",
+        run_metadata=resolved_run_metadata,
+    )
+    callbacks: list[Any] = [AgentLoggingCallbackHandler()]
+    langfuse_callback = build_langfuse_callback_handler()
+    if langfuse_callback is not None:
+        callbacks.append(langfuse_callback)
+    logger.info(
+        "Sequential graph runner start query=%s callback_count=%s langfuse_enabled=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(payload.query),
+        len(callbacks),
+        langfuse_callback is not None,
+        resolved_run_metadata.run_id,
+        resolved_run_metadata.trace_id,
+        resolved_run_metadata.correlation_id,
+    )
+    try:
+        decomposition_output = run_decomposition_node(
+            node_input=DecomposeNodeInput(
+                main_question=payload.query,
+                run_metadata=resolved_run_metadata,
+                initial_search_context=resolved_initial_search_context,
+            ),
+            model=model,
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+        )
+        state = apply_decompose_node_output_to_graph_state(
+            state=state,
+            node_output=decomposition_output,
+        )
+
+        for index, sub_question in enumerate(state.decomposition_sub_questions, start=1):
+            logger.info(
+                "Sequential graph lane start lane_index=%s lane_total=%s sub_question=%s run_id=%s",
+                index,
+                len(state.decomposition_sub_questions),
+                _truncate_query(sub_question),
+                state.run_metadata.run_id,
+            )
+            expand_output = run_expand_node(
+                node_input=ExpandNodeInput(
+                    main_question=payload.query,
+                    sub_question=sub_question,
+                    run_metadata=state.run_metadata,
+                ),
+                model=model,
+            )
+            state = apply_expand_node_output_to_graph_state(
+                state=state,
+                sub_question=sub_question,
+                node_output=expand_output,
+            )
+
+            search_output = run_search_node(
+                node_input=SearchNodeInput(
+                    sub_question=sub_question,
+                    expanded_queries=list(expand_output.expanded_queries),
+                    run_metadata=state.run_metadata,
+                ),
+                vector_store=vector_store,
+                k_fetch=_SEARCH_NODE_K_FETCH,
+            )
+            state = apply_search_node_output_to_graph_state(
+                state=state,
+                sub_question=sub_question,
+                node_output=search_output,
+            )
+
+            rerank_output = run_rerank_node(
+                node_input=RerankNodeInput(
+                    sub_question=sub_question,
+                    retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                    run_metadata=state.run_metadata,
+                ),
+                config=_RERANKER_CONFIG,
+            )
+            state = apply_rerank_node_output_to_graph_state(
+                state=state,
+                sub_question=sub_question,
+                node_output=rerank_output,
+            )
+
+            answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
+            answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
+            answer_output = run_answer_subquestion_node(
+                node_input=AnswerSubquestionNodeInput(
+                    sub_question=sub_question,
+                    reranked_docs=[row.model_copy(deep=True) for row in answer_input_rows],
+                    citation_rows_by_index={
+                        key: value.model_copy(deep=True) for key, value in answer_citation_rows.items()
+                    },
+                    run_metadata=state.run_metadata,
+                )
+            )
+            state = apply_answer_subquestion_node_output_to_graph_state(
+                state=state,
+                sub_question=sub_question,
+                node_output=answer_output,
+            )
+            logger.info(
+                "Sequential graph lane complete lane_index=%s lane_total=%s sub_question=%s answerable=%s run_id=%s",
+                index,
+                len(state.decomposition_sub_questions),
+                _truncate_query(sub_question),
+                answer_output.answerable,
+                state.run_metadata.run_id,
+            )
+
+        synthesis_output = run_synthesize_final_node(
+            node_input=SynthesizeFinalNodeInput(
+                main_question=payload.query,
+                sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
+                sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
+                run_metadata=state.run_metadata,
+            )
+        )
+        state = apply_synthesize_final_node_output_to_graph_state(
+            state=state,
+            node_output=synthesis_output,
+        )
+        logger.info(
+            "Sequential graph runner complete sub_question_count=%s output_len=%s run_id=%s",
+            len(state.sub_qa),
+            len(state.output),
+            state.run_metadata.run_id,
+        )
+        return state
+    finally:
+        flush_langfuse_callback_handler(langfuse_callback)
 
 
 def run_decomposition_node(

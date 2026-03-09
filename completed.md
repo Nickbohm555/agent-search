@@ -282,3 +282,58 @@ docker compose ps
 curl -sS http://localhost:8000/api/health
 -> {"status":"ok"}
 ```
+
+## Section 8: Assemble graph runner - sequential lane only
+
+**Single goal:** Implement a sequential graph runner that executes nodes in strict order for one sub-question at a time.
+
+**Details completed:**
+- Added decomposition-state application helper in `src/backend/services/agent_service.py`:
+  - `apply_decompose_node_output_to_graph_state(...)` writes normalized `decomposition_sub_questions`, initializes `sub_question_artifacts`, and seeds compatibility `sub_qa` entries.
+- Added a new sequential graph orchestration entrypoint in `src/backend/services/agent_service.py`:
+  - `run_sequential_graph_runner(...)` executes strict order:
+    - `decompose -> (for each sub-question: expand -> search -> rerank -> answer) -> synthesize_final`
+  - Sub-question lanes run one-by-one in the original decomposition order (no fanout in this section).
+  - Reused existing node functions and graph-state apply helpers for every stage.
+- Kept legacy deep-agent path untouched:
+  - Existing `run_runtime_agent(...)` coordinator/delegation path remains unchanged.
+- Kept Langfuse lifecycle active in new graph path:
+  - Starts callback handler via `build_langfuse_callback_handler()`.
+  - Flushes in `finally` via `flush_langfuse_callback_handler(...)`.
+- Added/updated tests in `src/backend/tests/services/test_agent_service.py`:
+  - `test_apply_decompose_node_output_to_graph_state_initializes_artifacts_and_compat_fields`
+  - `test_run_sequential_graph_runner_executes_strict_node_order`
+  - Verifies strict sequential node ordering and deterministic output mapping.
+- Updated required docs:
+  - `README.md` includes Section 8 migration note for `run_sequential_graph_runner(...)`.
+  - `src/frontend/public/run-flow.html` includes Section 8 note for strict sequential graph execution.
+
+### Useful logs
+
+```text
+docker compose down -v --rmi all && docker compose build && docker compose up -d && docker compose ps
+-> full clean restart complete
+-> backend/frontend rebuilt and started; db healthy
+
+docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k "sequential_graph_runner or apply_decompose_node_output_to_graph_state"
+-> 2 passed, 68 deselected in 2.27s
+
+docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py
+-> 70 passed, 2 warnings in 23.09s
+
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+docker compose logs --tail=120 backend
+-> app startup complete; reload events observed for changed agent_service/tests
+
+docker compose logs --tail=80 frontend
+-> Vite ready at http://localhost:5173/
+-> page reload observed for public/run-flow.html
+
+docker compose logs --tail=80 db
+-> PostgreSQL ready to accept connections
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+```
