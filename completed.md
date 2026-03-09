@@ -2114,3 +2114,69 @@ backend: Uvicorn running on http://0.0.0.0:8000
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 34
+
+## Section 34: Simple citation evaluator - citation presence and support checks
+
+**Single goal:** Implement a lightweight citation quality evaluator for v1 with schema hooks for future FACT-style expansion.
+
+**Why:** This keeps v1 evaluation simple while creating compatibility scaffolding for future DeepResearchBench-style expansion without rework.
+
+
+**Details:**
+- Compute v1 citation metrics: `citation_presence_rate` and `basic_support_rate` using retrieved context checks.
+- Persist per-citation verification records in a generic structure reusable by future FACT-style claim-level evaluators.
+- Keep evaluation deterministic and low-cost for manual benchmark runs.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): Alembic migration for citation evaluation outputs.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_citation_service.py` | Basic citation extraction and support verification workflow. |
+| `src/backend/models.py` | Add `benchmark_citation_scores` and per-citation verification model(s). |
+| `src/backend/alembic/versions/005_add_benchmark_citation_tables.py` | Migration for citation score storage tables. |
+| `src/backend/tests/services/test_benchmark_citation_service.py` | Citation metric and verification tests. |
+
+**How to test:** Run citation tests and validate presence/support calculations.
+
+**Test results:** (Add when section is complete.)
+- Pending.
+
+---
+
+**Completion notes:**
+- Added deterministic citation evaluator service in `src/backend/services/benchmark_citation_service.py` that extracts bracket citations (e.g. `[1]`), computes `citation_presence_rate`, and performs low-cost lexical overlap checks for `basic_support_rate`.
+- Added reusable per-citation verification persistence with support labels (`supported`, `unsupported`, `missing_context`) and generic JSON payload hooks for future FACT-style evaluators.
+- Extended ORM models with `BenchmarkCitationScore` and `BenchmarkCitationVerification` plus run/result relationships for one score per result and many verifications per score.
+- Added Alembic migration `005_add_benchmark_citation_tables.py` to create citation score and verification tables with indexes and cascade FKs.
+- Added service tests in `tests/services/test_benchmark_citation_service.py` covering deterministic metric calculation and replacement of old verification rows on rescore.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose exec backend uv run alembic upgrade head`
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_benchmark_citation_service.py` (initial failure fixed in service flush order)
+- `docker compose exec backend uv run --with pytest pytest tests/services/test_benchmark_citation_service.py`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `docker compose exec backend uv run alembic current`
+- `curl -sS -i http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+alembic: Running upgrade 004_benchmark_quality_scores -> 005_benchmark_citation_tables
+pytest: tests/services/test_benchmark_citation_service.py .. [100%]
+pytest: 2 passed in 0.78s
+alembic current: 005_benchmark_citation_tables (head)
+health: HTTP/1.1 200 OK {"status":"ok"}
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```

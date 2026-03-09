@@ -85,6 +85,12 @@ class BenchmarkRun(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    citation_scores = relationship(
+        "BenchmarkCitationScore",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class BenchmarkRunMode(Base):
@@ -151,6 +157,13 @@ class BenchmarkResult(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    citation_score = relationship(
+        "BenchmarkCitationScore",
+        back_populates="result",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class BenchmarkQualityScore(Base):
@@ -187,3 +200,84 @@ class BenchmarkQualityScore(Base):
 
     run = relationship("BenchmarkRun", back_populates="quality_scores")
     result = relationship("BenchmarkResult", back_populates="quality_score")
+
+
+class BenchmarkCitationScore(Base):
+    __tablename__ = "benchmark_citation_scores"
+    __table_args__ = (
+        UniqueConstraint("run_id", "mode", "question_id", name="uq_benchmark_citation_scores_run_mode_question"),
+        UniqueConstraint("result_id", name="uq_benchmark_citation_scores_result_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(
+        String(128),
+        ForeignKey("benchmark_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    result_id = Column(
+        Integer,
+        ForeignKey("benchmark_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode = Column(String(64), nullable=False)
+    question_id = Column(String(128), nullable=False)
+    citation_presence_rate = Column(Float, nullable=False)
+    basic_support_rate = Column(Float, nullable=False)
+    evaluator_version = Column(String(32), nullable=False)
+    total_citation_count = Column(Integer, nullable=False)
+    found_citation_count = Column(Integer, nullable=False)
+    supported_citation_count = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    run = relationship("BenchmarkRun", back_populates="citation_scores")
+    result = relationship("BenchmarkResult", back_populates="citation_score")
+    verifications = relationship(
+        "BenchmarkCitationVerification",
+        back_populates="citation_score",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class BenchmarkCitationVerification(Base):
+    __tablename__ = "benchmark_citation_verifications"
+
+    id = Column(Integer, primary_key=True)
+    citation_score_id = Column(
+        Integer,
+        ForeignKey("benchmark_citation_scores.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    run_id = Column(
+        String(128),
+        ForeignKey("benchmark_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    result_id = Column(
+        Integer,
+        ForeignKey("benchmark_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode = Column(String(64), nullable=False)
+    question_id = Column(String(128), nullable=False)
+    citation_marker = Column(String(32), nullable=False)
+    citation_index = Column(Integer, nullable=False)
+    claim_text = Column(Text, nullable=False)
+    citation_found = Column(Boolean, nullable=False)
+    is_supported = Column(Boolean, nullable=False)
+    support_label = Column(String(32), nullable=False)
+    support_evidence = Column(Text, nullable=True)
+    verification_payload = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
+    verification_type = Column(String(64), nullable=False, server_default=text("'citation_support_v1'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    citation_score = relationship("BenchmarkCitationScore", back_populates="verifications")
