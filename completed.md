@@ -837,3 +837,67 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 14
+
+## Section 14: Subanswer node extraction - isolated answer module
+
+**Single goal:** Extract subanswer generation/verification node.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Preserve answerability verification and fallback behavior.
+- Keep sub-question output fields stable.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/nodes/answer.py` | Subanswer node implementation. |
+| `src/backend/tests/sdk/test_node_answer.py` | Subanswer node tests. |
+
+**How to test:** Run subanswer node tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.runtime.nodes.answer.run_answer_node` and extracted subanswer generation + verification flow from `services.agent_service`.
+- Preserved fallback behavior for `no_reranked_documents`, unsupported answers, and citation-contract enforcement (`missing_citation_markers`, `missing_supporting_source_rows`).
+- Preserved stable output fields for `AnswerSubquestionNodeOutput` including `sub_answer`, `citation_indices_used`, `answerable`, `verification_reason`, and `citation_rows_by_index`.
+- Updated `services.agent_service.run_answer_subquestion_node` to delegate to runtime node while keeping existing dependency wiring and constants.
+- Exported new runtime node in `agent_search.runtime.nodes.__init__`.
+- Added SDK tests in `tests/sdk/test_node_answer.py` for fallback, supported-answer, and citation-contract enforcement cases.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build && docker compose up -d && docker compose ps`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_node_answer.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/services/test_agent_service.py -k 'run_answer_subquestion_node or apply_answer_subquestion_node_output_to_graph_state'"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_node_answer.py tests/services/test_agent_service.py -k 'run_answer_subquestion_node or apply_answer_subquestion_node_output_to_graph_state or test_node_answer'"`
+- `docker compose restart backend && docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=140 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_node_answer.py .... [100%]
+pytest: 4 passed in 1.45s
+pytest: tests/services/test_agent_service.py ... [100%]
+pytest: 3 passed, 49 deselected in 1.41s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

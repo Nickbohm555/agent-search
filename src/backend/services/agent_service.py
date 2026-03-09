@@ -1168,97 +1168,17 @@ def run_answer_subquestion_node(
     node_input: AnswerSubquestionNodeInput,
     callbacks: list[Any] | None = None,
 ) -> AnswerSubquestionNodeOutput:
-    logger.info(
-        "Subanswer node start sub_question=%s reranked_doc_count=%s run_id=%s trace_id=%s correlation_id=%s",
-        _truncate_query(node_input.sub_question),
-        len(node_input.reranked_docs),
-        node_input.run_metadata.run_id,
-        node_input.run_metadata.trace_id,
-        node_input.run_metadata.correlation_id,
-    )
+    from agent_search.runtime.nodes.answer import run_answer_node as run_runtime_answer_node
 
-    if not node_input.reranked_docs:
-        logger.info(
-            "Subanswer node fallback; no reranked docs sub_question=%s run_id=%s",
-            _truncate_query(node_input.sub_question),
-            node_input.run_metadata.run_id,
-        )
-        return AnswerSubquestionNodeOutput(
-            sub_answer=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
-            citation_indices_used=[],
-            answerable=False,
-            verification_reason="no_reranked_documents",
-            citation_rows_by_index={},
-        )
-
-    reranked_output = _format_citation_rows_for_pipeline(node_input.reranked_docs)
-    generated_sub_answer = generate_subanswer(
-        sub_question=node_input.sub_question,
-        reranked_retrieved_output=reranked_output,
+    return run_runtime_answer_node(
+        node_input=node_input,
         callbacks=callbacks,
-    )
-    verification = verify_subanswer(
-        sub_question=node_input.sub_question,
-        sub_answer=generated_sub_answer,
-        reranked_retrieved_output=reranked_output,
-    )
-
-    citation_rows = dict(node_input.citation_rows_by_index)
-    if not citation_rows:
-        citation_rows = {row.citation_index: row for row in node_input.reranked_docs}
-    citation_indices_used = _extract_citation_indices(generated_sub_answer)
-    supports_answer = bool(verification.answerable)
-    invalid_indices = [index for index in citation_indices_used if index not in citation_rows]
-    missing_citations = supports_answer and not citation_indices_used
-    missing_support_rows = supports_answer and bool(citation_indices_used) and bool(invalid_indices)
-
-    if missing_citations:
-        supports_answer = False
-        verification = SubanswerVerificationResult(
-            answerable=False,
-            reason="missing_citation_markers",
-        )
-    elif missing_support_rows:
-        supports_answer = False
-        verification = SubanswerVerificationResult(
-            answerable=False,
-            reason="missing_supporting_source_rows",
-        )
-
-    if not supports_answer:
-        logger.info(
-            "Subanswer node fallback; unsupported answer sub_question=%s reason=%s citation_indices=%s run_id=%s",
-            _truncate_query(node_input.sub_question),
-            verification.reason,
-            citation_indices_used,
-            node_input.run_metadata.run_id,
-        )
-        return AnswerSubquestionNodeOutput(
-            sub_answer=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
-            citation_indices_used=[],
-            answerable=False,
-            verification_reason=verification.reason,
-            citation_rows_by_index={},
-        )
-
-    supporting_rows = {
-        index: citation_rows[index].model_copy(deep=True)
-        for index in citation_indices_used
-        if index in citation_rows
-    }
-    logger.info(
-        "Subanswer node complete sub_question=%s answer_len=%s citation_count=%s run_id=%s",
-        _truncate_query(node_input.sub_question),
-        len(generated_sub_answer),
-        len(citation_indices_used),
-        node_input.run_metadata.run_id,
-    )
-    return AnswerSubquestionNodeOutput(
-        sub_answer=generated_sub_answer,
-        citation_indices_used=citation_indices_used,
-        answerable=True,
-        verification_reason=verification.reason,
-        citation_rows_by_index=supporting_rows,
+        no_support_fallback=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
+        format_citation_rows_for_pipeline_fn=_format_citation_rows_for_pipeline,
+        generate_subanswer_fn=generate_subanswer,
+        verify_subanswer_fn=verify_subanswer,
+        extract_citation_indices_fn=_extract_citation_indices,
+        truncate_query_fn=_truncate_query,
     )
 
 
