@@ -25,6 +25,8 @@ from schemas import (
     RuntimeAgentRunRequest,
     SearchNodeInput,
     SearchNodeOutput,
+    SynthesizeFinalNodeInput,
+    SynthesizeFinalNodeOutput,
 )
 from schemas.decomposition import DecompositionPlan
 from services import document_validation_service
@@ -3122,6 +3124,70 @@ def test_apply_answer_subquestion_node_output_to_graph_state_updates_artifacts_a
     assert tool_call_input["query"] == "What changed in VAT policy?"
     assert tool_call_input["citation_usage"] == [1]
     assert tool_call_input["supporting_source_rows"][0]["source"] == "wiki://vat-policy"
+
+
+def test_run_synthesize_final_node_uses_subanswers_as_grounded_inputs(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa):
+        captured["main_question"] = main_question
+        captured["sub_qa_count"] = len(sub_qa)
+        return "Final synthesis [1] (source: wiki://vat-policy)."
+
+    monkeypatch.setattr(agent_service, "generate_final_synthesis_answer", fake_generate_final_synthesis_answer)
+
+    output = agent_service.run_synthesize_final_node(
+        node_input=SynthesizeFinalNodeInput(
+            main_question="Explain VAT policy changes.",
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            sub_question_artifacts=[
+                agent_service.SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                )
+            ],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-synthesize-node"),
+        ),
+    )
+
+    assert output.final_answer == "Final synthesis [1] (source: wiki://vat-policy)."
+    assert captured["main_question"] == "Explain VAT policy changes."
+    assert captured["sub_qa_count"] == 1
+
+
+def test_apply_synthesize_final_node_output_to_graph_state_updates_final_answer_and_output() -> None:
+    state = agent_service.build_agent_graph_state(
+        main_question="Explain VAT policy changes.",
+        decomposition_sub_questions=["What changed in VAT policy?"],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in VAT policy?",
+                sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                answerable=True,
+                verification_reason="grounded_in_reranked_documents",
+            )
+        ],
+        final_answer="Old answer",
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-synthesize-state"),
+    )
+
+    updated = agent_service.apply_synthesize_final_node_output_to_graph_state(
+        state=state,
+        node_output=SynthesizeFinalNodeOutput(
+            final_answer="Final synthesis [1] (source: wiki://vat-policy).",
+        ),
+    )
+
+    assert updated.final_answer == "Final synthesis [1] (source: wiki://vat-policy)."
+    assert updated.output == "Final synthesis [1] (source: wiki://vat-policy)."
+    assert len(updated.sub_qa) == 1
 
 
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:

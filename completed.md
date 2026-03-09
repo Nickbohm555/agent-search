@@ -239,3 +239,46 @@ docker compose logs --tail=120 db
 curl http://localhost:8000/api/health
 -> {"status":"ok"}
 ```
+
+## Section 7: Build final synthesis node - compose final answer from subanswers
+
+**Single goal:** Synthesize final answer from per-subquestion answers while preserving grounded citations.
+
+**Details completed:**
+- Adapted synthesis service in `src/backend/services/initial_answer_service.py` with `generate_final_synthesis_answer(...)`, which composes final output from `main_question + sub_qa` and preserves citation markers through existing synthesis constraints.
+- Added final synthesis graph node functions in `src/backend/services/agent_service.py`:
+  - `run_synthesize_final_node(...)` to synthesize final answer from graph-state subanswers.
+  - `apply_synthesize_final_node_output_to_graph_state(...)` to write deterministic compatibility fields (`final_answer` and `output`) back to state.
+- Kept API response shape unchanged (`output` + `sub_qa`) by reusing existing runtime mapping contracts.
+- Added synthesis-focused tests:
+  - `src/backend/tests/services/test_initial_answer_service.py` verifies final synthesis wrapper preserves grounded citation-bearing subanswers.
+  - `src/backend/tests/services/test_agent_service.py` verifies synthesize-node invocation inputs and graph-state apply behavior.
+- Updated required docs:
+  - `README.md` runtime map now includes final synthesis graph-node helper row.
+  - `src/frontend/public/run-flow.html` call chain and runtime table now include `run_synthesize_final_node(...)` + `apply_synthesize_final_node_output_to_graph_state(...)`.
+
+### Useful logs
+
+```text
+docker compose restart backend
+-> Container agent-search-backend  Restarting
+-> Container agent-search-backend  Started
+
+docker compose exec backend uv run pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py -k "synthesize_final_node or apply_synthesize_final_node_output_to_graph_state or generate_final_synthesis_answer"
+-> error: Failed to spawn: `pytest`
+-> Caused by: No such file or directory (os error 2)
+
+docker compose exec backend uv run --with pytest pytest tests/services/test_initial_answer_service.py tests/services/test_agent_service.py -k "synthesize_final_node or apply_synthesize_final_node_output_to_graph_state or generate_final_synthesis_answer"
+-> 3 passed, 69 deselected in 2.08s
+
+docker compose logs --no-color --tail=160 backend frontend db
+-> backend/app startup complete; watch reloads for changed synthesis files; no fatal runtime errors
+-> frontend Vite ready on http://localhost:5173/
+-> db ready to accept connections
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+```

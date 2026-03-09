@@ -161,3 +161,26 @@ def generate_initial_answer(
         )
 
     return fallback_answer
+
+
+def generate_final_synthesis_answer(
+    *,
+    main_question: str,
+    sub_qa: list[SubQuestionAnswer],
+) -> str:
+    logger.info(
+        "Final synthesis generation start question_len=%s sub_qa_count=%s",
+        len(main_question),
+        len(sub_qa),
+    )
+    output = generate_initial_answer(
+        main_question=main_question,
+        initial_search_context=[],
+        sub_qa=sub_qa,
+    )
+    logger.info(
+        "Final synthesis generation complete output_len=%s citation_refs=%s",
+        len(output),
+        _count_citation_refs(output),
+    )
+    return output

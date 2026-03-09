@@ -184,18 +184,19 @@ run_runtime_agent() internals
   6) run_search_node(...) + apply_search_node_output_to_graph_state(...)  // expanded retrieval + merge/dedupe/provenance
   7) run_rerank_node(...) + apply_rerank_node_output_to_graph_state(...)  // flashrank rerank + top_n + fallback ordering
   8) run_answer_subquestion_node(...) + apply_answer_subquestion_node_output_to_graph_state(...)  // citation-required subanswer node + exact fallback "nothing relevant found"
-  9) create_coordinator_agent(...)
- 10) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
- 11) _extract_sub_qa(messages, search_database_calls)
- 12) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
- 13) generate_initial_answer(...)
- 14) should_refine(...)
- 15) if refinement_needed:
+  9) run_synthesize_final_node(...) + apply_synthesize_final_node_output_to_graph_state(...)  // graph-node final synthesis helper from subanswers
+ 10) create_coordinator_agent(...)
+ 11) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
+ 12) _extract_sub_qa(messages, search_database_calls)
+ 13) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
+ 14) generate_initial_answer(...)
+ 15) should_refine(...)
+ 16) if refinement_needed:
        refine_subquestions(...)
        _seed_refined_sub_qa_from_retrieval(...)  // PARALLEL
        run_pipeline_for_subquestions(...)         // PARALLEL
        generate_initial_answer(...)               // refined final output
- 16) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+ 17) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
       </div>
 
       <div class="panel">
@@ -353,6 +354,12 @@ run_runtime_agent() internals
               <td><code>run_answer_subquestion_node</code> + <code>apply_answer_subquestion_node_output_to_graph_state</code></td>
               <td>Generates one grounded subanswer from reranked docs, requires citation markers that map to ranked rows, and uses exact fallback <code>nothing relevant found</code> when unsupported.</td>
               <td><code>sub_answer</code> + citation usage + supporting source rows.</td>
+            </tr>
+            <tr>
+              <td>9a</td>
+              <td><code>run_synthesize_final_node</code> + <code>apply_synthesize_final_node_output_to_graph_state</code></td>
+              <td>Graph-state final synthesis helper that composes final answer from collected subanswers and preserves citation markers.</td>
+              <td><code>final_answer</code> + compatibility <code>output</code>.</td>
             </tr>
             <tr>
               <td>10</td>

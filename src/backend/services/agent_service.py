@@ -31,6 +31,8 @@ from schemas import (
     RerankNodeOutput,
     SearchNodeInput,
     SearchNodeOutput,
+    SynthesizeFinalNodeInput,
+    SynthesizeFinalNodeOutput,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
     SubQuestionAnswer,
@@ -45,7 +47,7 @@ from services.document_validation_service import (
     validate_subquestion_documents,
 )
 from services.reranker_service import build_reranker_config_from_env, rerank_documents
-from services.initial_answer_service import generate_initial_answer
+from services.initial_answer_service import generate_final_synthesis_answer, generate_initial_answer
 from services.query_expansion_service import (
     QueryExpansionConfig,
     build_query_expansion_config_from_env,
@@ -1639,6 +1641,49 @@ def apply_answer_subquestion_node_output_to_graph_state(
         _truncate_query(sub_question),
         node_output.answerable,
         len(node_output.citation_indices_used),
+        next_state.run_metadata.run_id,
+    )
+    return next_state
+
+
+def run_synthesize_final_node(
+    *,
+    node_input: SynthesizeFinalNodeInput,
+) -> SynthesizeFinalNodeOutput:
+    logger.info(
+        "Final synthesis node start main_question_len=%s sub_qa_count=%s artifact_count=%s run_id=%s trace_id=%s correlation_id=%s",
+        len(node_input.main_question),
+        len(node_input.sub_qa),
+        len(node_input.sub_question_artifacts),
+        node_input.run_metadata.run_id,
+        node_input.run_metadata.trace_id,
+        node_input.run_metadata.correlation_id,
+    )
+    final_answer = generate_final_synthesis_answer(
+        main_question=node_input.main_question,
+        sub_qa=node_input.sub_qa,
+    )
+    logger.info(
+        "Final synthesis node complete output_len=%s run_id=%s",
+        len(final_answer),
+        node_input.run_metadata.run_id,
+    )
+    return SynthesizeFinalNodeOutput(final_answer=final_answer)
+
+
+def apply_synthesize_final_node_output_to_graph_state(
+    *,
+    state: AgentGraphState,
+    node_output: SynthesizeFinalNodeOutput,
+) -> AgentGraphState:
+    next_state = state.model_copy(deep=True)
+    resolved_final_answer = (node_output.final_answer or "").strip()
+    next_state.final_answer = resolved_final_answer
+    next_state.output = resolved_final_answer
+    logger.info(
+        "Final synthesis node state update output_len=%s sub_qa_count=%s run_id=%s",
+        len(resolved_final_answer),
+        len(next_state.sub_qa),
         next_state.run_metadata.run_id,
     )
     return next_state

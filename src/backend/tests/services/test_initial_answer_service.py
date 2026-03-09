@@ -104,3 +104,29 @@ def test_generate_initial_answer_prompt_preserves_citation_instructions(monkeypa
     assert output == "Final answer [1] (source: wiki://nato)."
     assert "Preserve citation markers from sub-question answers exactly" in captured["prompt"]
     assert "Do not collapse cited evidence into an uncited summary." in captured["prompt"]
+
+
+def test_generate_final_synthesis_answer_preserves_grounded_subanswer_citations(monkeypatch) -> None:
+    monkeypatch.setattr(initial_answer_service, "_OPENAI_API_KEY", "")
+
+    output = initial_answer_service.generate_final_synthesis_answer(
+        main_question="What changed in NATO policy?",
+        sub_qa=[
+            SubQuestionAnswer(
+                sub_question="What changed in NATO policy?",
+                sub_answer="NATO updated force posture in 2025 [1] (source: wiki://nato).",
+                answerable=True,
+                verification_reason="grounded_in_reranked_documents",
+            ),
+            SubQuestionAnswer(
+                sub_question="What did member states commit to?",
+                sub_answer="Members committed to increased readiness [2] (source: wiki://readiness).",
+                answerable=True,
+                verification_reason="grounded_in_reranked_documents",
+            ),
+        ],
+    )
+
+    assert output
+    assert "[1]" in output
+    assert "source: wiki://nato" in output
