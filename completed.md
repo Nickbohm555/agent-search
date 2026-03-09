@@ -3631,3 +3631,92 @@ Local:   http://localhost:5173/
 db runtime:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 53
+
+## Section 53: Documentation refresh - SDK, benchmark, README, and run-flow assets
+
+**Single goal:** Update all user-facing and developer-facing documentation to reflect the integrated SDK + benchmark + Langfuse system.
+
+**Why:** This aligns all docs and diagrams with implemented behavior so developers and users can reliably operate the system.
+
+
+**Details:**
+- Update top-level `README.md` with SDK usage, benchmark operation, and Langfuse setup.
+- Update SDK docs (`sdk/README.md` and package docs) with sync/async usage, error taxonomy, and vectorstore adapter guidance.
+- Update architecture docs for runtime boundaries and benchmark pipeline.
+- Update frontend visualization artifact `src/frontend/public/run-flow.html` to include benchmark and observability flow.
+- Ensure docs reference real commands from Docker Compose/uv workflows used in this repo.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `README.md` | Primary setup and operations guide for SDK + benchmark + Langfuse. |
+| `sdk/README.md` | SDK consumer guide and generated-client positioning. |
+| `sdk/core/README.md` | Core package usage and release notes guidance. |
+| `docs/SYSTEM_ARCHITECTURE.md` | Updated architecture and flow boundaries. |
+| `src/frontend/public/run-flow.html` | Updated runtime/benchmark flow visualization. |
+
+**How to test:** Manually execute documented commands end-to-end and verify docs match actual outputs and paths.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Refreshed `README.md` to include:
+  - Runtime API quick usage.
+  - In-process SDK contract (`run`, `run_async`, `get_run_status`, `cancel_run`).
+  - SDK error taxonomy and vector-store protocol expectations.
+  - Benchmark API and benchmark CLI commands that match current backend implementation.
+  - Langfuse environment setup and restart/log verification workflow.
+- Updated `sdk/README.md` and `sdk/core/README.md` to align with current SDK boundary and release workflow.
+- Rewrote `docs/SYSTEM_ARCHITECTURE.md` to show current runtime graph path, benchmark orchestration path, SDK boundary, and Langfuse observability path.
+- Extended `src/frontend/public/run-flow.html` with benchmark flow and observability sections while preserving canonical runtime stage mapping.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `curl -sS http://localhost:8000/api/health`
+- `curl -sS http://localhost:8000/api/benchmarks/runs`
+- `docker compose exec backend uv run python benchmarks/run.py --dataset-id internal_v1 --mode baseline_retrieve_then_answer --dry-run`
+- `docker compose exec backend uv run python benchmarks/export.py`
+- `docker compose restart backend frontend db`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+health:
+{"status":"ok"}
+
+benchmark list:
+{"runs":[]}
+
+benchmark dry-run:
+INFO:__main__:Benchmark run cli dry-run completed dataset_id=internal_v1
+{"collection_name": "agent_search_internal_data", "dataset_id": "internal_v1", "dry_run": true, "metadata": {}, "model": "gpt-4.1-mini", "modes": ["baseline_retrieve_then_answer"], "question_count": 120, "run_id": null, "selected_question_count": 120, "temperature": 0.0}
+
+benchmark export:
+No benchmark runs available to export.
+
+backend runtime:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+
+frontend runtime:
+VITE v5.4.21  ready in 157 ms
+Local:   http://localhost:5173/
+
+db runtime:
+database system is ready to accept connections
+```

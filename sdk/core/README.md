@@ -1,13 +1,12 @@
-# agent-search core SDK package workspace
+# agent-search core SDK workspace
 
-This directory contains packaging metadata for the distributable in-process
-`agent_search` SDK boundary.
+This workspace contains packaging metadata for the distributable in-process `agent_search` SDK boundary.
 
 ## Scope
 
-- Dedicated package workspace separate from backend app packaging.
-- Excludes backend-only web and database dependencies from this package.
-- Built as a standalone Python sdist/wheel workspace.
+- Separates SDK packaging from backend application packaging.
+- Excludes backend-only web and DB dependencies.
+- Produces standalone wheel/sdist artifacts.
 
 ## Build
 
@@ -16,13 +15,41 @@ cd sdk/core
 python -m build
 ```
 
-## Dependency boundary
+## Runtime API surface
 
-This package intentionally excludes backend web/DB dependencies such as:
+Primary functions exposed by `agent_search`:
 
-- `fastapi`
-- `uvicorn`
-- `sqlalchemy`
-- `psycopg`
-- `alembic`
-- `pgvector`
+- `run`
+- `run_async`
+- `get_run_status`
+- `cancel_run`
+
+Config and errors exposed by `agent_search`:
+
+- `RuntimeConfig`, `RuntimeTimeoutConfig`, `RuntimeRetrievalConfig`, `RuntimeRerankConfig`
+- `SDKError`, `SDKConfigurationError`, `SDKRetrievalError`, `SDKModelError`, `SDKTimeoutError`
+
+## Vector store compatibility
+
+Runtime SDK expects `similarity_search(query, k, filter=None)`.
+For LangChain-backed stores, use:
+
+- `agent_search.vectorstore.langchain_adapter.LangChainVectorStoreAdapter`
+
+## Release guidance
+
+Use the repository release script from project root:
+
+```bash
+./scripts/release_sdk.sh
+```
+
+Publish flow (requires `TWINE_API_TOKEN`):
+
+```bash
+PUBLISH=1 TWINE_API_TOKEN=*** ./scripts/release_sdk.sh
+```
+
+Tag format used by CI release workflow:
+
+- `agent-search-core-v<version>`

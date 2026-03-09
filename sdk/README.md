@@ -1,20 +1,52 @@
 # SDK directory
 
-This directory stores generated SDK artifacts for this repository.
+This directory holds both SDK surfaces used by `agent-search`:
 
-The generated OpenAPI HTTP client is a secondary integration surface for
-network calls to the running API. The primary SDK surface for in-process
-usage remains `agent_search` under `src/backend/agent_search`.
+- Primary: in-process runtime SDK (`agent_search`) under `src/backend/agent_search`
+- Secondary: generated HTTP client SDK under `sdk/python`
 
-## Python SDK
+## Primary SDK: `agent_search` (in-process)
+
+Public functions:
+
+- `run(query, *, vector_store, model, config=None)`
+- `run_async(query, *, vector_store, model, config=None)`
+- `get_run_status(job_id)`
+- `cancel_run(job_id)`
+
+Return contract:
+
+- Sync: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
+- Async start/status/cancel response models in `schemas`
+
+### Error taxonomy
+
+Consumer-facing exceptions:
+
+- `SDKError` (base)
+- `SDKConfigurationError`
+- `SDKRetrievalError`
+- `SDKModelError`
+- `SDKTimeoutError`
+
+### Vector store contract
+
+The SDK expects a compatible vector store that implements:
+
+- `similarity_search(query, k, filter=None)`
+
+Use adapter when wrapping LangChain stores:
+
+- `agent_search.vectorstore.langchain_adapter.LangChainVectorStoreAdapter`
+
+## Secondary SDK: generated OpenAPI client (`sdk/python`)
+
+Generated from root `openapi.json`.
 
 - Output path: `sdk/python`
-- Source spec: `openapi.json` at repo root
-- Generation command: `./scripts/generate_sdk.sh`
+- Generator script: `./scripts/generate_sdk.sh`
 
-### Install
-
-Create and activate a virtual environment, then install the generated SDK in editable mode:
+Install locally:
 
 ```bash
 python3 -m venv .venv-sdk
@@ -23,11 +55,7 @@ pip install --upgrade pip
 pip install -e sdk/python
 ```
 
-### Minimal usage
-
-Set the API base URL (default: `http://localhost:8000`) and call one endpoint.
-
-Health endpoint example:
+Health example:
 
 ```python
 import os
@@ -38,63 +66,38 @@ configuration = openapi_client.Configuration(host=base_url)
 
 with openapi_client.ApiClient(configuration) as api_client:
     api = openapi_client.DefaultApi(api_client)
-    response = api.health_api_health_get()
-    print(response)
+    print(api.health_api_health_get())
 ```
 
-Agents run example:
+## Update workflow
 
-```python
-import os
-import openapi_client
+When API/schema changes:
 
-base_url = os.getenv("AGENT_SEARCH_BASE_URL", "http://localhost:8000")
-configuration = openapi_client.Configuration(host=base_url)
-
-with openapi_client.ApiClient(configuration) as api_client:
-    api = openapi_client.AgentsApi(api_client)
-    request = openapi_client.RuntimeAgentRunRequest(query="What is pgvector?")
-    response = api.run_agent_api_agents_run_post(runtime_agent_run_request=request)
-    print(response.output)
-```
-
-Run either snippet with:
-
-```bash
-AGENT_SEARCH_BASE_URL=http://localhost:8000 python your_script.py
-```
-
-### Runnable example script
-
-Use the checked-in example script:
-
-```bash
-AGENT_SEARCH_BASE_URL=http://localhost:8000 python sdk/examples/run_health.py
-```
-
-### Updating the SDK
-
-When backend routes or schema change, refresh the SDK in this exact order:
-
-1. Re-export the canonical OpenAPI spec (**S1**):
+1. Export OpenAPI spec:
 
 ```bash
 uv run --project src/backend python scripts/export_openapi.py
 ```
 
-2. Regenerate the Python SDK from that spec (**S5**):
+2. Validate spec:
+
+```bash
+./scripts/validate_openapi.sh
+```
+
+3. Regenerate SDK:
 
 ```bash
 ./scripts/generate_sdk.sh
 ```
 
-3. Review generated changes and commit updated `openapi.json` and `sdk/python` files:
+4. Review generated changes:
 
 ```bash
 git status -- openapi.json sdk/python
 ```
 
-Optional one-command refresh:
+Optional shortcut:
 
 ```bash
 ./scripts/update_sdk.sh
@@ -102,5 +105,4 @@ Optional one-command refresh:
 
 ## Repository policy
 
-Generated files under `sdk/python` are committed to git (not ignored).  
-When backend API/schema changes, re-export the OpenAPI spec and regenerate the SDK, then commit the updated `sdk/python` contents.
+Generated files under `sdk/python` are committed (not ignored). Keep `openapi.json` and `sdk/python` in sync.

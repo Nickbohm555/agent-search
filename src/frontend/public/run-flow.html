@@ -99,14 +99,14 @@
   </head>
   <body>
     <div class="wrap">
-      <h1>Run Flow: Canonical Graph Runtime</h1>
+      <h1>Run Flow: Runtime, Benchmark, Observability</h1>
       <p>
-        This page documents the current production path only.
-        Canonical stage order: <code>decompose -&gt; expand -&gt; search -&gt; rerank -&gt; answer -&gt; synthesize</code>.
+        Current production stage order:
+        <code>decompose -&gt; expand -&gt; search -&gt; rerank -&gt; answer -&gt; synthesize</code>.
       </p>
 
       <div class="panel">
-        <h2>High-Level Path</h2>
+        <h2>Runtime Path</h2>
         <div>
           <span class="badge">UI: <code>App.tsx::handleRun</code></span>
           <span class="badge">Start: <code>POST /api/agents/run-async</code></span>
@@ -133,43 +133,47 @@ Backend
       -> run_parallel_graph_runner(...)
       -> map_graph_state_to_runtime_response(...)
       -> RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
-        <p class="small">
-          Pre-graph retrieval is used as decomposition context. The canonical graph lane remains
-          <code>decompose -&gt; expand -&gt; search -&gt; rerank -&gt; answer -&gt; synthesize</code>.
-        </p>
       </div>
 
       <div class="panel">
-        <h2>How The Stages Work</h2>
+        <h2>Benchmark Path</h2>
+        <div>
+          <span class="badge">Start: <code>POST /api/benchmarks/runs</code></span>
+          <span class="badge">List: <code>GET /api/benchmarks/runs</code></span>
+          <span class="badge">Detail: <code>GET /api/benchmarks/runs/{run_id}</code></span>
+          <span class="badge">Compare: <code>GET /api/benchmarks/runs/{run_id}/compare</code></span>
+          <span class="badge">Cancel: <code>POST /api/benchmarks/runs/{run_id}/cancel</code></span>
+        </div>
+        <div class="mono">routers/benchmarks.py::create_benchmark_run
+  -> benchmark_jobs.start_benchmark_run_job
+    -> ThreadPoolExecutor worker
+      -> BenchmarkRunner.run(...)
+        -> BenchmarkExecutionAdapter
+          -> agent_search.public_api.run / run_async / get_run_status / cancel_run
+        -> persist benchmark result + quality + retrieval metrics rows</div>
+      </div>
+
+      <div class="panel">
+        <h2>Observability Path (Langfuse)</h2>
+        <ul>
+          <li>Tracing utility: <code>src/backend/utils/langfuse_tracing.py</code>.</li>
+          <li>Runtime scope can attach callback handler per run when enabled and sampled.</li>
+          <li>Benchmark scope emits trace/span/score events for dataset, mode, and question execution.</li>
+          <li>Sampling controls are independent per scope:</li>
+          <li><code>LANGFUSE_RUNTIME_SAMPLE_RATE</code>, <code>LANGFUSE_BENCHMARK_SAMPLE_RATE</code>.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2>How Runtime Stages Work</h2>
         <ol>
           <li><code>decompose</code>: normalize and dedupe atomic sub-questions.</li>
-          <li><code>expand</code>: produce bounded query alternatives per sub-question with <code>MultiQueryRetriever</code>.</li>
-          <li><code>search</code>: retrieve candidates per expanded query, then merge/dedupe deterministically.</li>
-          <li><code>rerank</code>: score candidates with <code>flashrank</code> and trim context to configured <code>top_n</code>.</li>
-          <li><code>answer</code>: generate subanswer grounded in reranked evidence and citation rows.</li>
-          <li><code>synthesize</code>: compose final output from subanswers while preserving evidence grounding.</li>
+          <li><code>expand</code>: produce bounded query alternatives with <code>MultiQueryRetriever</code>.</li>
+          <li><code>search</code>: retrieve candidates per query, then merge/dedupe deterministically.</li>
+          <li><code>rerank</code>: score candidates and trim context depth via <code>top_n</code>.</li>
+          <li><code>answer</code>: generate grounded subanswers with citation row linkage.</li>
+          <li><code>synthesize</code>: compose final output from subanswers.</li>
         </ol>
-      </div>
-
-      <div class="panel">
-        <h2>Retrieval Fundamentals</h2>
-        <ul>
-          <li>Vector retrieval uses embedding similarity for initial candidate recall.</li>
-          <li>Cosine similarity ranges from <code>-1..1</code>; higher means closer direction similarity.</li>
-          <li><code>k_fetch</code> over-fetches candidate rows before reranking.</li>
-          <li><code>top_n</code> keeps the most relevant reranked rows for answer generation.</li>
-          <li>Merge/dedupe stability: identity is <code>document_id</code> first, fallback is <code>source+content</code>.</li>
-          <li>Citation indices are assigned deterministically from ranked output so <code>[n]</code> markers map stably.</li>
-        </ul>
-      </div>
-
-      <div class="panel">
-        <h2>Reranking Fundamentals</h2>
-        <ul>
-          <li>Vector score and reranker score are different signals.</li>
-          <li>Reranking can move a semantically important row above a raw top-k vector hit.</li>
-          <li>If reranker is disabled/fails, runtime falls back to deterministic original order.</li>
-        </ul>
       </div>
 
       <div class="panel">
@@ -215,6 +219,20 @@ Backend
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="panel">
+        <h2>Operator Commands</h2>
+        <div class="mono">docker compose ps
+docker compose logs --tail=200 backend
+
+docker compose exec backend uv run python benchmarks/run.py \
+  --dataset-id internal_v1 \
+  --mode baseline_retrieve_then_answer \
+  --dry-run
+
+docker compose exec backend uv run python benchmarks/export.py</div>
+        <p class="small">Commands above are the same workflows used by this repository's runtime and benchmark docs.</p>
       </div>
     </div>
   </body>
