@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import BenchmarkRunList from "./components/BenchmarkRunList";
 import {
   AgentStageName,
   AgentStageRuntimeStatus,
@@ -345,6 +346,7 @@ export default function App() {
           main_question: submitted,
           sub_qa: status.sub_qa,
           output: status.output,
+          final_citations: [],
         };
         const completedStage = mapBackendStageToCanonical(status.stage);
         setRunState("success");
@@ -502,6 +504,8 @@ export default function App() {
           </div>
         </div>
       </section>
+
+      <BenchmarkRunList />
 
       <section className="panel stage-rail-panel">
         <h2>Run Timeline</h2>

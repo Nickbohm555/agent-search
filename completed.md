@@ -2741,3 +2741,90 @@ Benchmark export cli wrote JSON run_id=benchmark-run-eb45ac1f-93e8-44a3-99d1-11b
 health:
 {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 43
+
+## Section 43: Frontend benchmark run list - historical visibility
+
+**Single goal:** Add frontend run-list view for benchmark history and KPIs.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Show status, dataset, modes, correctness, p95 latency, start time, duration.
+- Display pass/fail badge from threshold contract.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/components/BenchmarkRunList.tsx` | Run history table view. |
+| `src/frontend/src/utils/api.ts` | Run list API client/types. |
+| `src/frontend/src/App.tsx` | Run list integration. |
+| `src/frontend/src/components/BenchmarkRunList.test.tsx` | Run list UI tests. |
+
+**How to test:** Run frontend typecheck/tests and manual UI check.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkRunList` React component with a run-history table showing status, dataset, modes, correctness, p95 latency, start time, duration, and threshold pass/fail badge.
+- Implemented frontend KPI enrichment by combining `/api/benchmarks/runs` with per-run `/api/benchmarks/runs/{run_id}` calls.
+- Implemented deterministic pass/fail evaluation in the UI using threshold contract (`targets` fallback to `objective.targets`) and computed correctness/p95 from result rows.
+- Added explicit frontend visibility logs (`console.info`, `console.warn`, `console.error`) for benchmark history refresh lifecycle and enrichment failures.
+- Extended frontend API client (`utils/api.ts`) with benchmark list/status types, validators, and fetch functions.
+- Integrated the new run-list view into `App.tsx` and fixed a strict type issue in async run success fallback payload (`final_citations: []`).
+- Added focused component tests for successful run-list rendering and HTTP failure handling.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose exec frontend npm run test`
+- `docker compose exec frontend npm run typecheck`
+- `docker compose exec frontend npm run build`
+- `docker compose restart frontend`
+- `docker compose ps`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 db`
+- `curl -sS -i http://localhost:8000/api/benchmarks/runs`
+- `curl -sS -I http://localhost:5173/`
+
+**Useful logs (excerpt):**
+```text
+frontend tests:
+Test Files  2 passed (2)
+Tests      10 passed (10)
+
+frontend typecheck:
+> tsc --noEmit
+
+frontend build:
+✓ built in 597ms
+
+docker compose ps:
+backend   Up
+frontend  Up
+db        Up (healthy)
+
+backend API checks:
+GET /api/health -> HTTP/1.1 200 OK {"status":"ok"}
+GET /api/benchmarks/runs -> HTTP/1.1 200 OK {"runs":[]}
+
+frontend logs:
+VITE v5.4.21 ready in 318 ms
+Local: http://localhost:5173/
+```

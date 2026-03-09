@@ -151,6 +151,78 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   elapsed_ms?: number | null;
 }
 
+export type BenchmarkRunLifecycleStatus = "queued" | "running" | "completed" | "failed" | "cancelling" | "cancelled";
+
+export interface BenchmarkRunListItem {
+  run_id: string;
+  status: BenchmarkRunLifecycleStatus;
+  dataset_id: string;
+  modes: string[];
+  created_at?: number | null;
+  started_at?: number | null;
+  finished_at?: number | null;
+}
+
+export interface BenchmarkRunListResponse {
+  runs: BenchmarkRunListItem[];
+}
+
+export interface BenchmarkTargets {
+  min_correctness: number;
+  max_latency_ms_p95: number;
+  max_cost_usd: number;
+}
+
+export interface BenchmarkObjective {
+  primary_kpi: string;
+  secondary_kpi: string;
+  execution_mode: string;
+  targets: BenchmarkTargets;
+}
+
+export interface BenchmarkModeSummary {
+  mode: string;
+  completed_questions: number;
+  total_questions: number;
+  correctness_rate?: number | null;
+  avg_latency_ms?: number | null;
+  p95_latency_ms?: number | null;
+}
+
+export interface BenchmarkResultQualityScore {
+  score?: number | null;
+  passed?: boolean | null;
+  rubric_version?: string | null;
+  judge_model?: string | null;
+  subscores?: Record<string, number> | null;
+  error?: string | null;
+}
+
+export interface BenchmarkResultStatusItem {
+  mode: string;
+  question_id: string;
+  latency_ms?: number | null;
+  execution_error?: string | null;
+  quality?: BenchmarkResultQualityScore | null;
+}
+
+export interface BenchmarkRunStatusResponse {
+  run_id: string;
+  status: BenchmarkRunLifecycleStatus;
+  dataset_id: string;
+  modes: string[];
+  objective: BenchmarkObjective;
+  targets?: BenchmarkTargets | null;
+  mode_summaries: BenchmarkModeSummary[];
+  results: BenchmarkResultStatusItem[];
+  completed_questions: number;
+  total_questions: number;
+  created_at?: number | null;
+  started_at?: number | null;
+  finished_at?: number | null;
+  error?: string | null;
+}
+
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_INTERNAL_DATA_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -296,6 +368,39 @@ export async function getAgentRunStatus(jobId: string): Promise<ApiResult<Runtim
   });
 }
 
+export async function listBenchmarkRuns(): Promise<ApiResult<BenchmarkRunListResponse>> {
+  return requestJson<BenchmarkRunListResponse>("/api/benchmarks/runs", {
+    method: "GET",
+    validate: (v): v is BenchmarkRunListResponse =>
+      isObject(v) && Array.isArray(v.runs) && v.runs.every(isBenchmarkRunListItem),
+  });
+}
+
+export async function getBenchmarkRunStatus(runId: string): Promise<ApiResult<BenchmarkRunStatusResponse>> {
+  return requestJson<BenchmarkRunStatusResponse>(`/api/benchmarks/runs/${runId}`, {
+    method: "GET",
+    validate: (v): v is BenchmarkRunStatusResponse =>
+      isObject(v) &&
+      typeof v.run_id === "string" &&
+      isBenchmarkRunLifecycleStatus(v.status) &&
+      typeof v.dataset_id === "string" &&
+      Array.isArray(v.modes) &&
+      v.modes.every((item) => typeof item === "string") &&
+      isBenchmarkObjective(v.objective) &&
+      (v.targets === undefined || v.targets === null || isBenchmarkTargets(v.targets)) &&
+      Array.isArray(v.mode_summaries) &&
+      v.mode_summaries.every(isBenchmarkModeSummary) &&
+      Array.isArray(v.results) &&
+      v.results.every(isBenchmarkResultStatusItem) &&
+      typeof v.completed_questions === "number" &&
+      typeof v.total_questions === "number" &&
+      (v.created_at === undefined || v.created_at === null || typeof v.created_at === "number") &&
+      (v.started_at === undefined || v.started_at === null || typeof v.started_at === "number") &&
+      (v.finished_at === undefined || v.finished_at === null || typeof v.finished_at === "number") &&
+      (v.error === undefined || v.error === null || typeof v.error === "string"),
+  });
+}
+
 function parseTimeoutMs(value: unknown, fallbackMs: number): number {
   if (typeof value !== "string" || value.trim().length === 0) return fallbackMs;
   const parsed = Number(value);
@@ -319,6 +424,85 @@ function isWikiSourceOption(value: unknown): value is WikiSourceOption {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
+}
+
+function isBenchmarkRunLifecycleStatus(value: unknown): value is BenchmarkRunLifecycleStatus {
+  return (
+    value === "queued" ||
+    value === "running" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "cancelling" ||
+    value === "cancelled"
+  );
+}
+
+function isBenchmarkRunListItem(value: unknown): value is BenchmarkRunListItem {
+  return (
+    isObject(value) &&
+    typeof value.run_id === "string" &&
+    isBenchmarkRunLifecycleStatus(value.status) &&
+    typeof value.dataset_id === "string" &&
+    Array.isArray(value.modes) &&
+    value.modes.every((item) => typeof item === "string") &&
+    (value.created_at === undefined || value.created_at === null || typeof value.created_at === "number") &&
+    (value.started_at === undefined || value.started_at === null || typeof value.started_at === "number") &&
+    (value.finished_at === undefined || value.finished_at === null || typeof value.finished_at === "number")
+  );
+}
+
+function isBenchmarkTargets(value: unknown): value is BenchmarkTargets {
+  return (
+    isObject(value) &&
+    typeof value.min_correctness === "number" &&
+    typeof value.max_latency_ms_p95 === "number" &&
+    typeof value.max_cost_usd === "number"
+  );
+}
+
+function isBenchmarkObjective(value: unknown): value is BenchmarkObjective {
+  return (
+    isObject(value) &&
+    typeof value.primary_kpi === "string" &&
+    typeof value.secondary_kpi === "string" &&
+    typeof value.execution_mode === "string" &&
+    isBenchmarkTargets(value.targets)
+  );
+}
+
+function isBenchmarkModeSummary(value: unknown): value is BenchmarkModeSummary {
+  return (
+    isObject(value) &&
+    typeof value.mode === "string" &&
+    typeof value.completed_questions === "number" &&
+    typeof value.total_questions === "number" &&
+    (value.correctness_rate === undefined || value.correctness_rate === null || typeof value.correctness_rate === "number") &&
+    (value.avg_latency_ms === undefined || value.avg_latency_ms === null || typeof value.avg_latency_ms === "number") &&
+    (value.p95_latency_ms === undefined || value.p95_latency_ms === null || typeof value.p95_latency_ms === "number")
+  );
+}
+
+function isBenchmarkResultQualityScore(value: unknown): value is BenchmarkResultQualityScore {
+  return (
+    isObject(value) &&
+    (value.score === undefined || value.score === null || typeof value.score === "number") &&
+    (value.passed === undefined || value.passed === null || typeof value.passed === "boolean") &&
+    (value.rubric_version === undefined || value.rubric_version === null || typeof value.rubric_version === "string") &&
+    (value.judge_model === undefined || value.judge_model === null || typeof value.judge_model === "string") &&
+    (value.subscores === undefined || value.subscores === null || isObject(value.subscores)) &&
+    (value.error === undefined || value.error === null || typeof value.error === "string")
+  );
+}
+
+function isBenchmarkResultStatusItem(value: unknown): value is BenchmarkResultStatusItem {
+  return (
+    isObject(value) &&
+    typeof value.mode === "string" &&
+    typeof value.question_id === "string" &&
+    (value.latency_ms === undefined || value.latency_ms === null || typeof value.latency_ms === "number") &&
+    (value.execution_error === undefined || value.execution_error === null || typeof value.execution_error === "string") &&
+    (value.quality === undefined || value.quality === null || isBenchmarkResultQualityScore(value.quality))
+  );
 }
 
 function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
