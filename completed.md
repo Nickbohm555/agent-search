@@ -1856,3 +1856,63 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 30
+
+## Section 30: Benchmark run lifecycle API - manual orchestration endpoints
+
+**Single goal:** Expose manual benchmark create/list/get/cancel APIs.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Endpoints: create/list/get/cancel for runs.
+- Async job lifecycle semantics mirror existing agent async behavior.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/routers/benchmarks.py` | Benchmark lifecycle endpoints. |
+| `src/backend/services/benchmark_jobs.py` | Benchmark job manager. |
+| `src/backend/main.py` | Router registration. |
+| `src/backend/tests/api/test_benchmark_runs_api.py` | Lifecycle API tests. |
+
+**How to test:** Run benchmark lifecycle API tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `POST /api/benchmarks/runs`, `GET /api/benchmarks/runs`, `GET /api/benchmarks/runs/{run_id}`, and `POST /api/benchmarks/runs/{run_id}/cancel`.
+- Added async benchmark run job manager (`services/benchmark_jobs.py`) with in-memory job tracking, queue/start/cancel states, background runner execution, and DB-backed list/get status reads.
+- Registered benchmarks router in FastAPI app startup.
+- Added benchmark lifecycle API contract tests with mocked service-layer calls for success and 404 paths.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/api/test_benchmark_runs_api.py"`
+- `docker compose restart backend`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `curl -sS -i http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/api/test_benchmark_runs_api.py ...... [100%]
+pytest: 6 passed in 1.75s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
