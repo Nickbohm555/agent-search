@@ -156,3 +156,60 @@ def test_quality_service_persists_and_updates_quality_scores() -> None:
         ).all()
         assert len(rows) == 1
         assert rows[0].result_id == result_id
+
+
+def test_quality_service_emits_langfuse_judge_hooks(monkeypatch) -> None:
+    captured: dict[str, list[dict[str, object]]] = {"traces": [], "spans": [], "scores": [], "ends": []}
+
+    import services.benchmark_quality_service as benchmark_quality_module
+
+    monkeypatch.setattr(
+        benchmark_quality_module,
+        "start_langfuse_trace",
+        lambda **kwargs: captured["traces"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        benchmark_quality_module,
+        "start_langfuse_span",
+        lambda **kwargs: captured["spans"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        benchmark_quality_module,
+        "record_langfuse_score",
+        lambda **kwargs: captured["scores"].append(kwargs),
+    )
+    monkeypatch.setattr(
+        benchmark_quality_module,
+        "end_langfuse_observation",
+        lambda observation, **kwargs: captured["ends"].append(kwargs),
+    )
+
+    class _FakeResponse:
+        content = '{"score": 0.81, "rationale": "grounded", "subscores": {"coverage": 0.81}}'
+
+    class _FakeChatOpenAI:
+        def __init__(self, model: str, temperature: float) -> None:
+            assert model == "gpt-test-judge"
+            assert temperature == 0.0
+
+        def invoke(self, prompt: str):
+            return _FakeResponse()
+
+    service = BenchmarkQualityService(
+        runtime_settings=BenchmarkRuntimeSettings.from_env({"BENCHMARK_JUDGE_MODEL": "gpt-test-judge"}),
+        llm_factory=_FakeChatOpenAI,
+    )
+    evaluation = service.evaluate(
+        question_text="What changed in policy?",
+        answer_payload={"output": "Policy changed in 2025."},
+        expected_answer_points=["policy changed"],
+        required_sources=["source-a"],
+        run_metadata={"run_id": "run-1", "mode": "agentic_default", "question_id": "DRB-001"},
+    )
+
+    assert evaluation.score == 0.81
+    assert captured["traces"]
+    assert any(item["name"] == "benchmark.judge" for item in captured["traces"])
+    assert any(item["name"] == "benchmark.judge_scoring" for item in captured["spans"])
+    assert any(item["name"] == "benchmark.correctness" for item in captured["scores"])
+    assert captured["ends"]

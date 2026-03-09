@@ -143,3 +143,81 @@ def test_flush_langfuse_callback_handler_uses_client_flush() -> None:
 
     langfuse_tracing.flush_langfuse_callback_handler(_Handler())
     assert state["flushed"] is True
+
+
+def test_start_trace_span_and_record_score(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeSpan:
+        def __init__(self, **kwargs) -> None:
+            captured["span_start"] = kwargs
+
+        def update(self, **kwargs) -> None:
+            captured["span_update"] = kwargs
+
+        def end(self, **kwargs) -> None:
+            captured["span_end"] = kwargs
+
+    class _FakeTrace:
+        def __init__(self, **kwargs) -> None:
+            captured["trace_start"] = kwargs
+
+        def span(self, **kwargs):
+            return _FakeSpan(**kwargs)
+
+        def score(self, **kwargs) -> None:
+            captured["trace_score"] = kwargs
+
+        def update(self, **kwargs) -> None:
+            captured["trace_update"] = kwargs
+
+        def end(self, **kwargs) -> None:
+            captured["trace_end"] = kwargs
+
+    class _FakeLangfuseClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def trace(self, **kwargs):
+            return _FakeTrace(**kwargs)
+
+    fake_langfuse_module = types.SimpleNamespace(Langfuse=_FakeLangfuseClient)
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse_module)
+
+    settings = LangfuseSettings(
+        enabled=True,
+        public_key="pk_test",
+        secret_key="sk_test",
+        runtime_sample_rate=1.0,
+        benchmark_sample_rate=1.0,
+    )
+    langfuse_tracing.get_langfuse_client(settings=settings, force_reinit=True)
+
+    trace = langfuse_tracing.start_langfuse_trace(
+        name="runtime.agent_run",
+        scope="runtime",
+        sampling_key="run-1",
+        input_payload={"query": "hello"},
+        metadata={"run_id": "run-1"},
+        settings=settings,
+    )
+    span = langfuse_tracing.start_langfuse_span(
+        parent=trace,
+        name="runtime.stage.decompose",
+        metadata={"run_id": "run-1"},
+    )
+    langfuse_tracing.record_langfuse_score(
+        parent=trace,
+        name="benchmark.correctness",
+        value=0.9,
+        metadata={"run_id": "run-1"},
+    )
+    langfuse_tracing.end_langfuse_observation(span, output_payload={"status": "ok"})
+    langfuse_tracing.end_langfuse_observation(trace, output_payload={"status": "ok"})
+
+    assert captured["trace_start"]["name"] == "runtime.agent_run"
+    assert captured["span_start"]["name"] == "runtime.stage.decompose"
+    assert captured["trace_score"]["name"] == "benchmark.correctness"
+    assert captured["trace_score"]["value"] == 0.9
+    assert captured["span_end"]["output"] == {"status": "ok"}
+    assert captured["trace_end"]["output"] == {"status": "ok"}

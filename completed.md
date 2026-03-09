@@ -3528,3 +3528,106 @@ Local:   http://localhost:5173/
 db runtime:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 52
+
+## Section 52: Langfuse instrumentation - runtime and benchmark traces
+
+**Single goal:** Instrument SDK runtime stages and benchmark lifecycle with consistent Langfuse traces and scores.
+
+**Why:** This adds observability after core stability so tracing improves operations without destabilizing functional delivery.
+
+
+**Details:**
+- Emit traces/spans for SDK runtime stages (`decompose`, `expand`, `search`, `rerank`, `answer`, `final`).
+- Emit benchmark run spans for dataset load, mode execution, question execution, judge scoring, and aggregation.
+- Attach run metadata (run_id, mode, question_id, correctness score, latency) to trace attributes.
+- Record benchmark correctness/latency outputs as Langfuse scores where appropriate.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): reuse existing `langfuse` dependency.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/runner.py` | Stage-level runtime tracing instrumentation. |
+| `src/backend/services/benchmark_runner.py` | Benchmark execution tracing instrumentation. |
+| `src/backend/services/benchmark_judge_service.py` | Judge call tracing and score logging. |
+| `src/backend/tests/sdk/test_sdk_run_e2e.py` | Verify runtime trace hooks do not break behavior. |
+| `src/backend/tests/services/test_benchmark_runner.py` | Verify benchmark trace metadata propagation. |
+
+**How to test:** Run SDK and benchmark tests with Langfuse enabled in test mode and verify expected trace payload hooks are called.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Extended `src/backend/utils/langfuse_tracing.py` with reusable, no-fail trace/span/score helpers:
+  - `start_langfuse_trace(...)`
+  - `start_langfuse_span(...)`
+  - `record_langfuse_score(...)`
+  - `end_langfuse_observation(...)`
+  - plus signature-aware kwargs filtering for SDK compatibility across Langfuse client variants.
+- Instrumented runtime execution in `src/backend/agent_search/runtime/runner.py`:
+  - trace root: `runtime.agent_run`
+  - initial context span: `runtime.initial_context`
+  - per-stage spans emitted from graph snapshots with stage normalization to `final`
+  - runtime summary score: `runtime.sub_question_count`
+  - terminal observation closure on both normal and vector-store-timeout short-circuit paths.
+- Instrumented benchmark lifecycle in `src/backend/services/benchmark_runner.py`:
+  - trace root: `benchmark.run`
+  - lifecycle spans: `benchmark.dataset_load`, `benchmark.mode_execution`, `benchmark.question_execution`, `benchmark.aggregation`
+  - attached metadata for run/mode/question and emitted latency/correctness scores:
+    - `benchmark.correctness`
+    - `benchmark.latency_ms`
+  - ensured run trace closure in `finally` so failed runs still emit terminal metadata.
+- Instrumented judge scoring path in `src/backend/services/benchmark_quality_service.py` (current judge implementation file):
+  - trace root: `benchmark.judge`
+  - scoring span: `benchmark.judge_scoring`
+  - score emission: `benchmark.correctness`
+  - metadata propagation for `run_id`, `mode`, and `question_id` when provided by runner.
+- Added/updated tests:
+  - `src/backend/tests/utils/test_langfuse_tracing.py`
+  - `src/backend/tests/sdk/test_sdk_run_e2e.py`
+  - `src/backend/tests/services/test_benchmark_runner.py`
+  - `src/backend/tests/services/test_benchmark_quality_service.py`
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose restart backend`
+- `docker compose exec backend uv run --with pytest python -m pytest tests/utils/test_langfuse_tracing.py tests/sdk/test_sdk_run_e2e.py tests/services/test_benchmark_runner.py tests/services/test_benchmark_quality_service.py`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+backend tests:
+============================= test session starts ==============================
+collected 17 items
+
+tests/utils/test_langfuse_tracing.py ........                            [ 47%]
+tests/sdk/test_sdk_run_e2e.py ..                                         [ 58%]
+tests/services/test_benchmark_runner.py ....                             [ 82%]
+tests/services/test_benchmark_quality_service.py ...                     [100%]
+
+============================== 17 passed in 1.73s ==============================
+
+backend runtime:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+
+frontend runtime:
+VITE v5.4.21  ready in 238 ms
+Local:   http://localhost:5173/
+
+db runtime:
+database system is ready to accept connections
+```

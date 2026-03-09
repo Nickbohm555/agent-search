@@ -85,6 +85,7 @@ class _QualityServiceStub:
         self._session_factory = session_factory
         self._fail_on_question = fail_on_question
         self.calls: list[int] = []
+        self.metadata_calls: list[dict[str, object] | None] = []
 
     def evaluate_and_persist(  # noqa: PLR0913
         self,
@@ -97,8 +98,9 @@ class _QualityServiceStub:
         rubric_version: str = "v1",
         pass_threshold=None,  # noqa: ANN001
     ):
-        del expected_answer_points, required_sources, run_metadata, pass_threshold
+        del expected_answer_points, required_sources, pass_threshold
         self.calls.append(result_id)
+        self.metadata_calls.append(run_metadata if isinstance(run_metadata, dict) else None)
         if self._fail_on_question and self._fail_on_question == question_text:
             raise RuntimeError("simulated quality evaluator failure")
 
@@ -160,6 +162,10 @@ def test_runner_executes_mode_by_question_and_persists_results(tmp_path: Path) -
     assert summary.completed_results == 4
     assert len(adapter.calls) == 4
     assert len(quality_service.calls) == 4
+    assert all(isinstance(metadata, dict) for metadata in quality_service.metadata_calls)
+    assert all(metadata.get("run_id") == run_id for metadata in quality_service.metadata_calls if metadata is not None)
+    assert all(metadata.get("mode") in {BenchmarkMode.agentic_default.value, BenchmarkMode.agentic_no_rerank.value} for metadata in quality_service.metadata_calls if metadata is not None)
+    assert all(metadata.get("question_id") in {"DRB-001", "DRB-002"} for metadata in quality_service.metadata_calls if metadata is not None)
 
     with Session(engine) as session:
         run = session.get(BenchmarkRun, run_id)
@@ -306,3 +312,60 @@ def test_runner_captures_quality_failures_as_non_fatal_errors(tmp_path: Path) ->
         quality_scores = session.scalars(select(BenchmarkQualityScore).where(BenchmarkQualityScore.run_id == run_id)).all()
         assert len(quality_scores) == 1
         assert quality_scores[0].question_id == "DRB-001"
+
+
+def test_runner_emits_langfuse_benchmark_trace_hooks(tmp_path: Path, monkeypatch) -> None:
+    dataset_root = _write_dataset(tmp_path, "tiny_v1")
+    engine = create_engine(DATABASE_URL, future=True)
+    session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    adapter = _SuccessAdapter()
+    quality_service = _QualityServiceStub(session_factory=session_factory)
+    runner = BenchmarkRunner(
+        session_factory=session_factory,
+        execution_adapter=adapter,
+        quality_service=quality_service,
+        dataset_root=dataset_root,
+    )
+    run_id = f"run-benchmark-langfuse-{uuid.uuid4()}"
+    captured: dict[str, list[dict[str, object]]] = {"traces": [], "spans": [], "scores": [], "ends": []}
+
+    import services.benchmark_runner as benchmark_runner_module
+
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "start_langfuse_trace",
+        lambda **kwargs: captured["traces"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "start_langfuse_span",
+        lambda **kwargs: captured["spans"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "record_langfuse_score",
+        lambda **kwargs: captured["scores"].append(kwargs),
+    )
+    monkeypatch.setattr(
+        benchmark_runner_module,
+        "end_langfuse_observation",
+        lambda observation, **kwargs: captured["ends"].append(kwargs),
+    )
+
+    summary = runner.run(
+        run_id=run_id,
+        dataset_id="tiny_v1",
+        modes=[BenchmarkMode.agentic_default],
+        vector_store=object(),
+        model="model-test",
+    )
+
+    assert summary.completed_results == 2
+    assert captured["traces"]
+    assert any(item["name"] == "benchmark.run" for item in captured["traces"])
+    assert any(item["name"] == "benchmark.dataset_load" for item in captured["spans"])
+    assert any(item["name"] == "benchmark.mode_execution" for item in captured["spans"])
+    assert any(item["name"] == "benchmark.question_execution" for item in captured["spans"])
+    assert any(item["name"] == "benchmark.correctness" for item in captured["scores"])
+    assert any(item["name"] == "benchmark.latency_ms" for item in captured["scores"])
+    assert captured["ends"]

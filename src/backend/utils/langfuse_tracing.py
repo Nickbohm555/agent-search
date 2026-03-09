@@ -4,7 +4,7 @@ import inspect
 import logging
 import threading
 import uuid
-from typing import Any, Literal
+from typing import Any, Iterable, Literal, Mapping
 
 from config import LangfuseSettings, should_sample_rate
 
@@ -47,6 +47,39 @@ def build_langfuse_run_metadata(
         metadata["correlation_id"],
     )
     return metadata
+
+
+def _as_dict(mapping: Mapping[str, Any] | None) -> dict[str, Any]:
+    return dict(mapping) if isinstance(mapping, Mapping) else {}
+
+
+def _call_with_supported_kwargs(target: Any, kwargs: Mapping[str, Any]) -> Any:
+    signature = inspect.signature(target)
+    accepts_kwargs = any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values())
+    if accepts_kwargs:
+        filtered_kwargs = {key: value for key, value in kwargs.items() if value is not None}
+    else:
+        accepted = set(signature.parameters.keys())
+        filtered_kwargs = {key: value for key, value in kwargs.items() if key in accepted and value is not None}
+    return target(**filtered_kwargs)
+
+
+def _first_callable(target: Any, candidate_names: Iterable[str]) -> Any | None:
+    for name in candidate_names:
+        candidate = getattr(target, name, None)
+        if callable(candidate):
+            return candidate
+    return None
+
+
+def _resolve_observation_client(observation: Any) -> Any | None:
+    if observation is None:
+        return None
+    for attr_name in ("langfuse", "client", "_agent_search_langfuse_client"):
+        candidate = getattr(observation, attr_name, None)
+        if candidate is not None:
+            return candidate
+    return None
 
 
 def _load_callback_handler_class() -> Any | None:
@@ -203,6 +236,131 @@ def build_langfuse_callback_handler(
         resolved_settings.release,
     )
     return handler
+
+
+def start_langfuse_trace(
+    *,
+    name: str,
+    scope: _LangfuseScope,
+    sampling_key: str,
+    input_payload: Any | None = None,
+    metadata: Mapping[str, Any] | None = None,
+    trace_id: str | None = None,
+    session_id: str | None = None,
+    settings: LangfuseSettings | None = None,
+) -> Any | None:
+    resolved_settings = settings or LangfuseSettings.from_env()
+    if not _should_trace(resolved_settings, scope=scope, sampling_key=sampling_key):
+        return None
+
+    langfuse_client = get_langfuse_client(settings=resolved_settings)
+    if langfuse_client is None:
+        return None
+
+    trace_builder = _first_callable(langfuse_client, ("trace", "create_trace", "start_trace"))
+    if trace_builder is None:
+        logger.warning("Langfuse trace start skipped; client has no trace constructor")
+        return None
+
+    kwargs: dict[str, Any] = {
+        "name": name,
+        "input": input_payload,
+        "metadata": _as_dict(metadata) or None,
+        "id": trace_id,
+        "trace_id": trace_id,
+        "session_id": session_id,
+    }
+    try:
+        trace = _call_with_supported_kwargs(trace_builder, kwargs)
+        logger.info("Langfuse trace started name=%s scope=%s", name, scope)
+        return trace
+    except Exception:
+        logger.exception("Langfuse trace start failed name=%s scope=%s", name, scope)
+        return None
+
+
+def start_langfuse_span(
+    *,
+    parent: Any | None,
+    name: str,
+    input_payload: Any | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> Any | None:
+    if parent is None:
+        return None
+
+    span_builder = _first_callable(parent, ("span", "create_span", "start_span"))
+    if span_builder is None:
+        logger.info("Langfuse span start skipped name=%s reason=no_parent_span_builder", name)
+        return None
+
+    kwargs: dict[str, Any] = {
+        "name": name,
+        "input": input_payload,
+        "metadata": _as_dict(metadata) or None,
+    }
+    try:
+        span = _call_with_supported_kwargs(span_builder, kwargs)
+        logger.info("Langfuse span started name=%s", name)
+        return span
+    except Exception:
+        logger.exception("Langfuse span start failed name=%s", name)
+        return None
+
+
+def end_langfuse_observation(
+    observation: Any | None,
+    *,
+    output_payload: Any | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> None:
+    if observation is None:
+        return
+    update_call = _first_callable(observation, ("update", "set_output"))
+    end_call = _first_callable(observation, ("end", "close", "finish"))
+    payload = _as_dict(metadata)
+    try:
+        if update_call is not None:
+            update_kwargs = {"output": output_payload, "metadata": payload or None}
+            _call_with_supported_kwargs(update_call, update_kwargs)
+        if end_call is not None:
+            end_kwargs = {"output": output_payload, "metadata": payload or None}
+            _call_with_supported_kwargs(end_call, end_kwargs)
+        logger.info("Langfuse observation closed has_update=%s has_end=%s", update_call is not None, end_call is not None)
+    except Exception:
+        logger.exception("Langfuse observation close failed")
+
+
+def record_langfuse_score(
+    *,
+    parent: Any | None,
+    name: str,
+    value: float,
+    comment: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> None:
+    if parent is None:
+        return
+    score_call = _first_callable(parent, ("score", "create_score", "log_score"))
+    if score_call is None:
+        client = _resolve_observation_client(parent)
+        score_call = _first_callable(client, ("score", "create_score", "log_score")) if client is not None else None
+    if score_call is None:
+        logger.info("Langfuse score skipped name=%s reason=no_score_api", name)
+        return
+
+    kwargs: dict[str, Any] = {
+        "name": name,
+        "value": float(value),
+        "score": float(value),
+        "comment": comment,
+        "metadata": _as_dict(metadata) or None,
+    }
+    try:
+        _call_with_supported_kwargs(score_call, kwargs)
+        logger.info("Langfuse score recorded name=%s value=%s", name, value)
+    except Exception:
+        logger.exception("Langfuse score record failed name=%s", name)
 
 
 def flush_langfuse_callback_handler(handler: Any | None) -> None:

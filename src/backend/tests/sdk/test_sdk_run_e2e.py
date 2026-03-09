@@ -9,7 +9,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.runtime import runner as runtime_runner
-from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
 from services import agent_service
 
 
@@ -101,3 +101,66 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
         "run_model": sentinel_model,
         "initial_search_context": [{"rank": 1, "title": "Doc One", "source": "test://doc-1"}],
     }
+
+
+def test_runtime_runner_emits_langfuse_stage_hooks(monkeypatch) -> None:
+    captured: dict[str, list[dict[str, object]]] = {"traces": [], "spans": [], "scores": [], "ends": []}
+
+    monkeypatch.setattr(
+        runtime_runner,
+        "start_langfuse_trace",
+        lambda **kwargs: captured["traces"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "start_langfuse_span",
+        lambda **kwargs: captured["spans"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "record_langfuse_score",
+        lambda **kwargs: captured["scores"].append(kwargs),
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "end_langfuse_observation",
+        lambda observation, **kwargs: captured["ends"].append(kwargs),
+    )
+
+    monkeypatch.setattr(
+        runtime_runner,
+        "search_documents_for_context",
+        lambda **kwargs: [],
+    )
+    monkeypatch.setattr(runtime_runner, "build_initial_search_context", lambda docs: [])
+    monkeypatch.setattr(
+        agent_service,
+        "run_parallel_graph_runner",
+        lambda **kwargs: agent_service.build_agent_graph_state(
+            main_question=kwargs["payload"].query,
+            sub_qa=[],
+            final_answer="final answer",
+            run_metadata=kwargs["run_metadata"],
+        ),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "map_graph_state_to_runtime_response",
+        lambda state: RuntimeAgentRunResponse(
+            main_question=state.main_question,
+            sub_qa=state.sub_qa,
+            output=state.output,
+        ),
+    )
+
+    runtime_runner.run_runtime_agent(
+        RuntimeAgentRunRequest(query="How do traces work?"),
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+    )
+
+    assert captured["traces"]
+    assert any(item["name"] == "runtime.agent_run" for item in captured["traces"])
+    assert any(item["name"] == "runtime.initial_context" for item in captured["spans"])
+    assert captured["scores"]
+    assert captured["ends"]

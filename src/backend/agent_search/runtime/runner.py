@@ -13,6 +13,12 @@ from services.vector_store_service import (
     search_documents_for_context,
 )
 from utils.embeddings import get_embedding_model
+from utils.langfuse_tracing import (
+    end_langfuse_observation,
+    record_langfuse_score,
+    start_langfuse_span,
+    start_langfuse_trace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +30,19 @@ def run_runtime_agent(
     vector_store: Any | None = None,
 ) -> RuntimeAgentRunResponse:
     run_metadata = legacy_service.build_graph_run_metadata()
+    runtime_trace = start_langfuse_trace(
+        name="runtime.agent_run",
+        scope="runtime",
+        sampling_key=run_metadata.run_id,
+        trace_id=run_metadata.trace_id,
+        session_id=run_metadata.thread_id,
+        input_payload={"query": payload.query},
+        metadata={
+            "run_id": run_metadata.run_id,
+            "trace_id": run_metadata.trace_id,
+            "correlation_id": run_metadata.correlation_id,
+        },
+    )
     logger.info(
         "Runtime core run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
         legacy_service._truncate_query(payload.query),
@@ -33,6 +52,12 @@ def run_runtime_agent(
         run_metadata.run_id,
         run_metadata.trace_id,
         run_metadata.correlation_id,
+    )
+    initial_context_span = start_langfuse_span(
+        parent=runtime_trace,
+        name="runtime.initial_context",
+        input_payload={"query": payload.query},
+        metadata={"run_id": run_metadata.run_id},
     )
     selected_vector_store = vector_store
     if selected_vector_store is None:
@@ -51,6 +76,20 @@ def run_runtime_agent(
                 "Runtime core short-circuiting due to vector store timeout query=%s run_id=%s",
                 legacy_service._truncate_query(payload.query),
                 run_metadata.run_id,
+            )
+            end_langfuse_observation(
+                initial_context_span,
+                output_payload={"context_document_count": 0, "status": "vector_store_timeout"},
+                metadata={"run_id": run_metadata.run_id},
+            )
+            end_langfuse_observation(
+                runtime_trace,
+                output_payload={
+                    "status": "vector_store_timeout",
+                    "sub_qa_count": 0,
+                    "output_length": len(legacy_service._VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE),
+                },
+                metadata={"run_id": run_metadata.run_id},
             )
             return RuntimeAgentRunResponse(
                 main_question=payload.query,
@@ -99,6 +138,12 @@ def run_runtime_agent(
             legacy_service._RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
             run_metadata.run_id,
         )
+    finally:
+        end_langfuse_observation(
+            initial_context_span,
+            output_payload={"context_document_count": len(initial_search_context)},
+            metadata={"run_id": run_metadata.run_id},
+        )
 
     state = legacy_service.run_parallel_graph_runner(
         payload=payload,
@@ -107,7 +152,48 @@ def run_runtime_agent(
         run_metadata=run_metadata,
         initial_search_context=initial_search_context,
     )
+    for snapshot_index, snapshot in enumerate(state.stage_snapshots, start=1):
+        stage_name = "final" if snapshot.stage == "synthesize_final" else snapshot.stage
+        stage_span = start_langfuse_span(
+            parent=runtime_trace,
+            name=f"runtime.stage.{stage_name}",
+            metadata={
+                "run_id": run_metadata.run_id,
+                "trace_id": run_metadata.trace_id,
+                "correlation_id": run_metadata.correlation_id,
+                "stage": snapshot.stage,
+                "status": snapshot.status,
+                "sub_question": snapshot.sub_question,
+                "lane_index": snapshot.lane_index,
+                "lane_total": snapshot.lane_total,
+                "snapshot_index": snapshot_index,
+            },
+        )
+        end_langfuse_observation(
+            stage_span,
+            output_payload={
+                "decomposition_count": len(snapshot.decomposition_sub_questions),
+                "sub_qa_count": len(snapshot.sub_qa),
+                "output_length": len(snapshot.output or ""),
+            },
+        )
     response = legacy_service.map_graph_state_to_runtime_response(state)
+    record_langfuse_score(
+        parent=runtime_trace,
+        name="runtime.sub_question_count",
+        value=float(len(response.sub_qa)),
+        metadata={"run_id": run_metadata.run_id},
+    )
+    end_langfuse_observation(
+        runtime_trace,
+        output_payload={
+            "sub_qa_count": len(response.sub_qa),
+            "output_length": len(response.output),
+            "final_citation_count": len(response.final_citations),
+            "snapshot_count": len(state.stage_snapshots),
+        },
+        metadata={"run_id": run_metadata.run_id},
+    )
     logger.info(
         "Runtime core run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
         len(response.sub_qa),

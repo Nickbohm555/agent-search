@@ -23,6 +23,12 @@ from services.benchmark_execution_adapter import BenchmarkExecutionAdapter
 from services.benchmark_modes import get_mode_runtime_overrides
 from services.benchmark_quality_service import BenchmarkQualityService
 from services.benchmark_retrieval_metrics_service import BenchmarkRetrievalMetricsService
+from utils.langfuse_tracing import (
+    end_langfuse_observation,
+    record_langfuse_score,
+    start_langfuse_span,
+    start_langfuse_trace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +88,35 @@ class BenchmarkRunner:
             raise ValueError("At least one benchmark mode is required")
 
         resolved_run_id = run_id or f"benchmark-run-{uuid.uuid4()}"
-        dataset_path = self._dataset_path(dataset_id)
-        questions = load_benchmark_questions(dataset_path)
-        corpus_hash = self._compute_dataset_hash(dataset_path)
+        run_trace = start_langfuse_trace(
+            name="benchmark.run",
+            scope="benchmark",
+            sampling_key=resolved_run_id,
+            trace_id=resolved_run_id,
+            session_id=resolved_run_id,
+            input_payload={"dataset_id": dataset_id, "modes": [mode.value for mode in resolved_modes]},
+            metadata={"run_id": resolved_run_id, "dataset_id": dataset_id},
+        )
+        questions: list[BenchmarkQuestion] = []
+        corpus_hash = ""
+        completed_results = 0
+        run_status = "unknown"
+        run_error: str | None = None
+        dataset_span = start_langfuse_span(
+            parent=run_trace,
+            name="benchmark.dataset_load",
+            metadata={"run_id": resolved_run_id, "dataset_id": dataset_id},
+        )
+        try:
+            dataset_path = self._dataset_path(dataset_id)
+            questions = load_benchmark_questions(dataset_path)
+            corpus_hash = self._compute_dataset_hash(dataset_path)
+        finally:
+            end_langfuse_observation(
+                dataset_span,
+                output_payload={"question_count": len(questions), "corpus_hash": corpus_hash},
+                metadata={"run_id": resolved_run_id, "dataset_id": dataset_id},
+            )
 
         logger.info(
             "Benchmark runner start run_id=%s dataset_id=%s mode_count=%s question_count=%s",
@@ -94,47 +126,101 @@ class BenchmarkRunner:
             len(questions),
         )
 
-        with self._session_factory() as session:
-            run = self._initialize_run(
-                session=session,
-                run_id=resolved_run_id,
-                dataset_id=dataset_id,
-                modes=resolved_modes,
-                corpus_hash=corpus_hash,
-                metadata=metadata or {},
-                targets=targets,
-                runtime_model=str(model),
-            )
-            run.status = "running"
-            run.error = None
-            run.started_at = run.started_at or datetime.now(timezone.utc)
-            run.finished_at = None
-            session.commit()
-
-            completed_results = 0
-            try:
-                for mode in resolved_modes:
-                    completed_results += self._run_mode(
-                        session=session,
-                        run_id=resolved_run_id,
-                        mode=mode,
-                        questions=questions,
-                        vector_store=vector_store,
-                        model=model,
-                        progress_callback=progress_callback,
-                    )
-                run.status = "completed"
+        try:
+            with self._session_factory() as session:
+                run = self._initialize_run(
+                    session=session,
+                    run_id=resolved_run_id,
+                    dataset_id=dataset_id,
+                    modes=resolved_modes,
+                    corpus_hash=corpus_hash,
+                    metadata=metadata or {},
+                    targets=targets,
+                    runtime_model=str(model),
+                )
+                run.status = "running"
                 run.error = None
-                run.finished_at = datetime.now(timezone.utc)
+                run.started_at = run.started_at or datetime.now(timezone.utc)
+                run.finished_at = None
                 session.commit()
-            except Exception as exc:  # noqa: BLE001
-                run.status = "failed"
-                run.error = str(exc)
-                run.finished_at = datetime.now(timezone.utc)
-                session.commit()
-                logger.exception("Benchmark runner failed run_id=%s error=%s", resolved_run_id, exc)
-                raise
 
+                completed_results = 0
+                try:
+                    for mode in resolved_modes:
+                        mode_span = start_langfuse_span(
+                            parent=run_trace,
+                            name="benchmark.mode_execution",
+                            metadata={
+                                "run_id": resolved_run_id,
+                                "dataset_id": dataset_id,
+                                "mode": mode.value,
+                                "question_count": len(questions),
+                            },
+                        )
+                        try:
+                            completed_results += self._run_mode(
+                                session=session,
+                                run_id=resolved_run_id,
+                                mode=mode,
+                                questions=questions,
+                                vector_store=vector_store,
+                                model=model,
+                                progress_callback=progress_callback,
+                                benchmark_trace=run_trace,
+                            )
+                        finally:
+                            end_langfuse_observation(
+                                mode_span,
+                                output_payload={"completed_results": completed_results},
+                                metadata={
+                                    "run_id": resolved_run_id,
+                                    "dataset_id": dataset_id,
+                                    "mode": mode.value,
+                                },
+                            )
+                    aggregation_span = start_langfuse_span(
+                        parent=run_trace,
+                        name="benchmark.aggregation",
+                        metadata={"run_id": resolved_run_id, "dataset_id": dataset_id},
+                    )
+                    run.status = "completed"
+                    run.error = None
+                    run.finished_at = datetime.now(timezone.utc)
+                    session.commit()
+                    run_status = run.status
+                    end_langfuse_observation(
+                        aggregation_span,
+                        output_payload={
+                            "status": run.status,
+                            "completed_results": completed_results,
+                            "mode_count": len(resolved_modes),
+                            "question_count": len(questions),
+                        },
+                        metadata={"run_id": resolved_run_id, "dataset_id": dataset_id},
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    run.status = "failed"
+                    run.error = str(exc)
+                    run.finished_at = datetime.now(timezone.utc)
+                    session.commit()
+                    run_status = run.status
+                    run_error = str(exc)
+                    logger.exception("Benchmark runner failed run_id=%s error=%s", resolved_run_id, exc)
+                    raise
+        finally:
+            end_langfuse_observation(
+                run_trace,
+                output_payload={
+                    "run_id": resolved_run_id,
+                    "dataset_id": dataset_id,
+                    "status": run_status,
+                    "error": run_error,
+                    "completed_results": completed_results,
+                    "mode_count": len(resolved_modes),
+                    "question_count": len(questions),
+                },
+                metadata={"run_id": resolved_run_id, "dataset_id": dataset_id},
+            )
         logger.info(
             "Benchmark runner complete run_id=%s dataset_id=%s completed_results=%s",
             resolved_run_id,
@@ -159,6 +245,7 @@ class BenchmarkRunner:
         vector_store: Any,
         model: Any,
         progress_callback: Callable[[str, dict[str, Any]], None] | None = None,
+        benchmark_trace: Any | None = None,
     ) -> int:
         successful_ids = self._get_successful_question_ids(session=session, run_id=run_id, mode=mode.value)
         mode_overrides = get_mode_runtime_overrides(mode)
@@ -182,12 +269,29 @@ class BenchmarkRunner:
             progress_callback=progress_callback,
         )
         for index, question in enumerate(questions, start=1):
+            question_span = start_langfuse_span(
+                parent=benchmark_trace,
+                name="benchmark.question_execution",
+                input_payload={"question": question.question},
+                metadata={
+                    "run_id": run_id,
+                    "mode": mode.value,
+                    "question_id": question.question_id,
+                    "question_index": index,
+                    "question_total": len(questions),
+                },
+            )
             if question.question_id in successful_ids:
                 logger.info(
                     "Benchmark runner skip cached result run_id=%s mode=%s question_id=%s",
                     run_id,
                     mode.value,
                     question.question_id,
+                )
+                end_langfuse_observation(
+                    question_span,
+                    output_payload={"status": "skipped_cached"},
+                    metadata={"run_id": run_id, "mode": mode.value, "question_id": question.question_id},
                 )
                 continue
 
@@ -286,7 +390,23 @@ class BenchmarkRunner:
                         question_text=question.question,
                         expected_answer_points=question.expected_answer_points,
                         required_sources=question.required_sources,
-                        run_metadata=run_metadata,
+                        run_metadata={
+                            **(run_metadata if isinstance(run_metadata, dict) else {}),
+                            "run_id": run_id,
+                            "mode": mode.value,
+                            "question_id": question.question_id,
+                        },
+                    )
+                    record_langfuse_score(
+                        parent=benchmark_trace,
+                        name="benchmark.correctness",
+                        value=float(quality_row.score),
+                        metadata={
+                            "run_id": run_id,
+                            "mode": mode.value,
+                            "question_id": question.question_id,
+                            "passed": bool(quality_row.passed),
+                        },
                     )
                     logger.info(
                         "Benchmark runner quality scoring complete run_id=%s mode=%s question_id=%s score=%.4f passed=%s",
@@ -386,7 +506,50 @@ class BenchmarkRunner:
                     result_row.timing_outcome if result_row is not None else None,
                     stage_timings,
                 )
+                if result_row is not None and result_row.e2e_latency_ms is not None:
+                    record_langfuse_score(
+                        parent=benchmark_trace,
+                        name="benchmark.latency_ms",
+                        value=float(result_row.e2e_latency_ms),
+                        metadata={
+                            "run_id": run_id,
+                            "mode": mode.value,
+                            "question_id": question.question_id,
+                            "timing_outcome": result_row.timing_outcome,
+                        },
+                    )
+                end_langfuse_observation(
+                    question_span,
+                    output_payload={
+                        "status": "failed",
+                        "execution_error": execution_error,
+                        "latency_ms": result_row.e2e_latency_ms if result_row is not None else None,
+                    },
+                    metadata={"run_id": run_id, "mode": mode.value, "question_id": question.question_id},
+                )
                 raise RuntimeError(execution_error)
+            if result_row is not None and result_row.e2e_latency_ms is not None:
+                record_langfuse_score(
+                    parent=benchmark_trace,
+                    name="benchmark.latency_ms",
+                    value=float(result_row.e2e_latency_ms),
+                    metadata={
+                        "run_id": run_id,
+                        "mode": mode.value,
+                        "question_id": question.question_id,
+                        "timing_outcome": result_row.timing_outcome,
+                    },
+                )
+            end_langfuse_observation(
+                question_span,
+                output_payload={
+                    "status": "completed",
+                    "execution_error": execution_error,
+                    "latency_ms": result_row.e2e_latency_ms if result_row is not None else None,
+                    "correctness_score": getattr(result_row.quality_score, "score", None) if result_row is not None else None,
+                },
+                metadata={"run_id": run_id, "mode": mode.value, "question_id": question.question_id},
+            )
         return completed
 
     def _initialize_run(

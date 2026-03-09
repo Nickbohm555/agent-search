@@ -15,6 +15,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from config import BenchmarkRuntimeSettings
 from db import SessionLocal
 from models import BenchmarkQualityScore, BenchmarkResult
+from utils.langfuse_tracing import (
+    end_langfuse_observation,
+    record_langfuse_score,
+    start_langfuse_span,
+    start_langfuse_trace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +132,33 @@ class BenchmarkQualityService:
         normalized_threshold = (
             pass_threshold if pass_threshold is not None else self._runtime_settings.target_min_correctness
         )
+        run_id = str((run_metadata or {}).get("run_id", "")).strip()
+        mode = str((run_metadata or {}).get("mode", "")).strip()
+        question_id = str((run_metadata or {}).get("question_id", "")).strip()
+        sampling_key = ":".join(part for part in (run_id, mode, question_id) if part) or question_text
+        judge_trace = start_langfuse_trace(
+            name="benchmark.judge",
+            scope="benchmark",
+            sampling_key=sampling_key,
+            input_payload={"question_text": question_text},
+            metadata={
+                "run_id": run_id,
+                "mode": mode,
+                "question_id": question_id,
+                "rubric_version": rubric_version,
+                "judge_model": self._runtime_settings.judge_model,
+            },
+        )
+        judge_span = start_langfuse_span(
+            parent=judge_trace,
+            name="benchmark.judge_scoring",
+            metadata={
+                "run_id": run_id,
+                "mode": mode,
+                "question_id": question_id,
+                "rubric_version": rubric_version,
+            },
+        )
         answer_text = self._extract_answer_text(answer_payload)
         prompt_template = self._resolve_prompt_template(run_metadata)
         prompt = self._build_prompt(
@@ -141,6 +174,36 @@ class BenchmarkQualityService:
         score = max(0.0, min(1.0, float(judge_response.score)))
         passed = score >= normalized_threshold
         subscores = self._normalize_subscores(judge_response.subscores)
+        record_langfuse_score(
+            parent=judge_trace,
+            name="benchmark.correctness",
+            value=score,
+            metadata={
+                "run_id": run_id,
+                "mode": mode,
+                "question_id": question_id,
+                "passed": passed,
+                "rubric_version": rubric_version,
+            },
+        )
+        end_langfuse_observation(
+            judge_span,
+            output_payload={
+                "score": score,
+                "passed": passed,
+                "threshold": normalized_threshold,
+            },
+            metadata={"run_id": run_id, "mode": mode, "question_id": question_id},
+        )
+        end_langfuse_observation(
+            judge_trace,
+            output_payload={
+                "score": score,
+                "passed": passed,
+                "threshold": normalized_threshold,
+            },
+            metadata={"run_id": run_id, "mode": mode, "question_id": question_id},
+        )
 
         logger.info(
             "Benchmark quality evaluated score=%.4f passed=%s threshold=%.4f rubric_version=%s model=%s",
