@@ -234,16 +234,17 @@ Backend
 | 6 | `run_expand_node` + `expand_queries_for_subquestion` | Expansion-node query generation (`MultiQueryRetriever`) with bounded normalization and fallback to original sub-question. | `expanded_queries[]` per sub-question artifact. |
 | 7 | `run_search_node` + `apply_search_node_output_to_graph_state` | Search-node retrieval over expanded queries with `k_fetch`, deterministic merge/dedupe (`document_id` preferred; fallback `source+content`), and retrieval provenance capture. | `retrieved_docs[]`, `citation_rows_by_index`, and `retrieval_provenance[]` in graph artifacts. |
 | 8 | `run_rerank_node` + `apply_rerank_node_output_to_graph_state` | Rerank-node scoring with `flashrank`; trims to `top_n`, preserves deterministic fallback order when reranker fails/disabled, and stores rerank score/order provenance. | `reranked_docs[]` + updated citation map and compatibility payload fields. |
-| 9 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
-| 10 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
-| 11 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
-| 12 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
-| 13 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
-| 14 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
-| 15 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
-| 16 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
-| 17 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
-| 18 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
+| 9 | `run_answer_subquestion_node` + `apply_answer_subquestion_node_output_to_graph_state` | Subanswer-node generation + verification over reranked docs; requires citation markers and supporting citation rows; falls back to exact `nothing relevant found` when unsupported. | `sub_answer`, citation usage, and supporting source rows in graph/compat state. |
+| 10 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
+| 11 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
+| 12 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |
+| 13 | `run_pipeline_for_subquestions` | Per-subquestion parallel pipeline: validate -> rerank -> subanswer -> verify. | Enriched `sub_qa[]`. |
+| 14 | `generate_initial_answer` | Synthesizes answer from initial context + subanswers. | Initial `output`. |
+| 15 | `should_refine` | Checks insufficiency/answerable ratio threshold. | Refinement decision. |
+| 16 | `refine_subquestions` (conditional) | Generates targeted refined subquestions. | `refined_subquestions[]`. |
+| 17 | `_seed_refined_sub_qa_from_retrieval` + pipeline (conditional) | Parallel retrieval + rerun lane for refined questions. | `refined_sub_qa[]`. |
+| 18 | `generate_initial_answer` again (conditional) | Re-synthesizes from refined evidence. | Refined/final `output`. |
+| 19 | Return `RuntimeAgentRunResponse` | Sends result JSON to frontend. | `{ main_question, sub_qa, output }`. |
 
 ### Parallelism points
 
@@ -268,7 +269,7 @@ That stable line contract is reused across validation, reranking, subanswer gene
 
 - Missing `OPENAI_API_KEY`: decomposition/subanswer/synthesis/refinement-decomposition use deterministic fallback logic.
 - Malformed decomposition output: falls back to normalized original question.
-- No parseable retrieved docs: pipeline carries `"No relevant documents found."` style evidence and often marks item non-answerable.
+- No supportable subanswer from reranked docs in graph-node path: returns exact fallback text `nothing relevant found`.
 - Refinement triggers when answer is empty/insufficient, no subanswers exist, or answerable ratio is below threshold.
 
 <p align="center">

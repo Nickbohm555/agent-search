@@ -119,6 +119,9 @@ class AnswerSubquestionNodeInput(BaseModel):
 
 class AnswerSubquestionNodeOutput(BaseModel):
     sub_answer: str = ""
+    citation_indices_used: list[int] = Field(default_factory=list)
+    answerable: bool = False
+    verification_reason: str = ""
     citation_rows_by_index: dict[int, CitationSourceRow] = Field(default_factory=dict)
 
 

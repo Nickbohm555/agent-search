@@ -19,6 +19,8 @@ from agents import create_coordinator_agent, get_decomposition_only_prompt
 from db import DATABASE_URL
 from schemas import (
     AgentGraphState,
+    AnswerSubquestionNodeInput,
+    AnswerSubquestionNodeOutput,
     CitationSourceRow,
     DecomposeNodeInput,
     DecomposeNodeOutput,
@@ -107,6 +109,8 @@ _QUERY_EXPANSION_CONFIG = build_query_expansion_config_from_env()
 _SUBQUESTION_PIPELINE_MAX_WORKERS = int(os.getenv("SUBQUESTION_PIPELINE_MAX_WORKERS", "4"))
 _REFINEMENT_RETRIEVAL_K = max(1, int(os.getenv("REFINEMENT_RETRIEVAL_K", "10")))
 _SEARCH_NODE_K_FETCH = max(1, int(os.getenv("SEARCH_NODE_K_FETCH", "10")))
+_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK = "nothing relevant found"
+_CITATION_INDEX_PATTERN = re.compile(r"\[(\d+)\]")
 
 
 @dataclass(frozen=True)
@@ -1160,6 +1164,23 @@ def _to_retrieved_documents(rows: list[CitationSourceRow]) -> list[RetrievedDocu
     ]
 
 
+def _extract_citation_indices(answer: str) -> list[int]:
+    if not answer:
+        return []
+    seen: set[int] = set()
+    indices: list[int] = []
+    for raw_index in _CITATION_INDEX_PATTERN.findall(answer):
+        try:
+            index = int(raw_index)
+        except ValueError:
+            continue
+        if index <= 0 or index in seen:
+            continue
+        seen.add(index)
+        indices.append(index)
+    return indices
+
+
 def apply_expand_node_output_to_graph_state(
     *,
     state: AgentGraphState,
@@ -1454,6 +1475,170 @@ def apply_rerank_node_output_to_graph_state(
         "Rerank node state update sub_question=%s reranked_candidates=%s run_id=%s",
         _truncate_query(sub_question),
         len(node_output.reranked_docs),
+        next_state.run_metadata.run_id,
+    )
+    return next_state
+
+
+def run_answer_subquestion_node(
+    *,
+    node_input: AnswerSubquestionNodeInput,
+) -> AnswerSubquestionNodeOutput:
+    logger.info(
+        "Subanswer node start sub_question=%s reranked_doc_count=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(node_input.reranked_docs),
+        node_input.run_metadata.run_id,
+        node_input.run_metadata.trace_id,
+        node_input.run_metadata.correlation_id,
+    )
+
+    if not node_input.reranked_docs:
+        logger.info(
+            "Subanswer node fallback; no reranked docs sub_question=%s run_id=%s",
+            _truncate_query(node_input.sub_question),
+            node_input.run_metadata.run_id,
+        )
+        return AnswerSubquestionNodeOutput(
+            sub_answer=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
+            citation_indices_used=[],
+            answerable=False,
+            verification_reason="no_reranked_documents",
+            citation_rows_by_index={},
+        )
+
+    reranked_output = _format_citation_rows_for_pipeline(node_input.reranked_docs)
+    generated_sub_answer = generate_subanswer(
+        sub_question=node_input.sub_question,
+        reranked_retrieved_output=reranked_output,
+    )
+    verification = verify_subanswer(
+        sub_question=node_input.sub_question,
+        sub_answer=generated_sub_answer,
+        reranked_retrieved_output=reranked_output,
+    )
+
+    citation_rows = dict(node_input.citation_rows_by_index)
+    if not citation_rows:
+        citation_rows = {row.citation_index: row for row in node_input.reranked_docs}
+    citation_indices_used = _extract_citation_indices(generated_sub_answer)
+    supports_answer = bool(verification.answerable)
+    invalid_indices = [index for index in citation_indices_used if index not in citation_rows]
+    missing_citations = supports_answer and not citation_indices_used
+    missing_support_rows = supports_answer and bool(citation_indices_used) and bool(invalid_indices)
+
+    if missing_citations:
+        supports_answer = False
+        verification = SubanswerVerificationResult(
+            answerable=False,
+            reason="missing_citation_markers",
+        )
+    elif missing_support_rows:
+        supports_answer = False
+        verification = SubanswerVerificationResult(
+            answerable=False,
+            reason="missing_supporting_source_rows",
+        )
+
+    if not supports_answer:
+        logger.info(
+            "Subanswer node fallback; unsupported answer sub_question=%s reason=%s citation_indices=%s run_id=%s",
+            _truncate_query(node_input.sub_question),
+            verification.reason,
+            citation_indices_used,
+            node_input.run_metadata.run_id,
+        )
+        return AnswerSubquestionNodeOutput(
+            sub_answer=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
+            citation_indices_used=[],
+            answerable=False,
+            verification_reason=verification.reason,
+            citation_rows_by_index={},
+        )
+
+    supporting_rows = {
+        index: citation_rows[index].model_copy(deep=True)
+        for index in citation_indices_used
+        if index in citation_rows
+    }
+    logger.info(
+        "Subanswer node complete sub_question=%s answer_len=%s citation_count=%s run_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(generated_sub_answer),
+        len(citation_indices_used),
+        node_input.run_metadata.run_id,
+    )
+    return AnswerSubquestionNodeOutput(
+        sub_answer=generated_sub_answer,
+        citation_indices_used=citation_indices_used,
+        answerable=True,
+        verification_reason=verification.reason,
+        citation_rows_by_index=supporting_rows,
+    )
+
+
+def apply_answer_subquestion_node_output_to_graph_state(
+    *,
+    state: AgentGraphState,
+    sub_question: str,
+    node_output: AnswerSubquestionNodeOutput,
+) -> AgentGraphState:
+    next_state = state.model_copy(deep=True)
+    artifact = next(
+        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        None,
+    )
+    if artifact is None:
+        artifact = SubQuestionArtifacts(sub_question=sub_question)
+        next_state.sub_question_artifacts.append(artifact)
+    artifact.sub_answer = node_output.sub_answer
+    artifact.citation_rows_by_index = {
+        key: value.model_copy(deep=True)
+        for key, value in node_output.citation_rows_by_index.items()
+    }
+    for index, row in node_output.citation_rows_by_index.items():
+        next_state.citation_rows_by_index[index] = row.model_copy(deep=True)
+
+    matched_sub_qa = None
+    for item in next_state.sub_qa:
+        if item.sub_question == sub_question:
+            matched_sub_qa = item
+            break
+    if matched_sub_qa is None:
+        matched_sub_qa = SubQuestionAnswer(sub_question=sub_question, sub_answer="")
+        next_state.sub_qa.append(matched_sub_qa)
+
+    matched_sub_qa.sub_answer = node_output.sub_answer
+    matched_sub_qa.answerable = node_output.answerable
+    matched_sub_qa.verification_reason = node_output.verification_reason
+
+    tool_call_payload: dict[str, Any] = {}
+    if matched_sub_qa.tool_call_input:
+        try:
+            parsed_tool_payload = json.loads(matched_sub_qa.tool_call_input)
+            if isinstance(parsed_tool_payload, dict):
+                tool_call_payload = parsed_tool_payload
+        except json.JSONDecodeError:
+            tool_call_payload = {}
+    tool_call_payload["citation_usage"] = list(node_output.citation_indices_used)
+    tool_call_payload["supporting_source_rows"] = [
+        {
+            "citation_index": row.citation_index,
+            "rank": row.rank,
+            "title": row.title,
+            "source": row.source,
+            "document_id": row.document_id,
+            "score": row.score,
+        }
+        for row in node_output.citation_rows_by_index.values()
+    ]
+    matched_sub_qa.tool_call_input = json.dumps(tool_call_payload, ensure_ascii=True)
+
+    logger.info(
+        "Subanswer node state update sub_question=%s answerable=%s citation_count=%s run_id=%s",
+        _truncate_query(sub_question),
+        node_output.answerable,
+        len(node_output.citation_indices_used),
         next_state.run_metadata.run_id,
     )
     return next_state

@@ -183,18 +183,19 @@ run_runtime_agent() internals
      -> expand_queries_for_subquestion(...)  // MultiQueryRetriever + normalization/fallback
   6) run_search_node(...) + apply_search_node_output_to_graph_state(...)  // expanded retrieval + merge/dedupe/provenance
   7) run_rerank_node(...) + apply_rerank_node_output_to_graph_state(...)  // flashrank rerank + top_n + fallback ordering
-  8) create_coordinator_agent(...)
-  9) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
- 10) _extract_sub_qa(messages, search_database_calls)
- 11) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
- 12) generate_initial_answer(...)
- 13) should_refine(...)
- 14) if refinement_needed:
+  8) run_answer_subquestion_node(...) + apply_answer_subquestion_node_output_to_graph_state(...)  // citation-required subanswer node + exact fallback "nothing relevant found"
+  9) create_coordinator_agent(...)
+ 10) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
+ 11) _extract_sub_qa(messages, search_database_calls)
+ 12) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
+ 13) generate_initial_answer(...)
+ 14) should_refine(...)
+ 15) if refinement_needed:
        refine_subquestions(...)
        _seed_refined_sub_qa_from_retrieval(...)  // PARALLEL
        run_pipeline_for_subquestions(...)         // PARALLEL
        generate_initial_answer(...)               // refined final output
- 15) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+ 16) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
       </div>
 
       <div class="panel">
@@ -349,60 +350,66 @@ run_runtime_agent() internals
             </tr>
             <tr>
               <td>9</td>
+              <td><code>run_answer_subquestion_node</code> + <code>apply_answer_subquestion_node_output_to_graph_state</code></td>
+              <td>Generates one grounded subanswer from reranked docs, requires citation markers that map to ranked rows, and uses exact fallback <code>nothing relevant found</code> when unsupported.</td>
+              <td><code>sub_answer</code> + citation usage + supporting source rows.</td>
+            </tr>
+            <tr>
+              <td>10</td>
               <td><code>create_coordinator_agent</code></td>
               <td>Builds deep-agents coordinator + one RAG subagent using retriever tool <code>search_database</code>.</td>
               <td>Runnable coordinator.</td>
             </tr>
             <tr>
-              <td>10</td>
+              <td>11</td>
               <td><code>agent.invoke</code></td>
               <td>Coordinator delegates each provided subquestion via <code>task(...)</code>; subagent calls <code>search_database(query, expanded_query, limit)</code>.</td>
               <td>Agent message list + tool interactions.</td>
             </tr>
             <tr>
-              <td>11</td>
+              <td>12</td>
               <td><code>_extract_sub_qa</code></td>
               <td>Builds <code>SubQuestionAnswer[]</code> from captured retriever calls and tool outputs, including <code>tool_call_input</code> and <code>expanded_query</code>.</td>
               <td>Raw per-subquestion results.</td>
             </tr>
             <tr>
-              <td>12</td>
+              <td>13</td>
               <td><code>run_pipeline_for_subquestions</code></td>
               <td>Processes each subquestion in thread pool: validate docs -> rerank -> generate subanswer -> verify grounding.</td>
               <td>Enriched <code>sub_qa[]</code> with <code>answerable</code>, <code>verification_reason</code>.</td>
             </tr>
             <tr>
-              <td>13</td>
+              <td>14</td>
               <td><code>generate_initial_answer</code></td>
               <td>Synthesizes main answer from initial context + verified subanswers (LLM or fallback).</td>
               <td><code>output</code> draft.</td>
             </tr>
             <tr>
-              <td>14</td>
+              <td>15</td>
               <td><code>should_refine</code></td>
               <td>Checks insufficiency patterns and answerable ratio threshold.</td>
               <td>Refinement decision + reason.</td>
             </tr>
             <tr>
-              <td>15</td>
+              <td>16</td>
               <td><code>refine_subquestions</code> (conditional)</td>
               <td>If needed, creates new targeted subquestions for missing evidence.</td>
               <td><code>refined_subquestions[]</code>.</td>
             </tr>
             <tr>
-              <td>16</td>
+              <td>17</td>
               <td><code>_seed_refined_sub_qa_from_retrieval</code> + pipeline (conditional)</td>
               <td>Parallel retrieval for refined questions, then same per-subquestion pipeline again.</td>
               <td><code>refined_sub_qa[]</code>.</td>
             </tr>
             <tr>
-              <td>17</td>
+              <td>18</td>
               <td><code>generate_initial_answer</code> again (conditional)</td>
               <td>Builds final output from refined evidence.</td>
               <td>Final <code>output</code>.</td>
             </tr>
             <tr>
-              <td>18</td>
+              <td>19</td>
               <td>Return response model</td>
               <td>Returns JSON to frontend.</td>
               <td><code>{ main_question, sub_qa, output }</code>.</td>
@@ -410,7 +417,7 @@ run_runtime_agent() internals
           </tbody>
         </table>
       </div>
-        <h3 id="core-code-dropdowns">Code Drop-downs (Orders 1-15)</h3>
+        <h3 id="core-code-dropdowns">Code Drop-downs (Orders 1-16)</h3>
         <p class="small">Click each step to view the key code path currently implemented.</p>
 
         <details open>

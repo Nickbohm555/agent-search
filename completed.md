@@ -192,3 +192,50 @@ docker compose logs --tail=80 backend frontend db
 -> frontend Vite ready on http://localhost:5173/
 -> db ready to accept connections
 ```
+
+## Section 6: Build subanswer node - answer per sub-question with citations
+
+**Single goal:** Generate one grounded subanswer per sub-question using reranked docs and mandatory citation markers.
+
+**Details completed:**
+- Added graph subanswer-node runtime in `src/backend/services/agent_service.py`:
+  - `run_answer_subquestion_node(...)` now generates a subanswer from reranked docs, verifies grounding, enforces citation markers (for example `[1]`), and validates citation indices map to ranked rows.
+  - Enforces exact fallback text `nothing relevant found` when reranked docs are missing or the generated answer is unsupported.
+- Added graph state application in `src/backend/services/agent_service.py`:
+  - `apply_answer_subquestion_node_output_to_graph_state(...)` now persists `sub_answer`, citation usage, and supporting source rows into graph artifacts and compatibility `sub_qa` fields.
+  - Added compatibility payload details in `tool_call_input`: `citation_usage` and `supporting_source_rows`.
+- Extended node output schema in `src/backend/schemas/agent.py` (`AnswerSubquestionNodeOutput`) with:
+  - `citation_indices_used`, `answerable`, and `verification_reason`.
+- Added backend tests in `src/backend/tests/services/test_agent_service.py` for:
+  - Cited success path (citation markers map to ranked doc rows).
+  - Required fallback path (`nothing relevant found`) when unsupported.
+  - Graph-state apply behavior for citation usage/supporting rows and `SubQuestionAnswer` compatibility fields.
+- Updated required docs in `README.md` and `src/frontend/public/run-flow.html` to include the subanswer graph node and fallback behavior.
+
+### Useful logs
+
+```text
+docker compose down -v --rmi all && docker compose build && docker compose up -d
+-> full clean restart complete
+-> backend/frontend rebuilt and started; db healthy
+
+docker compose exec backend uv run --with pytest python -m pytest tests/services/test_agent_service.py tests/services/test_subanswer_service.py tests/services/test_subanswer_verification_service.py
+-> 73 passed, 2 warnings in 24.22s
+
+docker compose restart backend
+-> backend restarted successfully
+
+docker compose logs --tail=200 backend
+-> Uvicorn startup complete
+-> reload events for updated files (schemas/agent.py, services/agent_service.py, tests/services/test_agent_service.py)
+-> app startup complete (no fatal errors)
+
+docker compose logs --tail=120 frontend
+-> Vite ready at http://localhost:5173/
+
+docker compose logs --tail=120 db
+-> PostgreSQL ready to accept connections
+
+curl http://localhost:8000/api/health
+-> {"status":"ok"}
+```

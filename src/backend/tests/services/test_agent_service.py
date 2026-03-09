@@ -15,6 +15,8 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from schemas import (
+    AnswerSubquestionNodeInput,
+    AnswerSubquestionNodeOutput,
     DecomposeNodeInput,
     ExpandNodeInput,
     ExpandNodeOutput,
@@ -2958,6 +2960,168 @@ def test_apply_rerank_node_output_to_graph_state_updates_artifacts_and_compat_fi
     assert tool_call_input["query"] == "What changed in VAT policy?"
     assert len(tool_call_input["rerank_provenance"]) == 2
     assert tool_call_input["rerank_provenance"][0]["score"] == 0.88
+
+
+def test_run_answer_subquestion_node_returns_cited_grounded_answer(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "VAT changes were enacted in 2025 [2].",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    output = agent_service.run_answer_subquestion_node(
+        node_input=AnswerSubquestionNodeInput(
+            sub_question="What changed in VAT policy?",
+            reranked_docs=[
+                agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                ),
+                agent_service.CitationSourceRow(
+                    citation_index=2,
+                    rank=2,
+                    title="VAT Timeline",
+                    source="wiki://vat-timeline",
+                    content="Timeline details for VAT changes.",
+                    document_id="doc-2",
+                ),
+            ],
+            citation_rows_by_index={
+                1: agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                ),
+                2: agent_service.CitationSourceRow(
+                    citation_index=2,
+                    rank=2,
+                    title="VAT Timeline",
+                    source="wiki://vat-timeline",
+                    content="Timeline details for VAT changes.",
+                    document_id="doc-2",
+                ),
+            },
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-answer-node"),
+        ),
+    )
+
+    assert output.sub_answer == "VAT changes were enacted in 2025 [2]."
+    assert output.citation_indices_used == [2]
+    assert output.answerable is True
+    assert output.verification_reason == "grounded_in_reranked_documents"
+    assert list(output.citation_rows_by_index.keys()) == [2]
+    assert output.citation_rows_by_index[2].title == "VAT Timeline"
+
+
+def test_run_answer_subquestion_node_falls_back_when_answer_is_not_supported(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "This changed in ways we cannot verify.",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=False,
+            reason="insufficient_evidence_overlap",
+        ),
+    )
+
+    output = agent_service.run_answer_subquestion_node(
+        node_input=AnswerSubquestionNodeInput(
+            sub_question="What changed in VAT policy?",
+            reranked_docs=[
+                agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                ),
+            ],
+            citation_rows_by_index={
+                1: agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                ),
+            },
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-answer-node-fallback"),
+        ),
+    )
+
+    assert output.sub_answer == "nothing relevant found"
+    assert output.citation_indices_used == []
+    assert output.answerable is False
+    assert output.verification_reason == "insufficient_evidence_overlap"
+    assert output.citation_rows_by_index == {}
+
+
+def test_apply_answer_subquestion_node_output_to_graph_state_updates_artifacts_and_compat_fields() -> None:
+    state = agent_service.build_agent_graph_state(
+        main_question="Explain VAT changes",
+        decomposition_sub_questions=["What changed in VAT policy?"],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in VAT policy?",
+                sub_answer="",
+                tool_call_input=json.dumps({"query": "What changed in VAT policy?"}),
+            )
+        ],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-answer-state"),
+    )
+
+    updated = agent_service.apply_answer_subquestion_node_output_to_graph_state(
+        state=state,
+        sub_question="What changed in VAT policy?",
+        node_output=AnswerSubquestionNodeOutput(
+            sub_answer="VAT changes were enacted in 2025 [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={
+                1: agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                    score=0.77,
+                )
+            },
+        ),
+    )
+
+    assert updated.sub_question_artifacts[0].sub_answer == "VAT changes were enacted in 2025 [1]."
+    assert updated.sub_question_artifacts[0].citation_rows_by_index[1].source == "wiki://vat-policy"
+    assert updated.sub_qa[0].sub_answer == "VAT changes were enacted in 2025 [1]."
+    assert updated.sub_qa[0].answerable is True
+    assert updated.sub_qa[0].verification_reason == "grounded_in_reranked_documents"
+    tool_call_input = json.loads(updated.sub_qa[0].tool_call_input)
+    assert tool_call_input["query"] == "What changed in VAT policy?"
+    assert tool_call_input["citation_usage"] == [1]
+    assert tool_call_input["supporting_source_rows"][0]["source"] == "wiki://vat-policy"
 
 
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:
