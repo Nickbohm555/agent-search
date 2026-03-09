@@ -13,6 +13,7 @@ from agent_search.errors import (
     SDKRetrievalError,
     SDKTimeoutError,
 )
+from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, start_agent_run_job
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from schemas import (
@@ -22,7 +23,6 @@ from schemas import (
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunResponse,
 )
-from services.agent_jobs import cancel_agent_run_job, get_agent_run_job, start_agent_run_job
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,11 @@ def run_async(
 
     try:
         # Async runtime currently resolves dependencies in service layer.
-        job = start_agent_run_job(RuntimeAgentRunRequest(query=query))
+        job = start_agent_run_job(
+            RuntimeAgentRunRequest(query=query),
+            model=model,
+            vector_store=compatible_vector_store,
+        )
     except Exception as exc:  # noqa: BLE001
         mapped = _map_sdk_error(operation="run_async", exc=exc)
         logger.exception(

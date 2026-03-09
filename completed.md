@@ -1024,3 +1024,64 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 17
+
+## Section 17: SDK async runtime wiring - end-to-end async path
+
+**Single goal:** Wire SDK async lifecycle to shared runtime job manager.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Implement start/status/cancel manager.
+- Preserve stage snapshots and cancellation semantics.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/runtime/jobs.py` | Async job manager. |
+| `src/backend/agent_search/public_api.py` | Async lifecycle wiring. |
+| `src/backend/tests/sdk/test_sdk_async_e2e.py` | Async E2E tests. |
+
+**How to test:** Run SDK async E2E tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `agent_search.runtime.jobs` as the shared SDK async job manager with start/status/cancel operations, job state store, stage snapshot mapping, and cancellation handling.
+- Wired `agent_search.public_api` async lifecycle methods to the new runtime manager and passed caller-provided `model` and `vector_store` through async execution.
+- Added `tests/sdk/test_sdk_async_e2e.py` to validate end-to-end async wiring, snapshot stage propagation, and cancellation semantics.
+- Updated `tests/sdk/test_public_api_async.py` start-hook assertion to match new async manager call signature (`model` and `vector_store` kwargs).
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_sdk_async_e2e.py tests/sdk/test_public_api_async.py"` (first run: 1 failed, fixed assertion)
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/sdk/test_sdk_async_e2e.py tests/sdk/test_public_api_async.py"` (second run: passed)
+- `docker compose restart backend`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose ps`
+- `docker compose logs --tail=140 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_sdk_async_e2e.py .. [ 25%]
+pytest: tests/sdk/test_public_api_async.py ...... [100%]
+pytest: 8 passed in 1.39s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

@@ -28,8 +28,10 @@ def test_run_async_signature_requires_query_vector_store_and_model() -> None:
 
 
 def test_run_async_returns_job_start_shape(monkeypatch) -> None:
-    def fake_start_agent_run_job(payload):
+    def fake_start_agent_run_job(payload, **kwargs):
         assert payload.query == "Show me async flow"
+        assert "model" in kwargs
+        assert "vector_store" in kwargs
         return SimpleNamespace(job_id="job-123", run_id="run-123", status="running")
 
     monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)

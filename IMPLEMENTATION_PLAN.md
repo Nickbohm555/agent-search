@@ -1,6 +1,6 @@
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 17. (move +1 after each turn)
+Current section to work on: section 18. (move +1 after each turn)
 
 ---
 
@@ -499,7 +499,7 @@ Current section to work on: section 17. (move +1 after each turn)
 **How to test:** Run SDK async E2E tests.
 
 **Test results:** (Add when section is complete.)
-- Pending.
+- Completed.
 
 ---
 
