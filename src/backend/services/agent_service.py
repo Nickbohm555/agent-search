@@ -20,6 +20,8 @@ from db import DATABASE_URL
 from schemas import (
     AgentGraphState,
     CitationSourceRow,
+    DecomposeNodeInput,
+    DecomposeNodeOutput,
     GraphRunMetadata,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
@@ -1068,6 +1070,60 @@ def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentR
     return response
 
 
+def run_decomposition_node(
+    *,
+    node_input: DecomposeNodeInput,
+    model: BaseChatModel | None = None,
+    timeout_s: int | None = None,
+) -> DecomposeNodeOutput:
+    effective_timeout_s = timeout_s or _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s
+    logger.info(
+        "Decomposition node start query=%s context_docs=%s timeout_s=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(node_input.main_question),
+        len(node_input.initial_search_context),
+        effective_timeout_s,
+        node_input.run_metadata.run_id,
+        node_input.run_metadata.trace_id,
+        node_input.run_metadata.correlation_id,
+    )
+    try:
+        decomposition_raw_output = _run_with_timeout(
+            timeout_s=effective_timeout_s,
+            operation_name="decomposition_llm_call",
+            fn=lambda: _run_decomposition_only_llm_call(
+                query=node_input.main_question,
+                initial_search_context=node_input.initial_search_context,
+                model=model,
+            ),
+        )
+    except FuturesTimeoutError:
+        fallback_sub_question = _normalize_sub_question(node_input.main_question) or "What is the main question?"
+        decomposition_raw_output = [fallback_sub_question]
+        logger.warning(
+            "Decomposition LLM timeout; continuing with fallback sub-question query=%s timeout_s=%s fallback=%s",
+            _truncate_query(node_input.main_question),
+            effective_timeout_s,
+            _truncate_query(fallback_sub_question),
+        )
+    decomposition_raw_output_preview = json.dumps(decomposition_raw_output, ensure_ascii=True)
+    logger.info(
+        "Decomposition-only LLM output captured output_length=%s output_preview=%s",
+        len(decomposition_raw_output),
+        _truncate_query(decomposition_raw_output_preview),
+    )
+    decomposition_sub_questions = _parse_decomposition_output(
+        raw_output=decomposition_raw_output,
+        query=node_input.main_question,
+    )
+    logger.info(
+        "Decomposition output parsed sub_question_count=%s sub_questions=%s run_id=%s",
+        len(decomposition_sub_questions),
+        json.dumps(decomposition_sub_questions, ensure_ascii=True),
+        node_input.run_metadata.run_id,
+    )
+    return DecomposeNodeOutput(decomposition_sub_questions=decomposition_sub_questions)
+
+
 def run_pipeline_for_subquestions_with_timeout(
     *,
     sub_qa: list[SubQuestionAnswer],
@@ -1279,40 +1335,16 @@ def run_runtime_agent(
             _truncate_query(payload.query),
             _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
         )
-    try:
-        decomposition_raw_output = _run_with_timeout(
-            timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
-            operation_name="decomposition_llm_call",
-            fn=lambda: _run_decomposition_only_llm_call(
-                query=payload.query,
-                initial_search_context=initial_search_context,
-                model=model,
-            ),
-        )
-    except FuturesTimeoutError:
-        fallback_sub_question = _normalize_sub_question(payload.query) or "What is the main question?"
-        decomposition_raw_output = [fallback_sub_question]
-        logger.warning(
-            "Decomposition LLM timeout; continuing with fallback sub-question query=%s timeout_s=%s fallback=%s",
-            _truncate_query(payload.query),
-            _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
-            _truncate_query(fallback_sub_question),
-        )
-    decomposition_raw_output_preview = json.dumps(decomposition_raw_output, ensure_ascii=True)
-    logger.info(
-        "Decomposition-only LLM output captured output_length=%s output_preview=%s",
-        len(decomposition_raw_output),
-        _truncate_query(decomposition_raw_output_preview),
+    decomposition_output = run_decomposition_node(
+        node_input=DecomposeNodeInput(
+            main_question=payload.query,
+            run_metadata=run_metadata,
+            initial_search_context=initial_search_context,
+        ),
+        model=model,
+        timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
     )
-    decomposition_sub_questions = _parse_decomposition_output(
-        raw_output=decomposition_raw_output,
-        query=payload.query,
-    )
-    logger.info(
-        "Decomposition output parsed sub_question_count=%s sub_questions=%s",
-        len(decomposition_sub_questions),
-        json.dumps(decomposition_sub_questions, ensure_ascii=True),
-    )
+    decomposition_sub_questions = decomposition_output.decomposition_sub_questions
     agent = create_coordinator_agent(
         vector_store=selected_vector_store,
         model=selected_model,

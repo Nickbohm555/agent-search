@@ -176,8 +176,9 @@ run_runtime_agent() internals
   1) get_vector_store(...)
   2) search_documents_for_context(...)  // initial context retrieval
   3) build_initial_search_context(...)
-  4) _run_decomposition_only_llm_call(...)
-  5) _parse_decomposition_output(...)
+  4) run_decomposition_node(...)
+     -> _run_decomposition_only_llm_call(...)
+     -> _parse_decomposition_output(...)
   6) create_coordinator_agent(...)
   7) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
   8) _extract_sub_qa(messages, search_database_calls)
@@ -268,8 +269,8 @@ run_runtime_agent() internals
             <tr><td>1</td><td><code>get_vector_store</code></td><td>Pre-step infrastructure for all retrieval boxes (before "Conduct Exploratory (Fast &amp; Simple) Search").</td></tr>
             <tr><td>2</td><td><code>search_documents_for_context</code></td><td>"Conduct Exploratory (Fast &amp; Simple) Search" and the initial context retrieval for later synthesis (not passed to decomposition).</td></tr>
             <tr><td>3</td><td><code>build_initial_search_context</code></td><td>Structured handoff between initial search and "Decompose Question into Sub-Questions".</td></tr>
-            <tr><td>4</td><td><code>_run_decomposition_only_llm_call</code></td><td>"Decompose Question into Sub-Questions".</td></tr>
-            <tr><td>5</td><td><code>_parse_decomposition_output</code></td><td>Normalize/dedupe/limit the provided sub-question list for "Initial Subquestion 1..n" lanes.</td></tr>
+            <tr><td>4</td><td><code>run_decomposition_node</code></td><td>Graph-entry decomposition node for "Decompose Question into Sub-Questions".</td></tr>
+            <tr><td>5</td><td><code>_run_decomposition_only_llm_call</code> + <code>_parse_decomposition_output</code></td><td>Internal decomposition node helpers that normalize/dedupe/limit the provided sub-question list for "Initial Subquestion 1..n" lanes.</td></tr>
             <tr><td>6</td><td><code>create_coordinator_agent</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
             <tr><td>7</td><td><code>agent.invoke</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Validate -&gt; Rerank -&gt; Answer -&gt; Check.</td></tr>
             <tr><td>8</td><td><code>_extract_sub_qa</code></td><td>Post-lane collection feeding "Generate Initial Answer".</td></tr>
@@ -313,15 +314,15 @@ run_runtime_agent() internals
             </tr>
             <tr>
               <td>4</td>
-              <td><code>_run_decomposition_only_llm_call</code></td>
-              <td>Calls decomposition LLM with question-only input and structured output. If no API key/failure, falls back to one normalized question.</td>
-              <td>Structured sub-question list.</td>
+              <td><code>run_decomposition_node</code></td>
+              <td>Graph-entry decomposition node that runs decomposition call + parse/normalize/fallback and emits normalized sub-questions for downstream fanout.</td>
+              <td><code>decomposition_sub_questions[]</code>.</td>
             </tr>
             <tr>
               <td>5</td>
-              <td><code>_parse_decomposition_output</code></td>
-              <td>Normalizes/dedupes/limits subquestions ending in <code>?</code> (structured list preferred; JSON/lines kept as fallback).</td>
-              <td><code>decomposition_sub_questions[]</code>.</td>
+              <td><code>_run_decomposition_only_llm_call</code> + <code>_parse_decomposition_output</code></td>
+              <td>Internal decomposition helpers: structured decomposition call then normalize/dedupe/limit subquestions ending in <code>?</code> with deterministic fallback.</td>
+              <td>Normalized sub-question candidates.</td>
             </tr>
             <tr>
               <td>6</td>
@@ -450,36 +451,32 @@ def build_initial_search_context(documents):
         </details>
 
         <details>
-          <summary><strong>Order 4:</strong> <code>_run_decomposition_only_llm_call</code></summary>
+          <summary><strong>Order 4:</strong> <code>run_decomposition_node</code></summary>
           <div class="mono-block"># src/backend/services/agent_service.py
-decomposition_raw_output = _run_decomposition_only_llm_call(query=payload.query)
-
-def _run_decomposition_only_llm_call(*, query: str) -&gt; list[str]:
-    if not _OPENAI_API_KEY:
-        return [fallback_question]
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", get_decomposition_only_prompt()),
-        ("human", "{input_message}"),
-    ])
-    llm = ChatOpenAI(model=_DECOMPOSITION_ONLY_MODEL, temperature=_DECOMPOSITION_ONLY_TEMPERATURE)
-    chain = prompt | llm.with_structured_output(DecompositionPlan)
-    return chain.invoke({"input_message": _build_decomposition_only_input_message(query)}).sub_questions</div>
+decomposition_output = run_decomposition_node(
+    node_input=DecomposeNodeInput(
+        main_question=payload.query,
+        run_metadata=run_metadata,
+        initial_search_context=initial_search_context,
+    ),
+    model=model,
+    timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+)
+decomposition_sub_questions = decomposition_output.decomposition_sub_questions</div>
         </details>
 
         <details>
-          <summary><strong>Order 5:</strong> <code>_parse_decomposition_output</code></summary>
-          <div class="mono-block"># src/backend/services/agent_service.py
+          <summary><strong>Order 5:</strong> <code>_run_decomposition_only_llm_call + _parse_decomposition_output</code></summary>
+          <div class="mono-block"># src/backend/services/agent_service.py (inside run_decomposition_node)
+decomposition_raw_output = _run_decomposition_only_llm_call(
+    query=node_input.main_question,
+    initial_search_context=node_input.initial_search_context,
+    model=model,
+)
 decomposition_sub_questions = _parse_decomposition_output(
     raw_output=decomposition_raw_output,
-    query=payload.query,
-)
-
-def _parse_decomposition_output(*, raw_output: Any, query: str) -&gt; list[str]:
-    # 1) try JSON list/dict keys: sub_questions/subquestions/questions
-    # 2) fallback to line/bullet parsing
-    # 3) normalize each question (trim, dedupe, force trailing '?')
-    # 4) fallback to normalized main question if malformed/empty
-    return normalized</div>
+    query=node_input.main_question,
+)</div>
         </details>
 
         <details>

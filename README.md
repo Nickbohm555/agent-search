@@ -229,8 +229,8 @@ Backend
 | 1 | `get_vector_store` | Opens/creates PGVector collection. | Vector store handle. |
 | 2 | `search_documents_for_context` | Initial retrieval on user question. | Top-k context docs. |
 | 3 | `build_initial_search_context` | Normalizes docs to rank/doc_id/title/source/snippet. | `initial_search_context[]`. |
-| 4 | `_run_decomposition_only_llm_call` | Decomposition-only LLM call with fallback. | Candidate subquestions. |
-| 5 | `_parse_decomposition_output` | Normalize/dedupe/limit questions; enforce valid shape. | `decomposition_sub_questions[]`. |
+| 4 | `run_decomposition_node` | Graph-entry decomposition node that emits normalized decomposition state. | `decomposition_sub_questions[]`. |
+| 5 | `_run_decomposition_only_llm_call` + `_parse_decomposition_output` | Internal helpers used by decomposition node for LLM call + normalization/fallback. | Candidate + normalized subquestions. |
 | 6 | `create_coordinator_agent` | Builds coordinator + retriever-backed RAG subagent. | Runnable agent. |
 | 7 | `agent.invoke` | Delegates subquestions; runs retriever tool calls. | Agent messages + tool outputs. |
 | 8 | `_extract_sub_qa` | Builds `SubQuestionAnswer[]` from captured tool calls/messages. | Seed `sub_qa[]`. |

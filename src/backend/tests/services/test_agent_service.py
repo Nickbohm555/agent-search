@@ -13,7 +13,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from schemas import RuntimeAgentRunRequest
+from schemas import DecomposeNodeInput, RuntimeAgentRunRequest
 from schemas.decomposition import DecompositionPlan
 from services import document_validation_service
 from services import agent_service
@@ -2556,6 +2556,48 @@ def test_parse_decomposition_output_uses_fallback_when_json_array_is_empty() -> 
     )
 
     assert parsed == ["Explain VAT changes?"]
+
+
+def test_run_decomposition_node_emits_normalized_subquestions(monkeypatch) -> None:
+    monkeypatch.setattr(
+        agent_service,
+        "_run_decomposition_only_llm_call",
+        lambda **_: ["What changed in VAT policy", "what changed in vat policy?", "Why did it change"],
+    )
+
+    output = agent_service.run_decomposition_node(
+        node_input=DecomposeNodeInput(
+            main_question="Explain VAT changes",
+            run_metadata=agent_service.build_graph_run_metadata(),
+            initial_search_context=[{"rank": 1, "title": "VAT"}],
+        ),
+        timeout_s=5,
+    )
+
+    assert output.decomposition_sub_questions == [
+        "What changed in VAT policy?",
+        "Why did it change?",
+    ]
+
+
+def test_run_decomposition_node_uses_fallback_on_timeout(monkeypatch, caplog) -> None:
+    def _raise_timeout(*, timeout_s: int, operation_name: str, fn):
+        raise agent_service.FuturesTimeoutError()
+
+    monkeypatch.setattr(agent_service, "_run_with_timeout", _raise_timeout)
+
+    with caplog.at_level(logging.WARNING):
+        output = agent_service.run_decomposition_node(
+            node_input=DecomposeNodeInput(
+                main_question="Explain VAT changes",
+                run_metadata=agent_service.build_graph_run_metadata(),
+                initial_search_context=[],
+            ),
+            timeout_s=1,
+        )
+
+    assert output.decomposition_sub_questions == ["Explain VAT changes?"]
+    assert "Decomposition LLM timeout; continuing with fallback sub-question" in caplog.text
 
 
 def test_extract_sub_qa_uses_callback_captured_search_calls() -> None:
