@@ -2920,3 +2920,91 @@ Benchmarks router list requested
 Benchmark runs listed count=0
 GET /api/benchmarks/runs HTTP/1.1 200 OK
 ```
+
+## Completed - 2026-03-09 - Section 45
+
+## Section 45: OpenAPI synchronization - canonical contract refresh (final)
+
+**Single goal:** Regenerate and commit final OpenAPI after both SDK and benchmark routes are in place.
+
+**Why:** This synchronizes generated artifacts and release/CI safeguards so the integrated system remains consistent over time.
+
+
+**Details:**
+- Ensure agent async/sync and benchmark endpoints are present.
+- Avoid intermediate spec churn before final endpoint set stabilizes.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): use existing OpenAPI export workflow.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `openapi.json` | Final canonical OpenAPI artifact. |
+| `scripts/export_openapi.py` | Spec generation utility. |
+
+**How to test:** Regenerate spec and verify path inventory includes benchmark + agent routes.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Regenerated `openapi.json` from the running FastAPI app in the backend container (`uv run` runtime) so the canonical spec reflects the final integrated routes and schemas.
+- Verified path inventory includes agent sync/async lifecycle endpoints and benchmark run/list/detail/cancel/compare/wipe endpoints.
+- Ran OpenAPI validation with `scripts/validate_openapi.sh` to confirm schema consistency.
+- Restarted all services post-update and re-checked backend/frontend/db logs plus health for runtime visibility.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose exec -T backend sh -lc 'uv run python - <<"PY" ... app.openapi() ... PY' > openapi.json`
+- `python3 - <<"PY" ... verify required OpenAPI paths ... PY`
+- `./scripts/validate_openapi.sh openapi.json`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+OpenAPI route verification:
+path_count=16
+missing_required_paths=[]
+
+OpenAPI validator:
+INFO validate_openapi: starting validation spec=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.json
+No validation issues detected.
+INFO validate_openapi: validation passed spec=/Users/nickbohm/Desktop/tinkering/agent-search/openapi.json
+
+docker compose ps (post-restart):
+backend   Up
+frontend  Up
+db        Up (healthy)
+
+health check:
+HTTP/1.1 200 OK
+{"status":"ok"}
+
+backend log excerpt:
+Uvicorn running on http://0.0.0.0:8000
+GET /api/health HTTP/1.1 200 OK
+
+frontend log excerpt:
+VITE v5.4.21 ready
+Local: http://localhost:5173/
+
+DB log excerpt:
+database system is ready to accept connections
+```

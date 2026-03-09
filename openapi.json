@@ -1,6 +1,837 @@
 {
   "components": {
     "schemas": {
+      "AgentRunStageMetadata": {
+        "properties": {
+          "emitted_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emitted At"
+          },
+          "lane_index": {
+            "default": 0,
+            "title": "Lane Index",
+            "type": "integer"
+          },
+          "lane_total": {
+            "default": 0,
+            "title": "Lane Total",
+            "type": "integer"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "sub_question": {
+            "default": "",
+            "title": "Sub Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "status"
+        ],
+        "title": "AgentRunStageMetadata",
+        "type": "object"
+      },
+      "BenchmarkExecutionMode": {
+        "enum": [
+          "manual_only"
+        ],
+        "title": "BenchmarkExecutionMode",
+        "type": "string"
+      },
+      "BenchmarkKPI": {
+        "enum": [
+          "correctness",
+          "latency"
+        ],
+        "title": "BenchmarkKPI",
+        "type": "string"
+      },
+      "BenchmarkMode": {
+        "enum": [
+          "baseline_retrieve_then_answer",
+          "agentic_default",
+          "agentic_no_rerank",
+          "agentic_single_query_no_decompose"
+        ],
+        "title": "BenchmarkMode",
+        "type": "string"
+      },
+      "BenchmarkModeComparison": {
+        "properties": {
+          "correctness_delta": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": -1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctness Delta"
+          },
+          "correctness_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctness Rate"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/BenchmarkMode"
+          },
+          "p95_latency_delta_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Latency Delta Ms"
+          },
+          "p95_latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Latency Ms"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "BenchmarkModeComparison",
+        "type": "object"
+      },
+      "BenchmarkModeSummary": {
+        "properties": {
+          "avg_latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Latency Ms"
+          },
+          "completed_questions": {
+            "minimum": 0.0,
+            "title": "Completed Questions",
+            "type": "integer"
+          },
+          "correctness_rate": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correctness Rate"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/BenchmarkMode"
+          },
+          "p95_latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Latency Ms"
+          },
+          "total_questions": {
+            "minimum": 0.0,
+            "title": "Total Questions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "completed_questions",
+          "total_questions"
+        ],
+        "title": "BenchmarkModeSummary",
+        "type": "object"
+      },
+      "BenchmarkObjective": {
+        "properties": {
+          "execution_mode": {
+            "$ref": "#/components/schemas/BenchmarkExecutionMode",
+            "default": "manual_only"
+          },
+          "primary_kpi": {
+            "$ref": "#/components/schemas/BenchmarkKPI",
+            "default": "correctness"
+          },
+          "secondary_kpi": {
+            "$ref": "#/components/schemas/BenchmarkKPI",
+            "default": "latency"
+          },
+          "targets": {
+            "$ref": "#/components/schemas/BenchmarkTargets"
+          }
+        },
+        "title": "BenchmarkObjective",
+        "type": "object"
+      },
+      "BenchmarkResultQualityScore": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "judge_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judge Model"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "rubric_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rubric Version"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "subscores": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscores"
+          }
+        },
+        "title": "BenchmarkResultQualityScore",
+        "type": "object"
+      },
+      "BenchmarkResultRetrievalDiagnostics": {
+        "properties": {
+          "k": {
+            "default": 10,
+            "minimum": 1.0,
+            "title": "K",
+            "type": "integer"
+          },
+          "label_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label Source"
+          },
+          "mrr": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mrr"
+          },
+          "ndcg": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ndcg"
+          },
+          "recall_at_k": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recall At K"
+          },
+          "relevant_document_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Relevant Document Ids",
+            "type": "array"
+          },
+          "retrieved_document_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Retrieved Document Ids",
+            "type": "array"
+          }
+        },
+        "title": "BenchmarkResultRetrievalDiagnostics",
+        "type": "object"
+      },
+      "BenchmarkResultStatusItem": {
+        "properties": {
+          "execution_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Error"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "mode": {
+            "minLength": 1,
+            "title": "Mode",
+            "type": "string"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BenchmarkResultQualityScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "question_id": {
+            "minLength": 1,
+            "title": "Question Id",
+            "type": "string"
+          },
+          "retrieval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BenchmarkResultRetrievalDiagnostics"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mode",
+          "question_id"
+        ],
+        "title": "BenchmarkResultStatusItem",
+        "type": "object"
+      },
+      "BenchmarkRunCancelResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "const": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "BenchmarkRunCancelResponse",
+        "type": "object"
+      },
+      "BenchmarkRunCompareResponse": {
+        "properties": {
+          "baseline_mode": {
+            "$ref": "#/components/schemas/BenchmarkMode",
+            "default": "baseline_retrieve_then_answer"
+          },
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkModeComparison"
+            },
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "run_id": {
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "title": "BenchmarkRunCompareResponse",
+        "type": "object"
+      },
+      "BenchmarkRunCreateRequest": {
+        "properties": {
+          "dataset_id": {
+            "minLength": 1,
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "metadata": {
+            "title": "Metadata",
+            "type": "object"
+          },
+          "modes": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkMode"
+            },
+            "minItems": 1,
+            "title": "Modes",
+            "type": "array"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BenchmarkTargets"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dataset_id",
+          "modes"
+        ],
+        "title": "BenchmarkRunCreateRequest",
+        "type": "object"
+      },
+      "BenchmarkRunCreateResponse": {
+        "properties": {
+          "run_id": {
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BenchmarkRunStatus"
+          }
+        },
+        "required": [
+          "run_id",
+          "status"
+        ],
+        "title": "BenchmarkRunCreateResponse",
+        "type": "object"
+      },
+      "BenchmarkRunListItem": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "dataset_id": {
+            "minLength": 1,
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "modes": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkMode"
+            },
+            "title": "Modes",
+            "type": "array"
+          },
+          "run_id": {
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BenchmarkRunStatus"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "dataset_id"
+        ],
+        "title": "BenchmarkRunListItem",
+        "type": "object"
+      },
+      "BenchmarkRunListResponse": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkRunListItem"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "title": "BenchmarkRunListResponse",
+        "type": "object"
+      },
+      "BenchmarkRunStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "cancelling",
+          "cancelled"
+        ],
+        "title": "BenchmarkRunStatus",
+        "type": "string"
+      },
+      "BenchmarkRunStatusResponse": {
+        "properties": {
+          "completed_questions": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Completed Questions",
+            "type": "integer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "dataset_id": {
+            "minLength": 1,
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "mode_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkModeSummary"
+            },
+            "title": "Mode Summaries",
+            "type": "array"
+          },
+          "modes": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkMode"
+            },
+            "title": "Modes",
+            "type": "array"
+          },
+          "objective": {
+            "$ref": "#/components/schemas/BenchmarkObjective"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkResultStatusItem"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BenchmarkRunStatus"
+          },
+          "targets": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BenchmarkTargets"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_questions": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Questions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "status",
+          "dataset_id"
+        ],
+        "title": "BenchmarkRunStatusResponse",
+        "type": "object"
+      },
+      "BenchmarkTargets": {
+        "properties": {
+          "max_cost_usd": {
+            "default": 5.0,
+            "minimum": 0.0,
+            "title": "Max Cost Usd",
+            "type": "number"
+          },
+          "max_latency_ms_p95": {
+            "default": 30000,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Latency Ms P95",
+            "type": "integer"
+          },
+          "min_correctness": {
+            "default": 0.75,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Correctness",
+            "type": "number"
+          }
+        },
+        "title": "BenchmarkTargets",
+        "type": "object"
+      },
+      "BenchmarkWipeResponse": {
+        "properties": {
+          "deleted_runs": {
+            "minimum": 0.0,
+            "title": "Deleted Runs",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "const": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message",
+          "deleted_runs"
+        ],
+        "title": "BenchmarkWipeResponse",
+        "type": "object"
+      },
+      "CitationSourceRow": {
+        "properties": {
+          "citation_index": {
+            "minimum": 1.0,
+            "title": "Citation Index",
+            "type": "integer"
+          },
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "document_id": {
+            "default": "",
+            "title": "Document Id",
+            "type": "string"
+          },
+          "rank": {
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "citation_index",
+          "rank"
+        ],
+        "title": "CitationSourceRow",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -12,6 +843,97 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InternalDataLoadJobCancelResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "const": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "InternalDataLoadJobCancelResponse",
+        "type": "object"
+      },
+      "InternalDataLoadJobStartResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "InternalDataLoadJobStartResponse",
+        "type": "object"
+      },
+      "InternalDataLoadJobStatusResponse": {
+        "properties": {
+          "completed": {
+            "title": "Completed",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InternalDataLoadResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "status",
+          "total",
+          "completed",
+          "message"
+        ],
+        "title": "InternalDataLoadJobStatusResponse",
         "type": "object"
       },
       "InternalDataLoadRequest": {
@@ -124,6 +1046,173 @@
         "title": "InternalDocumentInput",
         "type": "object"
       },
+      "RuntimeAgentRunAsyncCancelResponse": {
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "const": "success",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "RuntimeAgentRunAsyncCancelResponse",
+        "type": "object"
+      },
+      "RuntimeAgentRunAsyncStartResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "run_id",
+          "status"
+        ],
+        "title": "RuntimeAgentRunAsyncStartResponse",
+        "type": "object"
+      },
+      "RuntimeAgentRunAsyncStatusResponse": {
+        "properties": {
+          "cancel_requested": {
+            "default": false,
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "decomposition_sub_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Decomposition Sub Questions",
+            "type": "array"
+          },
+          "elapsed_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Ms"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "output": {
+            "default": "",
+            "title": "Output",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeAgentRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "run_id": {
+            "default": "",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "stage": {
+            "default": "",
+            "title": "Stage",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/AgentRunStageMetadata"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "sub_qa": {
+            "items": {
+              "$ref": "#/components/schemas/SubQuestionAnswer"
+            },
+            "title": "Sub Qa",
+            "type": "array"
+          },
+          "sub_question_artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/SubQuestionArtifacts"
+            },
+            "title": "Sub Question Artifacts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "RuntimeAgentRunAsyncStatusResponse",
+        "type": "object"
+      },
       "RuntimeAgentRunRequest": {
         "properties": {
           "query": {
@@ -140,6 +1229,13 @@
       },
       "RuntimeAgentRunResponse": {
         "properties": {
+          "final_citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceRow"
+            },
+            "title": "Final Citations",
+            "type": "array"
+          },
           "main_question": {
             "default": "",
             "title": "Main Question",
@@ -204,6 +1300,59 @@
           "sub_answer"
         ],
         "title": "SubQuestionAnswer",
+        "type": "object"
+      },
+      "SubQuestionArtifacts": {
+        "properties": {
+          "citation_rows_by_index": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CitationSourceRow"
+            },
+            "title": "Citation Rows By Index",
+            "type": "object"
+          },
+          "expanded_queries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Expanded Queries",
+            "type": "array"
+          },
+          "reranked_docs": {
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceRow"
+            },
+            "title": "Reranked Docs",
+            "type": "array"
+          },
+          "retrieval_provenance": {
+            "items": {
+              "type": "object"
+            },
+            "title": "Retrieval Provenance",
+            "type": "array"
+          },
+          "retrieved_docs": {
+            "items": {
+              "$ref": "#/components/schemas/CitationSourceRow"
+            },
+            "title": "Retrieved Docs",
+            "type": "array"
+          },
+          "sub_answer": {
+            "default": "",
+            "title": "Sub Answer",
+            "type": "string"
+          },
+          "sub_question": {
+            "title": "Sub Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sub_question"
+        ],
+        "title": "SubQuestionArtifacts",
         "type": "object"
       },
       "ValidationError": {
@@ -365,6 +1514,338 @@
         ]
       }
     },
+    "/api/agents/run-async": {
+      "post": {
+        "operationId": "runtime_agent_run_async_api_agents_run_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeAgentRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeAgentRunAsyncStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runtime Agent Run Async",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/run-cancel/{job_id}": {
+      "post": {
+        "operationId": "runtime_agent_run_cancel_api_agents_run_cancel__job_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeAgentRunAsyncCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runtime Agent Run Cancel",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/run-status/{job_id}": {
+      "get": {
+        "operationId": "runtime_agent_run_status_api_agents_run_status__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeAgentRunAsyncStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runtime Agent Run Status",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/benchmarks/runs": {
+      "get": {
+        "operationId": "list_runs_api_benchmarks_runs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "benchmarks"
+        ]
+      },
+      "post": {
+        "operationId": "create_benchmark_run_api_benchmarks_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkRunCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkRunCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Benchmark Run",
+        "tags": [
+          "benchmarks"
+        ]
+      }
+    },
+    "/api/benchmarks/runs/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_benchmarks_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkRunStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "benchmarks"
+        ]
+      }
+    },
+    "/api/benchmarks/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_run_api_benchmarks_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkRunCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "benchmarks"
+        ]
+      }
+    },
+    "/api/benchmarks/runs/{run_id}/compare": {
+      "get": {
+        "operationId": "compare_run_modes_api_benchmarks_runs__run_id__compare_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkRunCompareResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Compare Run Modes",
+        "tags": [
+          "benchmarks"
+        ]
+      }
+    },
+    "/api/benchmarks/wipe": {
+      "post": {
+        "operationId": "wipe_benchmark_data_api_benchmarks_wipe_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkWipeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Wipe Benchmark Data",
+        "tags": [
+          "benchmarks"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_api_health_get",
@@ -429,6 +1910,134 @@
         ]
       }
     },
+    "/api/internal-data/load-async": {
+      "post": {
+        "description": "Start async load of internal data and return job id.",
+        "operationId": "load_data_async_api_internal_data_load_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalDataLoadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalDataLoadJobStartResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Data Async",
+        "tags": [
+          "internal-data"
+        ]
+      }
+    },
+    "/api/internal-data/load-cancel/{job_id}": {
+      "post": {
+        "description": "Cancel a running load job.",
+        "operationId": "load_cancel_api_internal_data_load_cancel__job_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalDataLoadJobCancelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Cancel",
+        "tags": [
+          "internal-data"
+        ]
+      }
+    },
+    "/api/internal-data/load-status/{job_id}": {
+      "get": {
+        "description": "Get load job status/progress.",
+        "operationId": "load_status_api_internal_data_load_status__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalDataLoadJobStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Status",
+        "tags": [
+          "internal-data"
+        ]
+      }
+    },
     "/api/internal-data/wiki-sources": {
       "get": {
         "description": "Return curated wiki source options with loaded state for the UI.",
@@ -475,3 +2084,4 @@
     }
   }
 }
+
