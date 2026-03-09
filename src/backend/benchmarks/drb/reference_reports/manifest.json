@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "default_reference_version": null,
+  "datasets": {
+    "internal_v1": {
+      "reference_version": null,
+      "report_path": null
+    }
+  }
+}

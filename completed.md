@@ -1979,3 +1979,71 @@ db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
 
+## Completed - 2026-03-09 - Section 32
+
+## Section 32: Evaluation artifact scaffolding - versioned prompt and report registry
+
+**Single goal:** Add a versioned artifact registry that future advanced evaluators can plug into without schema changes.
+
+**Why:** This keeps v1 evaluation simple while creating compatibility scaffolding for future DeepResearchBench-style expansion without rework.
+
+
+**Details:**
+- Version and persist benchmark evaluation prompt templates.
+- Store optional reference-report pointers/versions per dataset/run.
+- Attach artifact versions to each run for reproducibility and future evaluator upgrades.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/benchmarks/drb/prompts/` | Versioned evaluation prompt templates. |
+| `src/backend/benchmarks/drb/reference_reports/manifest.json` | Optional reference report version manifest. |
+| `src/backend/services/benchmark_artifact_registry.py` | Resolve artifact versions for a run. |
+| `src/backend/tests/benchmarks/test_benchmark_artifact_registry.py` | Artifact registry/version resolution tests. |
+
+**How to test:** Run artifact registry tests and verify run metadata captures prompt/reference versions.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added versioned DRB prompt artifacts under `benchmarks/drb/prompts/` with a manifest (`default_prompt_version`) and `quality_judge_v1.txt` template.
+- Added optional reference report manifest at `benchmarks/drb/reference_reports/manifest.json` to support dataset-level pointers and version placeholders.
+- Implemented `BenchmarkArtifactRegistry` to resolve prompt and reference artifacts, including deterministic SHA-256 hashes and run-level override support via `run_metadata.artifact_overrides`.
+- Integrated artifact resolution into `BenchmarkRunner` so each new run persists `run_metadata.artifact_versions` for reproducibility, with explicit logs for resolved prompt/reference versions.
+- Added `tests/benchmarks/test_benchmark_artifact_registry.py` covering default resolution, run-level override resolution, and benchmark-run metadata persistence.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run pytest tests/benchmarks/test_benchmark_artifact_registry.py` (failed: `pytest` missing in base env)
+- `docker compose exec backend uv run pytest tests/services/test_benchmark_runner.py` (failed: `pytest` missing in base env)
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/benchmarks/test_benchmark_artifact_registry.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/services/test_benchmark_runner.py"`
+- `docker compose restart`
+- `docker compose ps`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS -i http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/benchmarks/test_benchmark_artifact_registry.py ... [100%]
+pytest: 3 passed in 1.91s
+pytest: tests/services/test_benchmark_runner.py .. [100%]
+pytest: 2 passed in 1.92s
+backend: Benchmark runner resolved artifact versions run_id=<id> dataset_id=<id> prompt_version=v1 reference_version=None
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

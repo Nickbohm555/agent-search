@@ -18,6 +18,7 @@ from config import BenchmarkRuntimeSettings, get_benchmark_context_fingerprint
 from db import SessionLocal
 from models import BenchmarkResult, BenchmarkRun, BenchmarkRunMode
 from schemas import BenchmarkMode, BenchmarkTargets
+from services.benchmark_artifact_registry import BenchmarkArtifactRegistry
 from services.benchmark_execution_adapter import BenchmarkExecutionAdapter
 from services.benchmark_modes import get_mode_runtime_overrides
 
@@ -46,11 +47,13 @@ class BenchmarkRunner:
         execution_adapter: BenchmarkExecutionAdapter | None = None,
         dataset_root: Path = DEFAULT_DATASET_ROOT,
         runtime_settings: BenchmarkRuntimeSettings | None = None,
+        artifact_registry: BenchmarkArtifactRegistry | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._execution_adapter = execution_adapter or BenchmarkExecutionAdapter()
         self._dataset_root = dataset_root
         self._runtime_settings = runtime_settings or BenchmarkRuntimeSettings.from_env()
+        self._artifact_registry = artifact_registry or BenchmarkArtifactRegistry()
 
     def run(
         self,
@@ -227,6 +230,11 @@ class BenchmarkRunner:
     ) -> BenchmarkRun:
         run = session.get(BenchmarkRun, run_id)
         mode_values = [mode.value for mode in modes]
+        resolved_run_metadata = self._build_run_metadata_with_artifacts(
+            dataset_id=dataset_id,
+            run_id=run_id,
+            metadata=metadata,
+        )
 
         if run is None:
             run = BenchmarkRun(
@@ -241,7 +249,7 @@ class BenchmarkRunner:
                 ),
                 corpus_hash=corpus_hash,
                 objective_snapshot={"primary_kpi": "correctness", "secondary_kpi": "latency"},
-                run_metadata=metadata,
+                run_metadata=resolved_run_metadata,
             )
             session.add(run)
             session.flush()
@@ -250,7 +258,8 @@ class BenchmarkRunner:
             if run.dataset_id != dataset_id:
                 raise ValueError(f"Existing run dataset mismatch: {run.dataset_id} != {dataset_id}")
             run.corpus_hash = corpus_hash
-            run.run_metadata = metadata or run.run_metadata
+            if metadata:
+                run.run_metadata = resolved_run_metadata
             logger.info("Benchmark runner reusing run metadata run_id=%s status=%s", run_id, run.status)
 
         existing_mode_rows = session.scalars(select(BenchmarkRunMode).where(BenchmarkRunMode.run_id == run_id)).all()
@@ -267,6 +276,28 @@ class BenchmarkRunner:
             )
         session.flush()
         return run
+
+    def _build_run_metadata_with_artifacts(
+        self,
+        *,
+        dataset_id: str,
+        run_id: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        run_metadata = dict(metadata)
+        run_metadata["artifact_versions"] = self._artifact_registry.resolve_for_run(
+            dataset_id=dataset_id,
+            run_id=run_id,
+            run_metadata=run_metadata,
+        )
+        logger.info(
+            "Benchmark runner resolved artifact versions run_id=%s dataset_id=%s prompt_version=%s reference_version=%s",
+            run_id,
+            dataset_id,
+            run_metadata["artifact_versions"]["prompt"]["version"],
+            run_metadata["artifact_versions"]["reference_report"]["version"],
+        )
+        return run_metadata
 
     def _upsert_result(
         self,
