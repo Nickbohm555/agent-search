@@ -75,7 +75,7 @@ def test_generate_initial_answer_prompt_preserves_citation_instructions(monkeypa
             captured["model"] = model
             captured["temperature"] = str(temperature)
 
-        def invoke(self, prompt: str) -> _FakeResponse:
+        def invoke(self, prompt: str, config=None) -> _FakeResponse:
             captured["prompt"] = prompt
             return _FakeResponse()
 

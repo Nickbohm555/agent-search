@@ -546,7 +546,7 @@ def test_apply_search_node_output_to_graph_state_updates_artifacts_and_compat_fi
 
 
 def test_run_rerank_node_reorders_and_trims_documents(monkeypatch) -> None:
-    def fake_rerank_documents(*, query, documents, config):
+    def fake_rerank_documents(*, query, documents, config, callbacks=None):
         assert query == "What changed in VAT policy?"
         assert len(documents) == 3
         return [
@@ -696,7 +696,7 @@ def test_run_answer_subquestion_node_returns_cited_grounded_answer(monkeypatch) 
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output: "VAT changes were enacted in 2025 [2].",
+        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "VAT changes were enacted in 2025 [2].",
     )
     monkeypatch.setattr(
         agent_service,
@@ -762,7 +762,7 @@ def test_run_answer_subquestion_node_falls_back_when_answer_is_not_supported(mon
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output: "This changed in ways we cannot verify.",
+        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "This changed in ways we cannot verify.",
     )
     monkeypatch.setattr(
         agent_service,
@@ -857,7 +857,7 @@ def test_apply_answer_subquestion_node_output_to_graph_state_updates_artifacts_a
 def test_run_synthesize_final_node_uses_subanswers_as_grounded_inputs(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa):
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
         captured["main_question"] = main_question
         captured["sub_qa_count"] = len(sub_qa)
         return "Final synthesis [1] (source: wiki://vat-policy)."
@@ -891,7 +891,7 @@ def test_run_synthesize_final_node_uses_subanswers_as_grounded_inputs(monkeypatc
 
 
 def test_run_synthesize_final_node_falls_back_when_final_answer_has_no_citations(monkeypatch) -> None:
-    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa):
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
         _ = main_question, sub_qa
         return "VAT policy changed in 2025."
 
@@ -932,7 +932,7 @@ def test_run_synthesize_final_node_falls_back_when_final_answer_has_no_citations
 
 
 def test_run_synthesize_final_node_falls_back_when_final_answer_uses_invalid_citations(monkeypatch) -> None:
-    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa):
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
         _ = main_question, sub_qa
         return "VAT policy changed in 2025 [9] (source: wiki://vat-policy)."
 
@@ -1004,14 +1004,14 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
     call_order: list[str] = []
     captured_flush: dict[str, object] = {}
 
-    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None):
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
         _ = model, timeout_s
         call_order.append("decompose")
         return agent_service.DecomposeNodeOutput(
             decomposition_sub_questions=["Sub-question A?", "Sub-question B?"]
         )
 
-    def fake_run_expand_node(*, node_input, model=None, config=None):
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
         _ = model, config
         call_order.append(f"expand:{node_input.sub_question}")
         return agent_service.ExpandNodeOutput(
@@ -1035,7 +1035,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_rerank_node(*, node_input, config=None):
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
         _ = config
         call_order.append(f"rerank:{node_input.sub_question}")
         row = agent_service.CitationSourceRow(
@@ -1052,7 +1052,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
         call_order.append(f"answer:{node_input.sub_question}")
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1071,7 +1071,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
         call_order.append("synthesize_final")
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
@@ -1123,13 +1123,13 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
     completion_order: list[str] = []
     captured_flush: dict[str, object] = {}
 
-    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None):
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
         _ = node_input, model, timeout_s
         return agent_service.DecomposeNodeOutput(
             decomposition_sub_questions=["Sub-question A?", "Sub-question B?"]
         )
 
-    def fake_run_expand_node(*, node_input, model=None, config=None):
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
         _ = model, config
         if node_input.sub_question == "Sub-question A?":
             time.sleep(0.05)
@@ -1153,7 +1153,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_rerank_node(*, node_input, config=None):
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
         _ = config
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1169,7 +1169,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
         completion_order.append(node_input.sub_question)
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1188,7 +1188,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
         )
@@ -1379,7 +1379,7 @@ def test_apply_subanswer_generation_to_sub_qa_uses_reranked_output(monkeypatch) 
     ]
     captured: dict[str, str] = {}
 
-    def fake_generate_subanswer(*, sub_question: str, reranked_retrieved_output: str) -> str:
+    def fake_generate_subanswer(*, sub_question: str, reranked_retrieved_output: str, callbacks=None) -> str:
         captured["sub_question"] = sub_question
         captured["reranked_retrieved_output"] = reranked_retrieved_output
         return "Policy changed in 2025 (source: wiki://nato)."
@@ -2075,7 +2075,7 @@ def test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_gr
         },
     )
 
-    def fake_rerank_documents(*, query, documents, config):
+    def fake_rerank_documents(*, query, documents, config, callbacks=None):
         _ = config
         ordered = sorted(
             list(documents),
@@ -2100,7 +2100,7 @@ def test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_gr
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output: "Grounded answer [1].",
+        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "Grounded answer [1].",
     )
     monkeypatch.setattr(
         agent_service,
@@ -2360,7 +2360,7 @@ def test_efficiency_eval_reranked_top_n_reduces_context_tokens_while_preserving_
             for query in queries
         },
     )
-    def fake_rerank_documents(*, query, documents, config):
+    def fake_rerank_documents(*, query, documents, config, callbacks=None):
         _ = query
         ordered = sorted(
             list(documents),
@@ -2386,7 +2386,7 @@ def test_efficiency_eval_reranked_top_n_reduces_context_tokens_while_preserving_
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output: "The filing requirement started on 2025-10-01 [1].",
+        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "The filing requirement started on 2025-10-01 [1].",
     )
     monkeypatch.setattr(
         agent_service,
@@ -2485,7 +2485,7 @@ def test_efficiency_eval_operating_ranges_identify_k_fetch_and_top_n_targets(
             for query in queries
         },
     )
-    def fake_rerank_documents(*, query, documents, config):
+    def fake_rerank_documents(*, query, documents, config, callbacks=None):
         _ = query
         ordered = sorted(
             list(documents),

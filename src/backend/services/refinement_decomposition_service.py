@@ -124,6 +124,7 @@ def refine_subquestions(
     question: str,
     initial_answer: str,
     sub_qa: list[SubQuestionAnswer],
+    callbacks: list[Any] | None = None,
 ) -> list[str]:
     logger.info(
         "Refinement decomposition start question_len=%s initial_answer_len=%s sub_qa_count=%s",
@@ -164,7 +165,8 @@ def refine_subquestions(
             model=_REFINEMENT_DECOMPOSITION_MODEL,
             temperature=_REFINEMENT_DECOMPOSITION_TEMPERATURE,
         )
-        response = llm.invoke(prompt)
+        invoke_config = {"callbacks": callbacks} if callbacks else None
+        response = llm.invoke(prompt, config=invoke_config) if invoke_config else llm.invoke(prompt)
         raw_candidates = _extract_llm_subquestions(getattr(response, "content", ""))
         refined = _sanitize_refined_subquestions(
             candidates=raw_candidates,

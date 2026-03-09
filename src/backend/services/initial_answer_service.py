@@ -95,6 +95,7 @@ def generate_initial_answer(
     main_question: str,
     initial_search_context: list[dict[str, Any]],
     sub_qa: list[SubQuestionAnswer],
+    callbacks: list[Any] | None = None,
 ) -> str:
     logger.info(
         "Initial answer generation start question_len=%s context_items=%s sub_qa_count=%s",
@@ -142,7 +143,8 @@ def generate_initial_answer(
 
     try:
         llm = ChatOpenAI(model=_INITIAL_ANSWER_MODEL, temperature=_INITIAL_ANSWER_TEMPERATURE)
-        response = llm.invoke(prompt)
+        invoke_config = {"callbacks": callbacks} if callbacks else None
+        response = llm.invoke(prompt, config=invoke_config) if invoke_config else llm.invoke(prompt)
         answer = (response.content or "").strip() if hasattr(response, "content") else ""
         if answer:
             logger.info(
@@ -167,6 +169,7 @@ def generate_final_synthesis_answer(
     *,
     main_question: str,
     sub_qa: list[SubQuestionAnswer],
+    callbacks: list[Any] | None = None,
 ) -> str:
     logger.info(
         "Final synthesis generation start question_len=%s sub_qa_count=%s",
@@ -177,6 +180,7 @@ def generate_final_synthesis_answer(
         main_question=main_question,
         initial_search_context=[],
         sub_qa=sub_qa,
+        callbacks=callbacks,
     )
     logger.info(
         "Final synthesis generation complete output_len=%s citation_refs=%s",

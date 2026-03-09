@@ -28,7 +28,7 @@ def test_generate_subanswer_uses_llm_when_available(monkeypatch) -> None:
             assert model
             assert temperature == subanswer_service._SUBANSWER_TEMPERATURE
 
-        def invoke(self, prompt: str):
+        def invoke(self, prompt: str, config=None):
             captured["prompt"] = prompt
             assert "Sub-question:" in prompt
             assert "Reranked evidence:" in prompt
@@ -56,7 +56,7 @@ def test_generate_subanswer_prompt_includes_full_ranked_document_list(monkeypatc
             assert model
             assert temperature == subanswer_service._SUBANSWER_TEMPERATURE
 
-        def invoke(self, prompt: str):
+        def invoke(self, prompt: str, config=None):
             captured["prompt"] = prompt
             return _FakeResponse()
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from typing import Any
 from dataclasses import dataclass
 
 from langchain_classic.retrievers.multi_query import MultiQueryRetriever
@@ -127,6 +128,7 @@ def expand_queries_for_subquestion(
     sub_question: str,
     model: BaseChatModel | None = None,
     config: QueryExpansionConfig | None = None,
+    callbacks: list[Any] | None = None,
 ) -> list[str]:
     effective_config = config or build_query_expansion_config_from_env()
     normalized_sub_question = _normalize_query(sub_question, max_query_length=effective_config.max_query_length)
@@ -146,6 +148,10 @@ def expand_queries_for_subquestion(
             model=effective_config.model,
             temperature=effective_config.temperature,
         )
+        if callbacks:
+            with_config = getattr(llm, "with_config", None)
+            if callable(with_config):
+                llm = llm.with_config({"callbacks": callbacks})
         multi_query_retriever = MultiQueryRetriever.from_llm(
             retriever=_NoopRetriever(),
             llm=llm,

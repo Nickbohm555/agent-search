@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from typing import Any
 
 from langchain_openai import ChatOpenAI
 
@@ -36,6 +37,7 @@ def generate_subanswer(
     *,
     sub_question: str,
     reranked_retrieved_output: str,
+    callbacks: list[Any] | None = None,
 ) -> str:
     documents = parse_retrieved_documents(reranked_retrieved_output)
     logger.info(
@@ -79,7 +81,8 @@ def generate_subanswer(
             f"Sub-question:\n{sub_question}\n\n"
             f"Reranked evidence:\n{context_block}\n"
         )
-        response = llm.invoke(prompt)
+        invoke_config = {"callbacks": callbacks} if callbacks else None
+        response = llm.invoke(prompt, config=invoke_config) if invoke_config else llm.invoke(prompt)
         answer = (response.content or "").strip() if hasattr(response, "content") else ""
         if answer:
             logger.info(

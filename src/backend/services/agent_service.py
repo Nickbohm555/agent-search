@@ -396,6 +396,7 @@ def _run_decomposition_only_llm_call(
     query: str,
     initial_search_context: list[dict[str, Any]],
     model: BaseChatModel | None = None,
+    callbacks: list[Any] | None = None,
 ) -> list[str]:
     fallback_question = _normalize_sub_question(query) or f"{query.strip()}?"
     if model is None and not _OPENAI_API_KEY:
@@ -422,9 +423,16 @@ def _run_decomposition_only_llm_call(
             _DECOMPOSITION_ONLY_MODEL,
         )
         chain = prompt | llm.with_structured_output(DecompositionPlan)
-        result = chain.invoke(
-            {"input_message": _build_decomposition_only_input_message(query, initial_search_context)}
-        )
+        invoke_config = {"callbacks": callbacks} if callbacks else None
+        if invoke_config:
+            result = chain.invoke(
+                {"input_message": _build_decomposition_only_input_message(query, initial_search_context)},
+                config=invoke_config,
+            )
+        else:
+            result = chain.invoke(
+                {"input_message": _build_decomposition_only_input_message(query, initial_search_context)}
+            )
         if isinstance(result, DecompositionPlan) and result.sub_questions:
             return result.sub_questions
         logger.warning(
@@ -640,6 +648,11 @@ def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> s
         return _INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX
     joined = " ".join(partial_answers)
     return f"{_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX} {joined}"
+
+
+def _build_callbacks() -> tuple[list[Any], Any | None]:
+    callbacks, langfuse_callback = _build_callbacks()
+    return callbacks, langfuse_callback
 
 
 def build_graph_run_metadata(
@@ -1156,6 +1169,7 @@ def run_rerank_node(
     *,
     node_input: RerankNodeInput,
     config: Any | None = None,
+    callbacks: list[Any] | None = None,
 ) -> RerankNodeOutput:
     effective_config = config or _RERANKER_CONFIG
     rerank_query = (node_input.expanded_query or "").strip() or node_input.sub_question
@@ -1183,6 +1197,7 @@ def run_rerank_node(
         query=rerank_query,
         documents=_to_retrieved_documents(node_input.retrieved_docs),
         config=effective_config,
+        callbacks=callbacks,
     )
 
     reranked_docs: list[CitationSourceRow] = []
@@ -1281,6 +1296,7 @@ def apply_rerank_node_output_to_graph_state(
 def run_answer_subquestion_node(
     *,
     node_input: AnswerSubquestionNodeInput,
+    callbacks: list[Any] | None = None,
 ) -> AnswerSubquestionNodeOutput:
     logger.info(
         "Subanswer node start sub_question=%s reranked_doc_count=%s run_id=%s trace_id=%s correlation_id=%s",
@@ -1309,6 +1325,7 @@ def run_answer_subquestion_node(
     generated_sub_answer = generate_subanswer(
         sub_question=node_input.sub_question,
         reranked_retrieved_output=reranked_output,
+        callbacks=callbacks,
     )
     verification = verify_subanswer(
         sub_question=node_input.sub_question,
@@ -1445,6 +1462,7 @@ def apply_answer_subquestion_node_output_to_graph_state(
 def run_synthesize_final_node(
     *,
     node_input: SynthesizeFinalNodeInput,
+    callbacks: list[Any] | None = None,
 ) -> SynthesizeFinalNodeOutput:
     logger.info(
         "Final synthesis node start main_question_len=%s sub_qa_count=%s artifact_count=%s run_id=%s trace_id=%s correlation_id=%s",
@@ -1458,6 +1476,7 @@ def run_synthesize_final_node(
     generated_final_answer = generate_final_synthesis_answer(
         main_question=node_input.main_question,
         sub_qa=node_input.sub_qa,
+        callbacks=callbacks,
     )
     final_answer = _enforce_final_synthesis_citation_contract(
         generated_final_answer=generated_final_answer,
@@ -1555,6 +1574,7 @@ def _run_graph_subquestion_lane(
     model: BaseChatModel | None,
     run_metadata: GraphRunMetadata,
 ) -> _GraphLaneExecutionResult:
+    callbacks, langfuse_callback = _build_callbacks()
     logger.info(
         "Parallel graph lane start lane_index=%s lane_total=%s sub_question=%s run_id=%s",
         lane_index,
@@ -1562,47 +1582,53 @@ def _run_graph_subquestion_lane(
         _truncate_query(sub_question),
         run_metadata.run_id,
     )
-    expand_output = run_expand_node(
-        node_input=ExpandNodeInput(
-            main_question=main_question,
-            sub_question=sub_question,
-            run_metadata=run_metadata,
-        ),
-        model=model,
-    )
-    search_output = run_search_node(
-        node_input=SearchNodeInput(
-            sub_question=sub_question,
-            expanded_queries=list(expand_output.expanded_queries),
-            run_metadata=run_metadata,
-        ),
-        vector_store=vector_store,
-        k_fetch=_SEARCH_NODE_K_FETCH,
-    )
-    rerank_output = run_rerank_node(
-        node_input=RerankNodeInput(
-            sub_question=sub_question,
-            expanded_query=_select_compat_expanded_query(
+    try:
+        expand_output = run_expand_node(
+            node_input=ExpandNodeInput(
+                main_question=main_question,
+                sub_question=sub_question,
+                run_metadata=run_metadata,
+            ),
+            model=model,
+            callbacks=callbacks,
+        )
+        search_output = run_search_node(
+            node_input=SearchNodeInput(
                 sub_question=sub_question,
                 expanded_queries=list(expand_output.expanded_queries),
+                run_metadata=run_metadata,
             ),
-            retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
-            run_metadata=run_metadata,
-        ),
-        config=_RERANKER_CONFIG,
-    )
-    answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
-    answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
-    answer_output = run_answer_subquestion_node(
-        node_input=AnswerSubquestionNodeInput(
-            sub_question=sub_question,
-            reranked_docs=[row.model_copy(deep=True) for row in answer_input_rows],
-            citation_rows_by_index={
-                key: value.model_copy(deep=True) for key, value in answer_citation_rows.items()
-            },
-            run_metadata=run_metadata,
+            vector_store=vector_store,
+            k_fetch=_SEARCH_NODE_K_FETCH,
         )
-    )
+        rerank_output = run_rerank_node(
+            node_input=RerankNodeInput(
+                sub_question=sub_question,
+                expanded_query=_select_compat_expanded_query(
+                    sub_question=sub_question,
+                    expanded_queries=list(expand_output.expanded_queries),
+                ),
+                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                run_metadata=run_metadata,
+            ),
+            config=_RERANKER_CONFIG,
+            callbacks=callbacks,
+        )
+        answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
+        answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
+        answer_output = run_answer_subquestion_node(
+            node_input=AnswerSubquestionNodeInput(
+                sub_question=sub_question,
+                reranked_docs=[row.model_copy(deep=True) for row in answer_input_rows],
+                citation_rows_by_index={
+                    key: value.model_copy(deep=True) for key, value in answer_citation_rows.items()
+                },
+                run_metadata=run_metadata,
+            ),
+            callbacks=callbacks,
+        )
+    finally:
+        flush_langfuse_callback_handler(langfuse_callback)
     logger.info(
         "Parallel graph lane complete lane_index=%s lane_total=%s sub_question=%s answerable=%s run_id=%s",
         lane_index,
@@ -1640,10 +1666,7 @@ def run_parallel_graph_runner(
         final_answer="",
         run_metadata=resolved_run_metadata,
     )
-    callbacks: list[Any] = [AgentLoggingCallbackHandler()]
-    langfuse_callback = build_langfuse_callback_handler()
-    if langfuse_callback is not None:
-        callbacks.append(langfuse_callback)
+    callbacks, langfuse_callback = _build_callbacks()
     logger.info(
         "Parallel graph runner start query=%s callback_count=%s langfuse_enabled=%s configured_max_workers=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(payload.query),
@@ -1663,6 +1686,7 @@ def run_parallel_graph_runner(
             ),
             model=model,
             timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+            callbacks=callbacks,
         )
         state = apply_decompose_node_output_to_graph_state(
             state=state,
@@ -1772,7 +1796,8 @@ def run_parallel_graph_runner(
                 sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
                 sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
                 run_metadata=state.run_metadata,
-            )
+            ),
+            callbacks=callbacks,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
             state=state,
@@ -1812,10 +1837,7 @@ def run_sequential_graph_runner(
         final_answer="",
         run_metadata=resolved_run_metadata,
     )
-    callbacks: list[Any] = [AgentLoggingCallbackHandler()]
-    langfuse_callback = build_langfuse_callback_handler()
-    if langfuse_callback is not None:
-        callbacks.append(langfuse_callback)
+    callbacks, langfuse_callback = _build_callbacks()
     logger.info(
         "Sequential graph runner start query=%s callback_count=%s langfuse_enabled=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(payload.query),
@@ -1834,6 +1856,7 @@ def run_sequential_graph_runner(
             ),
             model=model,
             timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
+            callbacks=callbacks,
         )
         state = apply_decompose_node_output_to_graph_state(
             state=state,
@@ -1855,6 +1878,7 @@ def run_sequential_graph_runner(
                     run_metadata=state.run_metadata,
                 ),
                 model=model,
+                callbacks=callbacks,
             )
             state = apply_expand_node_output_to_graph_state(
                 state=state,
@@ -1888,6 +1912,7 @@ def run_sequential_graph_runner(
                     run_metadata=state.run_metadata,
                 ),
                 config=_RERANKER_CONFIG,
+                callbacks=callbacks,
             )
             state = apply_rerank_node_output_to_graph_state(
                 state=state,
@@ -1905,7 +1930,8 @@ def run_sequential_graph_runner(
                         key: value.model_copy(deep=True) for key, value in answer_citation_rows.items()
                     },
                     run_metadata=state.run_metadata,
-                )
+                ),
+                callbacks=callbacks,
             )
             state = apply_answer_subquestion_node_output_to_graph_state(
                 state=state,
@@ -1927,7 +1953,8 @@ def run_sequential_graph_runner(
                 sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
                 sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
                 run_metadata=state.run_metadata,
-            )
+            ),
+            callbacks=callbacks,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
             state=state,
@@ -1949,6 +1976,7 @@ def run_decomposition_node(
     node_input: DecomposeNodeInput,
     model: BaseChatModel | None = None,
     timeout_s: int | None = None,
+    callbacks: list[Any] | None = None,
 ) -> DecomposeNodeOutput:
     effective_timeout_s = timeout_s or _RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s
     logger.info(
@@ -1968,6 +1996,7 @@ def run_decomposition_node(
                 query=node_input.main_question,
                 initial_search_context=node_input.initial_search_context,
                 model=model,
+                callbacks=callbacks,
             ),
         )
     except FuturesTimeoutError:
@@ -2003,6 +2032,7 @@ def run_expand_node(
     node_input: ExpandNodeInput,
     model: BaseChatModel | None = None,
     config: QueryExpansionConfig | None = None,
+    callbacks: list[Any] | None = None,
 ) -> ExpandNodeOutput:
     effective_config = config or _QUERY_EXPANSION_CONFIG
     logger.info(
@@ -2018,6 +2048,7 @@ def run_expand_node(
         sub_question=node_input.sub_question,
         model=model,
         config=effective_config,
+        callbacks=callbacks,
     )
     logger.info(
         "Expansion node complete sub_question=%s expanded_query_count=%s expanded_queries=%s run_id=%s",

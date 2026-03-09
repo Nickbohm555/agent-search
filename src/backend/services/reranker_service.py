@@ -145,6 +145,7 @@ def _rerank_with_openai(
     query: str,
     documents: list[RetrievedDocument],
     config: RerankerConfig,
+    callbacks: list[Any] | None = None,
 ) -> list[tuple[RetrievedDocument, float | None]] | None:
     if not _OPENAI_API_KEY:
         logger.info("OpenAI rerank unavailable; OPENAI_API_KEY missing")
@@ -176,7 +177,8 @@ def _rerank_with_openai(
         f"Query:\n{query}\n\n"
         f"Passages:\n{json.dumps(payload, ensure_ascii=True)}"
     )
-    response = llm.invoke(prompt)
+    invoke_config = {"callbacks": callbacks} if callbacks else None
+    response = llm.invoke(prompt, config=invoke_config) if invoke_config else llm.invoke(prompt)
     response_text = response.content if hasattr(response, "content") else ""
     parsed_text = _extract_json_text(str(response_text))
     parsed = json.loads(parsed_text)
@@ -245,6 +247,7 @@ def rerank_documents(
     query: str,
     documents: list[RetrievedDocument],
     config: RerankerConfig,
+    callbacks: list[Any] | None = None,
 ) -> list[RerankedDocumentScore]:
     if not documents:
         return []
@@ -258,7 +261,13 @@ def rerank_documents(
         try:
             if provider == "openai":
                 ordered_docs = (
-                    _rerank_with_openai(query=query, documents=documents, config=config) or []
+                    _rerank_with_openai(
+                        query=query,
+                        documents=documents,
+                        config=config,
+                        callbacks=callbacks,
+                    )
+                    or []
                 )
             elif provider == "flashrank":
                 ordered_docs = (
