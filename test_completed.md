@@ -834,3 +834,36 @@
 - Conclusion: Section 16 passed.
 
 ---
+
+---
+
+## Section 1: Baseline contract snapshot - runtime behavior guardrail
+
+**Status:** Completed on 2026-03-09
+
+**Implemented:**
+- Snapshot sync/async agent-run payload shapes in API tests.
+- Snapshot current route inventory and response schemas via OpenAPI assertions.
+
+**Files changed:**
+- `src/backend/tests/api/test_agent_run.py`
+- `src/backend/tests/api/test_health.py`
+
+**Commands executed:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d --remove-orphans`
+- `docker compose exec backend sh -lc 'uv run --with pytest pytest tests/api'`
+- `docker compose restart backend`
+- `docker compose logs --tail=120`
+
+**Test results:**
+- `tests/api/test_agent_run.py .....`
+- `tests/api/test_health.py ...`
+- `tests/api/test_internal_data_wipe.py .`
+- `9 passed in 2.04s`
+
+**Runtime checks:**
+- `docker compose ps`: backend/frontend/db/chrome all `Up`, db `healthy`.
+- `curl http://localhost:8000/api/health`: `{"status":"ok"}`.
+- Logs reviewed for backend/frontend/db/chrome; no blocking runtime errors.

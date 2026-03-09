@@ -189,6 +189,97 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
     }
 
 
+def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+
+    def fake_get_agent_run_job(job_id):
+        assert job_id == "job-456"
+        return SimpleNamespace(
+            job_id="job-456",
+            run_id="run-456",
+            status="completed",
+            message="Run completed.",
+            stage="completed",
+            stages=[],
+            decomposition_sub_questions=["What is NATO?"],
+            sub_question_artifacts=[],
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What is NATO?",
+                    sub_answer="A political and military alliance.",
+                )
+            ],
+            output="NATO is a political and military alliance.",
+            result=RuntimeAgentRunResponse(
+                main_question="What is NATO?",
+                sub_qa=[
+                    SubQuestionAnswer(
+                        sub_question="What is NATO?",
+                        sub_answer="A political and military alliance.",
+                    )
+                ],
+                output="NATO is a political and military alliance.",
+            ),
+            error=None,
+            cancel_requested=False,
+            started_at=100.0,
+            finished_at=101.5,
+        )
+
+    monkeypatch.setattr(agent_router_module, "get_agent_run_job", fake_get_agent_run_job)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.get("/api/agents/run-status/job-456")
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-456",
+        "run_id": "run-456",
+        "status": "completed",
+        "message": "Run completed.",
+        "stage": "completed",
+        "stages": [],
+        "decomposition_sub_questions": ["What is NATO?"],
+        "sub_question_artifacts": [],
+        "sub_qa": [
+            {
+                "sub_question": "What is NATO?",
+                "sub_answer": "A political and military alliance.",
+                "tool_call_input": "",
+                "expanded_query": "",
+                "sub_agent_response": "",
+                "answerable": False,
+                "verification_reason": "",
+            }
+        ],
+        "output": "NATO is a political and military alliance.",
+        "result": {
+            "main_question": "What is NATO?",
+            "sub_qa": [
+                {
+                    "sub_question": "What is NATO?",
+                    "sub_answer": "A political and military alliance.",
+                    "tool_call_input": "",
+                    "expanded_query": "",
+                    "sub_agent_response": "",
+                    "answerable": False,
+                    "verification_reason": "",
+                }
+            ],
+            "output": "NATO is a political and military alliance.",
+            "final_citations": [],
+        },
+        "error": None,
+        "cancel_requested": False,
+        "started_at": 100.0,
+        "finished_at": 101.5,
+        "elapsed_ms": 1500,
+    }
+
+
 def test_post_run_cancel_returns_success(monkeypatch) -> None:
     from routers import agent as agent_router_module
 
