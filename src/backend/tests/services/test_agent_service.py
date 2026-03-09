@@ -2401,6 +2401,73 @@ def test_run_runtime_agent_includes_langfuse_callback_and_flushes(monkeypatch) -
     assert captured["flushed_handler"] is langfuse_callback
 
 
+def test_build_graph_run_metadata_defaults_to_run_id_for_trace_correlation_and_thread() -> None:
+    metadata = agent_service.build_graph_run_metadata(run_id="run-123")
+
+    assert metadata.run_id == "run-123"
+    assert metadata.thread_id == "run-123"
+    assert metadata.trace_id == "run-123"
+    assert metadata.correlation_id == "run-123"
+
+
+def test_build_agent_graph_state_keeps_compatibility_fields_and_subquestion_artifacts() -> None:
+    sub_qa = [
+        agent_service.SubQuestionAnswer(
+            sub_question="What changed in policy X?",
+            sub_answer="Policy X changed in 2025 [1].",
+            expanded_query="policy x 2025 changes",
+            tool_call_input='{"query":"policy x"}',
+            sub_agent_response="subagent details",
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+        )
+    ]
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-compat")
+
+    state = agent_service.build_agent_graph_state(
+        main_question="Summarize policy X changes.",
+        decomposition_sub_questions=["What changed in policy X?"],
+        sub_qa=sub_qa,
+        final_answer="Policy X changed in 2025 [1].",
+        run_metadata=run_metadata,
+    )
+
+    assert state.main_question == "Summarize policy X changes."
+    assert state.decomposition_sub_questions == ["What changed in policy X?"]
+    assert state.output == "Policy X changed in 2025 [1]."
+    assert state.final_answer == "Policy X changed in 2025 [1]."
+    assert len(state.sub_qa) == 1
+    assert len(state.sub_question_artifacts) == 1
+    assert state.sub_question_artifacts[0].expanded_queries == ["policy x 2025 changes"]
+    assert state.citation_rows_by_index[1].content == "Policy X changed in 2025 [1]."
+    assert state.run_metadata.run_id == "run-compat"
+    assert state.run_metadata.trace_id == "run-compat"
+
+
+def test_map_graph_state_to_runtime_response_is_backward_compatible() -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-map")
+    state = agent_service.build_agent_graph_state(
+        main_question="Main question?",
+        decomposition_sub_questions=["Sub-question?"],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="Sub-question?",
+                sub_answer="sub-answer",
+            )
+        ],
+        final_answer="final from graph",
+        run_metadata=run_metadata,
+    )
+    state.output = ""
+
+    response = agent_service.map_graph_state_to_runtime_response(state)
+
+    assert response.main_question == "Main question?"
+    assert response.output == "final from graph"
+    assert len(response.sub_qa) == 1
+    assert response.sub_qa[0].sub_question == "Sub-question?"
+
+
 def test_build_coordinator_input_message_lists_provided_sub_questions_for_delegation() -> None:
     message = agent_service._build_coordinator_input_message(["What changed in VAT policy?"])
 

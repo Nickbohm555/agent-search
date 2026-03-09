@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import re
-import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed, wait
 from dataclasses import dataclass
 from typing import Any
@@ -18,7 +17,15 @@ from sqlalchemy.orm import Session
 
 from agents import create_coordinator_agent, get_decomposition_only_prompt
 from db import DATABASE_URL
-from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import (
+    AgentGraphState,
+    CitationSourceRow,
+    GraphRunMetadata,
+    RuntimeAgentRunRequest,
+    RuntimeAgentRunResponse,
+    SubQuestionAnswer,
+    SubQuestionArtifacts,
+)
 from schemas.decomposition import DecompositionPlan
 from services.document_validation_service import (
     RetrievedDocument,
@@ -48,6 +55,7 @@ from utils.agent_callbacks import (
 )
 from utils.embeddings import get_embedding_model
 from utils.langfuse_tracing import (
+    build_langfuse_run_metadata,
     build_langfuse_callback_handler,
     flush_langfuse_callback_handler,
 )
@@ -958,6 +966,108 @@ def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> s
     return f"{_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX} {joined}"
 
 
+def build_graph_run_metadata(
+    *,
+    run_id: str | None = None,
+    thread_id: str | None = None,
+    trace_id: str | None = None,
+    correlation_id: str | None = None,
+) -> GraphRunMetadata:
+    metadata = build_langfuse_run_metadata(
+        run_id=run_id,
+        thread_id=thread_id,
+        trace_id=trace_id,
+        correlation_id=correlation_id,
+    )
+    return GraphRunMetadata(**metadata)
+
+
+def _build_citation_source_row(*, citation_index: int, rank: int, item: SubQuestionAnswer) -> CitationSourceRow:
+    return CitationSourceRow(
+        citation_index=citation_index,
+        rank=rank,
+        title="",
+        source="",
+        content=item.sub_answer,
+        document_id="",
+        score=None,
+    )
+
+
+def _build_subquestion_artifact_from_subqa(item: SubQuestionAnswer, rank: int) -> SubQuestionArtifacts:
+    expanded_queries = [item.expanded_query] if isinstance(item.expanded_query, str) and item.expanded_query.strip() else []
+    citation_rows_by_index = {
+        rank: _build_citation_source_row(citation_index=rank, rank=rank, item=item),
+    }
+    return SubQuestionArtifacts(
+        sub_question=item.sub_question,
+        expanded_queries=expanded_queries,
+        retrieved_docs=[],
+        reranked_docs=[],
+        sub_answer=item.sub_answer,
+        citation_rows_by_index=citation_rows_by_index,
+    )
+
+
+def build_agent_graph_state(
+    *,
+    main_question: str,
+    decomposition_sub_questions: list[str] | None = None,
+    sub_qa: list[SubQuestionAnswer] | None = None,
+    final_answer: str = "",
+    run_metadata: GraphRunMetadata | None = None,
+) -> AgentGraphState:
+    normalized_sub_qa = [item.model_copy(deep=True) for item in (sub_qa or [])]
+    artifacts = [
+        _build_subquestion_artifact_from_subqa(item, rank=index)
+        for index, item in enumerate(normalized_sub_qa, start=1)
+    ]
+    citation_rows_by_index: dict[int, CitationSourceRow] = {}
+    for artifact in artifacts:
+        citation_rows_by_index.update(artifact.citation_rows_by_index)
+
+    resolved_decomposition = decomposition_sub_questions or [item.sub_question for item in normalized_sub_qa]
+    resolved_metadata = run_metadata or build_graph_run_metadata()
+    resolved_output = final_answer.strip()
+    state = AgentGraphState(
+        main_question=main_question,
+        decomposition_sub_questions=list(resolved_decomposition),
+        sub_question_artifacts=artifacts,
+        final_answer=resolved_output,
+        citation_rows_by_index=citation_rows_by_index,
+        run_metadata=resolved_metadata,
+        sub_qa=normalized_sub_qa,
+        output=resolved_output,
+    )
+    logger.info(
+        "Agent graph state built main_question_len=%s decomposition_count=%s artifact_count=%s sub_qa_count=%s run_id=%s trace_id=%s correlation_id=%s",
+        len(main_question),
+        len(state.decomposition_sub_questions),
+        len(state.sub_question_artifacts),
+        len(state.sub_qa),
+        state.run_metadata.run_id,
+        state.run_metadata.trace_id,
+        state.run_metadata.correlation_id,
+    )
+    return state
+
+
+def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentRunResponse:
+    output = state.output.strip() or state.final_answer
+    response = RuntimeAgentRunResponse(
+        main_question=state.main_question,
+        sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
+        output=output,
+    )
+    logger.info(
+        "Agent graph state mapped to runtime response sub_qa_count=%s output_len=%s run_id=%s",
+        len(response.sub_qa),
+        len(response.output),
+        state.run_metadata.run_id,
+    )
+    return response
+
+
 def run_pipeline_for_subquestions_with_timeout(
     *,
     sub_qa: list[SubQuestionAnswer],
@@ -1081,13 +1191,17 @@ def run_runtime_agent(
     vector_store: Any | None = None,
 ) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
+    run_metadata = build_graph_run_metadata()
     selected_model: BaseChatModel | str = model if model is not None else _RUNTIME_AGENT_MODEL
     logger.info(
-        "Runtime agent run start query=%s query_length=%s provided_model=%s provided_vector_store=%s",
+        "Runtime agent run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(payload.query),
         len(payload.query),
         model is not None,
         vector_store is not None,
+        run_metadata.run_id,
+        run_metadata.trace_id,
+        run_metadata.correlation_id,
     )
     logger.info(
         "Runtime timeout config loaded vector_store=%ss initial_search=%ss decomposition_llm=%ss coordinator_invoke=%ss document_validation=%ss rerank=%ss subanswer_generation=%ss subanswer_verification=%ss subquestion_pipeline_total=%ss initial_answer=%ss refinement_decision=%ss refinement_decomposition=%ss refinement_retrieval=%ss refinement_pipeline_total=%ss refined_answer=%ss",
@@ -1208,12 +1322,15 @@ def run_runtime_agent(
     langfuse_callback = build_langfuse_callback_handler()
     if langfuse_callback is not None:
         callbacks.append(langfuse_callback)
-    run_thread_id = str(uuid.uuid4())
+    run_thread_id = run_metadata.thread_id
     logger.info(
-        "Runtime agent callback configuration callback_count=%s langfuse_enabled=%s thread_id=%s",
+        "Runtime agent callback configuration callback_count=%s langfuse_enabled=%s thread_id=%s run_id=%s trace_id=%s correlation_id=%s",
         len(callbacks),
         langfuse_callback is not None,
         run_thread_id,
+        run_metadata.run_id,
+        run_metadata.trace_id,
+        run_metadata.correlation_id,
     )
     config = {"callbacks": callbacks, "configurable": {"thread_id": run_thread_id}}
     coordinator_message = _build_coordinator_input_message(decomposition_sub_questions)

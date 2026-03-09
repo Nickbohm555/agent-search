@@ -144,6 +144,21 @@
       </div>
 
       <div class="panel">
+        <h2>Graph State Contracts (Migration Baseline)</h2>
+        <p>
+          Runtime graph state is typed in backend schemas as <code>AgentGraphState</code> with staged
+          <code>SubQuestionArtifacts</code> and compatibility fields (<code>sub_qa</code>, <code>output</code>).
+          Node IO is defined via stable contracts:
+          <code>decompose</code>, <code>expand</code>, <code>search</code>, <code>rerank</code>,
+          <code>answer_subquestion</code>, and <code>synthesize_final</code>.
+        </p>
+        <p class="small">
+          Observability identifiers are carried in <code>GraphRunMetadata</code>:
+          <code>run_id</code>, <code>thread_id</code>, <code>trace_id</code>, <code>correlation_id</code>.
+        </p>
+      </div>
+
+      <div class="panel">
         <h2>Exact Function Call Chain</h2>
         <div class="mono-block">UI click/submit
   -> src/frontend/src/App.tsx

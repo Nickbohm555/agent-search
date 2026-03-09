@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import inspect
+import uuid
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,39 @@ def _is_enabled(value: str | None) -> bool:
     if value is None:
         return False
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_identifier(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.strip()
+
+
+def build_langfuse_run_metadata(
+    *,
+    run_id: str | None = None,
+    thread_id: str | None = None,
+    trace_id: str | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, str]:
+    normalized_run_id = _normalize_identifier(run_id) or str(uuid.uuid4())
+    normalized_thread_id = _normalize_identifier(thread_id) or normalized_run_id
+    normalized_trace_id = _normalize_identifier(trace_id) or normalized_run_id
+    normalized_correlation_id = _normalize_identifier(correlation_id) or normalized_run_id
+    metadata = {
+        "run_id": normalized_run_id,
+        "thread_id": normalized_thread_id,
+        "trace_id": normalized_trace_id,
+        "correlation_id": normalized_correlation_id,
+    }
+    logger.info(
+        "Langfuse run metadata prepared run_id=%s thread_id=%s trace_id=%s correlation_id=%s",
+        metadata["run_id"],
+        metadata["thread_id"],
+        metadata["trace_id"],
+        metadata["correlation_id"],
+    )
+    return metadata
 
 
 def build_langfuse_callback_handler() -> Any | None:

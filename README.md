@@ -48,6 +48,8 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 
 The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → coordinator-driven decomposition → parallel per-subquestion pipeline → initial synthesis → optional refinement → final response). A React front end and FastAPI backend expose load/wipe/run; the backend delegates decomposition and retrieval to a deep-agent coordinator and runs deterministic Python services for validation, reranking, subanswer generation, and verification. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`) and optional refinement replaces the initial answer when the pipeline decides it is insufficient.
 
+The runtime service also defines graph-state contracts for staged migration: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
+
 <p align="center">
   <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
 </p>
