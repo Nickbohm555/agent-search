@@ -1164,3 +1164,79 @@ docker compose logs --tail=120 frontend
 docker compose logs --tail=120 db
 -> postgresql initialized and ready to accept connections
 ```
+
+## Section 20: Retrieval quality evals - search-only vs search+rerank
+
+**Single goal:** Quantify retrieval-quality gains from reranking without mixing in cost metrics.
+
+**Details:**
+- Compare `search-only` vs `search+rerank` on benchmark queries.
+- Track hit-quality metrics and citation-grounding consistency.
+- Include hard queries where relevant evidence is outside naive top-k.
+- Keep this section focused on quality metrics only.
+- Include eval slices for the actual library stack (`MultiQueryRetriever` + `flashrank`) versus non-expanded/non-reranked baselines.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies required initially.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/tests/services/test_agent_service.py` | Add retrieval quality regression tests for rerank impact. |
+| `src/backend/tests/services/test_reranker_service.py` | Add rerank quality/fallback tests used by eval cases. |
+| `README.md` | Document retrieval-quality eval methodology. |
+
+**How to test:** Run quality eval suite and verify rerank path improves retrieval/citation metrics on selected hard queries.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Added retrieval-quality eval coverage in `src/backend/tests/services/test_agent_service.py`:
+  - `test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_grounding_on_hard_queries` compares hard-query quality metrics across slices and asserts `search+rerank` improves both top-hit relevance and citation-grounding consistency over `search-only` baseline.
+  - `test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expand_baseline` enforces eval-slice behavior for baseline (`no expansion + no rerank`) versus stack behavior (expanded retrieval + rerank ordering).
+- Added reranker eval tests in `src/backend/tests/services/test_reranker_service.py`:
+  - `test_reranker_quality_eval_improves_hit_at_1_over_non_reranked_baseline` verifies `flashrank` ordering behavior improves hit@1 over deterministic non-reranked fallback.
+  - `test_reranker_quality_eval_fallback_remains_deterministic_when_ranker_returns_unmappable_ids` verifies deterministic fallback integrity when reranker output cannot be mapped.
+- Updated docs:
+  - `README.md` includes Section 20 methodology/metrics and migration-note references.
+  - `src/frontend/public/run-flow.html` includes Section 20 retrieval-quality eval summary.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> removed services, network, backend/frontend images, and volumes
+
+docker compose build
+-> backend/frontend rebuilt successfully
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Stack readiness checks:
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+Required section tests:
+docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py tests/services/test_reranker_service.py -k "retrieval_quality_eval or reranker_quality_eval"
+-> PASS (4 passed, 79 deselected)
+
+Post-change restarts:
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+Post-change logs:
+docker compose logs --no-color --tail=160 backend
+-> uvicorn/alembic startup healthy; watchfiles reloads observed after test edits; no fatal runtime errors
+
+docker compose logs --no-color --tail=160 frontend
+-> vite ready on :5173; page reload observed for public/run-flow.html
+
+docker compose logs --no-color --tail=160 db
+-> postgres initialized and ready to accept connections
+```

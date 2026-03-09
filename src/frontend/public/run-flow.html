@@ -200,6 +200,12 @@
           fixed questions, including response-shape parity (<code>main_question</code>, <code>sub_qa</code>, <code>output</code>)
           and fallback parity (for example vector-store timeout and <code>nothing relevant found</code> behavior).
         </p>
+        <p class="small">
+          Section 20 adds retrieval-quality evaluations focused on evidence quality only (not cost): tests compare
+          <code>search-only</code> vs <code>search+rerank</code> for hard queries, track top-hit relevance and
+          citation-grounding consistency, and include baseline slices against the runtime stack
+          (<code>MultiQueryRetriever</code> expansion + <code>flashrank</code> rerank).
+        </p>
       </div>
 
       <div class="panel">

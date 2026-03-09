@@ -4490,3 +4490,350 @@ def test_run_runtime_agent_populates_multiple_subquestions_with_verification(mon
     ]
     assert all(item.answerable for item in response.sub_qa)
     assert all(item.verification_reason == "grounded_in_reranked_documents" for item in response.sub_qa)
+
+
+def _make_eval_langchain_doc(*, document_id: str, title: str, source: str, content: str):
+    class _EvalDoc:
+        def __init__(self) -> None:
+            self.metadata = {
+                "document_id": document_id,
+                "title": title,
+                "source": source,
+            }
+            self.id = document_id
+            self.page_content = content
+
+    return _EvalDoc()
+
+
+def test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_grounding_on_hard_queries(
+    monkeypatch, caplog
+) -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-section-20-quality")
+    hard_queries = [
+        {
+            "sub_question": "Which team won the 2025 cup final?",
+            "expanded_queries": [
+                "2025 cup final winner",
+                "championship final 2025 winner",
+            ],
+            "gold_document_id": "doc-cup-2025-gold",
+            "query_results": {
+                "Which team won the 2025 cup final?": [
+                    _make_eval_langchain_doc(
+                        document_id="doc-cup-noise-1",
+                        title="General Cup Recap",
+                        source="wiki://cup-recap",
+                        content="A broad recap with no explicit final winner.",
+                    ),
+                    _make_eval_langchain_doc(
+                        document_id="doc-cup-2025-gold",
+                        title="[GOLD] 2025 Cup Final Result",
+                        source="wiki://cup-final-2025",
+                        content="Team Atlas won the 2025 cup final.",
+                    ),
+                ],
+                "2025 cup final winner": [
+                    _make_eval_langchain_doc(
+                        document_id="doc-cup-2025-gold",
+                        title="[GOLD] 2025 Cup Final Result",
+                        source="wiki://cup-final-2025",
+                        content="Team Atlas won the 2025 cup final.",
+                    ),
+                ],
+                "championship final 2025 winner": [
+                    _make_eval_langchain_doc(
+                        document_id="doc-cup-noise-2",
+                        title="Cup Final Ticketing",
+                        source="wiki://cup-ticketing",
+                        content="Ticketing and venue details.",
+                    )
+                ],
+            },
+        },
+        {
+            "sub_question": "When did the VAT increase take effect?",
+            "expanded_queries": [
+                "VAT increase effective date",
+                "tax policy VAT start date",
+            ],
+            "gold_document_id": "doc-vat-gold",
+            "query_results": {
+                "When did the VAT increase take effect?": [
+                    _make_eval_langchain_doc(
+                        document_id="doc-vat-noise-1",
+                        title="VAT policy draft",
+                        source="wiki://vat-draft",
+                        content="Draft language without effective date.",
+                    ),
+                    _make_eval_langchain_doc(
+                        document_id="doc-vat-gold",
+                        title="[GOLD] VAT Effective Date Bulletin",
+                        source="wiki://vat-effective-date",
+                        content="The VAT increase took effect on 2025-03-01.",
+                    ),
+                ],
+                "VAT increase effective date": [
+                    _make_eval_langchain_doc(
+                        document_id="doc-vat-gold",
+                        title="[GOLD] VAT Effective Date Bulletin",
+                        source="wiki://vat-effective-date",
+                        content="The VAT increase took effect on 2025-03-01.",
+                    ),
+                    _make_eval_langchain_doc(
+                        document_id="doc-vat-noise-2",
+                        title="VAT Press Q&A",
+                        source="wiki://vat-qa",
+                        content="Commentary around VAT changes.",
+                    ),
+                ],
+                "tax policy VAT start date": [
+                    _make_eval_langchain_doc(
+                        document_id="doc-vat-noise-2",
+                        title="VAT Press Q&A",
+                        source="wiki://vat-qa",
+                        content="Commentary around VAT changes.",
+                    )
+                ],
+            },
+        },
+    ]
+
+    query_to_documents: dict[str, list[object]] = {}
+    expansions_by_sub_question: dict[str, list[str]] = {}
+    gold_by_sub_question: dict[str, str] = {}
+    for case in hard_queries:
+        expansions_by_sub_question[case["sub_question"]] = list(case["expanded_queries"])
+        gold_by_sub_question[case["sub_question"]] = str(case["gold_document_id"])
+        query_to_documents.update(case["query_results"])
+
+    monkeypatch.setattr(
+        agent_service,
+        "expand_queries_for_subquestion",
+        lambda *, sub_question, model, config: list(expansions_by_sub_question[sub_question]),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "search_documents_for_queries",
+        lambda *, vector_store, queries, k, score_threshold: {
+            query: list(query_to_documents.get(query, []))
+            for query in queries
+        },
+    )
+
+    def fake_rerank_documents(*, query, documents, config):
+        _ = config
+        ordered = sorted(
+            list(documents),
+            key=lambda item: 0 if item.title.startswith("[GOLD]") else 1,
+        )
+        return [
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=rank,
+                    title=item.title,
+                    source=item.source,
+                    content=item.content,
+                ),
+                score=float(len(ordered) - rank + 1),
+                original_rank=item.rank,
+                reranked_rank=rank,
+            )
+            for rank, item in enumerate(ordered, start=1)
+        ]
+
+    monkeypatch.setattr(agent_service, "rerank_documents", fake_rerank_documents)
+    monkeypatch.setattr(
+        agent_service,
+        "generate_subanswer",
+        lambda *, sub_question, reranked_retrieved_output: "Grounded answer [1].",
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "verify_subanswer",
+        lambda *, sub_question, sub_answer, reranked_retrieved_output: agent_service.SubanswerVerificationResult(
+            answerable=True,
+            reason="grounded_in_reranked_documents",
+        ),
+    )
+
+    def run_eval_slice(*, use_expansion: bool, use_rerank: bool) -> tuple[int, int]:
+        top1_hits = 0
+        citation_grounded_hits = 0
+        for case in hard_queries:
+            sub_question = str(case["sub_question"])
+            expanded_queries = [sub_question]
+            if use_expansion:
+                expand_output = agent_service.run_expand_node(
+                    node_input=ExpandNodeInput(
+                        main_question=sub_question,
+                        sub_question=sub_question,
+                        run_metadata=run_metadata,
+                    ),
+                )
+                expanded_queries = list(expand_output.expanded_queries)
+            search_output = agent_service.run_search_node(
+                node_input=SearchNodeInput(
+                    sub_question=sub_question,
+                    expanded_queries=expanded_queries,
+                    run_metadata=run_metadata,
+                ),
+                vector_store="fake-vector-store",
+                k_fetch=4,
+            )
+
+            candidate_rows = list(search_output.retrieved_docs)
+            citation_rows_by_index = dict(search_output.citation_rows_by_index)
+            if use_rerank:
+                rerank_output = agent_service.run_rerank_node(
+                    node_input=RerankNodeInput(
+                        sub_question=sub_question,
+                        retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                        run_metadata=run_metadata,
+                    ),
+                    config=reranker_service.RerankerConfig(enabled=True, top_n=None),
+                )
+                candidate_rows = list(rerank_output.reranked_docs)
+                citation_rows_by_index = dict(rerank_output.citation_rows_by_index)
+
+            if candidate_rows and candidate_rows[0].document_id == gold_by_sub_question[sub_question]:
+                top1_hits += 1
+
+            answer_output = agent_service.run_answer_subquestion_node(
+                node_input=AnswerSubquestionNodeInput(
+                    sub_question=sub_question,
+                    reranked_docs=[row.model_copy(deep=True) for row in candidate_rows],
+                    citation_rows_by_index={
+                        key: value.model_copy(deep=True)
+                        for key, value in citation_rows_by_index.items()
+                    },
+                    run_metadata=run_metadata,
+                )
+            )
+            if answer_output.answerable and answer_output.citation_indices_used:
+                cited_index = answer_output.citation_indices_used[0]
+                cited_row = answer_output.citation_rows_by_index.get(cited_index)
+                if (
+                    cited_row is not None
+                    and cited_row.document_id == gold_by_sub_question[sub_question]
+                ):
+                    citation_grounded_hits += 1
+        return top1_hits, citation_grounded_hits
+
+    with caplog.at_level(logging.INFO):
+        baseline_top1, baseline_citation = run_eval_slice(use_expansion=False, use_rerank=False)
+        full_stack_top1, full_stack_citation = run_eval_slice(use_expansion=True, use_rerank=True)
+
+    assert baseline_top1 == 0
+    assert full_stack_top1 == len(hard_queries)
+    assert baseline_citation == 0
+    assert full_stack_citation == len(hard_queries)
+    assert "Search node complete" in caplog.text
+    assert "Rerank node complete" in caplog.text
+
+
+def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expand_baseline(
+    monkeypatch,
+) -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-section-20-slices")
+    sub_question = "What policy update introduced the compliance deadline?"
+    gold_document_id = "doc-compliance-gold"
+    query_results = {
+        sub_question: [
+            _make_eval_langchain_doc(
+                document_id="doc-compliance-noise",
+                title="Policy summary memo",
+                source="wiki://compliance-memo",
+                content="Overview without concrete deadline.",
+            )
+        ],
+        "compliance deadline policy update": [
+            _make_eval_langchain_doc(
+                document_id=gold_document_id,
+                title="[GOLD] Compliance Deadline Circular",
+                source="wiki://compliance-circular",
+                content="The compliance deadline is September 30, 2025.",
+            )
+        ],
+    }
+
+    monkeypatch.setattr(
+        agent_service,
+        "expand_queries_for_subquestion",
+        lambda *, sub_question, main_question, model, config: ["compliance deadline policy update"],
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "search_documents_for_queries",
+        lambda *, vector_store, queries, k, score_threshold: {
+            query: list(query_results.get(query, []))
+            for query in queries
+        },
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "rerank_documents",
+        lambda *, query, documents, config: [
+            reranker_service.RerankedDocumentScore(
+                document=document_validation_service.RetrievedDocument(
+                    rank=index,
+                    title=item.title,
+                    source=item.source,
+                    content=item.content,
+                ),
+                score=float(len(documents) - index + 1),
+                original_rank=item.rank,
+                reranked_rank=index,
+            )
+            for index, item in enumerate(
+                sorted(
+                    list(documents),
+                    key=lambda row: 0 if row.title.startswith("[GOLD]") else 1,
+                ),
+                start=1,
+            )
+        ],
+    )
+
+    def evaluate_slice(*, expanded_queries: list[str], rerank: bool) -> tuple[str, bool]:
+        search_output = agent_service.run_search_node(
+            node_input=SearchNodeInput(
+                sub_question=sub_question,
+                expanded_queries=expanded_queries,
+                run_metadata=run_metadata,
+            ),
+            vector_store="fake-vector-store",
+            k_fetch=4,
+        )
+        if not rerank:
+            doc_ids = [row.document_id for row in search_output.retrieved_docs]
+            return search_output.retrieved_docs[0].document_id, gold_document_id in doc_ids
+        rerank_output = agent_service.run_rerank_node(
+            node_input=RerankNodeInput(
+                sub_question=sub_question,
+                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                run_metadata=run_metadata,
+            ),
+            config=reranker_service.RerankerConfig(enabled=True, top_n=None),
+        )
+        doc_ids = [row.document_id for row in rerank_output.reranked_docs]
+        return rerank_output.reranked_docs[0].document_id, gold_document_id in doc_ids
+
+    no_expand_baseline_top1, no_expand_baseline_contains_gold = evaluate_slice(
+        expanded_queries=[sub_question], rerank=False
+    )
+    multiquery_only_top1, multiquery_only_contains_gold = evaluate_slice(
+        expanded_queries=[sub_question, "compliance deadline policy update"],
+        rerank=False,
+    )
+    multiquery_flashrank_top1, multiquery_flashrank_contains_gold = evaluate_slice(
+        expanded_queries=[sub_question, "compliance deadline policy update"],
+        rerank=True,
+    )
+
+    assert no_expand_baseline_top1 != gold_document_id
+    assert no_expand_baseline_contains_gold is False
+    assert multiquery_only_contains_gold is True
+    assert multiquery_only_top1 != gold_document_id
+    assert multiquery_flashrank_contains_gold is True
+    assert multiquery_flashrank_top1 == gold_document_id
