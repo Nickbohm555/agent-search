@@ -149,6 +149,20 @@ class BenchmarkRunStatusResponse(BaseModel):
     error: str | None = None
 
 
+class BenchmarkModeComparison(BaseModel):
+    mode: BenchmarkMode
+    correctness_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    correctness_delta: float | None = Field(default=None, ge=-1.0, le=1.0)
+    p95_latency_ms: float | None = Field(default=None, ge=0.0)
+    p95_latency_delta_ms: float | None = None
+
+
+class BenchmarkRunCompareResponse(BaseModel):
+    run_id: str = Field(min_length=1)
+    baseline_mode: BenchmarkMode = BenchmarkMode.baseline_retrieve_then_answer
+    comparisons: list[BenchmarkModeComparison] = Field(default_factory=list)
+
+
 class BenchmarkRunCancelResponse(BaseModel):
     status: Literal["success"]
     message: str

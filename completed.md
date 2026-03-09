@@ -2518,3 +2518,71 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 40
+
+## Section 40: Benchmark compare API - mode delta endpoint
+
+**Single goal:** Add run-level mode comparison endpoint.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Endpoint: `GET /api/benchmarks/runs/{run_id}/compare`.
+- Report correctness and p95 latency deltas vs baseline mode.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/routers/benchmarks.py` | Compare endpoint. |
+| `src/backend/schemas/benchmark.py` | Compare response models. |
+| `src/backend/tests/api/test_benchmark_compare_api.py` | Compare API tests. |
+
+**How to test:** Run compare API tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added compare response schemas: `BenchmarkModeComparison` and `BenchmarkRunCompareResponse`.
+- Added `GET /api/benchmarks/runs/{run_id}/compare` route that reuses `get_benchmark_run_status` summaries, validates baseline mode presence, and computes correctness/p95 deltas per mode.
+- Added router-level visibility logs for compare request, baseline-missing warning, and successful compare resolution.
+- Added API tests for success shape/deltas, missing run (404), and missing baseline summary (400).
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose exec backend uv run --with pytest pytest tests/api/test_benchmark_compare_api.py`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `curl -sS -i http://localhost:8000/api/benchmarks/runs/nonexistent/compare`
+- `docker compose logs --tail=80 backend`
+- `docker compose logs --tail=40 frontend`
+- `docker compose logs --tail=40 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/api/test_benchmark_compare_api.py ...
+pytest: 3 passed in 1.62s
+
+health: HTTP/1.1 200 OK
+{"status":"ok"}
+
+compare probe: HTTP/1.1 404 Not Found
+{"detail":"Benchmark run not found."}
+
+backend: Benchmarks router compare requested run_id=nonexistent
+backend: GET /api/benchmarks/runs/nonexistent/compare HTTP/1.1" 404 Not Found
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```

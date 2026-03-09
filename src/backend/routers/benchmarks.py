@@ -5,7 +5,10 @@ from sqlalchemy.orm import Session
 
 from db import get_db
 from schemas import (
+    BenchmarkMode,
+    BenchmarkModeComparison,
     BenchmarkRunCancelResponse,
+    BenchmarkRunCompareResponse,
     BenchmarkRunCreateRequest,
     BenchmarkRunCreateResponse,
     BenchmarkRunListResponse,
@@ -54,3 +57,51 @@ def cancel_run(run_id: str, db: Session = Depends(get_db)) -> BenchmarkRunCancel
     if not cancelled:
         raise HTTPException(status_code=404, detail="Benchmark run not found or already finished.")
     return BenchmarkRunCancelResponse(status="success", message="Cancellation requested.")
+
+
+@router.get("/runs/{run_id}/compare", response_model=BenchmarkRunCompareResponse)
+def compare_run_modes(run_id: str, db: Session = Depends(get_db)) -> BenchmarkRunCompareResponse:
+    logger.info("Benchmarks router compare requested run_id=%s", run_id)
+    response = get_benchmark_run_status(run_id=run_id, db=db)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Benchmark run not found.")
+
+    baseline_mode = BenchmarkMode.baseline_retrieve_then_answer
+    baseline_summary = next((item for item in response.mode_summaries if item.mode == baseline_mode), None)
+    if baseline_summary is None:
+        logger.warning(
+            "Benchmarks router compare failed baseline missing run_id=%s baseline_mode=%s",
+            run_id,
+            baseline_mode.value,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=f"Baseline mode summary missing for run: {baseline_mode.value}",
+        )
+
+    def _compute_delta(value: float | None, baseline_value: float | None) -> float | None:
+        if value is None or baseline_value is None:
+            return None
+        return value - baseline_value
+
+    comparisons = [
+        BenchmarkModeComparison(
+            mode=summary.mode,
+            correctness_rate=summary.correctness_rate,
+            correctness_delta=_compute_delta(summary.correctness_rate, baseline_summary.correctness_rate),
+            p95_latency_ms=summary.p95_latency_ms,
+            p95_latency_delta_ms=_compute_delta(summary.p95_latency_ms, baseline_summary.p95_latency_ms),
+        )
+        for summary in response.mode_summaries
+    ]
+    logger.info(
+        "Benchmarks router compare resolved run_id=%s baseline_mode=%s mode_count=%s",
+        run_id,
+        baseline_mode.value,
+        len(comparisons),
+    )
+    return BenchmarkRunCompareResponse(
+        run_id=run_id,
+        baseline_mode=baseline_mode,
+        comparisons=comparisons,
+    )
