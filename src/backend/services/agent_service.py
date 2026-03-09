@@ -1748,6 +1748,7 @@ def _emit_graph_state_snapshot(
     sub_question: str = "",
     lane_index: int = 0,
     lane_total: int = 0,
+    snapshot_callback: Any | None = None,
 ) -> None:
     snapshot = GraphStageSnapshot(
         stage=stage,
@@ -1761,6 +1762,15 @@ def _emit_graph_state_snapshot(
         output=state.output,
     )
     state.stage_snapshots.append(snapshot)
+    if snapshot_callback is not None:
+        try:
+            snapshot_callback(snapshot, state)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Graph state snapshot callback failed stage=%s run_id=%s",
+                stage,
+                state.run_metadata.run_id,
+            )
     logger.info(
         "Graph state snapshot emitted stage=%s status=%s lane_index=%s lane_total=%s sub_question=%s snapshot_count=%s run_id=%s",
         stage,
@@ -1853,6 +1863,7 @@ def run_parallel_graph_runner(
     model: BaseChatModel | None = None,
     run_metadata: GraphRunMetadata | None = None,
     initial_search_context: list[dict[str, Any]] | None = None,
+    snapshot_callback: Any | None = None,
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
@@ -1891,7 +1902,11 @@ def run_parallel_graph_runner(
             state=state,
             node_output=decomposition_output,
         )
-        _emit_graph_state_snapshot(state=state, stage="decompose")
+        _emit_graph_state_snapshot(
+            state=state,
+            stage="decompose",
+            snapshot_callback=snapshot_callback,
+        )
 
         lane_total = len(state.decomposition_sub_questions)
         ordered_lane_results: list[_GraphLaneExecutionResult | None] = [None] * lane_total
@@ -1943,6 +1958,7 @@ def run_parallel_graph_runner(
                 sub_question=lane_result.sub_question,
                 lane_index=lane_result.lane_index,
                 lane_total=lane_result.lane_total,
+                snapshot_callback=snapshot_callback,
             )
             state = apply_search_node_output_to_graph_state(
                 state=state,
@@ -1955,6 +1971,7 @@ def run_parallel_graph_runner(
                 sub_question=lane_result.sub_question,
                 lane_index=lane_result.lane_index,
                 lane_total=lane_result.lane_total,
+                snapshot_callback=snapshot_callback,
             )
             state = apply_rerank_node_output_to_graph_state(
                 state=state,
@@ -1967,6 +1984,7 @@ def run_parallel_graph_runner(
                 sub_question=lane_result.sub_question,
                 lane_index=lane_result.lane_index,
                 lane_total=lane_result.lane_total,
+                snapshot_callback=snapshot_callback,
             )
             state = apply_answer_subquestion_node_output_to_graph_state(
                 state=state,
@@ -1979,6 +1997,7 @@ def run_parallel_graph_runner(
                 sub_question=lane_result.sub_question,
                 lane_index=lane_result.lane_index,
                 lane_total=lane_result.lane_total,
+                snapshot_callback=snapshot_callback,
             )
 
         synthesis_output = run_synthesize_final_node(
@@ -1993,7 +2012,11 @@ def run_parallel_graph_runner(
             state=state,
             node_output=synthesis_output,
         )
-        _emit_graph_state_snapshot(state=state, stage="synthesize_final")
+        _emit_graph_state_snapshot(
+            state=state,
+            stage="synthesize_final",
+            snapshot_callback=snapshot_callback,
+        )
         logger.info(
             "Parallel graph runner complete sub_question_count=%s output_len=%s snapshot_count=%s run_id=%s",
             len(state.sub_qa),

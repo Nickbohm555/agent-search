@@ -133,6 +133,8 @@
           <span class="badge">Frontend: <code>App.tsx::handleRun</code></span>
           <span class="badge">API client: <code>runAgent()</code></span>
           <span class="badge">Backend route: <code>POST /api/agents/run</code></span>
+          <span class="badge">Async route: <code>POST /api/agents/run-async</code></span>
+          <span class="badge">Status route: <code>GET /api/agents/run-status/{job_id}</code></span>
           <span class="badge">Service: <code>run_runtime_agent()</code></span>
           <span class="badge">Pipeline: graph runner (decompose -> expand -> search -> rerank -> answer -> synthesize)</span>
           <span class="badge good">Response model: <code>RuntimeAgentRunResponse</code></span>
@@ -166,6 +168,12 @@
           Section 9 adds <code>run_parallel_graph_runner(...)</code> for bounded fanout across sub-questions with
           deterministic output reindexing, plus <code>stage_snapshots</code> emitted on graph state after each stage
           for progressive status consumers.
+        </p>
+        <p class="small">
+          Section 11 adds async polling contracts in <code>services/agent_jobs.py</code> and routes:
+          <code>/api/agents/run-async</code>, <code>/api/agents/run-status/{job_id}</code>,
+          <code>/api/agents/run-cancel/{job_id}</code>. Status emits stage <code>subquestions_ready</code> as soon as
+          decomposition snapshot is produced.
         </p>
       </div>
 
@@ -246,6 +254,13 @@ run_runtime_agent() internals
           Endpoint: <code>POST /api/agents/run</code><br />
           Request model: <code>RuntimeAgentRunRequest { query }</code><br />
           Response model: <code>RuntimeAgentRunResponse { main_question, sub_qa[], output }</code>
+        </p>
+        <p class="small">
+          Async routes: <code>POST /api/agents/run-async</code>,
+          <code>GET /api/agents/run-status/{job_id}</code>,
+          <code>POST /api/agents/run-cancel/{job_id}</code>.
+          Status payload includes staged metadata and partial state fields (notably
+          <code>decomposition_sub_questions</code>) before final synthesis completes.
         </p>
         <p class="small">DB session is injected by FastAPI dependency <code>get_db()</code>; this route passes it to the service but current run logic primarily uses PGVector connection directly.</p>
       </div>

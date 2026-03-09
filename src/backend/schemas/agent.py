@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,41 @@ class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
+
+
+class AgentRunStageMetadata(BaseModel):
+    stage: str
+    status: str
+    sub_question: str = ""
+    lane_index: int = 0
+    lane_total: int = 0
+    emitted_at: float | None = None
+
+
+class RuntimeAgentRunAsyncStartResponse(BaseModel):
+    job_id: str
+    run_id: str
+    status: str
+
+
+class RuntimeAgentRunAsyncStatusResponse(BaseModel):
+    job_id: str
+    run_id: str = ""
+    status: str
+    message: str = ""
+    stage: str = ""
+    stages: list[AgentRunStageMetadata] = Field(default_factory=list)
+    decomposition_sub_questions: list[str] = Field(default_factory=list)
+    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
+    output: str = ""
+    result: RuntimeAgentRunResponse | None = None
+    error: str | None = None
+    cancel_requested: bool = False
+
+
+class RuntimeAgentRunAsyncCancelResponse(BaseModel):
+    status: Literal["success"]
+    message: str
 
 
 class RuntimeAgentInfo(BaseModel):

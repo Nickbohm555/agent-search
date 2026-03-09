@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -80,3 +81,117 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "output": "Echo: Find Hormuz risks",
     }
     assert captured["query"] == "Find Hormuz risks"
+
+
+def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    def fake_start_agent_run_job(payload):
+        assert payload.query == "Show me async flow"
+        return SimpleNamespace(job_id="job-123", run_id="run-123", status="running")
+
+    monkeypatch.setattr(agent_router_module, "start_agent_run_job", fake_start_agent_run_job)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-async", json={"query": "Show me async flow"})
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-123",
+        "run_id": "run-123",
+        "status": "running",
+    }
+
+
+def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import AgentRunStageMetadata, SubQuestionAnswer
+
+    def fake_get_agent_run_job(job_id):
+        assert job_id == "job-123"
+        return SimpleNamespace(
+            job_id="job-123",
+            run_id="run-123",
+            status="running",
+            message="Stage completed: subquestions_ready",
+            stage="subquestions_ready",
+            stages=[
+                AgentRunStageMetadata(
+                    stage="subquestions_ready",
+                    status="completed",
+                    sub_question="",
+                    lane_index=0,
+                    lane_total=2,
+                    emitted_at=123.0,
+                )
+            ],
+            decomposition_sub_questions=["First question?", "Second question?"],
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="First question?",
+                    sub_answer="",
+                )
+            ],
+            output="",
+            result=None,
+            error=None,
+            cancel_requested=False,
+        )
+
+    monkeypatch.setattr(agent_router_module, "get_agent_run_job", fake_get_agent_run_job)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.get("/api/agents/run-status/job-123")
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-123",
+        "run_id": "run-123",
+        "status": "running",
+        "message": "Stage completed: subquestions_ready",
+        "stage": "subquestions_ready",
+        "stages": [
+            {
+                "stage": "subquestions_ready",
+                "status": "completed",
+                "sub_question": "",
+                "lane_index": 0,
+                "lane_total": 2,
+                "emitted_at": 123.0,
+            }
+        ],
+        "decomposition_sub_questions": ["First question?", "Second question?"],
+        "sub_qa": [
+            {
+                "sub_question": "First question?",
+                "sub_answer": "",
+                "tool_call_input": "",
+                "expanded_query": "",
+                "sub_agent_response": "",
+                "answerable": False,
+                "verification_reason": "",
+            }
+        ],
+        "output": "",
+        "result": None,
+        "error": None,
+        "cancel_requested": False,
+    }
+
+
+def test_post_run_cancel_returns_success(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    monkeypatch.setattr(agent_router_module, "cancel_agent_run_job", lambda _job_id: True)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-cancel/job-123")
+    assert response.status_code == 200
+    assert response.json() == {"status": "success", "message": "Cancellation requested."}

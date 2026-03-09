@@ -47,6 +47,7 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 ```
 
 The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → graph decomposition → parallel per-subquestion graph lane → synthesis). A React front end and FastAPI backend expose load/wipe/run; `/api/agents/run` now executes the graph runner path by default (`run_parallel_graph_runner`) and keeps a rollback flag (`RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true`) for the legacy deep-agent coordinator path during migration. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`).
+Section 11 adds async runtime endpoints (`/api/agents/run-async`, `/api/agents/run-status/{job_id}`, `/api/agents/run-cancel/{job_id}`) so clients can poll staged progress and receive `subquestions_ready` as soon as decomposition finishes.
 
 The runtime service also defines graph-state contracts for staged migration: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
 
@@ -221,6 +222,9 @@ Backend
 - Endpoint: `POST /api/agents/run`
 - Request: `RuntimeAgentRunRequest { query }`
 - Response: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
+- Async start endpoint: `POST /api/agents/run-async` returns `{ job_id, run_id, status }`.
+- Async status endpoint: `GET /api/agents/run-status/{job_id}` returns staged progress including `stage`, `stages[]`, `decomposition_sub_questions`, and partial `sub_qa`/`output`.
+- Async cancel endpoint: `POST /api/agents/run-cancel/{job_id}` sets cancellation requested for running jobs.
 
 ### Runtime pipeline map (orders 1-18)
 

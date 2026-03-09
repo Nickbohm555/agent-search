@@ -466,3 +466,67 @@ docker compose logs --tail=80 frontend
 docker compose logs --tail=80 db
 -> PostgreSQL ready to accept connections
 ```
+
+## Section 11: Async run-status for progressive subquestion visibility
+
+**Single goal:** Expose staged graph progress so UI can show subquestions as soon as decomposition completes.
+
+**Details completed:**
+- Added async runtime schemas in `src/backend/schemas/agent.py`:
+  - `RuntimeAgentRunAsyncStartResponse`
+  - `RuntimeAgentRunAsyncStatusResponse`
+  - `RuntimeAgentRunAsyncCancelResponse`
+  - `AgentRunStageMetadata`
+- Exported the new async schema contracts in `src/backend/schemas/__init__.py`.
+- Added `src/backend/services/agent_jobs.py` with an in-memory async job manager (thread-safe lock + executor), including:
+  - start job (`start_agent_run_job`)
+  - status lookup (`get_agent_run_job`)
+  - optional cancel request (`cancel_agent_run_job`)
+  - staged snapshot handling from graph runner into status payload fields
+- Updated graph runner integration in `src/backend/services/agent_service.py`:
+  - Added optional `snapshot_callback` support to `run_parallel_graph_runner(...)`
+  - Forwarded emitted stage snapshots through callback hook
+- Mapped graph decompose snapshot stage to async status stage `subquestions_ready` immediately after decomposition.
+- Added async API endpoints in `src/backend/routers/agent.py` while keeping sync endpoint intact:
+  - `POST /api/agents/run-async`
+  - `GET /api/agents/run-status/{job_id}`
+  - `POST /api/agents/run-cancel/{job_id}`
+- Expanded API tests in `src/backend/tests/api/test_agent_run.py` for async start/status/cancel route payloads, including staged `subquestions_ready` status shape.
+- Updated docs in `README.md` and `src/frontend/public/run-flow.html` with new async endpoints and staged status behavior.
+
+### Useful logs
+
+```text
+Full restart/build:
+docker compose down -v --rmi all && docker compose build && docker compose up -d
+-> backend/frontend rebuilt, db healthy, all services up
+
+Manual async verification:
+POST /api/agents/run-async
+-> {"job_id":"743fb881-3a2c-4852-956d-e8718a8cb022","run_id":"743fb881-3a2c-4852-956d-e8718a8cb022","status":"running"}
+
+GET /api/agents/run-status/743fb881-3a2c-4852-956d-e8718a8cb022 (while running)
+-> "stage":"answer"
+-> "stages":[{"stage":"subquestions_ready",...}, ...]
+-> "decomposition_sub_questions":[...]
+
+GET /api/agents/run-status/743fb881-3a2c-4852-956d-e8718a8cb022 (final)
+-> "status":"success"
+-> "stage":"synthesize_final"
+
+Backend logs include:
+-> Agent async job snapshot ... stage=subquestions_ready ...
+-> Graph state snapshot emitted stage=decompose ...
+-> Agent async job finished ... status=success ...
+
+Requested API/job tests:
+docker compose exec backend uv run pytest tests/api/test_agent_run.py
+-> failed: pytest executable not present in container image
+
+docker compose exec backend uv run python -m pytest tests/api/test_agent_run.py
+-> failed: No module named pytest
+
+Host fallback attempt:
+cd src/backend && uv run python -m pytest tests/api/test_agent_run.py
+-> failed: onnxruntime wheel unavailable for macOS x86_64 (environment constraint)
+```
