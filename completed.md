@@ -738,3 +738,103 @@ docker compose logs --tail=120 frontend
 docker compose logs --tail=120 db
 -> PostgreSQL ready to accept connections
 ```
+
+## Section 15: Search stage view - retrieval candidates and merge provenance
+
+**Single goal:** Render search-stage outputs showing merged retrieval candidates before reranking.
+
+**Details:**
+- Show per-subquestion candidate count after multi-query merge/dedupe.
+- Render top candidate preview rows with source/title snippets.
+- Show merge stats (`raw_hits`, `deduped_hits`) for transparency.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/utils/api.ts` | Add search merge stats/candidate preview types. |
+| `src/frontend/src/App.tsx` | Add Search panel for merged candidate previews. |
+| `src/frontend/src/App.test.tsx` | Verify search candidate counts and merge stats rendering. |
+
+**How to test:** Run frontend tests and verify Search panel displays merged candidate stats before rerank completes.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Extended staged async payload types/validation in `src/frontend/src/utils/api.ts`:
+  - Added `SearchCandidateRow` and `SearchRetrievalProvenanceRow`.
+  - Extended `SubQuestionArtifact` with `retrieved_docs` and `retrieval_provenance`.
+  - Kept backward compatibility by defaulting missing fields to empty arrays during validation.
+- Implemented Search stage UI in `src/frontend/src/App.tsx`:
+  - Added Search panel grouped by subquestion.
+  - Displays merged candidate count (`deduped_hits`) per subquestion.
+  - Displays merge stats (`raw_hits` from provenance events and `deduped_hits` from merged rows).
+  - Displays top preview rows with title, source, and content snippet.
+  - Added run-stage visibility logs for search totals during polling.
+- Added Search panel styling in `src/frontend/src/styles.css` for lane cards, stats badges, and preview rows.
+- Updated frontend tests in `src/frontend/src/App.test.tsx`:
+  - Added polling fixture payload with retrieval candidates + provenance.
+  - Verified Search panel renders candidate count, raw/deduped merge stats, and preview row content.
+  - Kept stage rail assertions aligned to search-stage in-progress state.
+- Updated docs:
+  - `README.md` now documents section-15 Search panel behavior and merge-stat transparency.
+  - `src/frontend/public/run-flow.html` now notes section-15 Search panel data path and metrics.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> containers/images/volumes removed
+
+docker compose build
+-> backend/frontend images built successfully
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Container health + logs before coding:
+docker compose ps
+-> backend/frontend up; db healthy; chrome up
+
+docker compose logs --tail=120 backend
+-> alembic upgrade + uvicorn startup complete
+
+docker compose logs --tail=120 frontend
+-> vite ready at http://localhost:5173
+
+docker compose logs --tail=120 db
+-> postgresql ready to accept connections
+
+Required section tests/checks:
+docker compose exec frontend npm run test
+-> PASS (5/5)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite production build)
+
+Changed services restart + verification:
+docker compose restart db backend frontend
+-> restarted successfully
+
+docker compose ps
+-> backend up; frontend up; db healthy; chrome up
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=160 backend
+-> app startup complete; no fatal errors
+
+docker compose logs --tail=120 frontend
+-> vite dev server ready; live reload observed for docs update
+
+docker compose logs --tail=120 db
+-> database ready after restart; no errors
+```

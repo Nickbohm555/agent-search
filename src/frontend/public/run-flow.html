@@ -175,6 +175,11 @@
           <code>/api/agents/run-cancel/{job_id}</code>. Status emits stage <code>subquestions_ready</code> as soon as
           decomposition snapshot is produced.
         </p>
+        <p class="small">
+          Section 15 adds a frontend Search stage panel that consumes <code>sub_question_artifacts[].retrieved_docs</code>
+          and <code>sub_question_artifacts[].retrieval_provenance</code> to display merged candidate previews plus
+          transparent merge stats (<code>raw_hits</code> vs <code>deduped_hits</code>) before rerank.
+        </p>
       </div>
 
       <div class="panel">

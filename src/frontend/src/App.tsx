@@ -4,6 +4,7 @@ import {
   AgentStageRuntimeStatus,
   RequestState,
   RuntimeAgentRunResponse,
+  SearchCandidateRow,
   SubQuestionArtifact,
   WikiSourceOption,
   cancelInternalDataLoad,
@@ -248,6 +249,14 @@ export default function App() {
       setRunStatusMessage(status.message || `Run status: ${status.status}`);
       const nextStatuses = computeStageStatuses(orderedStages, status.stage, status.status);
       setStageStatuses(nextStatuses);
+      const searchRawHitsTotal = status.sub_question_artifacts.reduce(
+        (sum, artifact) => sum + artifact.retrieval_provenance.length,
+        0,
+      );
+      const searchDedupedHitsTotal = status.sub_question_artifacts.reduce(
+        (sum, artifact) => sum + artifact.retrieved_docs.length,
+        0,
+      );
       console.info("Async run stage update.", {
         submittedQuery: submitted,
         jobId,
@@ -255,6 +264,8 @@ export default function App() {
         backendStatus: status.status,
         decompositionSubQuestionCount: status.decomposition_sub_questions.length,
         subQuestionArtifactCount: status.sub_question_artifacts.length,
+        searchRawHitsTotal,
+        searchDedupedHitsTotal,
         stageStatuses: nextStatuses,
       });
 
@@ -458,6 +469,51 @@ export default function App() {
         )}
       </section>
 
+      <section className="panel search-panel">
+        <h2>Search</h2>
+        {decompositionSubQuestions.length > 0 ? (
+          <ol className="search-lane-list" aria-label="Search candidate groups">
+            {decompositionSubQuestions.map((subQuestion, index) => {
+              const artifact =
+                subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
+              const mergeStats = getSearchMergeStats(artifact);
+              const previewRows = getSearchPreviewRows(artifact, 3);
+              return (
+                <li key={`${index}-${subQuestion}`} className="search-lane-item">
+                  <p className="search-lane-title">
+                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                  </p>
+                  <p className="search-candidate-count">Merged candidates: {mergeStats.dedupedHits}</p>
+                  <div className="search-merge-stats" aria-label={`Search merge stats for subquestion ${index + 1}`}>
+                    <span className="search-merge-stat">Raw hits: {mergeStats.rawHits}</span>
+                    <span className="search-merge-stat">Deduped hits: {mergeStats.dedupedHits}</span>
+                  </div>
+                  {previewRows.length > 0 ? (
+                    <ol className="search-preview-list" aria-label={`Search preview rows for subquestion ${index + 1}`}>
+                      {previewRows.map((row) => (
+                        <li key={`${index}-${row.citation_index}-${row.document_id}`} className="search-preview-item">
+                          <p className="search-preview-title">
+                            <strong>{row.title || "Untitled source"}</strong>
+                          </p>
+                          <p className="search-preview-source">
+                            <strong>Source:</strong> {row.source || "unknown"}
+                          </p>
+                          <p className="search-preview-snippet">{toSnippet(row.content)}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>No retrieved candidates yet.</p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p>No search data yet.</p>
+        )}
+      </section>
+
       <section className="panel final-readout-panel">
         <h2>Final Readout</h2>
         <section className="final-readout-section" aria-labelledby="final-readout-main-question">
@@ -585,4 +641,28 @@ function isExpansionFallback(args: { subQuestion: string; expandedQueries: strin
     .filter((item) => item.length > 0);
   if (normalizedQueries.length !== 1) return false;
   return normalizedQueries[0] === normalizedSubQuestion;
+}
+
+function getSearchMergeStats(
+  artifact: SubQuestionArtifact | undefined,
+): { rawHits: number; dedupedHits: number } {
+  if (!artifact) {
+    return { rawHits: 0, dedupedHits: 0 };
+  }
+  return {
+    rawHits: artifact.retrieval_provenance.length,
+    dedupedHits: artifact.retrieved_docs.length,
+  };
+}
+
+function getSearchPreviewRows(artifact: SubQuestionArtifact | undefined, limit: number): SearchCandidateRow[] {
+  if (!artifact || limit <= 0) return [];
+  return artifact.retrieved_docs.slice(0, limit);
+}
+
+function toSnippet(content: string): string {
+  const normalized = content.trim().replace(/\s+/g, " ");
+  if (!normalized) return "No snippet available.";
+  if (normalized.length <= 180) return normalized;
+  return `${normalized.slice(0, 177)}...`;
 }

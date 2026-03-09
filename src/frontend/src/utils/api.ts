@@ -87,6 +87,28 @@ export interface AgentRunStageMetadata {
 export interface SubQuestionArtifact {
   sub_question: string;
   expanded_queries: string[];
+  retrieved_docs: SearchCandidateRow[];
+  retrieval_provenance: SearchRetrievalProvenanceRow[];
+}
+
+export interface SearchCandidateRow {
+  citation_index: number;
+  rank: number;
+  title: string;
+  source: string;
+  content: string;
+  document_id: string;
+  score?: number | null;
+}
+
+export interface SearchRetrievalProvenanceRow {
+  query: string;
+  query_index: number;
+  query_rank: number;
+  document_identity: string;
+  document_id: string;
+  source: string;
+  deduped: boolean;
 }
 
 export interface RuntimeAgentRunAsyncStartResponse {
@@ -301,11 +323,45 @@ function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata
 }
 
 function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {
+  if (!isObject(value)) return false;
+  const expandedQueries = value.expanded_queries;
+  if (value.retrieved_docs === undefined) value.retrieved_docs = [];
+  if (value.retrieval_provenance === undefined) value.retrieval_provenance = [];
+  const retrievedDocs = value.retrieved_docs;
+  const retrievalProvenance = value.retrieval_provenance;
+  return (
+    typeof value.sub_question === "string" &&
+    Array.isArray(expandedQueries) &&
+    expandedQueries.every((item) => typeof item === "string") &&
+    (retrievedDocs === undefined || (Array.isArray(retrievedDocs) && retrievedDocs.every(isSearchCandidateRow))) &&
+    (retrievalProvenance === undefined ||
+      (Array.isArray(retrievalProvenance) && retrievalProvenance.every(isSearchRetrievalProvenanceRow)))
+  );
+}
+
+function isSearchCandidateRow(value: unknown): value is SearchCandidateRow {
   return (
     isObject(value) &&
-    typeof value.sub_question === "string" &&
-    Array.isArray(value.expanded_queries) &&
-    value.expanded_queries.every((item) => typeof item === "string")
+    typeof value.citation_index === "number" &&
+    typeof value.rank === "number" &&
+    typeof value.title === "string" &&
+    typeof value.source === "string" &&
+    typeof value.content === "string" &&
+    typeof value.document_id === "string" &&
+    (value.score === undefined || value.score === null || typeof value.score === "number")
+  );
+}
+
+function isSearchRetrievalProvenanceRow(value: unknown): value is SearchRetrievalProvenanceRow {
+  return (
+    isObject(value) &&
+    typeof value.query === "string" &&
+    typeof value.query_index === "number" &&
+    typeof value.query_rank === "number" &&
+    typeof value.document_identity === "string" &&
+    typeof value.document_id === "string" &&
+    typeof value.source === "string" &&
+    typeof value.deduped === "boolean"
   );
 }
 

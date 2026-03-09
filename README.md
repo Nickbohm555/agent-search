@@ -235,6 +235,7 @@ Backend
 - Frontend section 12 timeline shell: ordered rail is `decompose -> expand -> search -> rerank -> answer -> final`, with visible state transitions based on async status polling.
 - Frontend section 13 decompose view: a dedicated Decompose panel now renders `decomposition_sub_questions` immediately at `subquestions_ready`, including count and normalization indicators (`Ends with ?`, `Dedupe`), independent from later stage artifacts.
 - Frontend section 14 expand view: a dedicated Expand panel renders grouped `expanded_queries` by subquestion index and shows a fallback badge when expansion collapses to the original subquestion only.
+- Frontend section 15 search view: a dedicated Search panel renders per-subquestion merged candidate previews before rerank, including merge transparency stats (`raw_hits` from `retrieval_provenance` and `deduped_hits` from merged `retrieved_docs`).
 
 ### Runtime pipeline map (orders 1-18)
 

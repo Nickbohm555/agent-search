@@ -72,14 +72,63 @@ describe("App run query flow", () => {
             job_id: "job-1",
             run_id: "run-1",
             status: "running",
-            message: "Stage completed: subquestions_ready",
-            stage: "subquestions_ready",
+            message: "Stage completed: search",
+            stage: "search",
             stages: [],
             decomposition_sub_questions: ["First subquestion?"],
             sub_question_artifacts: [
               {
                 sub_question: "First subquestion?",
                 expanded_queries: ["First subquestion?"],
+                retrieved_docs: [
+                  {
+                    citation_index: 1,
+                    rank: 1,
+                    title: "NATO Charter",
+                    source: "wikipedia",
+                    content: "The North Atlantic Treaty was signed in Washington, D.C. in April 1949.",
+                    document_id: "doc-1",
+                    score: null,
+                  },
+                  {
+                    citation_index: 2,
+                    rank: 2,
+                    title: "NATO Timeline",
+                    source: "wikipedia",
+                    content: "NATO was formed as a collective defense alliance.",
+                    document_id: "doc-2",
+                    score: null,
+                  },
+                ],
+                retrieval_provenance: [
+                  {
+                    query: "First subquestion?",
+                    query_index: 1,
+                    query_rank: 1,
+                    document_identity: "doc-1",
+                    document_id: "doc-1",
+                    source: "wikipedia",
+                    deduped: false,
+                  },
+                  {
+                    query: "First subquestion?",
+                    query_index: 1,
+                    query_rank: 2,
+                    document_identity: "doc-1",
+                    document_id: "doc-1",
+                    source: "wikipedia",
+                    deduped: true,
+                  },
+                  {
+                    query: "First subquestion?",
+                    query_index: 1,
+                    query_rank: 3,
+                    document_identity: "doc-2",
+                    document_id: "doc-2",
+                    source: "wikipedia",
+                    deduped: false,
+                  },
+                ],
               },
             ],
             sub_qa: [],
@@ -105,6 +154,8 @@ describe("App run query flow", () => {
               {
                 sub_question: "First subquestion?",
                 expanded_queries: ["First subquestion?", "First subquestion? alt phrasing"],
+                retrieved_docs: [],
+                retrieval_provenance: [],
               },
             ],
             sub_qa: [],
@@ -129,9 +180,10 @@ describe("App run query flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
-    expect(await screen.findByText("Run status: Stage completed: subquestions_ready")).toBeInTheDocument();
-    expect(getStageStatusText("decompose")).toContain("in_progress");
-    expect(getStageStatusText("search")).toContain("pending");
+    expect(await screen.findByText("Run status: Stage completed: search")).toBeInTheDocument();
+    expect(getStageStatusText("decompose")).toContain("completed");
+    expect(getStageStatusText("search")).toContain("in_progress");
+    expect(getStageStatusText("rerank")).toContain("pending");
     expect(screen.getByRole("heading", { name: "Decompose" })).toBeInTheDocument();
     const decomposeList = screen.getByRole("list", { name: "Decomposed subquestions" });
     expect(decomposeList).toBeInTheDocument();
@@ -139,6 +191,13 @@ describe("App run query flow", () => {
     expect(screen.getByRole("heading", { name: "Expand" })).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Expanded query groups" })).toBeInTheDocument();
     expect(screen.getByText("Fallback: original only")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Search candidate groups" })).toBeInTheDocument();
+    expect(screen.getByText("Merged candidates: 2")).toBeInTheDocument();
+    expect(screen.getByText("Raw hits: 3")).toBeInTheDocument();
+    expect(screen.getByText("Deduped hits: 2")).toBeInTheDocument();
+    expect(screen.getByText("NATO Charter")).toBeInTheDocument();
+    expect(screen.getAllByText("wikipedia").length).toBeGreaterThan(0);
     expect(screen.getByText("Subquestion count: 1")).toBeInTheDocument();
     expect(screen.getByText("Ends with ?: yes")).toBeInTheDocument();
     expect(screen.getByText("Dedupe: pass")).toBeInTheDocument();
@@ -213,6 +272,8 @@ describe("App run query flow", () => {
               {
                 sub_question: "Which treaty created NATO?",
                 expanded_queries: ["Which treaty created NATO?", "NATO founding treaty"],
+                retrieved_docs: [],
+                retrieval_provenance: [],
               },
             ],
             sub_qa: [
