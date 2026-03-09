@@ -3720,3 +3720,101 @@ Local:   http://localhost:5173/
 db runtime:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 54
+
+## Section 54: Final acceptance rerun - full system with observability and docs parity
+
+**Single goal:** Re-run final acceptance after Langfuse and documentation updates to confirm production readiness.
+
+**Why:** This is the final production-readiness gate proving functionality, observability, and documentation are all in sync.
+
+
+**Details:**
+- Repeat end-to-end verification for SDK runtime, benchmark APIs, dashboard, and compare endpoints.
+- Verify Langfuse traces/spans/scores are emitted for at least one complete benchmark run.
+- Verify all documentation paths and commands are accurate by executing them in a clean flow.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): existing test and compose workflows.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `test_completed.md` | Final integrated validation record including Langfuse + docs checks. |
+| `src/backend/tests/e2e/test_benchmark_pipeline.py` | Final backend E2E regression check. |
+| `src/backend/tests/sdk/test_sdk_async_e2e.py` | Final SDK async regression check. |
+| `src/frontend/src/components/BenchmarkRunDetail.test.tsx` | Final frontend regression coverage touchpoint. |
+
+**How to test:**
+- `docker compose exec backend uv run pytest`
+- `docker compose exec frontend npm run test`
+- Manual: run one benchmark and confirm Langfuse traces plus documentation command parity.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Performed a full fresh stack reset before implementation:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Ran final required suites:
+  - `docker compose exec backend sh -lc "uv run --with pytest pytest"` => `254 passed`
+  - `docker compose exec frontend npm run test` => `12 passed`
+- Executed manual benchmark API flows (`/api/internal-data/load`, `/api/benchmarks/runs`, `/api/benchmarks/runs/{run_id}`, `/api/benchmarks/runs`, `/api/benchmarks/runs/{run_id}/compare`) to validate docs command parity.
+- Found and fixed Langfuse SDK v3 compatibility gap:
+  - Previous behavior logged `Langfuse trace start skipped; client has no trace constructor`.
+  - Added root-span fallback trace start in `src/backend/utils/langfuse_tracing.py` when trace constructors are unavailable.
+  - Added non-blocking guard for Langfuse v3 `end()` calls to prevent benchmark-job stalls.
+  - Added regression test coverage in `src/backend/tests/utils/test_langfuse_tracing.py`.
+- Verified Langfuse observability emission in backend logs for benchmark path:
+  - `Langfuse trace started via span fallback name=benchmark.judge scope=benchmark`
+  - `Langfuse score recorded name=benchmark.correctness value=0.4`
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS http://localhost:8000/api/health`
+- `curl -sS -X POST http://localhost:8000/api/internal-data/load -H 'Content-Type: application/json' -d '{"source_type":"wiki","wiki":{"source_id":"all"}}'`
+- `curl -sS -X POST http://localhost:8000/api/benchmarks/runs ...`
+- `curl -sS http://localhost:8000/api/benchmarks/runs/{run_id}`
+- `curl -sS http://localhost:8000/api/benchmarks/runs`
+- `curl -sS http://localhost:8000/api/benchmarks/runs/{run_id}/compare`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/utils/test_langfuse_tracing.py"`
+- `docker compose exec backend sh -lc "uv run --with pytest pytest"`
+- `docker compose exec frontend npm run test`
+- `docker compose restart backend`
+- `docker compose logs --tail=600 backend | rg -n "Langfuse trace started via span fallback|Langfuse score recorded"`
+
+**Useful logs (excerpt):**
+```text
+backend tests:
+============================= test session starts ==============================
+collected 254 items
+...
+======================= 254 passed, 1 warning in 12.69s =======================
+
+frontend tests:
+Test Files  3 passed (3)
+Tests  12 passed (12)
+
+backend runtime:
+Langfuse trace started via span fallback name=benchmark.judge scope=benchmark
+Langfuse score recorded name=benchmark.correctness value=0.4
+INFO:     Uvicorn running on http://0.0.0.0:8000
+
+frontend runtime:
+VITE v5.4.21  ready in 399 ms
+
+db runtime:
+database system is ready to accept connections
+```

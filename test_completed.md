@@ -867,3 +867,44 @@
 - `docker compose ps`: backend/frontend/db/chrome all `Up`, db `healthy`.
 - `curl http://localhost:8000/api/health`: `{"status":"ok"}`.
 - Logs reviewed for backend/frontend/db/chrome; no blocking runtime errors.
+
+## Test Section 54: Final acceptance rerun (full system + observability + docs parity)
+
+**Scope executed:**
+- Clean rebuild/restart:
+  - `docker compose down -v --rmi all`
+  - `docker compose build`
+  - `docker compose up -d`
+- Backend full suite:
+  - `docker compose exec backend sh -lc "uv run --with pytest pytest"`
+- Frontend full suite:
+  - `docker compose exec frontend npm run test`
+- Manual docs-parity API flow:
+  - `GET /api/health`
+  - `POST /api/internal-data/load`
+  - `POST /api/benchmarks/runs`
+  - `GET /api/benchmarks/runs/{run_id}`
+  - `GET /api/benchmarks/runs`
+  - `GET /api/benchmarks/runs/{run_id}/compare`
+
+**Key validation outcomes:**
+- Backend regression suite passed: `254 passed`.
+- Frontend regression suite passed: `12 passed`.
+- Manual benchmark API and docs command path executed against a fresh stack.
+- Langfuse benchmark observability verified in runtime logs after v3 compatibility fix:
+  - `Langfuse trace started via span fallback name=benchmark.judge scope=benchmark`
+  - `Langfuse score recorded name=benchmark.correctness value=0.4`
+
+**Implementation fix added during acceptance:**
+- Updated `src/backend/utils/langfuse_tracing.py` to support Langfuse SDK v3 where client trace constructors are absent (root-span fallback).
+- Added non-blocking end-call guard for Langfuse v3 client methods to reduce benchmark-run stall risk.
+- Added regression coverage in `src/backend/tests/utils/test_langfuse_tracing.py`.
+
+**Container/log checks captured:**
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `docker compose ps`
+
+**Result:**
+- Section 54 acceptance checks passed with required backend/frontend regressions, manual command parity, and Langfuse trace/score emission evidence.

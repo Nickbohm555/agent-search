@@ -257,11 +257,6 @@ def start_langfuse_trace(
     if langfuse_client is None:
         return None
 
-    trace_builder = _first_callable(langfuse_client, ("trace", "create_trace", "start_trace"))
-    if trace_builder is None:
-        logger.warning("Langfuse trace start skipped; client has no trace constructor")
-        return None
-
     kwargs: dict[str, Any] = {
         "name": name,
         "input": input_payload,
@@ -270,12 +265,40 @@ def start_langfuse_trace(
         "trace_id": trace_id,
         "session_id": session_id,
     }
+
+    trace_builder = _first_callable(langfuse_client, ("trace", "create_trace", "start_trace"))
+    if trace_builder is not None:
+        try:
+            trace = _call_with_supported_kwargs(trace_builder, kwargs)
+            setattr(trace, "_agent_search_langfuse_client", langfuse_client)
+            logger.info("Langfuse trace started name=%s scope=%s", name, scope)
+            return trace
+        except Exception:
+            logger.exception("Langfuse trace start failed name=%s scope=%s", name, scope)
+            return None
+
+    # Langfuse v3 no longer exposes trace constructors on the client.
+    # Fall back to a root span/observation with explicit trace context.
+    observation_builder = _first_callable(langfuse_client, ("start_span", "start_observation"))
+    if observation_builder is None:
+        logger.warning("Langfuse trace start skipped; client has no trace/span constructor")
+        return None
+
+    observation_kwargs: dict[str, Any] = {
+        "name": name,
+        "input": input_payload,
+        "metadata": _as_dict(metadata) or None,
+    }
+    trace_context = {k: v for k, v in {"trace_id": trace_id, "session_id": session_id}.items() if v}
+    if trace_context:
+        observation_kwargs["trace_context"] = trace_context
     try:
-        trace = _call_with_supported_kwargs(trace_builder, kwargs)
-        logger.info("Langfuse trace started name=%s scope=%s", name, scope)
-        return trace
+        root_observation = _call_with_supported_kwargs(observation_builder, observation_kwargs)
+        setattr(root_observation, "_agent_search_langfuse_client", langfuse_client)
+        logger.info("Langfuse trace started via span fallback name=%s scope=%s", name, scope)
+        return root_observation
     except Exception:
-        logger.exception("Langfuse trace start failed name=%s scope=%s", name, scope)
+        logger.exception("Langfuse trace/span fallback start failed name=%s scope=%s", name, scope)
         return None
 
 
@@ -323,6 +346,11 @@ def end_langfuse_observation(
         if update_call is not None:
             update_kwargs = {"output": output_payload, "metadata": payload or None}
             _call_with_supported_kwargs(update_call, update_kwargs)
+        # Langfuse v3 span.end() can block while exporting. We already persist output
+        # via update(), so avoid blocking end calls on those SDK internals.
+        if end_call is not None and getattr(end_call, "__module__", "").startswith("langfuse._client"):
+            logger.info("Langfuse observation end skipped for v3 client method=%s", getattr(end_call, "__qualname__", "end"))
+            end_call = None
         if end_call is not None:
             end_kwargs = {"output": output_payload, "metadata": payload or None}
             _call_with_supported_kwargs(end_call, end_kwargs)

@@ -221,3 +221,67 @@ def test_start_trace_span_and_record_score(monkeypatch) -> None:
     assert captured["trace_score"]["value"] == 0.9
     assert captured["span_end"]["output"] == {"status": "ok"}
     assert captured["trace_end"]["output"] == {"status": "ok"}
+
+
+def test_start_trace_falls_back_to_root_span_when_client_has_no_trace_builder(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeRootSpan:
+        def __init__(self, **kwargs) -> None:
+            captured["root_span_start"] = kwargs
+            self._agent_search_langfuse_client = None
+
+        def start_span(self, **kwargs):
+            captured["child_span_start"] = kwargs
+            return self
+
+        def score(self, **kwargs) -> None:
+            captured["root_span_score"] = kwargs
+
+        def update(self, **kwargs) -> None:
+            captured["root_span_update"] = kwargs
+
+        def end(self, **kwargs) -> None:
+            captured["root_span_end"] = kwargs
+
+    class _FakeLangfuseClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def start_span(self, **kwargs):
+            return _FakeRootSpan(**kwargs)
+
+    fake_langfuse_module = types.SimpleNamespace(Langfuse=_FakeLangfuseClient)
+    monkeypatch.setitem(sys.modules, "langfuse", fake_langfuse_module)
+
+    settings = LangfuseSettings(
+        enabled=True,
+        public_key="pk_test",
+        secret_key="sk_test",
+        runtime_sample_rate=1.0,
+        benchmark_sample_rate=1.0,
+    )
+    langfuse_tracing.get_langfuse_client(settings=settings, force_reinit=True)
+
+    trace = langfuse_tracing.start_langfuse_trace(
+        name="benchmark.run",
+        scope="benchmark",
+        sampling_key="run-123",
+        trace_id="trace-123",
+        session_id="session-123",
+        input_payload={"dataset_id": "internal_v1"},
+        settings=settings,
+    )
+    span = langfuse_tracing.start_langfuse_span(parent=trace, name="benchmark.mode")
+    langfuse_tracing.record_langfuse_score(parent=trace, name="benchmark.correctness", value=0.5)
+    langfuse_tracing.end_langfuse_observation(span, output_payload={"status": "ok"})
+
+    assert trace is not None
+    assert captured["root_span_start"]["name"] == "benchmark.run"
+    assert captured["root_span_start"]["trace_context"] == {
+        "trace_id": "trace-123",
+        "session_id": "session-123",
+    }
+    assert captured["child_span_start"]["name"] == "benchmark.mode"
+    assert captured["root_span_score"]["name"] == "benchmark.correctness"
+    assert captured["root_span_end"] == {"output": {"status": "ok"}}
