@@ -223,6 +223,20 @@ export interface BenchmarkRunStatusResponse {
   error?: string | null;
 }
 
+export interface BenchmarkModeComparison {
+  mode: string;
+  correctness_rate?: number | null;
+  correctness_delta?: number | null;
+  p95_latency_ms?: number | null;
+  p95_latency_delta_ms?: number | null;
+}
+
+export interface BenchmarkRunCompareResponse {
+  run_id: string;
+  baseline_mode: string;
+  comparisons: BenchmarkModeComparison[];
+}
+
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const DEFAULT_INTERNAL_DATA_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
@@ -401,6 +415,18 @@ export async function getBenchmarkRunStatus(runId: string): Promise<ApiResult<Be
   });
 }
 
+export async function getBenchmarkRunCompare(runId: string): Promise<ApiResult<BenchmarkRunCompareResponse>> {
+  return requestJson<BenchmarkRunCompareResponse>(`/api/benchmarks/runs/${runId}/compare`, {
+    method: "GET",
+    validate: (v): v is BenchmarkRunCompareResponse =>
+      isObject(v) &&
+      typeof v.run_id === "string" &&
+      typeof v.baseline_mode === "string" &&
+      Array.isArray(v.comparisons) &&
+      v.comparisons.every(isBenchmarkModeComparison),
+  });
+}
+
 function parseTimeoutMs(value: unknown, fallbackMs: number): number {
   if (typeof value !== "string" || value.trim().length === 0) return fallbackMs;
   const parsed = Number(value);
@@ -502,6 +528,19 @@ function isBenchmarkResultStatusItem(value: unknown): value is BenchmarkResultSt
     (value.latency_ms === undefined || value.latency_ms === null || typeof value.latency_ms === "number") &&
     (value.execution_error === undefined || value.execution_error === null || typeof value.execution_error === "string") &&
     (value.quality === undefined || value.quality === null || isBenchmarkResultQualityScore(value.quality))
+  );
+}
+
+function isBenchmarkModeComparison(value: unknown): value is BenchmarkModeComparison {
+  return (
+    isObject(value) &&
+    typeof value.mode === "string" &&
+    (value.correctness_rate === undefined || value.correctness_rate === null || typeof value.correctness_rate === "number") &&
+    (value.correctness_delta === undefined || value.correctness_delta === null || typeof value.correctness_delta === "number") &&
+    (value.p95_latency_ms === undefined || value.p95_latency_ms === null || typeof value.p95_latency_ms === "number") &&
+    (value.p95_latency_delta_ms === undefined ||
+      value.p95_latency_delta_ms === null ||
+      typeof value.p95_latency_delta_ms === "number")
   );
 }
 

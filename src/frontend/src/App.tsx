@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import BenchmarkRunDetail from "./components/BenchmarkRunDetail";
 import BenchmarkRunList from "./components/BenchmarkRunList";
 import {
   AgentStageName,
@@ -506,6 +507,7 @@ export default function App() {
       </section>
 
       <BenchmarkRunList />
+      <BenchmarkRunDetail />
 
       <section className="panel stage-rail-panel">
         <h2>Run Timeline</h2>

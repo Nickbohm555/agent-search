@@ -118,12 +118,14 @@ label {
 
 textarea,
 select,
+input,
 button {
   font: inherit;
 }
 
 textarea,
-select {
+select,
+input {
   width: 100%;
   border: 1px solid rgba(29, 242, 255, 0.6);
   border-radius: 8px;
@@ -133,6 +135,10 @@ select {
 }
 
 textarea::placeholder {
+  color: #7d86b8;
+}
+
+input::placeholder {
   color: #7d86b8;
 }
 
@@ -154,6 +160,7 @@ button:hover:not(:disabled) {
 button:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
+input:focus-visible,
 .subquestion-item summary:focus-visible,
 .panel summary:focus-visible {
   outline: 2px solid var(--panel-border);
@@ -698,6 +705,14 @@ strong {
 
 .benchmark-run-list-header h2 {
   margin: 0;
+}
+
+.benchmark-run-detail-form {
+  margin-top: 8px;
+}
+
+.benchmark-run-detail-input {
+  min-width: 260px;
 }
 
 .benchmark-run-list-table-wrap {

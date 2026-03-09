@@ -2828,3 +2828,95 @@ frontend logs:
 VITE v5.4.21 ready in 318 ms
 Local: http://localhost:5173/
 ```
+
+## Completed - 2026-03-09 - Section 44
+
+## Section 44: Frontend benchmark detail view - per-mode and per-question insights
+
+**Single goal:** Add run detail UI with mode deltas and question-level outcomes.
+
+**Why:** This turns raw benchmark data into actionable metrics, operator controls, and frontend visibility for real product usage.
+
+
+**Details:**
+- Show mode scorecards and compare deltas.
+- Show question rows with correctness, latency, and error status.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/components/BenchmarkRunDetail.tsx` | Benchmark run detail view. |
+| `src/frontend/src/utils/api.ts` | Detail/compare API client methods. |
+| `src/frontend/src/components/BenchmarkRunDetail.test.tsx` | Detail view tests. |
+
+**How to test:** Run frontend tests and manual detail page check.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkRunDetail` component with run-id driven loading flow, explicit lifecycle logs, mode scorecard rendering, and question-level outcome rows.
+- Added benchmark compare API client contract support in `utils/api.ts` (`BenchmarkRunCompareResponse`, `BenchmarkModeComparison`, `getBenchmarkRunCompare`) with runtime shape validation.
+- Wired detail view into `App.tsx` below the run history list.
+- Extended shared styles for detail form input + layout classes while reusing benchmark table styles.
+- Added focused component tests for successful detail rendering (mode deltas + per-question correctness/latency/error) and failure handling.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+- `docker compose restart frontend`
+- `docker compose ps`
+- `docker compose exec frontend npm run test -- src/components/BenchmarkRunDetail.test.tsx`
+- `docker compose exec frontend npm run test`
+- `docker compose exec frontend npm run typecheck`
+- `docker compose exec frontend npm run build`
+- `curl -sS http://localhost:5173`
+- `curl -sS http://localhost:8000/api/health`
+- `curl -sS http://localhost:8000/api/benchmarks/runs`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+BenchmarkRunDetail test:
+Benchmark run detail load started. { runId: 'run-42' }
+Benchmark run detail load completed. { runId: 'run-42', modeCount: 2, resultCount: 2 }
+Benchmark run detail load failed. {
+  runId: 'missing-run',
+  statusError: { type: 'http', message: 'Request failed with status 404' },
+  compareError: { type: 'http', message: 'Request failed with status 404' }
+}
+
+frontend test suite:
+Test Files  3 passed (3)
+Tests      12 passed (12)
+
+frontend typecheck:
+> tsc --noEmit
+
+frontend build:
+✓ built in 829ms
+
+runtime checks:
+frontend_status=200
+health_status=200
+runs_status=200
+
+backend logs:
+GET /api/health HTTP/1.1 200 OK
+Benchmarks router list requested
+Benchmark runs listed count=0
+GET /api/benchmarks/runs HTTP/1.1 200 OK
+```
