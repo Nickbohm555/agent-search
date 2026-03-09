@@ -180,6 +180,11 @@
           and <code>sub_question_artifacts[].retrieval_provenance</code> to display merged candidate previews plus
           transparent merge stats (<code>raw_hits</code> vs <code>deduped_hits</code>) before rerank.
         </p>
+        <p class="small">
+          Section 16 adds a frontend Rerank stage panel that consumes <code>sub_question_artifacts[].reranked_docs</code>
+          to display final evidence order, citation indices, optional scores, and a visible fallback badge when
+          reranking is bypassed.
+        </p>
       </div>
 
       <div class="panel">

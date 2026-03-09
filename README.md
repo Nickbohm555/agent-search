@@ -236,6 +236,7 @@ Backend
 - Frontend section 13 decompose view: a dedicated Decompose panel now renders `decomposition_sub_questions` immediately at `subquestions_ready`, including count and normalization indicators (`Ends with ?`, `Dedupe`), independent from later stage artifacts.
 - Frontend section 14 expand view: a dedicated Expand panel renders grouped `expanded_queries` by subquestion index and shows a fallback badge when expansion collapses to the original subquestion only.
 - Frontend section 15 search view: a dedicated Search panel renders per-subquestion merged candidate previews before rerank, including merge transparency stats (`raw_hits` from `retrieval_provenance` and `deduped_hits` from merged `retrieved_docs`).
+- Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
 
 ### Runtime pipeline map (orders 1-18)
 

@@ -838,3 +838,90 @@ docker compose logs --tail=120 frontend
 docker compose logs --tail=120 db
 -> database ready after restart; no errors
 ```
+
+## Section 16: Rerank stage view - reordered top_n evidence
+
+**Single goal:** Render reranked evidence and score/order changes per sub-question.
+
+**Details:**
+- Show reranked top_n list for each sub-question with final order and optional score.
+- Display rerank fallback notice when reranking was bypassed.
+- Keep links/snippets aligned with citation index that answer stage will use.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/frontend/src/utils/api.ts` | Add rerank artifact/fallback fields to payload types. |
+| `src/frontend/src/App.tsx` | Add Rerank panel for top_n evidence rendering. |
+| `src/frontend/src/App.test.tsx` | Verify rerank order and fallback indicator behavior. |
+
+**How to test:** Run frontend tests and ensure reranked ordering displays before subanswers/final answer.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Extended async frontend payload parsing/types in `src/frontend/src/utils/api.ts`:
+  - Added `SubQuestionArtifact.reranked_docs` and validation support.
+  - Added rerank metadata types (`RerankProvenanceRow`) and parsed `rerank_top_n`, `rerank_provenance`, and derived `rerank_bypassed` from `sub_qa[].tool_call_input`.
+  - Kept compatibility defaults for missing arrays (`retrieved_docs`, `retrieval_provenance`, `reranked_docs`).
+- Implemented a dedicated Rerank stage panel in `src/frontend/src/App.tsx`:
+  - Renders per-subquestion reranked evidence rows with citation index, rank, score (or `n/a`), source, and snippet.
+  - Displays explicit fallback badge (`Fallback: reranking bypassed`) when reranking was bypassed.
+  - Shows rerank order-change visibility (`Order changed: yes/no`) by comparing retrieved vs reranked document ordering.
+  - Added run-stage visibility logs (`rerankRowsTotal`, `rerankBypassedCount`) during async polling.
+  - Kept subquestion readout data progressive by storing live `sub_qa` updates.
+- Added rerank styling in `src/frontend/src/styles.css` for lane cards, fallback badge, and ranked evidence rows.
+- Added/updated tests in `src/frontend/src/App.test.tsx`:
+  - New test verifies reranked order rendering and fallback indicator behavior.
+  - Existing run-flow tests still pass with new rerank panel/state behavior.
+- Updated docs:
+  - `README.md` now includes Section 16 rerank panel behavior.
+  - `src/frontend/public/run-flow.html` now documents rerank panel payload usage and fallback visibility.
+
+### Useful logs
+
+```text
+Mandatory fresh restart before implementation:
+docker compose down -v --rmi all
+-> containers/images/volumes removed
+
+docker compose build
+-> backend/frontend images built successfully
+
+docker compose up -d
+-> db healthy; backend/frontend/chrome started
+
+Post-restart health and status:
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+Section validation checks:
+docker compose exec frontend npm run test
+-> PASS (6/6)
+
+docker compose exec frontend npm run typecheck
+-> PASS (tsc --noEmit)
+
+docker compose exec frontend npm run build
+-> PASS (vite production build)
+
+Post-change service restart + logs:
+docker compose restart
+-> backend/frontend/db/chrome restarted successfully
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=120 backend frontend db
+-> backend uvicorn startup + health requests OK; frontend vite ready on :5173; db ready to accept connections
+```

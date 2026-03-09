@@ -57,6 +57,9 @@ export interface SubQuestionAnswer {
   sub_answer: string;
   tool_call_input?: string;
   sub_agent_response?: string;
+  rerank_top_n?: number;
+  rerank_provenance?: RerankProvenanceRow[];
+  rerank_bypassed?: boolean;
 }
 
 export interface RuntimeAgentRunResponse {
@@ -89,6 +92,15 @@ export interface SubQuestionArtifact {
   expanded_queries: string[];
   retrieved_docs: SearchCandidateRow[];
   retrieval_provenance: SearchRetrievalProvenanceRow[];
+  reranked_docs: SearchCandidateRow[];
+}
+
+export interface RerankProvenanceRow {
+  reranked_rank: number;
+  citation_index: number;
+  score?: number | null;
+  document_id: string;
+  source: string;
 }
 
 export interface SearchCandidateRow {
@@ -301,13 +313,22 @@ function isOptionalString(value: unknown): value is string | undefined {
 }
 
 function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
-  return (
+  if (
     isObject(value) &&
     typeof value.sub_question === "string" &&
     typeof value.sub_answer === "string" &&
     isOptionalString(value.tool_call_input) &&
     isOptionalString(value.sub_agent_response)
-  );
+  ) {
+    attachRerankMetadataFromToolCallInput(value);
+    return (
+      (value.rerank_top_n === undefined || typeof value.rerank_top_n === "number") &&
+      (value.rerank_bypassed === undefined || typeof value.rerank_bypassed === "boolean") &&
+      (value.rerank_provenance === undefined ||
+        (Array.isArray(value.rerank_provenance) && value.rerank_provenance.every(isRerankProvenanceRow)))
+    );
+  }
+  return false;
 }
 
 function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata {
@@ -327,15 +348,54 @@ function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {
   const expandedQueries = value.expanded_queries;
   if (value.retrieved_docs === undefined) value.retrieved_docs = [];
   if (value.retrieval_provenance === undefined) value.retrieval_provenance = [];
+  if (value.reranked_docs === undefined) value.reranked_docs = [];
   const retrievedDocs = value.retrieved_docs;
   const retrievalProvenance = value.retrieval_provenance;
+  const rerankedDocs = value.reranked_docs;
   return (
     typeof value.sub_question === "string" &&
     Array.isArray(expandedQueries) &&
     expandedQueries.every((item) => typeof item === "string") &&
     (retrievedDocs === undefined || (Array.isArray(retrievedDocs) && retrievedDocs.every(isSearchCandidateRow))) &&
+    (rerankedDocs === undefined || (Array.isArray(rerankedDocs) && rerankedDocs.every(isSearchCandidateRow))) &&
     (retrievalProvenance === undefined ||
       (Array.isArray(retrievalProvenance) && retrievalProvenance.every(isSearchRetrievalProvenanceRow)))
+  );
+}
+
+function attachRerankMetadataFromToolCallInput(value: Record<string, unknown>): void {
+  const rawToolCallInput = value.tool_call_input;
+  if (typeof rawToolCallInput !== "string" || !rawToolCallInput.trim()) return;
+
+  try {
+    const parsed: unknown = JSON.parse(rawToolCallInput);
+    if (!isObject(parsed)) return;
+
+    const rerankTopN = parsed.rerank_top_n;
+    if (typeof rerankTopN === "number") {
+      value.rerank_top_n = rerankTopN;
+    }
+
+    const rerankProvenance = parsed.rerank_provenance;
+    if (Array.isArray(rerankProvenance) && rerankProvenance.every(isRerankProvenanceRow)) {
+      value.rerank_provenance = rerankProvenance;
+      if (rerankProvenance.length > 0) {
+        value.rerank_bypassed = rerankProvenance.every((row) => row.score === null || row.score === undefined);
+      }
+    }
+  } catch {
+    return;
+  }
+}
+
+function isRerankProvenanceRow(value: unknown): value is RerankProvenanceRow {
+  return (
+    isObject(value) &&
+    typeof value.reranked_rank === "number" &&
+    typeof value.citation_index === "number" &&
+    (value.score === undefined || value.score === null || typeof value.score === "number") &&
+    typeof value.document_id === "string" &&
+    typeof value.source === "string"
   );
 }
 

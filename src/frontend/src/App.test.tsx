@@ -236,6 +236,148 @@ describe("App run query flow", () => {
     ]);
   });
 
+  it("renders reranked evidence order and fallback indicator", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-rerank", run_id: "run-rerank", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-rerank",
+            run_id: "run-rerank",
+            status: "running",
+            message: "Stage completed: rerank",
+            stage: "rerank",
+            stages: [],
+            decomposition_sub_questions: ["Primary subquestion?", "Fallback subquestion?"],
+            sub_question_artifacts: [
+              {
+                sub_question: "Primary subquestion?",
+                expanded_queries: ["Primary subquestion?"],
+                retrieved_docs: [
+                  {
+                    citation_index: 1,
+                    rank: 1,
+                    title: "Doc A",
+                    source: "wiki://a",
+                    content: "Doc A body",
+                    document_id: "doc-a",
+                    score: null,
+                  },
+                  {
+                    citation_index: 2,
+                    rank: 2,
+                    title: "Doc B",
+                    source: "wiki://b",
+                    content: "Doc B body",
+                    document_id: "doc-b",
+                    score: null,
+                  },
+                ],
+                retrieval_provenance: [],
+                reranked_docs: [
+                  {
+                    citation_index: 1,
+                    rank: 1,
+                    title: "Doc B",
+                    source: "wiki://b",
+                    content: "Doc B body",
+                    document_id: "doc-b",
+                    score: 0.98,
+                  },
+                  {
+                    citation_index: 2,
+                    rank: 2,
+                    title: "Doc A",
+                    source: "wiki://a",
+                    content: "Doc A body",
+                    document_id: "doc-a",
+                    score: 0.65,
+                  },
+                ],
+              },
+              {
+                sub_question: "Fallback subquestion?",
+                expanded_queries: ["Fallback subquestion?"],
+                retrieved_docs: [
+                  {
+                    citation_index: 1,
+                    rank: 1,
+                    title: "Doc C",
+                    source: "wiki://c",
+                    content: "Doc C body",
+                    document_id: "doc-c",
+                    score: null,
+                  },
+                ],
+                retrieval_provenance: [],
+                reranked_docs: [
+                  {
+                    citation_index: 1,
+                    rank: 1,
+                    title: "Doc C",
+                    source: "wiki://c",
+                    content: "Doc C body",
+                    document_id: "doc-c",
+                    score: null,
+                  },
+                ],
+              },
+            ],
+            sub_qa: [
+              {
+                sub_question: "Primary subquestion?",
+                sub_answer: "",
+                tool_call_input:
+                  '{"rerank_top_n":2,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":0.98,"document_id":"doc-b","source":"wiki://b"},{"reranked_rank":2,"citation_index":2,"score":0.65,"document_id":"doc-a","source":"wiki://a"}]}',
+              },
+              {
+                sub_question: "Fallback subquestion?",
+                sub_answer: "",
+                tool_call_input:
+                  '{"rerank_top_n":1,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":null,"document_id":"doc-c","source":"wiki://c"}]}',
+              },
+            ],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Test rerank view" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    expect(await screen.findByText("Run status: Stage completed: rerank")).toBeInTheDocument();
+    const rerankHeading = screen.getByRole("heading", { name: "Rerank" });
+    expect(rerankHeading).toBeInTheDocument();
+    const rerankSection = rerankHeading.closest("section");
+    expect(rerankSection).toBeTruthy();
+    expect(screen.getByText("Fallback: reranking bypassed")).toBeInTheDocument();
+    expect(screen.getByText("[1] Doc B")).toBeInTheDocument();
+    expect(screen.getByText("[2] Doc A")).toBeInTheDocument();
+    const orderRows = Array.from((rerankSection as HTMLElement).querySelectorAll(".rerank-order-change"));
+    expect(orderRows.some((item) => (item.textContent ?? "").includes("yes"))).toBe(true);
+    expect(orderRows.some((item) => (item.textContent ?? "").includes("no"))).toBe(true);
+  });
+
   it("renders main question and expandable subquestion details from async final result", async () => {
     const fetchMock = vi
       .fn()

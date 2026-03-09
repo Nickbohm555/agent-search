@@ -5,6 +5,7 @@ import {
   RequestState,
   RuntimeAgentRunResponse,
   SearchCandidateRow,
+  SubQuestionAnswer,
   SubQuestionArtifact,
   WikiSourceOption,
   cancelInternalDataLoad,
@@ -44,6 +45,7 @@ export default function App() {
   const [runCurrentStage, setRunCurrentStage] = useState("");
   const [decompositionSubQuestions, setDecompositionSubQuestions] = useState<string[]>([]);
   const [subQuestionArtifacts, setSubQuestionArtifacts] = useState<SubQuestionArtifact[]>([]);
+  const [runSubQa, setRunSubQa] = useState<SubQuestionAnswer[]>([]);
   const [stageStatuses, setStageStatuses] = useState<Record<AgentStageName, AgentStageRuntimeStatus>>({
     decompose: "pending",
     expand: "pending",
@@ -198,6 +200,7 @@ export default function App() {
     setRunCurrentStage("");
     setDecompositionSubQuestions([]);
     setSubQuestionArtifacts([]);
+    setRunSubQa([]);
     setStageStatuses({
       decompose: "pending",
       expand: "pending",
@@ -246,6 +249,7 @@ export default function App() {
       setRunCurrentStage(status.stage);
       setDecompositionSubQuestions(status.decomposition_sub_questions);
       setSubQuestionArtifacts(status.sub_question_artifacts);
+      setRunSubQa(status.sub_qa);
       setRunStatusMessage(status.message || `Run status: ${status.status}`);
       const nextStatuses = computeStageStatuses(orderedStages, status.stage, status.status);
       setStageStatuses(nextStatuses);
@@ -257,6 +261,11 @@ export default function App() {
         (sum, artifact) => sum + artifact.retrieved_docs.length,
         0,
       );
+      const rerankRowsTotal = status.sub_question_artifacts.reduce((sum, artifact) => sum + artifact.reranked_docs.length, 0);
+      const rerankBypassedCount = status.sub_question_artifacts.reduce((sum, artifact) => {
+        const matchingSubQa = status.sub_qa.find((item) => item.sub_question === artifact.sub_question);
+        return sum + (isRerankFallback({ artifact, subQa: matchingSubQa }) ? 1 : 0);
+      }, 0);
       console.info("Async run stage update.", {
         submittedQuery: submitted,
         jobId,
@@ -266,6 +275,8 @@ export default function App() {
         subQuestionArtifactCount: status.sub_question_artifacts.length,
         searchRawHitsTotal,
         searchDedupedHitsTotal,
+        rerankRowsTotal,
+        rerankBypassedCount,
         stageStatuses: nextStatuses,
       });
 
@@ -277,6 +288,7 @@ export default function App() {
         };
         setRunState("success");
         setLastRunResponse(response);
+        setRunSubQa(response.sub_qa);
         setAnswer(response.output);
         setRunStatusMessage(status.message || "Completed.");
         setRunJobId(null);
@@ -514,6 +526,62 @@ export default function App() {
         )}
       </section>
 
+      <section className="panel rerank-panel">
+        <h2>Rerank</h2>
+        {decompositionSubQuestions.length > 0 ? (
+          <ol className="rerank-lane-list" aria-label="Reranked evidence groups">
+            {decompositionSubQuestions.map((subQuestion, index) => {
+              const artifact =
+                subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
+              const rerankRows = getRerankRows(artifact);
+              const matchingSubQa = runSubQa.find((item) => item.sub_question === subQuestion);
+              const fallbackBypassed = isRerankFallback({
+                artifact,
+                subQa: matchingSubQa,
+              });
+              const orderChanged = didRerankOrderChange(artifact);
+              return (
+                <li key={`${index}-${subQuestion}`} className="rerank-lane-item">
+                  <p className="rerank-lane-title">
+                    <strong>Subquestion {index + 1}:</strong> {subQuestion}
+                  </p>
+                  <p className="rerank-order-change">
+                    <strong>Order changed:</strong> {orderChanged ? "yes" : "no"}
+                  </p>
+                  {fallbackBypassed ? <span className="rerank-fallback-badge">Fallback: reranking bypassed</span> : null}
+                  {rerankRows.length > 0 ? (
+                    <ol className="rerank-row-list" aria-label={`Reranked evidence rows for subquestion ${index + 1}`}>
+                      {rerankRows.map((row) => (
+                        <li key={`${index}-${row.citation_index}-${row.document_id}`} className="rerank-row-item">
+                          <p className="rerank-row-title">
+                            <strong>
+                              [{row.citation_index}] {row.title || "Untitled source"}
+                            </strong>
+                          </p>
+                          <p className="rerank-row-meta">
+                            <strong>Rank:</strong> {row.rank}
+                            {" · "}
+                            <strong>Score:</strong> {row.score === null || row.score === undefined ? "n/a" : row.score}
+                          </p>
+                          <p className="rerank-row-source">
+                            <strong>Source:</strong> {row.source || "unknown"}
+                          </p>
+                          <p className="rerank-row-snippet">{toSnippet(row.content)}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p>No reranked evidence yet.</p>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        ) : (
+          <p>No rerank data yet.</p>
+        )}
+      </section>
+
       <section className="panel final-readout-panel">
         <h2>Final Readout</h2>
         <section className="final-readout-section" aria-labelledby="final-readout-main-question">
@@ -526,9 +594,9 @@ export default function App() {
         </section>
         <section className="final-readout-section" aria-labelledby="final-readout-subquestions">
           <h3 id="final-readout-subquestions">Subquestions &amp; subanswers</h3>
-          {(lastRunResponse?.sub_qa?.length ?? 0) > 0 ? (
+          {runSubQa.length > 0 ? (
             <div className="subquestions-list">
-              {(lastRunResponse?.sub_qa ?? []).map((item, index) => {
+              {runSubQa.map((item, index) => {
                 const subAnswer = item.sub_answer?.trim() ?? "";
                 const toolCallInput = item.tool_call_input?.trim() ?? "";
                 const summaryId = `subquestion-summary-${index}`;
@@ -658,6 +726,26 @@ function getSearchMergeStats(
 function getSearchPreviewRows(artifact: SubQuestionArtifact | undefined, limit: number): SearchCandidateRow[] {
   if (!artifact || limit <= 0) return [];
   return artifact.retrieved_docs.slice(0, limit);
+}
+
+function getRerankRows(artifact: SubQuestionArtifact | undefined): SearchCandidateRow[] {
+  if (!artifact) return [];
+  return artifact.reranked_docs;
+}
+
+function isRerankFallback(args: { artifact: SubQuestionArtifact | undefined; subQa: SubQuestionAnswer | undefined }): boolean {
+  if (!args.artifact) return false;
+  if (args.subQa?.rerank_bypassed !== undefined) return args.subQa.rerank_bypassed;
+  if (args.artifact.reranked_docs.length === 0) return false;
+  return args.artifact.reranked_docs.every((item) => item.score === null || item.score === undefined);
+}
+
+function didRerankOrderChange(artifact: SubQuestionArtifact | undefined): boolean {
+  if (!artifact || artifact.reranked_docs.length === 0 || artifact.retrieved_docs.length === 0) return false;
+  const baselineIds = artifact.retrieved_docs.slice(0, artifact.reranked_docs.length).map((item) => item.document_id);
+  const rerankedIds = artifact.reranked_docs.map((item) => item.document_id);
+  if (baselineIds.length !== rerankedIds.length) return true;
+  return baselineIds.some((item, index) => item !== rerankedIds[index]);
 }
 
 function toSnippet(content: string): string {
