@@ -1,6 +1,6 @@
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 29. (move +1 after each turn)
+Current section to work on: section 30. (move +1 after each turn)
 
 ---
 
@@ -858,7 +858,7 @@ Current section to work on: section 29. (move +1 after each turn)
 **How to test:** Run runner tests and smoke run on small dataset.
 
 **Test results:** (Add when section is complete.)
-- Pending.
+- Completed.
 
 ---
 

@@ -1794,3 +1794,65 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 29
+
+## Section 29: Benchmark runner core - synchronous evaluation engine
+
+**Single goal:** Implement core runner iterating mode x question and persisting raw outputs.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Load dataset by version.
+- Execute through benchmark execution adapter.
+- Persist incremental results for crash-safe partial progress.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_runner.py` | Core benchmark execution loop. |
+| `src/backend/tests/services/test_benchmark_runner.py` | Iteration/persistence tests. |
+
+**How to test:** Run runner tests and smoke run on small dataset.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkRunner` in `services/benchmark_runner.py` with a synchronous mode x question execution loop that loads dataset versions from `benchmarks/datasets/<dataset_id>/questions.jsonl`.
+- Implemented crash-safe incremental persistence by upserting each `benchmark_results` row and committing per question; failures are stored in `execution_error` and re-raised to fail the run.
+- Added resume behavior that skips only previously successful `(run_id, mode, question_id)` rows and retries failed rows.
+- Added run initialization/metadata handling for `benchmark_runs` and `benchmark_run_modes`, including SLO snapshot defaults, context fingerprint, dataset hash as corpus hash, and per-mode runtime override metadata.
+- Added `tests/services/test_benchmark_runner.py` covering full iteration persistence and failed-run resume semantics.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose exec backend sh -lc "uv run --with pytest python -m pytest tests/services/test_benchmark_runner.py"`
+- `docker compose exec backend sh -lc "uv run python - <<'PY' ... section-29 smoke runner ... PY"`
+- `docker compose restart backend`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --no-color --tail=200 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=160 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/services/test_benchmark_runner.py .. [100%]
+pytest: 2 passed in 1.46s
+smoke: SMOKE_SUMMARY BenchmarkRunSummary(run_id='benchmark-run-a444f8d1-30a1-4507-a7ce-1d2f2c9791c2', dataset_id='smoke_v1', mode_count=1, question_count=1, completed_results=1)
+backend: Benchmark runner persisted result run_id=benchmark-run-a444f8d1-30a1-4507-a7ce-1d2f2c9791c2 mode=agentic_default question_id=DRB-901 latency_ms=0 has_error=False
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
