@@ -1402,3 +1402,68 @@ docker compose logs --no-color --tail=80 backend frontend db
 -> backend uvicorn/alembic startup healthy; frontend vite ready on :5173; db ready/healthy
 -> note: watchfiles reload warnings observed after test/dependency edits; no fatal runtime errors
 ```
+
+## Section 23: Remove migration scaffolding - flags, dual paths, and temporary parity code
+
+**Single goal:** Remove temporary migration switches and dual-path code once graph runner is the only production path.
+
+**Details:**
+- Remove feature flags used only for migration rollback.
+- Remove dual-path branching and temporary adapters used for parity comparisons.
+- Remove migration-only fixtures and temporary eval wiring that is no longer needed.
+- Keep permanent quality tests, but drop one-off migration parity harnesses.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): remove migration-only env vars from docs/config.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/agent_service.py` | Delete dual-path/flagged branches. |
+| `src/backend/tests/services/test_agent_service.py` | Remove migration-only parity fixtures while keeping permanent regressions. |
+| `README.md` | Remove migration-only flags and rollout instructions. |
+
+**How to test:** Run backend tests with migration flags removed and verify runtime behavior is unchanged.
+**Documentation update:** After completing this section, update `README.md` and `src/frontend/public/run-flow.html`.
+
+**Details completed:**
+- Removed runtime migration adapter scaffolding from `src/backend/services/agent_service.py`:
+  - Inlined graph execution flow directly into `run_runtime_agent(...)`.
+  - Deleted `_run_runtime_agent_with_graph_runner(...)` wrapper and graph-path selection log phrasing.
+  - Preserved/expanded runtime visibility logs around vector-store acquisition, context build, and graph completion.
+- Updated `README.md` to remove migration/rollout wording while keeping graph-only architecture guidance:
+  - Replaced section-indexed migration notes with canonical graph-runtime descriptions.
+  - Kept permanent retrieval-quality and efficiency evaluation guidance without migration framing.
+- Updated `src/frontend/public/run-flow.html` to remove migration-baseline and stale dual-path/deep-agent references:
+  - Renamed Graph State panel to canonical graph contracts.
+  - Replaced “Section X adds …” rollout text with stable runtime behavior descriptions.
+  - Replaced stale `agent.invoke` / `_extract_sub_qa` / `create_deep_agent_impl` snippets with current graph-runner + response mapping flow.
+
+### Useful logs
+
+```text
+Fresh restart before work:
+docker compose down -v --rmi all && docker compose build && docker compose up -d
+-> full rebuild/restart completed; db healthy; backend/frontend/chrome up
+
+Required backend tests:
+docker compose exec backend uv run pytest
+-> failed initially: `pytest` not found in backend uv env
+
+docker compose exec backend sh -lc 'uv pip install pytest && uv run python -m pytest'
+-> PASS (104 passed, 1 warning)
+
+Post-change restarts and runtime checks:
+docker compose restart backend frontend
+-> backend/frontend restarted
+
+docker compose ps
+-> backend/frontend/chrome up; db healthy
+
+docker compose logs --no-color --tail=140 backend frontend db
+-> backend uvicorn/alembic startup healthy; runtime reloads observed after edits
+-> frontend vite ready on :5173 with run-flow reload events
+-> db ready/healthy; non-fatal transaction-in-progress warnings observed during test activity
+```

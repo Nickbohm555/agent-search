@@ -146,7 +146,7 @@
       </div>
 
       <div class="panel">
-        <h2>Graph State Contracts (Migration Baseline)</h2>
+        <h2>Graph State Contracts</h2>
         <p>
           Runtime graph state is typed in backend schemas as <code>AgentGraphState</code> with staged
           <code>SubQuestionArtifacts</code> and compatibility fields (<code>sub_qa</code>, <code>output</code>).
@@ -159,54 +159,53 @@
           <code>run_id</code>, <code>thread_id</code>, <code>trace_id</code>, <code>correlation_id</code>.
         </p>
         <p class="small">
-          Section 8 adds <code>run_sequential_graph_runner(...)</code> for strict sequential execution:
-          <code>decompose -&gt; (expand -&gt; search -&gt; rerank -&gt; answer per sub-question) -&gt; synthesize_final</code>.
-          Section 10 makes <code>run_runtime_agent(...)</code> call the graph path for <code>/api/agents/run</code>.
+          The runtime path is graph-only: <code>run_runtime_agent(...)</code> calls
+          <code>run_parallel_graph_runner(...)</code> for <code>/api/agents/run</code>.
+          <code>run_sequential_graph_runner(...)</code> is retained as a deterministic reference runner for tests.
         </p>
         <p class="small">
-          Section 9 adds <code>run_parallel_graph_runner(...)</code> for bounded fanout across sub-questions with
-          deterministic output reindexing, plus <code>stage_snapshots</code> emitted on graph state after each stage
-          for progressive status consumers.
+          <code>run_parallel_graph_runner(...)</code> executes bounded fanout across sub-questions with deterministic
+          output reindexing, plus <code>stage_snapshots</code> emitted on graph state after each stage for progressive status consumers.
         </p>
         <p class="small">
-          Section 11 adds async polling contracts in <code>services/agent_jobs.py</code> and routes:
+          Async polling contracts in <code>services/agent_jobs.py</code> and routes:
           <code>/api/agents/run-async</code>, <code>/api/agents/run-status/{job_id}</code>,
           <code>/api/agents/run-cancel/{job_id}</code>. Status emits stage <code>subquestions_ready</code> as soon as
           decomposition snapshot is produced.
         </p>
         <p class="small">
-          Section 15 adds a frontend Search stage panel that consumes <code>sub_question_artifacts[].retrieved_docs</code>
+          The frontend Search stage panel consumes <code>sub_question_artifacts[].retrieved_docs</code>
           and <code>sub_question_artifacts[].retrieval_provenance</code> to display merged candidate previews plus
           transparent merge stats (<code>raw_hits</code> vs <code>deduped_hits</code>) before rerank.
         </p>
         <p class="small">
-          Section 16 adds a frontend Rerank stage panel that consumes <code>sub_question_artifacts[].reranked_docs</code>
+          The frontend Rerank stage panel consumes <code>sub_question_artifacts[].reranked_docs</code>
           to display final evidence order, citation indices, optional scores, and a visible fallback badge when
           reranking is bypassed.
         </p>
         <p class="small">
-          Section 17 adds a frontend Subanswer stage panel that consumes <code>sub_qa[].sub_answer</code>,
+          The frontend Subanswer stage panel consumes <code>sub_qa[].sub_answer</code>,
           surfaces explicit fallback <code>nothing relevant found</code>, and links subanswer citation markers
           (for example <code>[1]</code>) back to reranked evidence rows.
         </p>
         <p class="small">
-          Section 18 adds a frontend Final Synthesis panel that updates only after terminal
+          The frontend Final Synthesis panel updates only after terminal
           <code>synthesize_final</code> completion, summarizes supporting subanswers and citation coverage, and
           preserves the previous successful final answer while a new run is still in progress.
         </p>
         <p class="small">
-          Section 19 adds backend parity evaluations for stable graph-runtime response shape
+          Backend regression tests verify stable graph-runtime response shape
           (<code>main_question</code>, <code>sub_qa</code>, <code>output</code>) and fallback behavior
           (for example vector-store timeout and <code>nothing relevant found</code> behavior).
         </p>
         <p class="small">
-          Section 20 adds retrieval-quality evaluations focused on evidence quality only (not cost): tests compare
+          Retrieval-quality evaluations focus on evidence quality only (not cost): tests compare
           <code>search-only</code> vs <code>search+rerank</code> for hard queries, track top-hit relevance and
           citation-grounding consistency, and include baseline slices against the runtime stack
           (<code>MultiQueryRetriever</code> expansion + <code>flashrank</code> rerank).
         </p>
         <p class="small">
-          Section 21 adds efficiency evaluations focused on token/cost impact: tests compare naive large-context
+          Efficiency evaluations focus on token/cost impact: tests compare naive large-context
           retrieval windows against reranked <code>top_n</code> context, require that gold evidence remains in the
           final cited context, and record operating targets of <code>k_fetch=6..8</code> with
           <code>top_n=2..3</code> for strong token-budget reduction.
@@ -348,8 +347,8 @@ run_runtime_agent() internals
             <tr><td>5</td><td><code>_run_decomposition_only_llm_call</code> + <code>_parse_decomposition_output</code></td><td>Internal decomposition node helpers that normalize/dedupe/limit the provided sub-question list for "Initial Subquestion 1..n" lanes.</td></tr>
             <tr><td>6</td><td><code>run_search_node</code> + <code>apply_search_node_output_to_graph_state</code></td><td>Graph search node for expanded queries with <code>k_fetch</code> over-fetch and deterministic merge/dedupe before rerank.</td></tr>
             <tr><td>7</td><td><code>run_parallel_graph_runner</code></td><td>Execution-plane setup for the "Initial Subquestion 1..n" region.</td></tr>
-            <tr><td>8</td><td><code>agent.invoke</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Validate -&gt; Rerank -&gt; Answer -&gt; Check.</td></tr>
-            <tr><td>9</td><td><code>_extract_sub_qa</code></td><td>Post-lane collection feeding "Generate Initial Answer".</td></tr>
+            <tr><td>8</td><td><code>run_parallel_graph_runner</code></td><td>"Initial Subquestion 1..n" lanes: Expand -&gt; Search -&gt; Rerank -&gt; Answer with stage snapshots.</td></tr>
+            <tr><td>9</td><td><code>map_graph_state_to_runtime_response</code></td><td>Maps graph state into backward-compatible response payload for API output.</td></tr>
             <tr><td>10</td><td><code>run_pipeline_for_subquestions</code></td><td>Explicit per-subquestion stage stack shown in each lane (Expand/Search/Validate/Rerank/Answer/Check), run in parallel.</td></tr>
             <tr><td>11</td><td><code>generate_initial_answer</code></td><td>"Generate Initial Answer".</td></tr>
             <tr><td>12</td><td><code>should_refine</code></td><td>"Need refinement?" decision node.</td></tr>
@@ -438,21 +437,21 @@ run_runtime_agent() internals
             </tr>
             <tr>
               <td>11</td>
-              <td><code>agent.invoke</code></td>
-              <td>Coordinator delegates each provided subquestion via <code>task(...)</code>; subagent calls <code>search_database(query, expanded_query, limit)</code>.</td>
-              <td>Agent message list + tool interactions.</td>
+              <td><code>run_parallel_graph_runner</code></td>
+              <td>Executes fanout/fanin across subquestions with deterministic reindexing, state updates, and snapshot emission.</td>
+              <td><code>AgentGraphState</code> with staged artifacts.</td>
             </tr>
             <tr>
               <td>12</td>
-              <td><code>_extract_sub_qa</code></td>
-              <td>Builds <code>SubQuestionAnswer[]</code> from captured retriever calls and tool outputs, including <code>tool_call_input</code> and <code>expanded_query</code>.</td>
-              <td>Raw per-subquestion results.</td>
+              <td><code>map_graph_state_to_runtime_response</code></td>
+              <td>Converts graph state compatibility fields into the runtime API contract.</td>
+              <td><code>RuntimeAgentRunResponse</code>.</td>
             </tr>
             <tr>
               <td>13</td>
-              <td><code>run_pipeline_for_subquestions</code></td>
-              <td>Processes each subquestion in thread pool: validate docs -> rerank -> generate subanswer -> verify grounding.</td>
-              <td>Enriched <code>sub_qa[]</code> with <code>answerable</code>, <code>verification_reason</code>.</td>
+              <td><code>run_runtime_agent</code> return</td>
+              <td>Returns stable API payload (<code>main_question</code>, <code>sub_qa</code>, <code>output</code>) to the route layer.</td>
+              <td>HTTP response body.</td>
             </tr>
             <tr>
               <td>14</td>
@@ -588,69 +587,41 @@ decomposition_sub_questions = _parse_decomposition_output(
         <details>
           <summary><strong>Order 6:</strong> <code>run_parallel_graph_runner</code></summary>
           <div class="mono-block"># src/backend/services/agent_service.py
-agent = run_parallel_graph_runner(
+state = run_parallel_graph_runner(
+    payload=payload,
     vector_store=vector_store,
-    model=_RUNTIME_AGENT_MODEL,
+    model=model,
+    run_metadata=run_metadata,
+    initial_search_context=initial_search_context,
 )
 
 # src/backend/services/agent_service.py
 def run_parallel_graph_runner(payload, vector_store, model, run_metadata, initial_search_context):
-    retriever_tool = make_retriever_tool(vector_store)
-    rag_subagent = {
-        "name": "rag_retriever",
-        "system_prompt": _RAG_SUBAGENT_PROMPT,
-        "tools": [retriever_tool],
-    }
-    runnable = create_deep_agent_impl(
-        model=model,
-        tools=[],
-        system_prompt=_COORDINATOR_PROMPT,
-        subagents=[rag_subagent],
-        backend=StateBackend,
-        checkpointer=_COORDINATOR_CHECKPOINTER,
-    )
-    return _LoggingRunnable(runnable)</div>
+    state = build_agent_graph_state(...)
+    state = apply_decompose_node_output_to_graph_state(...)
+    # fanout lanes: expand -> search -> rerank -> answer
+    state = apply_synthesize_final_node_output_to_graph_state(...)
+    return state</div>
         </details>
 
         <details>
-          <summary><strong>Order 7:</strong> <code>agent.invoke</code></summary>
+          <summary><strong>Order 7:</strong> <code>map_graph_state_to_runtime_response</code></summary>
           <div class="mono-block"># src/backend/services/agent_service.py
-search_db_capture = SearchDatabaseCaptureCallback()
-callbacks = [AgentLoggingCallbackHandler(), search_db_capture]
-langfuse_callback = build_langfuse_callback_handler()
-if langfuse_callback is not None:
-    callbacks.append(langfuse_callback)
-run_thread_id = str(uuid.uuid4())
-config = {
-    "callbacks": callbacks,
-    "configurable": {"thread_id": run_thread_id},
-}
-
-coordinator_message = run_decomposition_node(decomposition_sub_questions)
-result = agent.invoke(
-    {"messages": [HumanMessage(content=coordinator_message)]},
-    config=config,
-)</div>
+response = map_graph_state_to_runtime_response(state)
+# RuntimeAgentRunResponse(main_question=..., sub_qa=[...], output=...)</div>
         </details>
 
         <details>
-          <summary><strong>Order 8:</strong> <code>_extract_sub_qa</code></summary>
+          <summary><strong>Order 8:</strong> <code>run_runtime_agent</code> return</summary>
           <div class="mono-block"># src/backend/services/agent_service.py
-search_database_calls = search_db_capture.get_calls()
-sub_qa = _extract_sub_qa(messages, search_database_calls=search_database_calls or None)
-
-def _extract_sub_qa(messages, search_database_calls=None):
-    if search_database_calls:
-        for input_str, output_str in search_database_calls:
-            sub_qa.append(SubQuestionAnswer(
-                sub_question=_parse_tool_input_for_query(input_str) or "Search",
-                sub_answer=output_str,
-                tool_call_input=input_str,
-                expanded_query=_parse_tool_input_for_expanded_query(input_str),
-                sub_agent_response=matched_task_answer,
-            ))
-        return _normalize_sub_qa_questions(sub_qa)
-    # fallback path parses top-level AI/Tool messages</div>
+logger.info(
+    "Runtime agent run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
+    len(response.sub_qa),
+    len(response.output),
+    len(state.stage_snapshots),
+    run_metadata.run_id,
+)
+return response</div>
         </details>
 
         <details>

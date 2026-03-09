@@ -47,9 +47,9 @@ This project builds an **SDK** that takes your **model**, your **vector store**,
 ```
 
 The system has two main paths: **ingestion** (load wiki or other curated sources into Postgres + pgvector) and **answer** (user query → initial retrieval → graph decomposition → parallel per-subquestion graph lane → synthesis). A React front end and FastAPI backend expose load/wipe/run; `/api/agents/run` executes the graph runner path (`run_parallel_graph_runner`) as the sole runtime execution mode. Data flows through typed schemas (`RuntimeAgentRunRequest` / `RuntimeAgentRunResponse`, `SubQuestionAnswer`).
-Section 11 adds async runtime endpoints (`/api/agents/run-async`, `/api/agents/run-status/{job_id}`, `/api/agents/run-cancel/{job_id}`) so clients can poll staged progress and receive `subquestions_ready` as soon as decomposition finishes.
+Async runtime endpoints (`/api/agents/run-async`, `/api/agents/run-status/{job_id}`, `/api/agents/run-cancel/{job_id}`) let clients poll staged progress and receive `subquestions_ready` as soon as decomposition finishes.
 
-The runtime service also defines graph-state contracts for staged migration: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
+The runtime service defines graph-state contracts: `AgentGraphState`, `SubQuestionArtifacts`, node IO models (`DecomposeNodeInput/Output`, `ExpandNodeInput/Output`, `SearchNodeInput/Output`, `RerankNodeInput/Output`, `AnswerSubquestionNodeInput/Output`, `SynthesizeFinalNodeInput/Output`), plus run observability metadata (`run_id`, `thread_id`, `trace_id`, `correlation_id`) shared with Langfuse tracing conventions.
 
 <p align="center">
   <img src="assets/readme-divider.png" alt="" width="100%" data-darkreader-ignore />
@@ -232,19 +232,14 @@ Backend
 - Frontend section 16 rerank view: a dedicated Rerank panel renders `sub_question_artifacts[].reranked_docs` in final citation order with optional scores, plus a fallback badge when reranking is bypassed.
 - Frontend section 17 subanswer view: a dedicated Subanswer panel renders per-subquestion `sub_qa[].sub_answer` as soon as answer-stage updates arrive, highlights explicit `nothing relevant found` fallback responses, and links citation markers (`[n]`) to matching Rerank evidence rows.
 - Frontend section 18 final synthesis view: a dedicated Final Synthesis panel updates only when the terminal synthesis stage completes, summarizes supporting subanswers/citation coverage, and preserves the previous successful final synthesis while a new run is in progress.
-- Section 19 parity evals: backend regression tests validate stable graph-runtime response shape (`main_question`, `output`, `sub_qa` count/order), plus matching fallback behavior (including vector-store timeout fallback and `nothing relevant found` propagation).
-- Section 20 retrieval quality evals: backend tests now compare `search-only` vs `search+rerank` on hard queries and track two quality metrics only: `top1_hit_rate` for relevant evidence and citation-grounding consistency (whether cited `[1]` resolves to the expected supporting row). Eval slices include baseline (`no expansion + no rerank`) and stack path (`MultiQueryRetriever` expansion slice + `flashrank` rerank slice).
-- Section 21 efficiency evals: backend tests now quantify token-budget impact of reranked `top_n` context versus naive unfiltered context, enforce a quality floor (gold evidence remains in cited context), and record practical operating ranges. Current recommended operating range from the eval fixtures is `k_fetch=6..8` with `top_n=2..3` for substantial context reduction while preserving answer grounding.
+- Backend regression tests validate stable graph-runtime response shape (`main_question`, `output`, `sub_qa` count/order), plus matching fallback behavior (including vector-store timeout fallback and `nothing relevant found` propagation).
+- Retrieval quality evals compare `search-only` vs `search+rerank` on hard queries and track two quality metrics only: `top1_hit_rate` for relevant evidence and citation-grounding consistency (whether cited `[1]` resolves to the expected supporting row). Eval slices include baseline (`no expansion + no rerank`) and stack path (`MultiQueryRetriever` expansion slice + `flashrank` rerank slice).
+- Efficiency evals quantify token-budget impact of reranked `top_n` context versus naive unfiltered context, enforce a quality floor (gold evidence remains in cited context), and record practical operating ranges. Current recommended operating range from the eval fixtures is `k_fetch=6..8` with `top_n=2..3` for substantial context reduction while preserving answer grounding.
 
 ### Runtime pipeline map (orders 1-18)
 
-Section 8 migration note: a sequential graph runner now exists as `run_sequential_graph_runner`, executing strict lane order:
-`decompose -> (expand -> search -> rerank -> answer per sub-question, sequentially) -> synthesize_final`.
-Section 10 migration note: `run_runtime_agent` calls `run_parallel_graph_runner` on `/api/agents/run` as the only runtime path.
-Section 9 migration note: `run_parallel_graph_runner` now executes sub-question lanes with bounded fanout (`GRAPH_RUNNER_MAX_WORKERS`) and reindexes lane outputs back to original decomposition order before synthesis. It also emits `stage_snapshots` on `AgentGraphState` after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
-Section 22 cleanup note: deep-agent rollback runtime code has been removed; graph execution is now the only maintained production runtime.
-Section 20 migration note: retrieval-quality eval suites in `tests/services/test_agent_service.py` and `tests/services/test_reranker_service.py` enforce that rerank-enabled paths improve hard-query retrieval ordering and citation-grounding consistency versus non-reranked/non-expanded baselines.
-Section 21 migration note: efficiency eval suites in `tests/services/test_agent_service.py` enforce that reranked contexts reduce token budget versus naive retrieved windows while retaining gold-evidence quality floor, and they lock recommended tuning targets for `k_fetch`/`top_n`.
+The runtime path is graph-only (`run_runtime_agent -> run_parallel_graph_runner`) and executes bounded fanout (`GRAPH_RUNNER_MAX_WORKERS`) with deterministic reindexing back to original decomposition order. The graph state emits `stage_snapshots` after `decompose`, each lane stage (`expand/search/rerank/answer`), and `synthesize_final`.
+`run_sequential_graph_runner` is retained as a deterministic reference runner for tests and debugging.
 
 | Order | Function | Core logic | Output |
 |------|----------|------------|--------|

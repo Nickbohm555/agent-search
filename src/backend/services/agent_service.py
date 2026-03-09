@@ -2012,23 +2012,23 @@ def _seed_refined_sub_qa_from_retrieval(
     return seeded
 
 
-def _run_runtime_agent_with_graph_runner(
+def run_runtime_agent(
     payload: RuntimeAgentRunRequest,
     db: Session,
     model: BaseChatModel | None = None,
     vector_store: Any | None = None,
-    run_metadata: GraphRunMetadata | None = None,
 ) -> RuntimeAgentRunResponse:
-    resolved_run_metadata = run_metadata or build_graph_run_metadata()
+    _ = db
+    run_metadata = build_graph_run_metadata()
     logger.info(
-        "Runtime agent graph path start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
+        "Runtime agent run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(payload.query),
         len(payload.query),
         model is not None,
         vector_store is not None,
-        resolved_run_metadata.run_id,
-        resolved_run_metadata.trace_id,
-        resolved_run_metadata.correlation_id,
+        run_metadata.run_id,
+        run_metadata.trace_id,
+        run_metadata.correlation_id,
     )
     selected_vector_store = vector_store
     if selected_vector_store is None:
@@ -2044,9 +2044,9 @@ def _run_runtime_agent_with_graph_runner(
             )
         except FuturesTimeoutError:
             logger.warning(
-                "Runtime agent graph path short-circuiting due to vector store timeout query=%s run_id=%s",
+                "Runtime agent short-circuiting due to vector store timeout query=%s run_id=%s",
                 _truncate_query(payload.query),
-                resolved_run_metadata.run_id,
+                run_metadata.run_id,
             )
             return RuntimeAgentRunResponse(
                 main_question=payload.query,
@@ -2054,14 +2054,14 @@ def _run_runtime_agent_with_graph_runner(
                 output=_VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE,
             )
         logger.info(
-            "Runtime agent graph path vector store selected source=default collection_name=%s run_id=%s",
+            "Runtime agent vector store selected source=default collection_name=%s run_id=%s",
             _VECTOR_COLLECTION_NAME,
-            resolved_run_metadata.run_id,
+            run_metadata.run_id,
         )
     else:
         logger.info(
-            "Runtime agent graph path vector store selected source=provided run_id=%s",
-            resolved_run_metadata.run_id,
+            "Runtime agent vector store selected source=provided run_id=%s",
+            run_metadata.run_id,
         )
 
     def _build_initial_context_payload() -> tuple[list[Any], list[dict[str, Any]]]:
@@ -2080,57 +2080,35 @@ def _run_runtime_agent_with_graph_runner(
             fn=_build_initial_context_payload,
         )
         logger.info(
-            "Runtime agent graph path initial context built query=%s docs=%s k=%s score_threshold=%s run_id=%s",
+            "Runtime agent initial context built query=%s docs=%s k=%s score_threshold=%s run_id=%s",
             _truncate_query(payload.query),
             len(initial_search_context),
             _INITIAL_SEARCH_CONTEXT_K,
             _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-            resolved_run_metadata.run_id,
+            run_metadata.run_id,
         )
     except FuturesTimeoutError:
         initial_search_context = []
         logger.warning(
-            "Runtime agent graph path initial context timeout; continuing with empty context query=%s timeout_s=%s run_id=%s",
+            "Runtime agent initial context timeout; continuing with empty context query=%s timeout_s=%s run_id=%s",
             _truncate_query(payload.query),
             _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
-            resolved_run_metadata.run_id,
+            run_metadata.run_id,
         )
 
     state = run_parallel_graph_runner(
         payload=payload,
         vector_store=selected_vector_store,
         model=model,
-        run_metadata=resolved_run_metadata,
+        run_metadata=run_metadata,
         initial_search_context=initial_search_context,
     )
     response = map_graph_state_to_runtime_response(state)
     logger.info(
-        "Runtime agent graph path complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
+        "Runtime agent run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
         len(response.sub_qa),
         len(response.output),
         len(state.stage_snapshots),
-        resolved_run_metadata.run_id,
+        run_metadata.run_id,
     )
     return response
-
-
-def run_runtime_agent(
-    payload: RuntimeAgentRunRequest,
-    db: Session,
-    model: BaseChatModel | None = None,
-    vector_store: Any | None = None,
-) -> RuntimeAgentRunResponse:
-    run_metadata = build_graph_run_metadata()
-    logger.info(
-        "Runtime agent path selection path=graph_only run_id=%s trace_id=%s correlation_id=%s",
-        run_metadata.run_id,
-        run_metadata.trace_id,
-        run_metadata.correlation_id,
-    )
-    return _run_runtime_agent_with_graph_runner(
-        payload,
-        db,
-        model=model,
-        vector_store=vector_store,
-        run_metadata=run_metadata,
-    )
