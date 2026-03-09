@@ -360,3 +360,71 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 7
+
+## Section 7: LangChain vector store adapter - first-class implementation
+
+**Single goal:** Implement LangChain adapter for SDK vector store protocol.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Support similarity retrieval and score behaviors currently used.
+- Preserve fallback retrieval paths.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): reuse existing LangChain packages.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/vectorstore/langchain_adapter.py` | Production protocol adapter. |
+| `src/backend/tests/sdk/test_langchain_vectorstore_adapter.py` | Adapter behavior tests. |
+
+**How to test:** Run adapter tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `LangChainVectorStoreAdapter` in `agent_search.vectorstore.langchain_adapter` as a production adapter over LangChain-compatible vector stores.
+- Implemented `similarity_search(query, k, filter=None)` with stable `k` coercion and fallback for stores that do not accept `filter` in method signature.
+- Implemented `similarity_search_with_relevance_scores(...)` that uses native score APIs when available and falls back to `similarity_search` when unavailable.
+- Added structured retrieval-path logs (`mode=with_filter`, `mode=without_filter`, `mode=with_scores`, `mode=similarity_search`) for runtime visibility.
+- Added SDK adapter tests in `tests/sdk/test_langchain_vectorstore_adapter.py` covering filter passing, fallback paths, relevance-score behavior, and score fallback behavior.
+- Exported the adapter from `agent_search.vectorstore.__init__` for first-class SDK access.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_langchain_vectorstore_adapter.py`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_vectorstore_protocol.py`
+- `docker compose restart backend`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_langchain_vectorstore_adapter.py .... [100%]
+pytest: 4 passed in 1.49s
+pytest: tests/sdk/test_vectorstore_protocol.py ..... [100%]
+pytest: 5 passed in 1.50s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```
