@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import relationship
@@ -45,3 +45,55 @@ class InternalDocumentChunk(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     document = relationship("InternalDocument", back_populates="chunks")
+
+
+class BenchmarkRun(Base):
+    __tablename__ = "benchmark_runs"
+
+    run_id = Column(String(128), primary_key=True)
+    status = Column(String(32), nullable=False, index=True)
+    dataset_id = Column(String(255), nullable=False)
+    slo_snapshot = Column(JSON().with_variant(JSONB, "postgresql"), nullable=False)
+    context_fingerprint = Column(String(128), nullable=False, index=True)
+    corpus_hash = Column(String(128), nullable=False)
+    objective_snapshot = Column(JSON().with_variant(JSONB, "postgresql"), nullable=True)
+    run_metadata = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    modes = relationship(
+        "BenchmarkRunMode",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class BenchmarkRunMode(Base):
+    __tablename__ = "benchmark_run_modes"
+    __table_args__ = (
+        UniqueConstraint("run_id", "mode", name="uq_benchmark_run_modes_run_id_mode"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(
+        String(128),
+        ForeignKey("benchmark_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode = Column(String(64), nullable=False)
+    mode_metadata = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    run = relationship("BenchmarkRun", back_populates="modes")

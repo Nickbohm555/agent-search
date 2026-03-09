@@ -1532,3 +1532,76 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 25
+
+## Section 25: Benchmark DB foundation - run metadata tables
+
+**Single goal:** Add persistent run metadata schema.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Add `benchmark_runs` and `benchmark_run_modes`.
+- Record SLO snapshot, context fingerprint, and corpus hash.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): Alembic migration.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/models.py` | Benchmark run metadata models. |
+| `src/backend/alembic/versions/002_add_benchmark_run_metadata_tables.py` | Migration file. |
+| `src/backend/tests/db/test_benchmark_run_metadata_schema.py` | Schema tests. |
+
+**How to test:** Run alembic upgrade and schema tests.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkRun` and `BenchmarkRunMode` ORM models in `src/backend/models.py` with persisted run metadata fields for `slo_snapshot`, `context_fingerprint`, and `corpus_hash`.
+- Added relational guarantees for run modes: foreign key to `benchmark_runs.run_id`, cascade delete, and unique `(run_id, mode)` constraint.
+- Added Alembic migration `002_add_benchmark_run_metadata_tables.py` to create tables/indexes and added migration visibility logs for upgrade/downgrade lifecycle.
+- Added DB schema tests in `tests/db/test_benchmark_run_metadata_schema.py` validating table/column presence, uniqueness enforcement, and cascade delete behavior.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+- `docker compose exec backend uv run alembic upgrade head`
+- `docker compose exec backend uv run --with pytest pytest tests/db/test_benchmark_run_metadata_schema.py`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --no-color --tail=220 backend`
+- `docker compose logs --no-color --tail=140 frontend`
+- `docker compose logs --no-color --tail=140 db`
+- `docker compose exec backend uv run alembic current`
+- `docker compose exec db psql -U agent_user -d agent_search -c "\\dt benchmark_*"`
+- `docker compose exec db psql -U agent_user -d agent_search -c "\\d benchmark_runs"`
+- `docker compose exec db psql -U agent_user -d agent_search -c "\\d benchmark_run_modes"`
+
+**Useful logs (excerpt):**
+```text
+alembic: Running upgrade 001_internal -> 002_benchmark_run_metadata
+pytest: tests/db/test_benchmark_run_metadata_schema.py .. [100%]
+pytest: 2 passed in 0.78s
+alembic current: 002_benchmark_run_metadata (head)
+psql: benchmark_runs, benchmark_run_modes tables present
+db: duplicate key value violates unique constraint "uq_benchmark_run_modes_run_id_mode" (expected by uniqueness test)
+health: HTTP/1.1 200 OK {"status":"ok"}
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```
