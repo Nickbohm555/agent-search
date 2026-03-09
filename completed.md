@@ -3092,3 +3092,89 @@ Local: http://localhost:5173/
 db logs:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 47
+
+## Section 47: SDK packaging workspace - distributable boundary
+
+**Single goal:** Create dedicated package workspace for core in-process SDK distribution.
+
+**Why:** This synchronizes generated artifacts and release/CI safeguards so the integrated system remains consistent over time.
+
+
+**Details:**
+- Separate SDK package metadata from backend app packaging.
+- Exclude backend-only web/db dependencies from SDK package.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): packaging metadata updates.
+- Tooling (uv, poetry, Docker): add package build commands for SDK workspace.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `sdk/core/pyproject.toml` | Core SDK package metadata. |
+| `sdk/core/README.md` | Package-local long description source. |
+| `sdk/core/src/agent_search/__init__.py` | SDK package root. |
+
+**How to test:** Build wheel/sdist and inspect dependency boundary.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added a dedicated package workspace at `sdk/core` with standalone build metadata (`hatchling`, src-layout package target) separate from backend app packaging.
+- Added package-local documentation in `sdk/core/README.md` with explicit build steps and dependency-boundary expectations.
+- Added `sdk/core/src/agent_search/__init__.py` as the package root with version export support for distributable artifacts.
+- Built both sdist and wheel from the new workspace and validated `Requires-Dist` entries exclude backend-only web/DB dependencies.
+- Restarted all services and verified backend/frontend/db logs and health endpoints after completion.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=120 db backend frontend`
+- `cd sdk/core && python3 -m build`
+- `cd sdk/core && python3 - <<'PY' ... inspect wheel METADATA Requires-Dist ... PY`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `curl -sS -o /tmp/frontend_body.txt -w 'frontend_status=%{http_code}\\n' http://localhost:5173 && head -n 5 /tmp/frontend_body.txt`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+sdk/core build:
+Successfully built agent_search_core-0.1.0.tar.gz and agent_search_core-0.1.0-py3-none-any.whl
+
+wheel metadata dependency boundary:
+requires_dist= ['flashrank>=0.2.10', 'langchain-classic>=1.0.0', 'langchain-community==0.3.31', 'langchain-openai>=0.3.0', 'langchain>=1.2.0', 'pydantic==2.10.6']
+excludes_fastapi= True
+excludes_uvicorn= True
+excludes_sqlalchemy= True
+excludes_psycopg= True
+excludes_alembic= True
+excludes_pgvector= True
+
+post-restart runtime checks:
+HTTP/1.1 200 OK /api/health -> {"status":"ok"}
+frontend_status=200
+
+backend logs:
+Uvicorn running on http://0.0.0.0:8000
+Application startup complete.
+
+frontend logs:
+VITE v5.4.21 ready
+Local: http://localhost:5173/
+
+db logs:
+database system is ready to accept connections
+```

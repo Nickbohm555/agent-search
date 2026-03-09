@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-search-core"
+version = "0.1.0"
+description = "Core in-process agent-search SDK package workspace"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "pydantic==2.10.6",
+  "langchain>=1.2.0",
+  "langchain-classic>=1.0.0",
+  "langchain-community==0.3.31",
+  "langchain-openai>=0.3.0",
+  "flashrank>=0.2.10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agent_search"]
