@@ -5,9 +5,22 @@ build-backend = "hatchling.build"
 [project]
 name = "agent-search-core"
 version = "0.1.0"
-description = "Core in-process agent-search SDK package workspace"
+description = "In-process SDK runtime for agent-search"
 readme = "README.md"
+authors = [{ name = "agent-search maintainers" }]
+keywords = ["rag", "agent", "search", "sdk", "langchain"]
 requires-python = ">=3.11,<3.14"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Typing :: Typed",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
   "pydantic==2.10.6",
   "langchain>=1.2.0",
@@ -16,6 +29,11 @@ dependencies = [
   "langchain-openai>=0.3.0",
   "flashrank>=0.2.10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nickbohm/agent-search"
+Repository = "https://github.com/nickbohm/agent-search"
+Issues = "https://github.com/nickbohm/agent-search/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agent_search"]

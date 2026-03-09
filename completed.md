@@ -3178,3 +3178,81 @@ Local: http://localhost:5173/
 db logs:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 48
+
+## Section 48: PyPI metadata and release workflow - publishable SDK
+
+**Single goal:** Finalize publish metadata and repeatable release workflow for SDK.
+
+**Why:** This synchronizes generated artifacts and release/CI safeguards so the integrated system remains consistent over time.
+
+
+**Details:**
+- Configure package identity/versioning/classifiers.
+- Add reproducible release commands and optional workflow automation.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): build/publish tooling as needed.
+- Tooling (uv, poetry, Docker): add release helper script/workflow.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `scripts/release_sdk.sh` | Local release helper flow. |
+| `.github/workflows/release-sdk.yml` | Tagged release workflow. |
+| `README.md` | Release/versioning docs. |
+
+**How to test:** Run build/check dry-run (`python -m build`, `twine check`).
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added publish-ready metadata to `sdk/core/pyproject.toml` (package description, authors, keywords, classifiers, and project URLs).
+- Added `scripts/release_sdk.sh` with UTC timestamped logs, reproducible `build` + `twine check`, tag/version consistency guard, and optional PyPI upload (`PUBLISH=1`).
+- Added `.github/workflows/release-sdk.yml` for tag-triggered (`agent-search-core-v*`) release automation plus manual dispatch.
+- Updated root `README.md` with SDK release/versioning commands and workflow trigger details.
+- Restarted services and validated backend/frontend/db logs and health endpoint after changes.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose ps`
+- `./scripts/release_sdk.sh`
+- `docker compose restart`
+- `docker compose ps`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --no-color --tail=120 backend`
+- `docker compose logs --no-color --tail=120 frontend`
+- `docker compose logs --no-color --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+release_sdk dry-run:
+2026-03-09T20:14:22Z INFO release_sdk: starting sdk_dir=/Users/nickbohm/Desktop/tinkering/agent-search/sdk/core version=0.1.0 publish=0
+2026-03-09T20:14:22Z INFO release_sdk: building sdist and wheel
+Successfully built agent_search_core-0.1.0.tar.gz and agent_search_core-0.1.0-py3-none-any.whl
+2026-03-09T20:14:30Z INFO release_sdk: running twine check
+Checking ...agent_search_core-0.1.0-py3-none-any.whl: PASSED
+Checking ...agent_search_core-0.1.0.tar.gz: PASSED
+2026-03-09T20:14:32Z INFO release_sdk: dry run complete; skipping upload (set PUBLISH=1 to publish)
+
+post-restart runtime checks:
+HTTP/1.1 200 OK
+{"status":"ok"}
+
+backend logs:
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete.
+
+frontend logs:
+VITE v5.4.21  ready
+Local:   http://localhost:5173/
+
+db logs:
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+database system is ready to accept connections
+```

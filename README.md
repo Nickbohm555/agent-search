@@ -181,6 +181,30 @@ docker compose exec backend uv run python benchmarks/export.py \
 - Validate: `./scripts/validate_openapi.sh`
 - Generate SDK: `./scripts/generate_sdk.sh`
 
+## SDK Release / Versioning
+
+- Core SDK package workspace: `sdk/core`
+- Package identity: `agent-search-core`
+- Release tag format: `agent-search-core-v<version>` (example: `agent-search-core-v0.1.0`)
+
+Run reproducible local release dry-run:
+
+```bash
+./scripts/release_sdk.sh
+```
+
+Run publish flow (requires `TWINE_API_TOKEN`):
+
+```bash
+PUBLISH=1 TWINE_API_TOKEN=*** ./scripts/release_sdk.sh
+```
+
+CI automation:
+
+- Workflow: `.github/workflows/release-sdk.yml`
+- Triggered automatically on matching release tags.
+- Supports manual dispatch with optional publish toggle.
+
 ## Links
 
 - Runtime flow doc: `src/frontend/public/run-flow.html`
