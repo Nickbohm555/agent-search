@@ -2047,3 +2047,70 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 33
+
+## Section 33: Simple quality evaluator - single-judge correctness profile
+
+**Single goal:** Implement one simple quality evaluator for v1 while preserving extension points for multi-dimension scoring later.
+
+**Why:** This keeps v1 evaluation simple while creating compatibility scaffolding for future DeepResearchBench-style expansion without rework.
+
+**Details:**
+- Evaluate each result with one deterministic OpenAI judge rubric and store a normalized `0..1` score.
+- Persist an optional `subscores_json` field for future advanced frameworks (e.g., RACE-like dimensions) without enforcing them in v1.
+- Use this score as the canonical quality metric for v1 pass/fail.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): use existing OpenAI path via project key.
+- Tooling (uv, poetry, Docker): Alembic migration for simple quality score persistence.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/services/benchmark_quality_service.py` | Deterministic single-judge quality scoring workflow. |
+| `src/backend/models.py` | Add `benchmark_quality_scores` model with optional extension fields. |
+| `src/backend/alembic/versions/004_add_benchmark_quality_scores_table.py` | Migration for quality score storage. |
+| `src/backend/tests/services/test_benchmark_quality_service.py` | Simple quality scoring tests. |
+
+**How to test:** Run quality tests and verify deterministic score output + persistence.
+
+**Test results:** (Add when section is complete.)
+- Completed.
+
+---
+
+**Completion notes:**
+- Added `BenchmarkQualityScore` ORM model and relationships in `src/backend/models.py` with normalized score storage, pass/fail flag, judge metadata, and optional `subscores_json` extension field for future multi-dimension evaluators.
+- Added Alembic migration `004_add_benchmark_quality_scores_table.py` to persist quality scores with constraints: unique per `(run_id, mode, question_id)`, one-to-one with benchmark result, and cascading deletes.
+- Implemented `BenchmarkQualityService` in `src/backend/services/benchmark_quality_service.py` with deterministic single-judge prompt workflow using OpenAI model settings (temperature `0`), strict JSON parsing, score normalization (`0..1`), and pass/fail thresholding against benchmark correctness target.
+- Added persistence upsert flow in quality service to update/rewrite scores for existing run/mode/question records and log each evaluation + persistence event.
+- Added tests in `src/backend/tests/services/test_benchmark_quality_service.py` covering deterministic judge output parsing and persistence/update behavior including optional `subscores_json` handling.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose restart backend`
+- `docker compose logs --tail=160 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+- `docker compose exec backend uv run pytest tests/services/test_benchmark_quality_service.py` (failed: `pytest` missing in default backend env)
+- `docker compose exec backend sh -lc "uv run --with pytest pytest tests/services/test_benchmark_quality_service.py"`
+- `docker compose exec backend uv run alembic current`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=60 frontend`
+- `docker compose logs --tail=60 db`
+
+**Useful logs (excerpt):**
+```text
+alembic: Running upgrade 003_benchmark_results -> 004_benchmark_quality_scores
+alembic current: 004_benchmark_quality_scores (head)
+pytest: tests/services/test_benchmark_quality_service.py .. [100%]
+pytest: 2 passed in 1.26s
+backend: Uvicorn running on http://0.0.0.0:8000
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```

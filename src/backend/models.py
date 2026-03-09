@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import relationship
@@ -79,6 +79,12 @@ class BenchmarkRun(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    quality_scores = relationship(
+        "BenchmarkQualityScore",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class BenchmarkRunMode(Base):
@@ -138,3 +144,46 @@ class BenchmarkResult(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     run = relationship("BenchmarkRun", back_populates="results")
+    quality_score = relationship(
+        "BenchmarkQualityScore",
+        back_populates="result",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class BenchmarkQualityScore(Base):
+    __tablename__ = "benchmark_quality_scores"
+    __table_args__ = (
+        UniqueConstraint("run_id", "mode", "question_id", name="uq_benchmark_quality_scores_run_mode_question"),
+        UniqueConstraint("result_id", name="uq_benchmark_quality_scores_result_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(
+        String(128),
+        ForeignKey("benchmark_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    result_id = Column(
+        Integer,
+        ForeignKey("benchmark_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode = Column(String(64), nullable=False)
+    question_id = Column(String(128), nullable=False)
+    score = Column(Float, nullable=False)
+    passed = Column(Boolean, nullable=False)
+    rubric_version = Column(String(32), nullable=False)
+    judge_model = Column(String(128), nullable=False)
+    subscores_json = Column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=True,
+    )
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    run = relationship("BenchmarkRun", back_populates="quality_scores")
+    result = relationship("BenchmarkResult", back_populates="quality_score")
