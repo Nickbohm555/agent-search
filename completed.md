@@ -1286,3 +1286,70 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: HTTP/1.1 200 OK {"status":"ok"}
 ```
+
+## Completed - 2026-03-09 - Section 21
+
+## Section 21: Benchmark runtime settings - env-backed and reproducible
+
+**Single goal:** Add centralized benchmark settings and context fingerprinting.
+
+**Why:** This builds the benchmark execution foundation so runs are reproducible, operable, and stored correctly before adding advanced analysis.
+
+
+**Details:**
+- Add settings for dataset default, judge model, timeout caps, and targets.
+- Compute execution context fingerprint for run reproducibility.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): update `.env.example` only.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/config.py` | Benchmark runtime settings. |
+| `.env.example` | Benchmark env docs. |
+| `src/backend/tests/utils/test_benchmark_config.py` | Config parsing tests. |
+
+**How to test:** Run benchmark config tests.
+
+**Test results:**
+- Completed.
+
+---
+
+**Completion notes:**
+- Added new backend benchmark runtime settings module at `src/backend/config.py` with centralized env-backed parsing for dataset defaults, judge model, timeout caps, and KPI targets.
+- Added deterministic execution context building and SHA-256 fingerprinting helpers for benchmark reproducibility (`build_benchmark_execution_context`, `compute_benchmark_context_fingerprint`, `get_benchmark_context_fingerprint`).
+- Added visibility logs for invalid env values, resolved settings, and computed fingerprints.
+- Extended `.env.example` with benchmark runtime configuration keys.
+- Added `src/backend/tests/utils/test_benchmark_config.py` covering defaults, env overrides, invalid fallback behavior, and fingerprint stability/change semantics.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps -a`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=200 db`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose exec backend uv run --with pytest pytest tests/utils/test_benchmark_config.py`
+- `docker compose restart`
+- `docker compose ps -a`
+- `curl -sS -i http://localhost:8000/api/health`
+- `docker compose logs --tail=200 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/utils/test_benchmark_config.py ..... [100%]
+pytest: 5 passed in 0.03s
+backend: Application startup complete.
+backend: GET /api/health HTTP/1.1 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```
