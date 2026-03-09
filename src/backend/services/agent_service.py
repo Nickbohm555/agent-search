@@ -117,6 +117,15 @@ _ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK = "nothing relevant found"
 _CITATION_INDEX_PATTERN = re.compile(r"\[(\d+)\]")
 
 
+def _is_enabled(value: str | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    return normalized in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class RuntimeTimeoutConfig:
     vector_store_acquisition_timeout_s: int
@@ -2343,14 +2352,15 @@ def _seed_refined_sub_qa_from_retrieval(
     return seeded
 
 
-def run_runtime_agent(
+def _run_runtime_agent_with_legacy_deep_agent(
     payload: RuntimeAgentRunRequest,
     db: Session,
     model: BaseChatModel | None = None,
     vector_store: Any | None = None,
+    run_metadata: GraphRunMetadata | None = None,
 ) -> RuntimeAgentRunResponse:
     """Run the coordinator runtime agent for a user query."""
-    run_metadata = build_graph_run_metadata()
+    resolved_run_metadata = run_metadata or build_graph_run_metadata()
     selected_model: BaseChatModel | str = model if model is not None else _RUNTIME_AGENT_MODEL
     logger.info(
         "Runtime agent run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
@@ -2358,9 +2368,9 @@ def run_runtime_agent(
         len(payload.query),
         model is not None,
         vector_store is not None,
-        run_metadata.run_id,
-        run_metadata.trace_id,
-        run_metadata.correlation_id,
+        resolved_run_metadata.run_id,
+        resolved_run_metadata.trace_id,
+        resolved_run_metadata.correlation_id,
     )
     logger.info(
         "Runtime timeout config loaded vector_store=%ss initial_search=%ss decomposition_llm=%ss coordinator_invoke=%ss document_validation=%ss rerank=%ss subanswer_generation=%ss subanswer_verification=%ss subquestion_pipeline_total=%ss initial_answer=%ss refinement_decision=%ss refinement_decomposition=%ss refinement_retrieval=%ss refinement_pipeline_total=%ss refined_answer=%ss",
@@ -2441,7 +2451,7 @@ def run_runtime_agent(
     decomposition_output = run_decomposition_node(
         node_input=DecomposeNodeInput(
             main_question=payload.query,
-            run_metadata=run_metadata,
+            run_metadata=resolved_run_metadata,
             initial_search_context=initial_search_context,
         ),
         model=model,
@@ -2457,15 +2467,15 @@ def run_runtime_agent(
     langfuse_callback = build_langfuse_callback_handler()
     if langfuse_callback is not None:
         callbacks.append(langfuse_callback)
-    run_thread_id = run_metadata.thread_id
+    run_thread_id = resolved_run_metadata.thread_id
     logger.info(
         "Runtime agent callback configuration callback_count=%s langfuse_enabled=%s thread_id=%s run_id=%s trace_id=%s correlation_id=%s",
         len(callbacks),
         langfuse_callback is not None,
         run_thread_id,
-        run_metadata.run_id,
-        run_metadata.trace_id,
-        run_metadata.correlation_id,
+        resolved_run_metadata.run_id,
+        resolved_run_metadata.trace_id,
+        resolved_run_metadata.correlation_id,
     )
     config = {"callbacks": callbacks, "configurable": {"thread_id": run_thread_id}}
     coordinator_message = _build_coordinator_input_message(decomposition_sub_questions)
@@ -2707,4 +2717,141 @@ def run_runtime_agent(
         main_question=payload.query,
         sub_qa=sub_qa,
         output=output,
+    )
+
+
+def _run_runtime_agent_with_graph_runner(
+    payload: RuntimeAgentRunRequest,
+    db: Session,
+    model: BaseChatModel | None = None,
+    vector_store: Any | None = None,
+    run_metadata: GraphRunMetadata | None = None,
+) -> RuntimeAgentRunResponse:
+    resolved_run_metadata = run_metadata or build_graph_run_metadata()
+    logger.info(
+        "Runtime agent graph path start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
+        _truncate_query(payload.query),
+        len(payload.query),
+        model is not None,
+        vector_store is not None,
+        resolved_run_metadata.run_id,
+        resolved_run_metadata.trace_id,
+        resolved_run_metadata.correlation_id,
+    )
+    selected_vector_store = vector_store
+    if selected_vector_store is None:
+        try:
+            selected_vector_store = _run_with_timeout(
+                timeout_s=_RUNTIME_TIMEOUT_CONFIG.vector_store_acquisition_timeout_s,
+                operation_name="vector_store_acquisition",
+                fn=lambda: get_vector_store(
+                    connection=DATABASE_URL,
+                    collection_name=_VECTOR_COLLECTION_NAME,
+                    embeddings=get_embedding_model(),
+                ),
+            )
+        except FuturesTimeoutError:
+            logger.warning(
+                "Runtime agent graph path short-circuiting due to vector store timeout query=%s run_id=%s",
+                _truncate_query(payload.query),
+                resolved_run_metadata.run_id,
+            )
+            return RuntimeAgentRunResponse(
+                main_question=payload.query,
+                sub_qa=[],
+                output=_VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE,
+            )
+        logger.info(
+            "Runtime agent graph path vector store selected source=default collection_name=%s run_id=%s",
+            _VECTOR_COLLECTION_NAME,
+            resolved_run_metadata.run_id,
+        )
+    else:
+        logger.info(
+            "Runtime agent graph path vector store selected source=provided run_id=%s",
+            resolved_run_metadata.run_id,
+        )
+
+    def _build_initial_context_payload() -> tuple[list[Any], list[dict[str, Any]]]:
+        docs = search_documents_for_context(
+            vector_store=selected_vector_store,
+            query=payload.query,
+            k=_INITIAL_SEARCH_CONTEXT_K,
+            score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+        )
+        return docs, build_initial_search_context(docs)
+
+    try:
+        _, initial_search_context = _run_with_timeout(
+            timeout_s=_RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
+            operation_name="initial_search_context_build",
+            fn=_build_initial_context_payload,
+        )
+        logger.info(
+            "Runtime agent graph path initial context built query=%s docs=%s k=%s score_threshold=%s run_id=%s",
+            _truncate_query(payload.query),
+            len(initial_search_context),
+            _INITIAL_SEARCH_CONTEXT_K,
+            _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
+            resolved_run_metadata.run_id,
+        )
+    except FuturesTimeoutError:
+        initial_search_context = []
+        logger.warning(
+            "Runtime agent graph path initial context timeout; continuing with empty context query=%s timeout_s=%s run_id=%s",
+            _truncate_query(payload.query),
+            _RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
+            resolved_run_metadata.run_id,
+        )
+
+    state = run_parallel_graph_runner(
+        payload=payload,
+        vector_store=selected_vector_store,
+        model=model,
+        run_metadata=resolved_run_metadata,
+        initial_search_context=initial_search_context,
+    )
+    response = map_graph_state_to_runtime_response(state)
+    logger.info(
+        "Runtime agent graph path complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
+        len(response.sub_qa),
+        len(response.output),
+        len(state.stage_snapshots),
+        resolved_run_metadata.run_id,
+    )
+    return response
+
+
+def run_runtime_agent(
+    payload: RuntimeAgentRunRequest,
+    db: Session,
+    model: BaseChatModel | None = None,
+    vector_store: Any | None = None,
+) -> RuntimeAgentRunResponse:
+    run_metadata = build_graph_run_metadata()
+    rollback_to_legacy = _is_enabled(
+        os.getenv("RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT"),
+        default=False,
+    )
+    logger.info(
+        "Runtime agent path selection rollback_to_deep_agent=%s run_id=%s trace_id=%s correlation_id=%s",
+        rollback_to_legacy,
+        run_metadata.run_id,
+        run_metadata.trace_id,
+        run_metadata.correlation_id,
+    )
+    if rollback_to_legacy:
+        return _run_runtime_agent_with_legacy_deep_agent(
+            payload,
+            db,
+            model=model,
+            vector_store=vector_store,
+            run_metadata=run_metadata,
+        )
+    return _run_runtime_agent_with_graph_runner(
+        payload,
+        db,
+        model=model,
+        vector_store=vector_store,
+        run_metadata=run_metadata,
     )

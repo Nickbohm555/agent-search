@@ -399,3 +399,70 @@ docker compose logs --tail=120 frontend
 docker compose logs --tail=120 db
 -> PostgreSQL ready to accept connections
 ```
+
+## Section 10: Migrate API endpoint to graph backend - deep-agent decoupling
+
+**Single goal:** Switch `/api/agents/run` to execute the new graph runner instead of deep-agents.
+
+**Details completed:**
+- Routed runtime requests through graph runner in `run_runtime_agent`:
+  - Added graph-first runtime selection in `src/backend/services/agent_service.py`.
+  - New default path uses `_run_runtime_agent_with_graph_runner(...)` and `run_parallel_graph_runner(...)`.
+  - Added rollback feature flag `RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT` (when `true`, runtime uses legacy deep-agent path).
+- Kept request/response API contract unchanged:
+  - `/api/agents/run` still returns `RuntimeAgentRunResponse { main_question, sub_qa, output }`.
+  - Graph state is mapped through `map_graph_state_to_runtime_response(...)`.
+- Isolated deep-agent-specific orchestration from primary runtime path:
+  - Moved existing coordinator pipeline logic into `_run_runtime_agent_with_legacy_deep_agent(...)`.
+  - Primary `run_runtime_agent(...)` now performs path selection and logs selected mode.
+- Preserved Langfuse integration on primary runtime path:
+  - Graph path keeps graph metadata (`run_id`, `trace_id`, `correlation_id`) and node-level tracing via existing callback lifecycle in graph runner.
+  - Legacy path retains existing callback/flush behavior.
+- Added focused migration tests:
+  - `test_run_runtime_agent_uses_graph_runner_when_rollback_flag_disabled`
+  - `test_run_runtime_agent_uses_legacy_path_when_rollback_flag_enabled`
+  - Existing graph parallel/snapshot service test and API contract test were executed.
+- Updated docs:
+  - `README.md` updated with Section 10 migration note and rollback flag documentation.
+  - `src/frontend/public/run-flow.html` updated to reflect graph-first runtime with rollback path.
+  - `.env.example` and `.env` updated with `RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=false`.
+
+### Useful logs
+
+```text
+docker compose down -v --rmi all
+-> full clean shutdown complete (containers/volumes/images removed for backend/frontend; base images retained when in use)
+
+docker compose build
+-> backend/frontend images rebuilt successfully
+
+docker compose up -d
+-> db/backend/frontend/chrome started; db healthy
+
+docker compose exec backend uv run --with pytest pytest tests/services/test_agent_service.py -k "uses_graph_runner_when_rollback_flag_disabled or uses_legacy_path_when_rollback_flag_enabled or run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapshots"
+-> 3 passed, 70 deselected in 2.45s
+
+docker compose exec backend uv run --with pytest pytest tests/api/test_agent_run.py
+-> 1 passed in 2.48s
+
+docker compose restart backend frontend
+-> backend/frontend restarted successfully
+
+docker compose ps
+-> backend/frontend/db/chrome all up; db healthy
+
+curl -sS http://localhost:8000/api/health
+-> {"status":"ok"}
+
+docker compose logs --tail=120 backend
+-> uvicorn startup complete
+-> watch reload events observed for updated files
+-> no fatal runtime errors
+
+docker compose logs --tail=80 frontend
+-> vite ready at http://localhost:5173/
+-> page reload observed for public/run-flow.html
+
+docker compose logs --tail=80 db
+-> PostgreSQL ready to accept connections
+```

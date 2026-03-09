@@ -134,7 +134,7 @@
           <span class="badge">API client: <code>runAgent()</code></span>
           <span class="badge">Backend route: <code>POST /api/agents/run</code></span>
           <span class="badge">Service: <code>run_runtime_agent()</code></span>
-          <span class="badge">Pipeline: decomposition -> coordinator -> subquestion processing -> initial answer -> optional refinement</span>
+          <span class="badge">Pipeline: graph runner (decompose -> expand -> search -> rerank -> answer -> synthesize)</span>
           <span class="badge good">Response model: <code>RuntimeAgentRunResponse</code></span>
         </div>
         <p style="margin-top: 10px;">
@@ -159,7 +159,8 @@
         <p class="small">
           Section 8 adds <code>run_sequential_graph_runner(...)</code> for strict sequential execution:
           <code>decompose -&gt; (expand -&gt; search -&gt; rerank -&gt; answer per sub-question) -&gt; synthesize_final</code>.
-          The coordinator/deep-agent path is still present during migration.
+          Section 10 makes <code>run_runtime_agent(...)</code> graph-first for <code>/api/agents/run</code>, with rollback
+          via <code>RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT=true</code>.
         </p>
         <p class="small">
           Section 9 adds <code>run_parallel_graph_runner(...)</code> for bounded fanout across sub-questions with
@@ -183,31 +184,19 @@ Backend
        -> run_runtime_agent(payload, db)
 
 run_runtime_agent() internals
-  1) get_vector_store(...)
-  2) search_documents_for_context(...)  // initial context retrieval
-  3) build_initial_search_context(...)
-  4) run_decomposition_node(...)
-     -> _run_decomposition_only_llm_call(...)
-     -> _parse_decomposition_output(...)
-  5) run_expand_node(...)  // graph-node query expansion contract
-     -> expand_queries_for_subquestion(...)  // MultiQueryRetriever + normalization/fallback
-  6) run_search_node(...) + apply_search_node_output_to_graph_state(...)  // expanded retrieval + merge/dedupe/provenance
-  7) run_rerank_node(...) + apply_rerank_node_output_to_graph_state(...)  // flashrank rerank + top_n + fallback ordering
-  8) run_answer_subquestion_node(...) + apply_answer_subquestion_node_output_to_graph_state(...)  // citation-required subanswer node + exact fallback "nothing relevant found"
-  9) run_synthesize_final_node(...) + apply_synthesize_final_node_output_to_graph_state(...)  // graph-node final synthesis helper from subanswers
-  9a) run_parallel_graph_runner(...)  // section 9 fanout + deterministic reindexing + stage snapshots
- 10) create_coordinator_agent(...)
- 11) agent.invoke({messages:[HumanMessage(coordinator_message)]}, config={callbacks + configurable.thread_id})
- 12) _extract_sub_qa(messages, search_database_calls)
- 13) run_pipeline_for_subquestions(sub_qa)  // PARALLEL
- 14) generate_initial_answer(...)
- 15) should_refine(...)
- 16) if refinement_needed:
-       refine_subquestions(...)
-       _seed_refined_sub_qa_from_retrieval(...)  // PARALLEL
-       run_pipeline_for_subquestions(...)         // PARALLEL
-       generate_initial_answer(...)               // refined final output
- 17) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+  1) build_graph_run_metadata(...)
+  2) feature flag check: RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT
+  3) graph path (default):
+     -> get_vector_store(...)
+     -> search_documents_for_context(...) + build_initial_search_context(...)
+     -> run_parallel_graph_runner(...)
+     -> map_graph_state_to_runtime_response(...)
+  4) rollback path (only when flag=true):
+     -> create_coordinator_agent(...)
+     -> agent.invoke(...)
+     -> _extract_sub_qa(...) + run_pipeline_for_subquestions(...)
+     -> optional refinement loop
+  5) return RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
       </div>
 
       <div class="panel">

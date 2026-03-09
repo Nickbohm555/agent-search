@@ -44,6 +44,83 @@ def _make_session() -> Session:
     return Session(engine)
 
 
+def test_run_runtime_agent_uses_graph_runner_when_rollback_flag_disabled(monkeypatch) -> None:
+    monkeypatch.delenv("RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT", raising=False)
+    captured: dict[str, object] = {}
+
+    def fake_run_parallel_graph_runner(*, payload, vector_store, model, run_metadata, initial_search_context):
+        captured["graph_payload_query"] = payload.query
+        captured["graph_vector_store"] = vector_store
+        captured["graph_model"] = model
+        captured["graph_run_id"] = run_metadata.run_id
+        captured["graph_initial_context"] = list(initial_search_context)
+        state = agent_service.build_agent_graph_state(
+            main_question=payload.query,
+            decomposition_sub_questions=["What changed?"],
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question="What changed?",
+                    sub_answer="The policy changed in January 2026 [1].",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            final_answer="Graph final output",
+            run_metadata=run_metadata,
+        )
+        return state
+
+    monkeypatch.setattr(agent_service, "run_parallel_graph_runner", fake_run_parallel_graph_runner)
+    monkeypatch.setattr(
+        agent_service,
+        "_run_runtime_agent_with_legacy_deep_agent",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("legacy path should not run")),
+    )
+    monkeypatch.setattr(agent_service, "search_documents_for_context", lambda **kwargs: [])
+    monkeypatch.setattr(agent_service, "build_initial_search_context", lambda docs: [])
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="What changed in policy X?"),
+        db=_make_session(),
+        vector_store="provided-vector-store",
+    )
+
+    assert response.main_question == "What changed in policy X?"
+    assert response.output == "Graph final output"
+    assert len(response.sub_qa) == 1
+    assert captured["graph_payload_query"] == "What changed in policy X?"
+    assert captured["graph_vector_store"] == "provided-vector-store"
+    assert captured["graph_initial_context"] == []
+    assert captured["graph_run_id"]
+
+
+def test_run_runtime_agent_uses_legacy_path_when_rollback_flag_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("RUNTIME_AGENT_ROLLBACK_TO_DEEP_AGENT", "true")
+
+    monkeypatch.setattr(
+        agent_service,
+        "_run_runtime_agent_with_graph_runner",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("graph path should not run")),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "_run_runtime_agent_with_legacy_deep_agent",
+        lambda *args, **kwargs: agent_service.RuntimeAgentRunResponse(
+            main_question="legacy-question",
+            sub_qa=[],
+            output="legacy-output",
+        ),
+    )
+
+    response = agent_service.run_runtime_agent(
+        RuntimeAgentRunRequest(query="Should rollback?"),
+        db=_make_session(),
+    )
+
+    assert response.main_question == "legacy-question"
+    assert response.output == "legacy-output"
+
+
 def test_build_runtime_timeout_config_from_env_defaults(monkeypatch) -> None:
     keys = [
         "VECTOR_STORE_ACQUISITION_TIMEOUT_S",
