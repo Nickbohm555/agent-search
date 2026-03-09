@@ -110,3 +110,64 @@ backend: Uvicorn running on http://0.0.0.0:8000
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-09 - Section 3
+
+## Section 3: SDK public sync API contract - stable callable entrypoint
+
+**Single goal:** Expose primary in-process SDK sync entrypoint requiring `query`, `vector_store`, and `model`.
+
+**Why:** This establishes the stable SDK/runtime core that every later benchmark and product feature depends on.
+
+
+**Details:**
+- Enforce required `model` argument.
+- Return type compatible with runtime response model.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies.
+- Tooling (uv, poetry, Docker): no tooling changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| `src/backend/agent_search/__init__.py` | Public SDK import surface. |
+| `src/backend/agent_search/public_api.py` | Sync SDK entrypoint. |
+| `src/backend/tests/sdk/test_public_api.py` | Signature and return-contract tests. |
+
+**How to test:** Run SDK sync API contract tests.
+
+**Test results:** (Add when section is complete.)
+- Pending.
+
+---
+
+**Completion notes:**
+- Implemented SDK sync `run` in `agent_search.public_api` by delegating to `services.agent_service.run_runtime_agent` with `RuntimeAgentRunRequest`.
+- Added explicit runtime input enforcement for `model` and `vector_store` (`TypeError` when either is `None`).
+- Added completion logging for sync SDK run output visibility.
+- Added SDK tests in `tests/sdk/test_public_api.py` covering frozen sync signature, delegation/return type contract, and required-model validation behavior.
+
+**Commands run:**
+- `docker compose down -v --rmi all && docker compose build && docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `docker compose exec backend uv run --with pytest pytest tests/sdk/test_public_api.py tests/contracts/test_public_contracts.py`
+- `docker compose restart backend`
+- `curl -i -sS http://localhost:8000/api/health`
+
+**Useful logs (excerpt):**
+```text
+pytest: tests/sdk/test_public_api.py ... [ 33%]
+pytest: tests/contracts/test_public_contracts.py ...... [100%]
+pytest: 9 passed in 1.49s
+backend: Application startup complete.
+backend: Uvicorn running on http://0.0.0.0:8000
+backend: WatchFiles detected changes in 'agent_search/public_api.py'. Reloading...
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: HTTP/1.1 200 OK {"status":"ok"}
+```

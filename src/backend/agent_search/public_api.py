@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from schemas import (
+    RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunResponse,
 )
+from services.agent_service import run_runtime_agent
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,25 @@ def run(
         type(model).__name__,
         config is not None,
     )
-    raise NotImplementedError("SDK sync runtime is not implemented yet.")
+    if model is None:
+        logger.error("SDK sync run rejected missing model")
+        raise TypeError("model is required and cannot be None")
+    if vector_store is None:
+        logger.error("SDK sync run rejected missing vector_store")
+        raise TypeError("vector_store is required and cannot be None")
+
+    response = run_runtime_agent(
+        RuntimeAgentRunRequest(query=query),
+        db=cast(Any, None),
+        model=model,
+        vector_store=vector_store,
+    )
+    logger.info(
+        "SDK sync run completed sub_qa_count=%s output_len=%s",
+        len(response.sub_qa),
+        len(response.output),
+    )
+    return response
 
 
 def run_async(
