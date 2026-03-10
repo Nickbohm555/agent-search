@@ -22,7 +22,7 @@ Stable response payload:
 flowchart TD
     A[POST /api/agents/run-async] --> B[run_runtime_agent payload.query]
     B --> D[Decompose Node]
-    D -->|LM call #1\nChatOpenAI structured output DecompositionPlan| E[Sub-questions[]]
+    D -->|LM call #1\nChatOpenAI structured output DecompositionPlan| E["Sub-questions[]"]
 
     E --> F{{Parallel lanes\n1 per sub-question}}
     F --> G[Expand Node]
