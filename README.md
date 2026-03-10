@@ -15,18 +15,43 @@ flowchart TD
     C --> D["Build runtime config<br/>callbacks + optional Langfuse callback"]
     D --> E["run_runtime_agent(query, deps)"]
     E --> F["Decompose Node"]
-    F -->|LM call #1<br/>Structured decomposition plan| G["sub-questions"]
+    F -->|LM call #1<br/>Structured decomposition plan| G["sub-questions list"]
 
-    G --> H{"Parallel lanes<br/>1 per sub-question"}
-    H --> I["Expand Node"]
-    I -->|LM call #2 per lane<br/>query expansion| J["expanded queries"]
-    J --> K["Search Node<br/>vector similarity retrieval"]
-    K --> L["retrieved docs + provenance"]
-    L --> M["Rerank Node"]
-    M -->|LM call #3 per lane<br/>OpenAI rerank provider| N["reranked docs"]
-    N --> P["Answer Node"]
-    P -->|LM call #4 per lane<br/>sub-answer generation| Q["sub_answer + citation indices"]
-    Q --> R["Synthesize Final Node"]
+    G --> SQ1["Sub-question 1"]
+    G --> SQ2["Sub-question 2"]
+    G --> SQ3["Sub-question 3"]
+    G --> SQN["Sub-question N"]
+
+    SQ1 --> EX1["Expand Node"]
+    SQ2 --> EX2["Expand Node"]
+    SQ3 --> EX3["Expand Node"]
+    SQN --> EXN["Expand Node"]
+
+    EX1 -->|LM call #2 per lane<br/>query expansion| SR1["Search Node"]
+    EX2 -->|LM call #2 per lane<br/>query expansion| SR2["Search Node"]
+    EX3 -->|LM call #2 per lane<br/>query expansion| SR3["Search Node"]
+    EXN -->|LM call #2 per lane<br/>query expansion| SRN["Search Node"]
+
+    SR1 --> RR1["Rerank Node"]
+    SR2 --> RR2["Rerank Node"]
+    SR3 --> RR3["Rerank Node"]
+    SRN --> RRN["Rerank Node"]
+
+    RR1 -->|LM call #3 per lane<br/>OpenAI rerank provider| AN1["Answer Node"]
+    RR2 -->|LM call #3 per lane<br/>OpenAI rerank provider| AN2["Answer Node"]
+    RR3 -->|LM call #3 per lane<br/>OpenAI rerank provider| AN3["Answer Node"]
+    RRN -->|LM call #3 per lane<br/>OpenAI rerank provider| ANN["Answer Node"]
+
+    AN1 -->|LM call #4 per lane<br/>sub-answer generation| SA1["sub-answer + citations"]
+    AN2 -->|LM call #4 per lane<br/>sub-answer generation| SA2["sub-answer + citations"]
+    AN3 -->|LM call #4 per lane<br/>sub-answer generation| SA3["sub-answer + citations"]
+    ANN -->|LM call #4 per lane<br/>sub-answer generation| SAN["sub-answer + citations"]
+
+    SA1 --> R["Synthesize Final Node"]
+    SA2 --> R
+    SA3 --> R
+    SAN --> R
+
     R -->|LM call #5<br/>final synthesis answer| S["final output"]
     S --> T["RuntimeAgentRunResponse<br/>main_question + sub_qa + output + final_citations"]
 ```
