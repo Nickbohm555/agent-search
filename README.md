@@ -69,6 +69,34 @@ RuntimeAgentRunResponse(
 )
 ```
 
+### Citation Requirements For `final_citations`
+
+For `final_citations` to be populated, both must be true:
+- The generated final answer must include citation markers like `[1]`, `[2]`.
+- Those indices must map to retrieved/reranked rows from the search pipeline.
+
+PGVector metadata does not need one single mandatory key, but citation quality depends on metadata fields on each stored `Document`.
+
+Recommended metadata per chunk:
+- `topic` or `title` or `wiki_page`: used as citation `title`
+- `wiki_url` or `source`: used as citation `source`
+- `id` (Document id): optional, used as `document_id` and dedupe identity
+
+If `title`/`source` metadata is missing, `final_citations` can still be returned, but those fields may be empty in the citation rows.
+
+Example chunk shape before indexing:
+
+```python
+Document(
+    page_content=\"pgvector adds vector similarity search to Postgres ...\",
+    metadata={
+        \"topic\": \"pgvector\",
+        \"wiki_url\": \"https://github.com/pgvector/pgvector\",
+    },
+    id=\"pgvector-intro-001\",
+)
+```
+
 ## Runtime State Graph (Data Flow + LM Calls)
 
 ```mermaid
