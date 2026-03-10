@@ -61,7 +61,6 @@ from services.vector_store_service import (
 from utils.agent_callbacks import AgentLoggingCallbackHandler
 from utils.langfuse_tracing import (
     build_langfuse_run_metadata,
-    build_langfuse_callback_handler,
     flush_langfuse_callback_handler,
 )
 
@@ -610,13 +609,11 @@ def _build_callbacks(
     external_langfuse_callback: Any | None = None,
     sampling_key: str | None = None,
 ) -> tuple[list[Any], Any | None]:
+    _ = sampling_key
     callbacks: list[Any] = [AgentLoggingCallbackHandler()]
     if external_callbacks:
         callbacks.extend(external_callbacks)
-    langfuse_callback = external_langfuse_callback or build_langfuse_callback_handler(
-        scope="runtime",
-        sampling_key=sampling_key,
-    )
+    langfuse_callback = external_langfuse_callback
     if langfuse_callback is not None and langfuse_callback not in callbacks:
         callbacks.append(langfuse_callback)
     return callbacks, langfuse_callback

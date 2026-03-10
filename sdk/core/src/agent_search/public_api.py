@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 import logging
 import time
-from typing import Any
+from typing import Any, Mapping
 
 from agent_search.config import RuntimeConfig
 from agent_search.errors import (
@@ -16,7 +16,8 @@ from agent_search.errors import (
 from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, start_agent_run_job
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
-from utils.langfuse_tracing import build_langfuse_callback_handler
+from config import LangfuseSettings
+from utils.langfuse_tracing import build_langfuse_callback_handler as _build_langfuse_callback_handler
 from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
@@ -26,6 +27,36 @@ from schemas import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_langfuse_settings(settings: Mapping[str, Any] | None = None) -> LangfuseSettings:
+    if settings is None:
+        return LangfuseSettings.from_env()
+    base = LangfuseSettings.from_env()
+    values = dict(settings)
+    return LangfuseSettings(
+        enabled=bool(values.get("enabled", base.enabled)),
+        host=str(values.get("host", base.host)),
+        public_key=str(values.get("public_key", base.public_key)),
+        secret_key=str(values.get("secret_key", base.secret_key)),
+        environment=str(values.get("environment", base.environment)),
+        release=str(values.get("release", base.release)),
+        runtime_sample_rate=float(values.get("runtime_sample_rate", base.runtime_sample_rate)),
+        benchmark_sample_rate=float(values.get("benchmark_sample_rate", base.benchmark_sample_rate)),
+    )
+
+
+def build_langfuse_callback(
+    *,
+    sampling_key: str | None = None,
+    settings: Mapping[str, Any] | None = None,
+) -> Any | None:
+    resolved_settings = _resolve_langfuse_settings(settings)
+    return _build_langfuse_callback_handler(
+        scope="runtime",
+        sampling_key=sampling_key,
+        settings=resolved_settings,
+    )
 
 
 def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
@@ -50,12 +81,15 @@ def _build_sync_callbacks(
     query: str,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
+    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> tuple[list[Any] | None, Any | None]:
     resolved_callbacks = list(callbacks or [])
-    resolved_langfuse_callback = langfuse_callback or build_langfuse_callback_handler(
-        scope="runtime",
-        sampling_key=query,
-    )
+    resolved_langfuse_callback = langfuse_callback
+    if resolved_langfuse_callback is None and langfuse_settings is not None:
+        resolved_langfuse_callback = build_langfuse_callback(
+            sampling_key=query,
+            settings=langfuse_settings,
+        )
     if resolved_langfuse_callback is not None:
         resolved_callbacks.append(resolved_langfuse_callback)
     return (resolved_callbacks if resolved_callbacks else None), resolved_langfuse_callback
@@ -69,15 +103,17 @@ def advanced_rag(
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
+    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
         config is not None,
         bool(callbacks),
         langfuse_callback is not None,
+        langfuse_settings is not None,
     )
     runtime_config = RuntimeConfig.from_dict(config)
     logger.info(
@@ -103,6 +139,7 @@ def advanced_rag(
             query=query,
             callbacks=callbacks,
             langfuse_callback=langfuse_callback,
+            langfuse_settings=langfuse_settings,
         )
         response = run_runtime_agent(
             RuntimeAgentRunRequest(query=query),
@@ -135,6 +172,7 @@ def run(
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
+    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.warning("SDK run() is deprecated; use advanced_rag()")
     return advanced_rag(
@@ -144,6 +182,7 @@ def run(
         config=config,
         callbacks=callbacks,
         langfuse_callback=langfuse_callback,
+        langfuse_settings=langfuse_settings,
     )
 
 

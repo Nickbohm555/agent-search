@@ -22,7 +22,7 @@ def test_advanced_rag_signature_requires_query_vector_store_and_model() -> None:
     signature = inspect.signature(public_api.advanced_rag)
     assert (
         str(signature)
-        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None, langfuse_callback: 'Any | None' = None) -> 'RuntimeAgentRunResponse'"
+        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None, langfuse_callback: 'Any | None' = None, langfuse_settings: 'Mapping[str, Any] | None' = None) -> 'RuntimeAgentRunResponse'"
     )
     assert signature.parameters["query"].default is inspect._empty
     assert signature.parameters["vector_store"].default is inspect._empty
@@ -41,8 +41,6 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
         return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
 
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-    monkeypatch.setattr(public_api, "build_langfuse_callback_handler", lambda **_kwargs: None)
-
     sentinel_model = object()
     sentinel_vector_store = _CompatibleVectorStore()
     callback_marker = object()
@@ -96,3 +94,54 @@ def test_advanced_rag_passes_explicit_langfuse_callback(monkeypatch) -> None:
     assert response.output == "ok"
     assert captured["langfuse_callback"] is explicit_callback
     assert explicit_callback in (captured["callbacks"] or [])
+
+
+def test_build_langfuse_callback_delegates_to_tracing_utility(monkeypatch) -> None:
+    marker = object()
+    captured: dict[str, object] = {}
+
+    def fake_builder(*, scope: str, sampling_key: str | None = None):
+        captured["scope"] = scope
+        captured["sampling_key"] = sampling_key
+        return marker
+
+    monkeypatch.setattr(public_api, "_build_langfuse_callback_handler", fake_builder)
+    callback = public_api.build_langfuse_callback(sampling_key="sdk-test")
+
+    assert callback is marker
+    assert captured == {"scope": "runtime", "sampling_key": "sdk-test"}
+
+
+def test_advanced_rag_builds_langfuse_callback_from_settings(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    callback_marker = object()
+
+    def fake_build_langfuse_callback(*, sampling_key=None, settings=None):
+        captured["sampling_key"] = sampling_key
+        captured["settings"] = settings
+        return callback_marker
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+        captured["callbacks"] = callbacks
+        captured["langfuse_callback"] = langfuse_callback
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "build_langfuse_callback", fake_build_langfuse_callback)
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    response = public_api.advanced_rag(
+        "query for settings",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        langfuse_settings={
+            "enabled": True,
+            "public_key": "pk",
+            "secret_key": "sk",
+        },
+    )
+
+    assert response.output == "ok"
+    assert captured["sampling_key"] == "query for settings"
+    assert isinstance(captured["settings"], dict)
+    assert captured["langfuse_callback"] is callback_marker
+    assert callback_marker in (captured["callbacks"] or [])

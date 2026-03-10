@@ -195,7 +195,7 @@ Backend
     -> ThreadPoolExecutor worker
       -> BenchmarkRunner.run(...)
         -> BenchmarkExecutionAdapter
-          -> agent_search.public_api.run / run_async / get_run_status / cancel_run
+          -> agent_search.public_api.advanced_rag / run_async / get_run_status / cancel_run
         -> persist benchmark result + quality + retrieval metrics rows</div>
       </div>
 
@@ -203,8 +203,8 @@ Backend
         <h2>Observability Path (Langfuse)</h2>
         <ul>
           <li>Tracing utility: <code>src/backend/utils/langfuse_tracing.py</code>.</li>
-          <li><code>advanced_rag(..., langfuse_callback=...)</code> supports passing an explicit callback; otherwise SDK builds one from env + sampling.</li>
-          <li>Runtime scope can attach callback handler per run when enabled and sampled.</li>
+          <li><code>advanced_rag(..., langfuse_callback=...)</code> or <code>advanced_rag(..., langfuse_settings={...})</code> enables SDK run tracing.</li>
+          <li>If <code>langfuse_callback</code> is omitted, SDK run tracing is skipped.</li>
           <li>Benchmark scope emits trace/span/score events for dataset, mode, and question execution.</li>
           <li>Sampling controls are independent per scope:</li>
           <li><code>LANGFUSE_RUNTIME_SAMPLE_RATE</code>, <code>LANGFUSE_BENCHMARK_SAMPLE_RATE</code>.</li>

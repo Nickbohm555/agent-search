@@ -22,13 +22,19 @@ python -c "import agent_search; print(agent_search.__file__)"
 
 ```python
 from langchain_openai import ChatOpenAI
-from agent_search import advanced_rag
+from agent_search import advanced_rag, build_langfuse_callback
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
+langfuse_callback = build_langfuse_callback(sampling_key="customer-123")
 
-response = advanced_rag("What is pgvector?", vector_store=vector_store, model=model)
+response = advanced_rag(
+    "What is pgvector?",
+    vector_store=vector_store,
+    model=model,
+    langfuse_callback=langfuse_callback,
+)
 print(response.output)
 ```
 
@@ -49,6 +55,7 @@ python -m build
 Primary functions exposed by `agent_search`:
 
 - `advanced_rag`
+- `build_langfuse_callback`
 - `run`
 - `run_async`
 - `get_run_status`
@@ -58,7 +65,38 @@ Primary functions exposed by `agent_search`:
 
 Tracing behavior for `advanced_rag(...)`:
 - If you pass `langfuse_callback=...`, SDK uses that callback for run tracing.
-- If you omit it, SDK attempts to build a Langfuse callback from environment settings and sampling.
+- Or pass `langfuse_settings={...}` and SDK builds the callback from that config.
+- If both are omitted, SDK does not trace the run.
+
+Config-driven tracing example:
+
+```python
+response = advanced_rag(
+    "What is pgvector?",
+    vector_store=vector_store,
+    model=model,
+    langfuse_settings={
+        "enabled": True,
+        "public_key": "...",
+        "secret_key": "...",
+        "host": "https://cloud.langfuse.com",
+        "environment": "production",
+        "release": "agent-search-core-0.1.8",
+        "runtime_sample_rate": 1.0,
+    },
+)
+```
+
+`advanced_rag(...)` output schema:
+
+```python
+RuntimeAgentRunResponse(
+  main_question: str,
+  sub_qa: list[SubQuestionAnswer],
+  output: str,
+  final_citations: list[CitationSourceRow],
+)
+```
 
 Config and errors exposed by `agent_search`:
 

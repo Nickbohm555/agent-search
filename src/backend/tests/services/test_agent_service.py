@@ -1090,7 +1090,6 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
     monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
     monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
     monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
-    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda **_kwargs: langfuse_callback)
     monkeypatch.setattr(
         agent_service,
         "flush_langfuse_callback_handler",
@@ -1102,6 +1101,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
         vector_store="fake-store",
         initial_search_context=[{"rank": 1, "title": "Initial context"}],
         run_metadata=agent_service.build_graph_run_metadata(run_id="run-seq"),
+        langfuse_callback=langfuse_callback,
     )
 
     assert call_order == [
@@ -1206,7 +1206,6 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
     monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
     monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
     monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
-    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda **_kwargs: langfuse_callback)
     monkeypatch.setattr(
         agent_service,
         "flush_langfuse_callback_handler",
@@ -1218,6 +1217,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
         vector_store="fake-store",
         initial_search_context=[{"rank": 1, "title": "Initial context"}],
         run_metadata=agent_service.build_graph_run_metadata(run_id="run-parallel"),
+        langfuse_callback=langfuse_callback,
     )
 
     assert completion_order == ["Sub-question B?", "Sub-question A?"]
