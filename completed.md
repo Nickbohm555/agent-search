@@ -4002,3 +4002,66 @@ frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 health: {"status":"ok"}
 ```
+
+## Completed - 2026-03-10 - Section 3
+
+## Section 3: PyPI publish documentation - release steps
+
+**Single goal:** Document the PyPI publish steps and prerequisites for the core SDK.
+
+**Details:**
+- Document the required tag format and version alignment (`agent-search-core-vX.Y.Z`).
+- Document the `scripts/release_sdk.sh` dry-run and publish commands.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies; documentation only.
+- Tooling (uv, poetry, Docker): no Docker changes; referenced existing scripts/workflows.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| sdk/core/README.md | Publish instructions for SDK consumers/maintainers. |
+| README.md | Top-level release summary and pointer to SDK publish docs. |
+
+**How to test:** Manually verify docs match the release workflow and script arguments.
+
+**Test results:**
+- `./scripts/release_sdk.sh` -> passed; built `agent_search_core-0.1.0` wheel/sdist, `twine check` passed, upload skipped (`PUBLISH=0`).
+- `RELEASE_TAG=agent-search-core-v0.1.0 ./scripts/release_sdk.sh` -> passed; explicit tag validation matched package version and dry-run completed.
+
+**Completion notes:**
+- Added a dedicated "PyPI release guide" in `sdk/core/README.md` with prerequisites, tag/version alignment, dry-run command, and publish command.
+- Added top-level "SDK PyPI Release" summary in `README.md` that points to `sdk/core/README.md` and includes the exact release commands.
+- Confirmed documented commands/arguments match `scripts/release_sdk.sh` and `.github/workflows/release-sdk.yml` behavior.
+- Performed full application rebuild/restart before implementation and captured backend/frontend/db logs and health checks.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=120 frontend`
+- `docker compose logs --tail=120 db`
+- `curl -sS http://localhost:8000/api/health`
+- `./scripts/release_sdk.sh`
+- `RELEASE_TAG=agent-search-core-v0.1.0 ./scripts/release_sdk.sh`
+- `docker compose logs --tail=80 backend`
+- `docker compose logs --tail=40 frontend`
+- `docker compose logs --tail=40 db`
+
+**Useful logs (excerpt):**
+```text
+release_sdk: starting sdk_dir=/Users/nickbohm/Desktop/worktree/agent-search/sdk/core version=0.1.0 publish=0
+Successfully built agent_search_core-0.1.0.tar.gz and agent_search_core-0.1.0-py3-none-any.whl
+release_sdk: running twine check
+...agent_search_core-0.1.0-py3-none-any.whl: PASSED
+...agent_search_core-0.1.0.tar.gz: PASSED
+release_sdk: dry run complete; skipping upload (set PUBLISH=1 to publish)
+
+backend: Application startup complete.
+backend: GET /api/health 200 OK
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```

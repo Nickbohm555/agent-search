@@ -1,7 +1,7 @@
 
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 3. (move +1 after each turn)
+Current section to work on: section 4. (move +1 after each turn)
 
 ---
 
@@ -83,7 +83,8 @@ Current section to work on: section 3. (move +1 after each turn)
 **How to test:** Manually verify docs match the release workflow and script arguments.
 
 **Test results:** (Add when section is complete.)
-- Command and outcome.
+- 2026-03-10: `./scripts/release_sdk.sh` -> passed; built `agent_search_core-0.1.0` wheel/sdist, `twine check` passed, upload skipped (`PUBLISH=0`).
+- 2026-03-10: `RELEASE_TAG=agent-search-core-v0.1.0 ./scripts/release_sdk.sh` -> passed; explicit tag validation matched package version and dry-run completed successfully.
 
 ---
 

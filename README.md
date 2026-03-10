@@ -96,6 +96,17 @@ Vector-store contract:
 - `similarity_search(query, k, filter=None) -> list[Document]`
 - Use `LangChainVectorStoreAdapter` when adapting a LangChain vector store instance.
 
+## SDK PyPI Release
+
+Core SDK release instructions are documented in [`sdk/core/README.md`](sdk/core/README.md).
+
+Release requirements summary:
+
+- Tag format: `agent-search-core-vX.Y.Z`
+- Tag version must match `sdk/core/pyproject.toml` `version`
+- Dry-run release check: `./scripts/release_sdk.sh`
+- Publish release: `PUBLISH=1 TWINE_API_TOKEN=*** ./scripts/release_sdk.sh`
+
 ## Generated HTTP SDK (Secondary)
 
 Generated API client artifacts are under `sdk/python` and come from `openapi.json`.
