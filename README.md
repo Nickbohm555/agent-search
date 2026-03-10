@@ -77,12 +77,37 @@ curl -sS http://localhost:8000/api/agents/run-status/<job_id>
 
 The primary SDK is in-process Python usage through `agent_search`.
 
+Install from PyPI:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install agent-search-core
+```
+
 Entry points:
 
 - `run(query, *, vector_store, model, config=None)`
 - `run_async(query, *, vector_store, model, config=None)`
 - `get_run_status(job_id)`
 - `cancel_run(job_id)`
+
+Minimal usage (you must provide both a chat model and a vector store):
+
+```python
+from langchain_openai import ChatOpenAI
+from agent_search import run
+from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
+
+vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
+model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
+
+response = run("What is pgvector?", vector_store=vector_store, model=model)
+print(response.output)
+```
+
+The SDK does not auto-build a model or vector store. When running the full app in this repo, the backend constructs those dependencies for API calls.
 
 Error taxonomy:
 

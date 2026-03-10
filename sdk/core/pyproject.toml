@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-search-core"
-version = "0.1.0"
+version = "0.1.2"
 description = "In-process SDK runtime for agent-search"
 readme = "README.md"
 authors = [{ name = "agent-search maintainers" }]
@@ -27,7 +27,12 @@ dependencies = [
   "langchain-classic>=1.0.0",
   "langchain-community==0.3.31",
   "langchain-openai>=0.3.0",
+  "langchain-text-splitters>=1.1.1",
   "flashrank>=0.2.10",
+  "langfuse>=3.0.0",
+  "pgvector==0.3.6",
+  "psycopg[binary]==3.2.6",
+  "sqlalchemy==2.0.40",
 ]
 
 [project.urls]
@@ -36,4 +41,11 @@ Repository = "https://github.com/nickbohm/agent-search"
 Issues = "https://github.com/nickbohm/agent-search/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agent_search"]
+packages = ["src/agent_search", "src/schemas", "src/services", "src/utils"]
+py-modules = ["config", "db"]
+include = ["src/config.py", "src/db.py"]
+
+[tool.hatch.build.targets.sdist]
+packages = ["src/agent_search", "src/schemas", "src/services", "src/utils"]
+py-modules = ["config", "db"]
+include = ["src/config.py", "src/db.py"]

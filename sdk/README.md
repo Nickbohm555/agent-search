@@ -19,6 +19,29 @@ Return contract:
 - Sync: `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
 - Async start/status/cancel response models in `schemas`
 
+Install from PyPI:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install agent-search-core
+```
+
+Minimal usage (you must provide a chat model and a vector store):
+
+```python
+from langchain_openai import ChatOpenAI
+from agent_search import run
+from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
+
+vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
+model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
+
+response = run("What is pgvector?", vector_store=vector_store, model=model)
+print(response.output)
+```
+
 ### Error taxonomy
 
 Consumer-facing exceptions:

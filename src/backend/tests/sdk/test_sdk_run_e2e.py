@@ -23,13 +23,6 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
     sentinel_vector_store = _CompatibleVectorStore()
     captured: dict[str, object] = {}
 
-    def fail_if_vector_store_lookup_called(*, connection, collection_name, embeddings):
-        raise AssertionError(
-            f"Expected provided vector_store to be used directly. "
-            f"Unexpected lookup: connection={connection} collection={collection_name} embeddings={embeddings}"
-        )
-
-    monkeypatch.setattr(runtime_runner, "get_vector_store", fail_if_vector_store_lookup_called)
     monkeypatch.setattr(
         runtime_runner,
         "search_documents_for_context",

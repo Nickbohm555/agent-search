@@ -1,10 +1,25 @@
-"""Core in-process SDK package root for agent_search."""
+from .config import RuntimeConfig, RuntimeRerankConfig, RuntimeRetrievalConfig, RuntimeTimeoutConfig
+from .errors import (
+    SDKConfigurationError,
+    SDKError,
+    SDKModelError,
+    SDKRetrievalError,
+    SDKTimeoutError,
+)
+from .public_api import cancel_run, get_run_status, run, run_async
 
-from importlib.metadata import PackageNotFoundError, version
-
-try:
-    __version__ = version("agent-search-core")
-except PackageNotFoundError:
-    __version__ = "0.1.0"
-
-__all__ = ["__version__"]
+__all__ = [
+    "run",
+    "run_async",
+    "get_run_status",
+    "cancel_run",
+    "RuntimeConfig",
+    "RuntimeTimeoutConfig",
+    "RuntimeRetrievalConfig",
+    "RuntimeRerankConfig",
+    "SDKError",
+    "SDKConfigurationError",
+    "SDKRetrievalError",
+    "SDKModelError",
+    "SDKTimeoutError",
+]

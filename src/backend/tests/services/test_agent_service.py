@@ -1257,11 +1257,6 @@ def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
 
     monkeypatch.setattr(
         runtime_runner,
-        "get_vector_store",
-        lambda *, connection, collection_name, embeddings: "vector-store-core",
-    )
-    monkeypatch.setattr(
-        runtime_runner,
         "search_documents_for_context",
         lambda *, vector_store, query, k, score_threshold: ["doc1"],
     )
@@ -1302,7 +1297,7 @@ def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
         ),
     )
 
-    response = runtime_runner.run_runtime_agent(payload, model="model-x")
+    response = runtime_runner.run_runtime_agent(payload, model="model-x", vector_store="vector-store-core")
 
     assert captured["payload_query"] == "How does core runner execute?"
     assert captured["vector_store"] == "vector-store-core"
