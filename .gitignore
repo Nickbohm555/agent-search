@@ -12,3 +12,15 @@ src/backend/.venv/
 .loop-commit-msg.full
 
 # Generated SDK policy: sdk/python is committed and intentionally not ignored.
+
+# Local-only files
+.cursor/
+*.sh
+completed.md
+IMPLEMENTATION_PLAN.md
+implementation_plan.md
+**/*.md
+!**/README.md
+!**/readme.md
+*.png
+!assets/readme-hud-banner.png
