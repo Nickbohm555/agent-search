@@ -3937,3 +3937,68 @@ backend: Application startup complete.
 frontend: VITE v5.4.21 ready
 DB: database system is ready to accept connections
 ```
+
+## Blocked - 2026-03-10 - Section 2 (rerun)
+
+## Section 2: Public SDK release - PyPI publish
+
+**Single goal:** Publish the core SDK package to PyPI as a public release.
+
+**Details:**
+- Use the existing `scripts/release_sdk.sh` workflow with `PUBLISH=1`.
+- Tag must already exist and match the package version.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies; used existing build/twine tooling defined in `sdk/core/pyproject.toml`.
+- Tooling (uv, poetry, Docker): no Dockerfile/dependency changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| scripts/release_sdk.sh | Publish flow (build + twine check + upload when `PUBLISH=1`). |
+| sdk/core/pyproject.toml | Source of SDK version metadata for release. |
+| .github/workflows/release-sdk.yml | Reference tag naming and publish workflow. |
+
+**How to test:** Run `scripts/release_sdk.sh` with `PUBLISH=1`.
+
+**Test results:**
+- `PUBLISH=1 ./scripts/release_sdk.sh` -> failed at publish gate: `PUBLISH=1 requires TWINE_API_TOKEN`.
+
+**Blocked reason:**
+- `TWINE_API_TOKEN` is not set in this environment.
+- Expected release tag is `agent-search-core-v0.1.0`, and no local `agent-search-core-v*` tag exists.
+
+**Completion notes:**
+- Reused existing release flow without code changes.
+- Performed required full app reset/rebuild/restart and captured backend/frontend/db logs plus health check.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose logs --no-color --tail=200 backend`
+- `docker compose logs --no-color --tail=200 frontend`
+- `docker compose logs --no-color --tail=200 db`
+- `VERSION=$(sed -nE 's/^version = "([^"]+)"/\1/p' sdk/core/pyproject.toml | head -n1); echo "expected_tag=agent-search-core-v$VERSION"; git tag -l 'agent-search-core-v*'`
+- `PUBLISH=1 ./scripts/release_sdk.sh`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose logs --no-color --tail=60 backend`
+- `docker compose logs --no-color --tail=40 frontend`
+- `docker compose logs --no-color --tail=40 db`
+
+**Useful logs (excerpt):**
+```text
+release_sdk: starting sdk_dir=/Users/nickbohm/Desktop/worktree/agent-search/sdk/core version=0.1.0 publish=1
+Successfully built agent_search_core-0.1.0.tar.gz and agent_search_core-0.1.0-py3-none-any.whl
+release_sdk: running twine check
+...agent_search_core-0.1.0-py3-none-any.whl: PASSED
+...agent_search_core-0.1.0.tar.gz: PASSED
+ERROR release_sdk: PUBLISH=1 requires TWINE_API_TOKEN
+
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```

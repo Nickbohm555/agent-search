@@ -1,7 +1,7 @@
 
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 2. (move +1 after each turn)
+Current section to work on: section 3. (move +1 after each turn)
 
 ---
 
@@ -57,6 +57,7 @@ Current section to work on: section 2. (move +1 after each turn)
 **Test results:** (Add when section is complete.)
 - Command and outcome.
 - 2026-03-10: `PUBLISH=1 ./scripts/release_sdk.sh` -> blocked/fail: build+twine-check passed, publish step aborted with `PUBLISH=1 requires TWINE_API_TOKEN`; no `agent-search-core-v*` git tag found locally to validate release-tag precondition.
+- 2026-03-10 (rerun): `PUBLISH=1 ./scripts/release_sdk.sh` -> blocked/fail again: build+twine-check passed; publish gate failed with `PUBLISH=1 requires TWINE_API_TOKEN`; validated local tag precondition still unmet (`agent-search-core-v0.1.0` not present).
 
 ---
 
