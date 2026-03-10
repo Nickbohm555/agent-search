@@ -46,12 +46,11 @@ def run_rerank_node(
     effective_config = config or default_config
     rerank_query = (node_input.expanded_query or "").strip() or node_input.sub_question
     logger.info(
-        "Rerank node start sub_question=%s candidate_count=%s enabled=%s top_n=%s model=%s run_id=%s trace_id=%s correlation_id=%s",
+        "Rerank node start sub_question=%s candidate_count=%s enabled=%s top_n=%s run_id=%s trace_id=%s correlation_id=%s",
         truncate_query_fn(node_input.sub_question),
         len(node_input.retrieved_docs),
         effective_config.enabled,
         effective_config.top_n,
-        effective_config.model_name,
         node_input.run_metadata.run_id,
         node_input.run_metadata.trace_id,
         node_input.run_metadata.correlation_id,

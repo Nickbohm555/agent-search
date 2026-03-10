@@ -2334,7 +2334,7 @@ def test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_gr
     assert "Rerank node complete" in caplog.text
 
 
-def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expand_baseline(
+def test_retrieval_quality_eval_slice_comparison_multiquery_vs_no_expand_baseline(
     monkeypatch,
 ) -> None:
     run_metadata = agent_service.build_graph_run_metadata(run_id="run-section-20-slices")
@@ -2446,7 +2446,7 @@ def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expa
         expanded_queries=[sub_question, "compliance deadline policy update"],
         rerank=False,
     )
-    multiquery_flashrank_top1, multiquery_flashrank_contains_gold = evaluate_slice(
+    multiquery_rerank_top1, multiquery_rerank_contains_gold = evaluate_slice(
         expanded_queries=[sub_question, "compliance deadline policy update"],
         rerank=True,
     )
@@ -2455,8 +2455,8 @@ def test_retrieval_quality_eval_slice_comparison_multiquery_flashrank_vs_no_expa
     assert no_expand_baseline_contains_gold is False
     assert multiquery_only_contains_gold is True
     assert multiquery_only_top1 != gold_document_id
-    assert multiquery_flashrank_contains_gold is True
-    assert multiquery_flashrank_top1 == gold_document_id
+    assert multiquery_rerank_contains_gold is True
+    assert multiquery_rerank_top1 == gold_document_id
 
 
 def _estimate_context_token_budget(rows: list[CitationSourceRow]) -> int:

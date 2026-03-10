@@ -44,7 +44,7 @@ def test_runtime_config_applies_nested_timeout_retrieval_and_rerank_overrides() 
             "rerank": {
                 "enabled": False,
                 "top_n": 8,
-                "provider": "flashrank",
+                "provider": "openai",
             },
         }
     )
@@ -56,7 +56,7 @@ def test_runtime_config_applies_nested_timeout_retrieval_and_rerank_overrides() 
     assert config.retrieval.search_node_merged_cap == 40
     assert config.rerank.enabled is False
     assert config.rerank.top_n == 8
-    assert config.rerank.provider == "flashrank"
+    assert config.rerank.provider == "openai"
 
 
 def test_runtime_config_falls_back_to_defaults_for_invalid_overrides() -> None:

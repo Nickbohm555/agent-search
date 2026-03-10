@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 logger = logging.getLogger(__name__)
 
-_RERANK_PROVIDERS = {"auto", "openai", "flashrank"}
+_RERANK_PROVIDERS = {"auto", "openai"}
 
 
 def _read_positive_int(*, value: Any, default: int, field_name: str) -> int:

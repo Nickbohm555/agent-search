@@ -24,7 +24,7 @@ flowchart TD
     K --> L["retrieved docs + provenance"]
     L --> M["Rerank Node"]
     M -->|Optional LM call #3 per lane<br/>LLM rerank provider| N["reranked docs"]
-    M -->|Fallback provider| O["deterministic/Flashrank order"]
+    M -->|Fallback provider| O["deterministic order"]
     N --> P["Answer Node"]
     O --> P
     P -->|LM call #4 per lane<br/>sub-answer generation| Q["sub_answer + citation indices"]

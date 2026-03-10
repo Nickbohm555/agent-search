@@ -5,7 +5,6 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
 from services.document_validation_service import RetrievedDocument
@@ -20,8 +19,6 @@ class RerankerConfig:
     enabled: bool = True
     top_n: int | None = None
     provider: str = "auto"
-    model_name: str = "ms-marco-MiniLM-L-12-v2"
-    cache_dir: str | None = None
     openai_model_name: str = "gpt-4.1-mini"
     openai_temperature: float = 0.0
 
@@ -43,11 +40,6 @@ def build_reranker_config_from_env() -> RerankerConfig:
         top_n = None
 
     provider = os.getenv("RERANK_PROVIDER", "openai").strip().lower() or "openai"
-    model_name = os.getenv("RERANK_MODEL_NAME", "ms-marco-MiniLM-L-12-v2").strip()
-    if not model_name:
-        model_name = "ms-marco-MiniLM-L-12-v2"
-    cache_dir = os.getenv("RERANK_CACHE_DIR")
-    normalized_cache_dir = cache_dir.strip() if cache_dir and cache_dir.strip() else None
     openai_model_name = os.getenv("RERANK_OPENAI_MODEL_NAME", "gpt-4.1-mini").strip() or "gpt-4.1-mini"
     openai_temperature_raw = os.getenv("RERANK_OPENAI_TEMPERATURE", "0").strip() or "0"
     try:
@@ -63,21 +55,9 @@ def build_reranker_config_from_env() -> RerankerConfig:
         enabled=enabled,
         top_n=top_n,
         provider=provider,
-        model_name=model_name,
-        cache_dir=normalized_cache_dir,
         openai_model_name=openai_model_name,
         openai_temperature=openai_temperature,
     )
-
-
-@lru_cache(maxsize=8)
-def _build_ranker(model_name: str, cache_dir: str | None) -> Any:
-    from flashrank import Ranker
-
-    kwargs: dict[str, Any] = {"model_name": model_name}
-    if cache_dir is not None:
-        kwargs["cache_dir"] = cache_dir
-    return Ranker(**kwargs)
 
 
 def _truncate_documents(*, documents: list[RetrievedDocument], top_n: int | None) -> list[RetrievedDocument]:
@@ -106,28 +86,14 @@ def _fallback_scores(*, documents: list[RetrievedDocument], top_n: int | None) -
     return output
 
 
-def _build_passage_text(document: RetrievedDocument) -> str:
-    return "\n".join(
-        part
-        for part in [
-            f"title: {document.title}".strip(),
-            f"source: {document.source}".strip(),
-            f"content: {document.content}".strip(),
-        ]
-        if part
-    ).strip()
-
-
 def _resolve_provider_attempt_order(provider: str) -> list[str]:
     normalized = (provider or "").strip().lower()
     if normalized in {"", "auto"}:
-        return ["openai", "flashrank"]
+        return ["openai"]
     if normalized == "openai":
-        return ["openai", "flashrank"]
-    if normalized == "flashrank":
-        return ["flashrank"]
+        return ["openai"]
     logger.warning("Unknown rerank provider=%s; defaulting to auto", provider)
-    return ["openai", "flashrank"]
+    return ["openai"]
 
 
 def _extract_json_text(raw_text: str) -> str:
@@ -206,42 +172,6 @@ def _rerank_with_openai(
     return ordered_docs
 
 
-def _rerank_with_flashrank(
-    *,
-    query: str,
-    documents: list[RetrievedDocument],
-    config: RerankerConfig,
-) -> list[tuple[RetrievedDocument, float | None]] | None:
-    try:
-        from flashrank import RerankRequest
-    except Exception:
-        logger.exception("Flashrank import failed")
-        return None
-
-    ranker = _build_ranker(config.model_name, config.cache_dir)
-    passages: list[dict[str, str]] = []
-    by_id: dict[str, RetrievedDocument] = {}
-    for index, document in enumerate(documents):
-        doc_id = str(index)
-        by_id[doc_id] = document
-        passages.append({"id": doc_id, "text": _build_passage_text(document)})
-    request = RerankRequest(query=query, passages=passages)
-    ranked = ranker.rerank(request) or []
-
-    ordered_docs: list[tuple[RetrievedDocument, float | None]] = []
-    for row in ranked:
-        if not isinstance(row, dict):
-            continue
-        doc_id = str(row.get("id", ""))
-        document = by_id.get(doc_id)
-        if document is None:
-            continue
-        score_value = row.get("score")
-        score = float(score_value) if isinstance(score_value, (int, float)) else None
-        ordered_docs.append((document, score))
-    return ordered_docs
-
-
 def rerank_documents(
     *,
     query: str,
@@ -269,15 +199,11 @@ def rerank_documents(
                     )
                     or []
                 )
-            elif provider == "flashrank":
-                ordered_docs = (
-                    _rerank_with_flashrank(query=query, documents=documents, config=config) or []
-                )
         except Exception:
             logger.exception(
                 "Reranker provider failed provider=%s model_name=%s top_n=%s",
                 provider,
-                config.model_name,
+                config.openai_model_name,
                 config.top_n,
             )
             ordered_docs = []

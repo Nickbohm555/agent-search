@@ -156,7 +156,7 @@ Backend
     I --> J[retrieved_docs + retrieval_provenance]
     J --> K[Rerank Node]
     K -->|Optional LM call #3 OpenAI rerank provider| L[reranked_docs]
-    K -->|Fallback provider| L2[Flashrank or deterministic order]
+    K -->|Fallback provider| L2[Deterministic order]
     L --> M[Answer Node]
     L2 --> M
     M -->|LM call #4 generate_subanswer| N[sub_answer + citation indices]

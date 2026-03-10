@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-search-core"
-version = "0.1.9"
+version = "0.1.10"
 description = "In-process SDK runtime for agent-search with optional callback-driven Langfuse tracing"
 readme = "README.md"
 authors = [{ name = "agent-search maintainers" }]
@@ -28,7 +28,6 @@ dependencies = [
   "langchain-community==0.3.31",
   "langchain-openai>=0.3.0",
   "langchain-text-splitters>=1.1.1",
-  "flashrank>=0.2.10",
   "langfuse>=3.0.0",
   "pgvector==0.3.6",
   "psycopg[binary]==3.2.6",
