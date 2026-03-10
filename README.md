@@ -58,15 +58,9 @@ flowchart TD
 
 ## SDK Logic (In-Process)
 
-Entry points (model + vector store are required):
-
-- `advanced_rag(query, *, vector_store, model, config=None, callbacks=None, langfuse_callback=None, langfuse_settings=None)`
-- `run(query, *, vector_store, model, config=None, callbacks=None, langfuse_callback=None, langfuse_settings=None)`
-- `run_async(query, *, vector_store, model, config=None)`
-- `get_run_status(job_id)`
-- `cancel_run(job_id)`
-
-Minimal usage (you must provide both a chat model and a vector store):
+Before calling `advanced_rag(...)`, install `agent-search-core`, configure your model provider credentials (for example OpenAI), and provide both:
+- a chat model instance
+- a vector store adapter (`LangChainVectorStoreAdapter`)
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -90,14 +84,6 @@ response = advanced_rag(
 print(response.output)
 ```
 
-`run(...)` remains available as a compatibility alias and delegates to `advanced_rag(...)`.
-
-Tracing behavior for `advanced_rag(...)`:
-
-- Pass `langfuse_callback=...` (for example a `langfuse.langchain.CallbackHandler`) to enable tracing.
-- If `langfuse_callback` is omitted, SDK run tracing is disabled.
-- `langfuse_settings` is deprecated and ignored by `advanced_rag(...)`; pass a callback explicitly instead.
-
 Output schema for `advanced_rag(...)`:
 
 ```python
@@ -108,11 +94,3 @@ RuntimeAgentRunResponse(
   final_citations: list[CitationSourceRow],
 )
 ```
-
-The SDK does not auto-build a model or vector store. When running the full app in this repo, the backend constructs those dependencies for API calls.
-
-Rerank is required (OpenAI provider only). If rerank is disabled or the OpenAI rerank call fails, the run will error.
-
-PyPI description:
-
-- `https://pypi.org/project/agent-search-core/`
