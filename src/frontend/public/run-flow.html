@@ -155,10 +155,8 @@ Backend
     H --> I[Search Node vector similarity search]
     I --> J[retrieved_docs + retrieval_provenance]
     J --> K[Rerank Node]
-    K -->|Optional LM call #3 OpenAI rerank provider| L[reranked_docs]
-    K -->|Fallback provider| L2[Deterministic order]
+    K -->|LM call #3 OpenAI rerank provider| L[reranked_docs]
     L --> M[Answer Node]
-    L2 --> M
     M -->|LM call #4 generate_subanswer| N[sub_answer + citation indices]
     N --> P[Synthesize Final Node]
     P -->|LM call #5 generate_final_synthesis_answer| Q[final output]
@@ -252,7 +250,7 @@ Backend
             <tr>
               <td><code>rerank</code></td>
               <td><code>rerank</code></td>
-              <td><code>reranked_docs</code> (+ fallback badge when bypassed)</td>
+              <td><code>reranked_docs</code></td>
             </tr>
             <tr>
               <td><code>answer</code></td>

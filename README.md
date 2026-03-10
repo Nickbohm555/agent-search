@@ -23,10 +23,8 @@ flowchart TD
     J --> K["Search Node<br/>vector similarity retrieval"]
     K --> L["retrieved docs + provenance"]
     L --> M["Rerank Node"]
-    M -->|Optional LM call #3 per lane<br/>LLM rerank provider| N["reranked docs"]
-    M -->|Fallback provider| O["deterministic order"]
+    M -->|LM call #3 per lane<br/>OpenAI rerank provider| N["reranked docs"]
     N --> P["Answer Node"]
-    O --> P
     P -->|LM call #4 per lane<br/>sub-answer generation| Q["sub_answer + citation indices"]
     Q --> R["Synthesize Final Node"]
     R -->|LM call #5<br/>final synthesis answer| S["final output"]
@@ -35,7 +33,7 @@ flowchart TD
 
 ## SDK Logic (In-Process)
 
-Entry points:
+Entry points (model + vector store are required):
 
 - `advanced_rag(query, *, vector_store, model, config=None, callbacks=None, langfuse_callback=None, langfuse_settings=None)`
 - `run(query, *, vector_store, model, config=None, callbacks=None, langfuse_callback=None, langfuse_settings=None)`
@@ -87,6 +85,8 @@ RuntimeAgentRunResponse(
 ```
 
 The SDK does not auto-build a model or vector store. When running the full app in this repo, the backend constructs those dependencies for API calls.
+
+Rerank is required (OpenAI provider only). If rerank is disabled or the OpenAI rerank call fails, the run will error.
 
 PyPI description:
 

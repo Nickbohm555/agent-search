@@ -183,8 +183,7 @@ def rerank_documents(
         return []
 
     if not config.enabled:
-        logger.info("Reranker disabled via config; using deterministic fallback order")
-        return _fallback_scores(documents=documents, top_n=config.top_n)
+        raise ValueError("Rerank is required and cannot be disabled.")
 
     ordered_docs: list[tuple[RetrievedDocument, float | None]] = []
     for provider in _resolve_provider_attempt_order(config.provider):
@@ -211,8 +210,7 @@ def rerank_documents(
             break
 
     if not ordered_docs:
-        logger.warning("Reranker returned no mappable results; using deterministic fallback order")
-        return _fallback_scores(documents=documents, top_n=config.top_n)
+        raise RuntimeError("Rerank failed to return any results.")
 
     seen_doc_ranks: set[int] = set()
     for document, _ in ordered_docs:
