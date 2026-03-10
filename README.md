@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/readme-hud-banner.png" alt="agent-search banner" width="100%" data-darkreader-ignore />
+</p>
+
 # agent-search
 
 `agent-search` is a Dockerized RAG application and SDK-style runtime built with FastAPI, React, Postgres, pgvector, and a graph-stage answer pipeline.
