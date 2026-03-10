@@ -8,7 +8,30 @@
 
 ## How The SDK Is Used
 
-Before calling `advanced_rag(...)`, install `agent-search-core`, configure your model provider credentials, and provide both:
+Install dependencies first (`pip`, not “pippin”):
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install agent-search-core langchain-openai langfuse
+```
+
+Or with `uv`:
+
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install agent-search-core langchain-openai langfuse
+```
+
+Set your model provider key:
+
+```bash
+export OPENAI_API_KEY="your_openai_api_key"
+```
+
+Then call `advanced_rag(...)` with:
 - a chat model instance
 - a vector store adapter (`LangChainVectorStoreAdapter`)
 
