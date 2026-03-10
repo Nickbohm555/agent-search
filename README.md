@@ -10,27 +10,27 @@
 
 ```mermaid
 flowchart TD
-    A[SDK caller] --> B[advanced_rag / run / run_async]
-    B --> C[Validate inputs\nmodel + vector_store required]
-    C --> D[Build runtime config\ncallbacks + optional Langfuse]
-    D --> E[run_runtime_agent(query, deps)]
-    E --> F[Decompose Node]
-    F -->|LM call #1\nStructured decomposition plan| G[sub-questions]
+    A["SDK caller"] --> B["advanced_rag / run / run_async"]
+    B --> C["Validate inputs<br/>model + vector_store required"]
+    C --> D["Build runtime config<br/>callbacks + optional Langfuse"]
+    D --> E["run_runtime_agent(query, deps)"]
+    E --> F["Decompose Node"]
+    F -->|LM call #1<br/>Structured decomposition plan| G["sub-questions"]
 
-    G --> H{{Parallel lanes\n1 per sub-question}}
-    H --> I[Expand Node]
-    I -->|LM call #2 per lane\nquery expansion| J[expanded queries]
-    J --> K[Search Node\nvector similarity retrieval]
-    K --> L[retrieved docs + provenance]
-    L --> M[Rerank Node]
-    M -->|Optional LM call #3 per lane\nLLM rerank provider| N[reranked docs]
-    M -->|Fallback provider| O[deterministic/Flashrank order]
-    N --> P[Answer Node]
+    G --> H{"Parallel lanes<br/>1 per sub-question"}
+    H --> I["Expand Node"]
+    I -->|LM call #2 per lane<br/>query expansion| J["expanded queries"]
+    J --> K["Search Node<br/>vector similarity retrieval"]
+    K --> L["retrieved docs + provenance"]
+    L --> M["Rerank Node"]
+    M -->|Optional LM call #3 per lane<br/>LLM rerank provider| N["reranked docs"]
+    M -->|Fallback provider| O["deterministic/Flashrank order"]
+    N --> P["Answer Node"]
     O --> P
-    P -->|LM call #4 per lane\nsub-answer generation| Q[sub_answer + citation indices]
-    Q --> R[Synthesize Final Node]
-    R -->|LM call #5\nfinal synthesis answer| S[final output]
-    S --> T[RuntimeAgentRunResponse\nmain_question + sub_qa + output + final_citations]
+    P -->|LM call #4 per lane<br/>sub-answer generation| Q["sub_answer + citation indices"]
+    Q --> R["Synthesize Final Node"]
+    R -->|LM call #5<br/>final synthesis answer| S["final output"]
+    S --> T["RuntimeAgentRunResponse<br/>main_question + sub_qa + output + final_citations"]
 ```
 
 ## SDK Logic (In-Process)
