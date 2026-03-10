@@ -16,6 +16,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from benchmarks.datasets import load_benchmark_questions
+from config import benchmarks_enabled
 from db import DATABASE_URL
 from schemas import BenchmarkMode
 from services.benchmark_runner import BenchmarkRunner, DEFAULT_DATASET_ROOT
@@ -160,6 +161,8 @@ def _run_benchmark(
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO)
     args = _build_parser().parse_args(argv)
+    if not benchmarks_enabled():
+        raise SystemExit("Benchmarking is disabled. Set BENCHMARKS_ENABLED=true to run benchmark CLI commands.")
 
     try:
         metadata = _parse_metadata(args.metadata)

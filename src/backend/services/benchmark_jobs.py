@@ -14,6 +14,7 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from config import benchmarks_enabled
 from db import DATABASE_URL, SessionLocal
 from models import BenchmarkQualityScore, BenchmarkResult, BenchmarkRetrievalMetric, BenchmarkRun, BenchmarkRunMode
 from schemas import (
@@ -59,6 +60,12 @@ class BenchmarkRunJobStatus:
 _JOBS: dict[str, BenchmarkRunJobStatus] = {}
 
 
+def _ensure_benchmarks_enabled() -> None:
+    if benchmarks_enabled():
+        return
+    raise RuntimeError("Benchmarking is disabled. Set BENCHMARKS_ENABLED=true to enable benchmark execution.")
+
+
 def _to_benchmark_status(raw: str) -> BenchmarkRunStatus:
     try:
         return BenchmarkRunStatus(raw)
@@ -97,6 +104,7 @@ def start_benchmark_run_job(
     session_factory: sessionmaker[Session] = SessionLocal,
     runner: BenchmarkRunner | None = None,
 ) -> BenchmarkRunCreateResponse:
+    _ensure_benchmarks_enabled()
     job_id = str(uuid.uuid4())
     run_id = f"benchmark-run-{uuid.uuid4()}"
     status = BenchmarkRunJobStatus(
@@ -285,6 +293,7 @@ def _run_benchmark_job(
     session_factory: sessionmaker[Session],
     runner: BenchmarkRunner | None,
 ) -> None:
+    _ensure_benchmarks_enabled()
     with _JOB_LOCK:
         job = _JOBS.get(job_id)
         if job is None:

@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -25,6 +26,11 @@ from schemas import (
     BenchmarkRunStatusResponse,
     BenchmarkTargets,
 )
+
+
+@pytest.fixture(autouse=True)
+def _enable_benchmarks(monkeypatch) -> None:
+    monkeypatch.setenv("BENCHMARKS_ENABLED", "true")
 
 
 def _build_client():
@@ -277,3 +283,13 @@ def test_wipe_benchmark_data_returns_500_on_error(monkeypatch) -> None:
     response = client.post("/api/benchmarks/wipe")
     assert response.status_code == 500
     assert response.json() == {"detail": "Failed to wipe benchmark data."}
+
+
+def test_benchmark_routes_return_503_when_disabled(monkeypatch) -> None:
+    monkeypatch.setenv("BENCHMARKS_ENABLED", "false")
+    client = _build_client()
+    response = client.get("/api/benchmarks/runs")
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Benchmarking is disabled. Set BENCHMARKS_ENABLED=true to enable benchmark endpoints.",
+    }

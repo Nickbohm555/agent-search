@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from common.db import wipe_all_benchmark_data
+from config import benchmarks_enabled
 from db import get_db
 from schemas import (
     BenchmarkMode,
@@ -23,8 +24,24 @@ from services.benchmark_jobs import (
     start_benchmark_run_job,
 )
 
-router = APIRouter(prefix="/api/benchmarks", tags=["benchmarks"])
 logger = logging.getLogger(__name__)
+
+
+def require_benchmarks_enabled() -> None:
+    if benchmarks_enabled():
+        return
+    logger.warning("Benchmarks request blocked because BENCHMARKS_ENABLED=false")
+    raise HTTPException(
+        status_code=503,
+        detail="Benchmarking is disabled. Set BENCHMARKS_ENABLED=true to enable benchmark endpoints.",
+    )
+
+
+router = APIRouter(
+    prefix="/api/benchmarks",
+    tags=["benchmarks"],
+    dependencies=[Depends(require_benchmarks_enabled)],
+)
 
 
 @router.post("/runs", response_model=BenchmarkRunCreateResponse)

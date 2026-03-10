@@ -15,6 +15,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from config import benchmarks_enabled
 from db import SessionLocal
 from models import BenchmarkResult, BenchmarkRun, BenchmarkRunMode
 from services.benchmark_jobs import get_benchmark_run_status
@@ -123,6 +124,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO)
     args = _build_parser().parse_args(argv)
+    if not benchmarks_enabled():
+        raise SystemExit("Benchmarking is disabled. Set BENCHMARKS_ENABLED=true to run benchmark CLI commands.")
 
     with SessionLocal() as db:
         run_id = _resolve_run_id(db, args.run_id)

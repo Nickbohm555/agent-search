@@ -108,6 +108,15 @@ uv run --project src/backend python scripts/export_openapi.py
 
 ## Benchmark System
 
+Benchmark execution is disabled by default.
+
+```bash
+BENCHMARKS_ENABLED=false
+VITE_BENCHMARKS_ENABLED=false
+```
+
+Enable both flags only when you intentionally want benchmark APIs/CLI/UI available.
+
 Benchmark HTTP API:
 
 - `POST /api/benchmarks/runs`

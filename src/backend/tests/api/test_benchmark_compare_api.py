@@ -23,6 +23,11 @@ from schemas import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _enable_benchmarks(monkeypatch) -> None:
+    monkeypatch.setenv("BENCHMARKS_ENABLED", "true")
+
+
 def _build_client() -> TestClient:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",

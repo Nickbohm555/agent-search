@@ -10,6 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from config import (
     BenchmarkRuntimeSettings,
     LangfuseSettings,
+    benchmarks_enabled,
     build_benchmark_execution_context,
     compute_benchmark_context_fingerprint,
     get_benchmark_context_fingerprint,
@@ -26,6 +27,16 @@ def test_benchmark_runtime_settings_defaults() -> None:
     assert settings.target_min_correctness == 0.75
     assert settings.target_p95_latency_ms == 30000
     assert settings.target_max_cost_usd == 5.0
+
+
+def test_benchmarks_enabled_defaults_to_false() -> None:
+    assert benchmarks_enabled({}) is False
+
+
+def test_benchmarks_enabled_reads_bool_values() -> None:
+    assert benchmarks_enabled({"BENCHMARKS_ENABLED": "true"}) is True
+    assert benchmarks_enabled({"BENCHMARKS_ENABLED": "1"}) is True
+    assert benchmarks_enabled({"BENCHMARKS_ENABLED": "false"}) is False
 
 
 def test_benchmark_runtime_settings_reads_env_overrides() -> None:

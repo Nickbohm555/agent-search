@@ -30,6 +30,11 @@ def _read_bool(env: Mapping[str, str], key: str, default: bool) -> bool:
     return default
 
 
+def benchmarks_enabled(env: Mapping[str, str] | None = None) -> bool:
+    env_map = os.environ if env is None else env
+    return _read_bool(env_map, "BENCHMARKS_ENABLED", False)
+
+
 def _read_positive_int(env: Mapping[str, str], key: str, default: int) -> int:
     raw = env.get(key)
     if raw is None or not raw.strip():

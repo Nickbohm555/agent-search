@@ -4,6 +4,7 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -19,6 +20,11 @@ from schemas import BenchmarkMode, CitationSourceRow, RuntimeAgentRunResponse
 from routers import internal_data as internal_data_router
 from schemas import InternalDataLoadResponse
 from services import benchmark_execution_adapter, benchmark_jobs, benchmark_quality_service
+
+
+@pytest.fixture(autouse=True)
+def _enable_benchmarks(monkeypatch) -> None:
+    monkeypatch.setenv("BENCHMARKS_ENABLED", "true")
 
 
 class _InlineExecutor:
