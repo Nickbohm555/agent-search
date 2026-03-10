@@ -56,6 +56,7 @@ Current section to work on: section 2. (move +1 after each turn)
 
 **Test results:** (Add when section is complete.)
 - Command and outcome.
+- 2026-03-10: `PUBLISH=1 ./scripts/release_sdk.sh` -> blocked/fail: build+twine-check passed, publish step aborted with `PUBLISH=1 requires TWINE_API_TOKEN`; no `agent-search-core-v*` git tag found locally to validate release-tag precondition.
 
 ---
 
