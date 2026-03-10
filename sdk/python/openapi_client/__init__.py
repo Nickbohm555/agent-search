@@ -19,7 +19,6 @@ __version__ = "1.0.0"
 # Define package exports
 __all__ = [
     "AgentsApi",
-    "BenchmarksApi",
     "DefaultApi",
     "InternalDataApi",
     "ApiResponse",
@@ -32,25 +31,6 @@ __all__ = [
     "ApiAttributeError",
     "ApiException",
     "AgentRunStageMetadata",
-    "BenchmarkExecutionMode",
-    "BenchmarkKPI",
-    "BenchmarkMode",
-    "BenchmarkModeComparison",
-    "BenchmarkModeSummary",
-    "BenchmarkObjective",
-    "BenchmarkResultQualityScore",
-    "BenchmarkResultRetrievalDiagnostics",
-    "BenchmarkResultStatusItem",
-    "BenchmarkRunCancelResponse",
-    "BenchmarkRunCompareResponse",
-    "BenchmarkRunCreateRequest",
-    "BenchmarkRunCreateResponse",
-    "BenchmarkRunListItem",
-    "BenchmarkRunListResponse",
-    "BenchmarkRunStatus",
-    "BenchmarkRunStatusResponse",
-    "BenchmarkTargets",
-    "BenchmarkWipeResponse",
     "CitationSourceRow",
     "HTTPValidationError",
     "InternalDataLoadJobCancelResponse",
@@ -76,7 +56,6 @@ __all__ = [
 
 # import apis into sdk package
 from openapi_client.api.agents_api import AgentsApi as AgentsApi
-from openapi_client.api.benchmarks_api import BenchmarksApi as BenchmarksApi
 from openapi_client.api.default_api import DefaultApi as DefaultApi
 from openapi_client.api.internal_data_api import InternalDataApi as InternalDataApi
 
@@ -93,25 +72,6 @@ from openapi_client.exceptions import ApiException as ApiException
 
 # import models into sdk package
 from openapi_client.models.agent_run_stage_metadata import AgentRunStageMetadata as AgentRunStageMetadata
-from openapi_client.models.benchmark_execution_mode import BenchmarkExecutionMode as BenchmarkExecutionMode
-from openapi_client.models.benchmark_kpi import BenchmarkKPI as BenchmarkKPI
-from openapi_client.models.benchmark_mode import BenchmarkMode as BenchmarkMode
-from openapi_client.models.benchmark_mode_comparison import BenchmarkModeComparison as BenchmarkModeComparison
-from openapi_client.models.benchmark_mode_summary import BenchmarkModeSummary as BenchmarkModeSummary
-from openapi_client.models.benchmark_objective import BenchmarkObjective as BenchmarkObjective
-from openapi_client.models.benchmark_result_quality_score import BenchmarkResultQualityScore as BenchmarkResultQualityScore
-from openapi_client.models.benchmark_result_retrieval_diagnostics import BenchmarkResultRetrievalDiagnostics as BenchmarkResultRetrievalDiagnostics
-from openapi_client.models.benchmark_result_status_item import BenchmarkResultStatusItem as BenchmarkResultStatusItem
-from openapi_client.models.benchmark_run_cancel_response import BenchmarkRunCancelResponse as BenchmarkRunCancelResponse
-from openapi_client.models.benchmark_run_compare_response import BenchmarkRunCompareResponse as BenchmarkRunCompareResponse
-from openapi_client.models.benchmark_run_create_request import BenchmarkRunCreateRequest as BenchmarkRunCreateRequest
-from openapi_client.models.benchmark_run_create_response import BenchmarkRunCreateResponse as BenchmarkRunCreateResponse
-from openapi_client.models.benchmark_run_list_item import BenchmarkRunListItem as BenchmarkRunListItem
-from openapi_client.models.benchmark_run_list_response import BenchmarkRunListResponse as BenchmarkRunListResponse
-from openapi_client.models.benchmark_run_status import BenchmarkRunStatus as BenchmarkRunStatus
-from openapi_client.models.benchmark_run_status_response import BenchmarkRunStatusResponse as BenchmarkRunStatusResponse
-from openapi_client.models.benchmark_targets import BenchmarkTargets as BenchmarkTargets
-from openapi_client.models.benchmark_wipe_response import BenchmarkWipeResponse as BenchmarkWipeResponse
 from openapi_client.models.citation_source_row import CitationSourceRow as CitationSourceRow
 from openapi_client.models.http_validation_error import HTTPValidationError as HTTPValidationError
 from openapi_client.models.internal_data_load_job_cancel_response import InternalDataLoadJobCancelResponse as InternalDataLoadJobCancelResponse
@@ -133,4 +93,3 @@ from openapi_client.models.wiki_load_input import WikiLoadInput as WikiLoadInput
 from openapi_client.models.wiki_source_option import WikiSourceOption as WikiSourceOption
 from openapi_client.models.wiki_sources_response import WikiSourcesResponse as WikiSourcesResponse
 from openapi_client.models.wipe_response import WipeResponse as WipeResponse
-

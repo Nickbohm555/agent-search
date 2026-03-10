@@ -10,7 +10,7 @@ from config import LangfuseSettings, should_sample_rate
 
 logger = logging.getLogger(__name__)
 
-_LangfuseScope = Literal["runtime", "benchmark"]
+_LangfuseScope = Literal["runtime"]
 _UNSET: object = object()
 _cached_langfuse_client: Any | object = _UNSET
 _cache_lock = threading.Lock()

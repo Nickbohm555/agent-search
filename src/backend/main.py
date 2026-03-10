@@ -19,7 +19,6 @@ for _name in (
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.agent import router as agent_router
-from routers.benchmarks import router as benchmarks_router
 
 # Suppress Pydantic schema warning from deps (e.g. LangChain) using typing.NotRequired
 warnings.filterwarnings(
@@ -41,7 +40,6 @@ app.add_middleware(
 )
 
 app.include_router(agent_router)
-app.include_router(benchmarks_router)
 app.include_router(internal_data_router)
 
 

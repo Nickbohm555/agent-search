@@ -1,6 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import BenchmarkRunDetail from "./components/BenchmarkRunDetail";
-import BenchmarkRunList from "./components/BenchmarkRunList";
 import {
   AgentStageName,
   AgentStageRuntimeStatus,
@@ -19,8 +17,6 @@ import {
   wipeInternalData,
 } from "./utils/api";
 import { DEFAULT_WIKI_SOURCES } from "./utils/constants";
-
-const BENCHMARKS_ENABLED = String(import.meta.env.VITE_BENCHMARKS_ENABLED ?? "false").toLowerCase() === "true";
 
 function runSymbol(state: RequestState): string {
   if (state === "success") return "✓";
@@ -508,8 +504,6 @@ export default function App() {
         </div>
       </section>
 
-      {BENCHMARKS_ENABLED ? <BenchmarkRunList /> : null}
-      {BENCHMARKS_ENABLED ? <BenchmarkRunDetail /> : null}
 
       <section className="panel stage-rail-panel">
         <h2>Run Timeline</h2>

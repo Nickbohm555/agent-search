@@ -42,7 +42,6 @@ def _resolve_langfuse_settings(settings: Mapping[str, Any] | None = None) -> Lan
         environment=str(values.get("environment", base.environment)),
         release=str(values.get("release", base.release)),
         runtime_sample_rate=float(values.get("runtime_sample_rate", base.runtime_sample_rate)),
-        benchmark_sample_rate=float(values.get("benchmark_sample_rate", base.benchmark_sample_rate)),
     )
 
 

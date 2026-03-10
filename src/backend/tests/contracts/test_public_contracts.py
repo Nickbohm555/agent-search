@@ -10,12 +10,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from schemas import (
-    BenchmarkExecutionMode,
-    BenchmarkKPI,
-    BenchmarkMode,
-    BenchmarkObjective,
-    BenchmarkRunCreateRequest,
-    BenchmarkRunStatusResponse,
     RuntimeAgentRunAsyncCancelResponse,
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
@@ -55,63 +49,3 @@ def test_public_api_return_annotations_are_runtime_models() -> None:
     annotations = inspect.get_annotations(public_api.cancel_run, eval_str=True)
     assert annotations["return"] is RuntimeAgentRunAsyncCancelResponse
 
-
-def test_benchmark_mode_enum_values_are_frozen() -> None:
-    assert [mode.value for mode in BenchmarkMode] == [
-        "baseline_retrieve_then_answer",
-        "agentic_default",
-        "agentic_no_rerank",
-        "agentic_single_query_no_decompose",
-    ]
-
-
-def test_benchmark_create_request_schema_is_frozen() -> None:
-    schema = BenchmarkRunCreateRequest.model_json_schema()
-    assert set(schema["properties"]) == {"dataset_id", "modes", "targets", "metadata"}
-    assert schema["required"] == ["dataset_id", "modes"]
-    assert schema["properties"]["dataset_id"]["minLength"] == 1
-    assert schema["properties"]["modes"]["minItems"] == 1
-
-
-def test_benchmark_run_status_response_schema_is_frozen() -> None:
-    schema = BenchmarkRunStatusResponse.model_json_schema()
-    assert set(schema["properties"]) == {
-        "run_id",
-        "status",
-        "dataset_id",
-        "modes",
-        "objective",
-        "targets",
-        "mode_summaries",
-        "results",
-        "completed_questions",
-        "total_questions",
-        "created_at",
-        "started_at",
-        "finished_at",
-        "error",
-    }
-    assert schema["required"] == ["run_id", "status", "dataset_id"]
-
-
-def test_benchmark_status_objective_defaults_are_frozen() -> None:
-    objective = BenchmarkObjective()
-    assert objective.primary_kpi is BenchmarkKPI.correctness
-    assert objective.secondary_kpi is BenchmarkKPI.latency
-    assert objective.execution_mode is BenchmarkExecutionMode.manual_only
-    assert objective.targets.min_correctness == 0.75
-    assert objective.targets.max_latency_ms_p95 == 30000
-
-
-def test_benchmark_status_response_includes_objective_threshold_block() -> None:
-    response = BenchmarkRunStatusResponse(
-        run_id="run-1",
-        status="queued",
-        dataset_id="internal_v1",
-    )
-    payload = response.model_dump(mode="json")
-    assert payload["objective"]["primary_kpi"] == "correctness"
-    assert payload["objective"]["secondary_kpi"] == "latency"
-    assert payload["objective"]["execution_mode"] == "manual_only"
-    assert payload["objective"]["targets"]["min_correctness"] == 0.75
-    assert payload["objective"]["targets"]["max_latency_ms_p95"] == 30000

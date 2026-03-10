@@ -107,7 +107,7 @@
   </head>
   <body>
     <div class="wrap">
-      <h1>Run Flow: Runtime, Benchmark, Observability</h1>
+      <h1>Run Flow: Runtime, Observability</h1>
       <p>
         Current production stage order:
         <code>decompose -&gt; expand -&gt; search -&gt; rerank -&gt; answer -&gt; synthesize</code>.
@@ -180,32 +180,12 @@ Backend
       </div>
 
       <div class="panel">
-        <h2>Benchmark Path</h2>
-        <div>
-          <span class="badge">Start: <code>POST /api/benchmarks/runs</code></span>
-          <span class="badge">List: <code>GET /api/benchmarks/runs</code></span>
-          <span class="badge">Detail: <code>GET /api/benchmarks/runs/{run_id}</code></span>
-          <span class="badge">Compare: <code>GET /api/benchmarks/runs/{run_id}/compare</code></span>
-          <span class="badge">Cancel: <code>POST /api/benchmarks/runs/{run_id}/cancel</code></span>
-        </div>
-        <div class="mono">routers/benchmarks.py::create_benchmark_run
-  -> benchmark_jobs.start_benchmark_run_job
-    -> ThreadPoolExecutor worker
-      -> BenchmarkRunner.run(...)
-        -> BenchmarkExecutionAdapter
-          -> agent_search.public_api.advanced_rag / run_async / get_run_status / cancel_run
-        -> persist benchmark result + quality + retrieval metrics rows</div>
-      </div>
-
-      <div class="panel">
         <h2>Observability Path (Langfuse)</h2>
         <ul>
           <li>Tracing utility: <code>src/backend/utils/langfuse_tracing.py</code>.</li>
           <li><code>advanced_rag(..., langfuse_callback=...)</code> or <code>advanced_rag(..., langfuse_settings={...})</code> enables SDK run tracing.</li>
           <li>If <code>langfuse_callback</code> is omitted, SDK run tracing is skipped.</li>
-          <li>Benchmark scope emits trace/span/score events for dataset, mode, and question execution.</li>
-          <li>Sampling controls are independent per scope:</li>
-          <li><code>LANGFUSE_RUNTIME_SAMPLE_RATE</code>, <code>LANGFUSE_BENCHMARK_SAMPLE_RATE</code>.</li>
+          <li>Sampling control: <code>LANGFUSE_RUNTIME_SAMPLE_RATE</code>.</li>
         </ul>
       </div>
 
@@ -269,15 +249,7 @@ Backend
       <div class="panel">
         <h2>Operator Commands</h2>
         <div class="mono">docker compose ps
-docker compose logs --tail=200 backend
-
-docker compose exec backend uv run python benchmarks/run.py \
-  --dataset-id internal_v1 \
-  --mode baseline_retrieve_then_answer \
-  --dry-run
-
-docker compose exec backend uv run python benchmarks/export.py</div>
-        <p class="small">Commands above are the same workflows used by this repository's runtime and benchmark docs.</p>
+docker compose logs --tail=200 backend</div>
       </div>
     </div>
     <script type="module">
