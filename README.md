@@ -58,12 +58,59 @@ flowchart TD
 
 ### Deep Dive
 
-| Focus | Deep dive (how it works, why effective, knobs) | Potential changes |
-| --- | --- | --- |
-| Pipeline mechanics | The runtime decomposes one question into multiple sub-questions, runs each lane through expand -> search -> rerank -> answer, then synthesizes one final answer. This isolates evidence gathering per claim before global synthesis. | Add an adaptive lane planner that sets lane count based on question complexity instead of a fixed decomposition target. |
-| Why it is effective | Decomposition improves recall on multi-hop questions, while per-lane answers reduce cross-topic contamination. Final synthesis reconciles overlap and keeps citations aligned to evidence gathered in each lane. | Add a contradiction-check step between lanes before final synthesis to reduce conflicting claims. |
-| Rerank math | Search returns candidates with vector similarity metadata score (`s_vec`) and merges duplicates by document identity, keeping the best observed score. Rerank then asks the model to output a strict JSON ordering with per-document `score` in `[0,1]` (`s_rerank`) and applies that order as the final ranking; `top_n` truncates the tail. | Add score fusion (for example `s_final = alpha*s_vec + (1-alpha)*s_rerank`) and calibrate `alpha` per dataset. |
-| Knobs and tradeoffs | `retrieval.search_node_k_fetch`: higher improves recall but increases latency/cost. `retrieval.search_node_score_threshold`: higher improves precision but can drop useful long-tail docs. `retrieval.search_node_merged_cap`: caps context size. `rerank.top_n`: lowers context/token load but can hide weak-signal evidence. `timeout.*`: protects p95 latency but increases fallback frequency if too tight. | Add automatic knob tuning from offline evals, with presets per workload (`fast`, `balanced`, `high_recall`). |
+#### Decompose Node
+
+| Aspect | Details |
+| --- | --- |
+| How it works | Uses an LLM planner to turn the main question into atomic sub-questions, normalizes/dedupes them, and enforces a bounded count (`DECOMPOSITION_ONLY_MAX_SUBQUESTIONS`, clamped 5-10). |
+| Why effective | Splits multi-hop questions into targeted retrieval tasks, improving evidence recall and reducing single-query blind spots. |
+| Knobs | `DECOMPOSITION_ONLY_MODEL`, `DECOMPOSITION_ONLY_TEMPERATURE`, `DECOMPOSITION_ONLY_MAX_SUBQUESTIONS`, `DECOMPOSITION_LLM_TIMEOUT_S`. More sub-questions improve coverage but increase cost/latency. |
+| Potential changes | Add adaptive decomposition count from question complexity and token budget. |
+
+#### Expand Node
+
+| Aspect | Details |
+| --- | --- |
+| How it works | Expands each sub-question into alternative phrasings and related query variants before retrieval. |
+| Why effective | Improves lexical/semantic coverage so retrieval is less sensitive to wording mismatch. |
+| Knobs | Expansion query count and max query length in expansion config. Higher expansion breadth helps recall but can add noisy candidates. |
+| Potential changes | Add domain-aware expansion templates (for example legal, biomedical, finance). |
+
+#### Search Node
+
+| Aspect | Details |
+| --- | --- |
+| How it works | Executes similarity search for each expanded query, merges results by document identity, preserves provenance, and caps merged candidates. |
+| Why effective | Multi-query retrieval plus dedupe captures more relevant evidence while limiting repeated chunks. |
+| Knobs | `retrieval.search_node_k_fetch`, `retrieval.search_node_score_threshold`, `retrieval.search_node_merged_cap`. Higher `k_fetch` increases recall and latency; tighter threshold increases precision and miss risk. |
+| Potential changes | Add hybrid retrieval (BM25 + vector) with learned merge weighting. |
+
+#### Rerank Node
+
+| Aspect | Details |
+| --- | --- |
+| How it works | Sends retrieved candidates to OpenAI reranking prompt, gets JSON-ordered ids with scores, and reorders evidence; applies `top_n` truncation if set. |
+| Why effective | Re-optimizes ranking for the exact sub-question, usually improving top-context relevance for answer generation. |
+| Knobs | `rerank.enabled`, `rerank.provider`, `rerank.top_n`, `RERANK_OPENAI_MODEL_NAME`, `RERANK_OPENAI_TEMPERATURE`, `timeout.rerank_timeout_s`. Smaller `top_n` reduces cost but can drop weak-signal evidence. |
+| Potential changes | Add score fusion (`s_final = alpha*s_vec + (1-alpha)*s_rerank`) and calibrated confidence thresholds. |
+
+#### Answer Node
+
+| Aspect | Details |
+| --- | --- |
+| How it works | Generates one sub-answer per lane from reranked evidence and keeps citation index references aligned to reranked docs. |
+| Why effective | Keeps claims grounded to lane-specific evidence and makes provenance explicit. |
+| Knobs | Sub-answer generation/verification model settings and timeout controls (`timeout.subanswer_generation_timeout_s`, `timeout.subanswer_verification_timeout_s`). |
+| Potential changes | Add stricter citation validation that rejects claims without supporting passages. |
+
+#### Synthesize Final Node
+
+| Aspect | Details |
+| --- | --- |
+| How it works | Combines all sub-answers into one final response and outputs `final_citations` mapped back to evidence rows. |
+| Why effective | Produces one coherent answer while preserving traceability to per-lane evidence. |
+| Knobs | Final synthesis timeout (`timeout.initial_answer_timeout_s`) and synthesis prompt/model behavior. |
+| Potential changes | Add contradiction resolution and confidence scoring across lanes before final output. |
 
 ## SDK Logic (In-Process)
 
