@@ -1090,7 +1090,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
     monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
     monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
     monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
-    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda: langfuse_callback)
+    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda **_kwargs: langfuse_callback)
     monkeypatch.setattr(
         agent_service,
         "flush_langfuse_callback_handler",
@@ -1206,7 +1206,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
     monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
     monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
     monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
-    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda: langfuse_callback)
+    monkeypatch.setattr(agent_service, "build_langfuse_callback_handler", lambda **_kwargs: langfuse_callback)
     monkeypatch.setattr(
         agent_service,
         "flush_langfuse_callback_handler",
@@ -1256,23 +1256,15 @@ def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
-        runtime_runner,
-        "search_documents_for_context",
-        lambda *, vector_store, query, k, score_threshold: ["doc1"],
-    )
-    monkeypatch.setattr(
-        runtime_runner,
-        "build_initial_search_context",
-        lambda docs: [{"rank": 1, "title": "Doc"}],
-    )
-    monkeypatch.setattr(
         agent_service,
         "run_parallel_graph_runner",
-        lambda *, payload, vector_store, model, run_metadata, initial_search_context: captured.update(
+        lambda *, payload, vector_store, model, run_metadata, initial_search_context, callbacks=None, langfuse_callback=None: captured.update(
             {
                 "payload_query": payload.query,
                 "vector_store": vector_store,
                 "initial_search_context": initial_search_context,
+                "callbacks": callbacks,
+                "langfuse_callback": langfuse_callback,
             }
         )
         or agent_service.build_agent_graph_state(
@@ -1301,7 +1293,7 @@ def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
 
     assert captured["payload_query"] == "How does core runner execute?"
     assert captured["vector_store"] == "vector-store-core"
-    assert captured["initial_search_context"] == [{"rank": 1, "title": "Doc"}]
+    assert captured["initial_search_context"] == []
     assert response.output == "Core final [1]."
     assert response.sub_qa[0].sub_question == "Core sub-question?"
 

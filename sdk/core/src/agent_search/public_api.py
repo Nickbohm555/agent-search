@@ -16,6 +16,7 @@ from agent_search.errors import (
 from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, start_agent_run_job
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
+from utils.langfuse_tracing import build_langfuse_callback_handler
 from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
@@ -44,19 +45,39 @@ def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
     return SDKError(f"{operation} failed.")
 
 
-def run(
+def _build_sync_callbacks(
+    *,
+    query: str,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
+) -> tuple[list[Any] | None, Any | None]:
+    resolved_callbacks = list(callbacks or [])
+    resolved_langfuse_callback = langfuse_callback or build_langfuse_callback_handler(
+        scope="runtime",
+        sampling_key=query,
+    )
+    if resolved_langfuse_callback is not None:
+        resolved_callbacks.append(resolved_langfuse_callback)
+    return (resolved_callbacks if resolved_callbacks else None), resolved_langfuse_callback
+
+
+def advanced_rag(
     query: str,
     *,
     vector_store: Any,
     model: Any,
     config: dict[str, Any] | None = None,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.info(
-        "SDK sync run requested query_len=%s vector_store_type=%s model_type=%s has_config=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
         config is not None,
+        bool(callbacks),
+        langfuse_callback is not None,
     )
     runtime_config = RuntimeConfig.from_dict(config)
     logger.info(
@@ -78,25 +99,52 @@ def run(
     )
 
     try:
+        resolved_callbacks, resolved_langfuse_callback = _build_sync_callbacks(
+            query=query,
+            callbacks=callbacks,
+            langfuse_callback=langfuse_callback,
+        )
         response = run_runtime_agent(
             RuntimeAgentRunRequest(query=query),
             model=model,
             vector_store=compatible_vector_store,
+            callbacks=resolved_callbacks,
+            langfuse_callback=resolved_langfuse_callback,
         )
     except Exception as exc:  # noqa: BLE001
-        mapped = _map_sdk_error(operation="run", exc=exc)
+        mapped = _map_sdk_error(operation="advanced_rag", exc=exc)
         logger.exception(
-            "SDK sync run failed mapped_error=%s original_error=%s",
+            "SDK advanced_rag failed mapped_error=%s original_error=%s",
             type(mapped).__name__,
             type(exc).__name__,
         )
         raise mapped from exc
     logger.info(
-        "SDK sync run completed sub_qa_count=%s output_len=%s",
+        "SDK advanced_rag completed sub_qa_count=%s output_len=%s",
         len(response.sub_qa),
         len(response.output),
     )
     return response
+
+
+def run(
+    query: str,
+    *,
+    vector_store: Any,
+    model: Any,
+    config: dict[str, Any] | None = None,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
+) -> RuntimeAgentRunResponse:
+    logger.warning("SDK run() is deprecated; use advanced_rag()")
+    return advanced_rag(
+        query,
+        vector_store=vector_store,
+        model=model,
+        config=config,
+        callbacks=callbacks,
+        langfuse_callback=langfuse_callback,
+    )
 
 
 def run_async(

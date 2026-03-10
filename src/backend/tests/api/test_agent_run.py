@@ -52,7 +52,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         )
 
     monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (sentinel_vector_store, sentinel_model))
-    monkeypatch.setattr(agent_router_module, "sdk_run", fake_sdk_run)
+    monkeypatch.setattr(agent_router_module, "sdk_advanced_rag", fake_sdk_run)
 
     app = FastAPI()
     app.include_router(agent_router)

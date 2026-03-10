@@ -55,24 +55,6 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
 
     monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-inline")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
-    monkeypatch.setattr(
-        runtime_jobs,
-        "search_documents_for_context",
-        lambda *, vector_store, query, k, score_threshold: captured.update(
-            {
-                "search_vector_store": vector_store,
-                "search_query": query,
-                "search_k": k,
-                "search_score_threshold": score_threshold,
-            }
-        )
-        or ["doc-1"],
-    )
-    monkeypatch.setattr(
-        runtime_jobs,
-        "build_initial_search_context",
-        lambda docs: [{"rank": 1, "title": "Doc One", "source": "test://doc-1"}],
-    )
 
     def fake_run_parallel_graph_runner(*, payload, vector_store, model, run_metadata, initial_search_context, snapshot_callback):
         captured["run_query"] = payload.query
@@ -132,14 +114,10 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
     assert status_response.decomposition_sub_questions == ["What is the key fact?"]
     assert status_response.stages[0].stage == "subquestions_ready"
     assert captured == {
-        "search_vector_store": sentinel_vector_store,
-        "search_query": "How does SDK async wiring work?",
-        "search_k": runtime_jobs._INITIAL_SEARCH_CONTEXT_K,
-        "search_score_threshold": runtime_jobs._INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
         "run_query": "How does SDK async wiring work?",
         "run_vector_store": sentinel_vector_store,
         "run_model": sentinel_model,
-        "initial_search_context": [{"rank": 1, "title": "Doc One", "source": "test://doc-1"}],
+        "initial_search_context": [],
     }
 
 

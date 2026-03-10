@@ -18,7 +18,7 @@ error() {
 
 run_build() {
   if command -v uv >/dev/null 2>&1; then
-    uvx --from build pyproject-build "$SDK_DIR"
+    (cd "$SDK_DIR" && uvx --from build python -m build .)
   else
     (cd "$SDK_DIR" && python3 -m build)
   fi
@@ -38,6 +38,29 @@ run_twine_upload() {
   else
     TWINE_USERNAME="__token__" python3 -m twine upload "$DIST_DIR"/*
   fi
+}
+
+verify_wheel_contents() {
+  local wheel_path
+  wheel_path="$(ls "$DIST_DIR"/agent_search_core-*.whl | head -n 1)"
+  if [[ -z "$wheel_path" ]]; then
+    error "wheel not found under $DIST_DIR"
+    exit 1
+  fi
+
+  python3 - <<'PY' "$wheel_path"
+import sys
+import zipfile
+
+wheel_path = sys.argv[1]
+with zipfile.ZipFile(wheel_path) as zf:
+    names = zf.namelist()
+
+if not any(name.startswith("agent_search/") for name in names):
+    raise SystemExit(f"wheel missing agent_search package: {wheel_path}")
+PY
+
+  log "wheel content check passed wheel=$wheel_path"
 }
 
 if [[ ! -f "$SDK_DIR/pyproject.toml" ]]; then
@@ -63,6 +86,9 @@ rm -rf "$DIST_DIR"
 
 log "building sdist and wheel"
 run_build
+
+log "verifying wheel contents"
+verify_wheel_contents
 
 log "running twine check"
 run_twine_check

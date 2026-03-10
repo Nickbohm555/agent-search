@@ -28,14 +28,14 @@ def test_run_sync_delegates_to_sdk_public_api(monkeypatch) -> None:
     sentinel_vector_store = _CompatibleVectorStore()
     captured: dict[str, object] = {}
 
-    def fake_run(query, *, vector_store, model, config=None):
+    def fake_advanced_rag(query, *, vector_store, model, config=None):
         captured["query"] = query
         captured["vector_store"] = vector_store
         captured["model"] = model
         captured["config"] = config
         return RuntimeAgentRunResponse(main_question=query, output="sync output")
 
-    monkeypatch.setattr(adapter_module.sdk_public_api, "run", fake_run)
+    monkeypatch.setattr(adapter_module.sdk_public_api, "advanced_rag", fake_advanced_rag)
 
     response = adapter.run_sync(
         "section 28 sync",

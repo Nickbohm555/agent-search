@@ -34,7 +34,7 @@ class BenchmarkExecutionAdapter:
             len(query),
             config is not None,
         )
-        response = sdk_public_api.run(query, vector_store=vector_store, model=model, config=config)
+        response = sdk_public_api.advanced_rag(query, vector_store=vector_store, model=model, config=config)
         logger.info(
             "Benchmark execution adapter sync run completed sub_qa_count=%s output_len=%s",
             len(response.sub_qa),

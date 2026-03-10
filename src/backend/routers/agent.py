@@ -6,9 +6,9 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
 from agent_search.errors import SDKConfigurationError
+from agent_search.public_api import advanced_rag as sdk_advanced_rag
 from agent_search.public_api import cancel_run as sdk_cancel_run
 from agent_search.public_api import get_run_status as sdk_get_run_status
-from agent_search.public_api import run as sdk_run
 from agent_search.public_api import run_async as sdk_run_async
 from db import DATABASE_URL
 from db import get_db
@@ -58,7 +58,7 @@ def runtime_agent_run(
     del db
     vector_store, model = _build_sdk_runtime_dependencies()
     logger.info("Agent router delegating sync run query_len=%s", len(payload.query))
-    return sdk_run(payload.query, vector_store=vector_store, model=model)
+    return sdk_advanced_rag(payload.query, vector_store=vector_store, model=model)
 
 
 @router.post("/run-async", response_model=RuntimeAgentRunAsyncStartResponse)

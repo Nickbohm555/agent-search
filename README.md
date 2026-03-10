@@ -16,6 +16,41 @@ Stable response payload:
 
 `RuntimeAgentRunResponse { main_question, sub_qa[], output }`
 
+## Runtime State Graph (Data Flow + LM Calls)
+
+```mermaid
+flowchart TD
+    A[POST /api/agents/run-async] --> B[run_runtime_agent payload.query]
+    B --> D[Decompose Node]
+    D -->|LM call #1\nChatOpenAI structured output DecompositionPlan| E[Sub-questions[]]
+
+    E --> F{{Parallel lanes\n1 per sub-question}}
+    F --> G[Expand Node]
+    G -->|LM call #2 per lane\nMultiQueryRetriever.generate_queries| H[expanded_queries]
+    H --> I[Search Node\nvector similarity search per query]
+    I --> J[retrieved_docs + retrieval_provenance]
+    J --> K[Rerank Node]
+    K -->|Optional LM call #3 per lane\nOpenAI rerank provider| L[reranked_docs]
+    K -->|Fallback provider| L2[Flashrank / deterministic order]
+    L --> M[Answer Node]
+    L2 --> M
+    M -->|LM call #4 per lane\ngenerate_subanswer| N[sub_answer + citation indices]
+    N --> P[Synthesize Final Node]
+    P -->|LM call #5\ngenerate_final_synthesis_answer| Q[final output]
+    Q --> R[stage snapshot synthesize_final]
+    R --> S[RuntimeAgentRunResponse\nmain_question + sub_qa + output + final_citations]
+```
+
+Primary latency/failure hotspots in this graph:
+
+- Per-lane search (vector DB I/O and fan-out volume).
+- Decomposition, expansion, subanswer, and final synthesis LM calls.
+- Rerank LM provider when `RERANK_PROVIDER=openai` (extra LM call per lane).
+- Large decomposition count (more lanes) with constrained `_GRAPH_RUNNER_MAX_WORKERS`.
+- Timeout guardrails that trigger fallback paths and partial outputs:
+  `DECOMPOSITION_LLM_TIMEOUT_S`, `INITIAL_SEARCH_TIMEOUT_S`, `RERANK_TIMEOUT_S`,
+  `SUBANSWER_GENERATION_TIMEOUT_S`.
+
 ## Stack
 
 - Backend: FastAPI + `uv` + Alembic
@@ -80,15 +115,17 @@ The primary SDK is in-process Python usage through `agent_search`.
 Install from PyPI:
 
 ```bash
-python3.13 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install agent-search-core
+python -c "import agent_search; print(agent_search.__file__)"
 ```
 
 Entry points:
 
-- `run(query, *, vector_store, model, config=None)`
+- `advanced_rag(query, *, vector_store, model, config=None, callbacks=None, langfuse_callback=None)`
+- `run(query, *, vector_store, model, config=None, callbacks=None, langfuse_callback=None)`
 - `run_async(query, *, vector_store, model, config=None)`
 - `get_run_status(job_id)`
 - `cancel_run(job_id)`
@@ -97,15 +134,21 @@ Minimal usage (you must provide both a chat model and a vector store):
 
 ```python
 from langchain_openai import ChatOpenAI
-from agent_search import run
+from agent_search import advanced_rag
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
 
-response = run("What is pgvector?", vector_store=vector_store, model=model)
+response = advanced_rag("What is pgvector?", vector_store=vector_store, model=model)
 print(response.output)
 ```
+
+`run(...)` remains available as a compatibility alias and delegates to `advanced_rag(...)`.
+
+Tracing behavior for `advanced_rag(...)`:
+- Pass `langfuse_callback=...` to supply an explicit callback.
+- If omitted, SDK attempts to build a Langfuse callback from environment settings + sampling.
 
 The SDK does not auto-build a model or vector store. When running the full app in this repo, the backend constructs those dependencies for API calls.
 
@@ -131,6 +174,7 @@ Release requirements summary:
 - Tag version must match `sdk/core/pyproject.toml` `version`
 - Dry-run release check: `./scripts/release_sdk.sh`
 - Publish release: `PUBLISH=1 TWINE_API_TOKEN=*** ./scripts/release_sdk.sh`
+- Release script validates wheel contents include `agent_search/` before upload.
 
 ## Generated HTTP SDK (Secondary)
 

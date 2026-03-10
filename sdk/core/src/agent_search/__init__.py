@@ -6,9 +6,10 @@ from .errors import (
     SDKRetrievalError,
     SDKTimeoutError,
 )
-from .public_api import cancel_run, get_run_status, run, run_async
+from .public_api import advanced_rag, cancel_run, get_run_status, run, run_async
 
 __all__ = [
+    "advanced_rag",
     "run",
     "run_async",
     "get_run_status",

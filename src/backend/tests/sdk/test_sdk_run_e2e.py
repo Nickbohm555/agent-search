@@ -24,24 +24,6 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
-        runtime_runner,
-        "search_documents_for_context",
-        lambda *, vector_store, query, k, score_threshold: captured.update(
-            {
-                "search_vector_store": vector_store,
-                "search_query": query,
-                "search_k": k,
-                "search_score_threshold": score_threshold,
-            }
-        )
-        or ["doc-1"],
-    )
-    monkeypatch.setattr(
-        runtime_runner,
-        "build_initial_search_context",
-        lambda docs: [{"rank": 1, "title": "Doc One", "source": "test://doc-1"}],
-    )
-    monkeypatch.setattr(
         agent_service,
         "run_parallel_graph_runner",
         lambda *, payload, vector_store, model, run_metadata, initial_search_context: captured.update(
@@ -74,7 +56,7 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
         ),
     )
 
-    response = public_api.run(
+    response = public_api.advanced_rag(
         "How does SDK sync wiring work?",
         model=sentinel_model,
         vector_store=sentinel_vector_store,
@@ -85,14 +67,10 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
     assert response.sub_qa[0].sub_question == "What is the key fact?"
     assert response.sub_qa[0].sub_answer == "The key fact is captured with citation [1]."
     assert captured == {
-        "search_vector_store": sentinel_vector_store,
-        "search_query": "How does SDK sync wiring work?",
-        "search_k": agent_service._INITIAL_SEARCH_CONTEXT_K,
-        "search_score_threshold": agent_service._INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
         "payload_query": "How does SDK sync wiring work?",
         "run_vector_store": sentinel_vector_store,
         "run_model": sentinel_model,
-        "initial_search_context": [{"rank": 1, "title": "Doc One", "source": "test://doc-1"}],
+        "initial_search_context": [],
     }
 
 
@@ -121,12 +99,6 @@ def test_runtime_runner_emits_langfuse_stage_hooks(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        runtime_runner,
-        "search_documents_for_context",
-        lambda **kwargs: [],
-    )
-    monkeypatch.setattr(runtime_runner, "build_initial_search_context", lambda docs: [])
-    monkeypatch.setattr(
         agent_service,
         "run_parallel_graph_runner",
         lambda **kwargs: agent_service.build_agent_graph_state(
@@ -154,6 +126,5 @@ def test_runtime_runner_emits_langfuse_stage_hooks(monkeypatch) -> None:
 
     assert captured["traces"]
     assert any(item["name"] == "runtime.agent_run" for item in captured["traces"])
-    assert any(item["name"] == "runtime.initial_context" for item in captured["spans"])
     assert captured["scores"]
     assert captured["ends"]

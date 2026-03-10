@@ -11,23 +11,24 @@ It does not auto-build these dependencies for you.
 ## Install (PyPI)
 
 ```bash
-python3.13 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install agent-search-core
+python -c "import agent_search; print(agent_search.__file__)"
 ```
 
 ## Quick start
 
 ```python
 from langchain_openai import ChatOpenAI
-from agent_search import run
+from agent_search import advanced_rag
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
 
-response = run("What is pgvector?", vector_store=vector_store, model=model)
+response = advanced_rag("What is pgvector?", vector_store=vector_store, model=model)
 print(response.output)
 ```
 
@@ -47,10 +48,17 @@ python -m build
 
 Primary functions exposed by `agent_search`:
 
+- `advanced_rag`
 - `run`
 - `run_async`
 - `get_run_status`
 - `cancel_run`
+
+`run(...)` remains available as a compatibility alias and delegates to `advanced_rag(...)`.
+
+Tracing behavior for `advanced_rag(...)`:
+- If you pass `langfuse_callback=...`, SDK uses that callback for run tracing.
+- If you omit it, SDK attempts to build a Langfuse callback from environment settings and sampling.
 
 Config and errors exposed by `agent_search`:
 
@@ -76,6 +84,8 @@ Use the repository release script from project root:
 ```bash
 ./scripts/release_sdk.sh
 ```
+
+The release script verifies the built wheel includes the `agent_search` package before upload.
 
 Publish flow (requires `TWINE_API_TOKEN`):
 

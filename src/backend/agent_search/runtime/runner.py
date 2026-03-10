@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 import logging
 from typing import Any
 
 from agent_search.errors import SDKConfigurationError
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse
 from services import agent_service as legacy_service
-from services.vector_store_service import (
-    build_initial_search_context,
-    search_documents_for_context,
-)
 from utils.langfuse_tracing import (
     end_langfuse_observation,
     record_langfuse_score,
@@ -26,6 +21,8 @@ def run_runtime_agent(
     *,
     model: Any | None = None,
     vector_store: Any | None = None,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
 ) -> RuntimeAgentRunResponse:
     if model is None:
         logger.error("Runtime core run rejected missing model")
@@ -57,55 +54,16 @@ def run_runtime_agent(
         run_metadata.trace_id,
         run_metadata.correlation_id,
     )
-    initial_context_span = start_langfuse_span(
-        parent=runtime_trace,
-        name="runtime.initial_context",
-        input_payload={"query": payload.query},
-        metadata={"run_id": run_metadata.run_id},
-    )
     selected_vector_store = vector_store
     logger.info(
         "Runtime core vector store selected source=provided run_id=%s",
         run_metadata.run_id,
     )
-
-    def _build_initial_context_payload() -> tuple[list[Any], list[dict[str, Any]]]:
-        docs = search_documents_for_context(
-            vector_store=selected_vector_store,
-            query=payload.query,
-            k=legacy_service._INITIAL_SEARCH_CONTEXT_K,
-            score_threshold=legacy_service._INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-        )
-        return docs, build_initial_search_context(docs)
-
-    try:
-        _, initial_search_context = legacy_service._run_with_timeout(
-            timeout_s=legacy_service._RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
-            operation_name="initial_search_context_build",
-            fn=_build_initial_context_payload,
-        )
-        logger.info(
-            "Runtime core initial context built query=%s docs=%s k=%s score_threshold=%s run_id=%s",
-            legacy_service._truncate_query(payload.query),
-            len(initial_search_context),
-            legacy_service._INITIAL_SEARCH_CONTEXT_K,
-            legacy_service._INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-            run_metadata.run_id,
-        )
-    except FuturesTimeoutError:
-        initial_search_context = []
-        logger.warning(
-            "Runtime core initial context timeout; continuing with empty context query=%s timeout_s=%s run_id=%s",
-            legacy_service._truncate_query(payload.query),
-            legacy_service._RUNTIME_TIMEOUT_CONFIG.initial_search_timeout_s,
-            run_metadata.run_id,
-        )
-    finally:
-        end_langfuse_observation(
-            initial_context_span,
-            output_payload={"context_document_count": len(initial_search_context)},
-            metadata={"run_id": run_metadata.run_id},
-        )
+    initial_search_context: list[dict[str, Any]] = []
+    logger.info(
+        "Runtime core initial context retrieval disabled; proceeding with empty context run_id=%s",
+        run_metadata.run_id,
+    )
 
     state = legacy_service.run_parallel_graph_runner(
         payload=payload,
@@ -113,6 +71,8 @@ def run_runtime_agent(
         model=model,
         run_metadata=run_metadata,
         initial_search_context=initial_search_context,
+        callbacks=callbacks,
+        langfuse_callback=langfuse_callback,
     )
     for snapshot_index, snapshot in enumerate(state.stage_snapshots, start=1):
         stage_name = "final" if snapshot.stage == "synthesize_final" else snapshot.stage

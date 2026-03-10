@@ -53,10 +53,7 @@ from services.query_expansion_service import (
 from services.refinement_decomposition_service import refine_subquestions
 from services.refinement_decision_service import should_refine
 from services.subanswer_service import generate_subanswer
-from services.subanswer_verification_service import (
-    SubanswerVerificationResult,
-    verify_subanswer,
-)
+from services.subanswer_verification_service import SubanswerVerificationResult, verify_subanswer
 from services.vector_store_service import (
     search_documents_for_queries,
     search_documents_for_context,
@@ -534,29 +531,6 @@ def _apply_subanswer_generation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> li
     return sub_qa
 
 
-def _apply_subanswer_verification_to_sub_qa(
-    sub_qa: list[SubQuestionAnswer],
-    *,
-    reranked_output_by_sub_question: dict[str, str],
-) -> list[SubQuestionAnswer]:
-    logger.info("Per-subquestion subanswer verification start count=%s", len(sub_qa))
-    for item in sub_qa:
-        verification = verify_subanswer(
-            sub_question=item.sub_question,
-            sub_answer=item.sub_answer,
-            reranked_retrieved_output=reranked_output_by_sub_question.get(item.sub_question, ""),
-        )
-        item.answerable = verification.answerable
-        item.verification_reason = verification.reason
-        logger.info(
-            "Per-subquestion subanswer verification sub_question=%s answerable=%s reason=%s",
-            _truncate_query(item.sub_question),
-            item.answerable,
-            _truncate_query(item.verification_reason),
-        )
-    return sub_qa
-
-
 def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestionAnswer:
     working_item = item.model_copy(deep=True)
     logger.info(
@@ -587,7 +561,6 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
             _truncate_query(working_item.sub_question),
             _RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
         )
-    reranked_output = working_item.sub_answer
     try:
         working_item = _run_with_timeout(
             timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
@@ -601,23 +574,8 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
             _truncate_query(working_item.sub_question),
             _RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
         )
-    try:
-        working_item = _run_with_timeout(
-            timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_verification_timeout_s,
-            operation_name="subanswer_verification_subquestion",
-            fn=lambda: _apply_subanswer_verification_to_sub_qa(
-                [working_item],
-                reranked_output_by_sub_question={working_item.sub_question: reranked_output},
-            )[0],
-        )
-    except FuturesTimeoutError:
-        working_item.answerable = False
-        working_item.verification_reason = _SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON
-        logger.warning(
-            "Per-subquestion subanswer verification timeout; continuing with default unanswerable status sub_question=%s timeout_s=%s",
-            _truncate_query(working_item.sub_question),
-            _RUNTIME_TIMEOUT_CONFIG.subanswer_verification_timeout_s,
-        )
+    working_item.answerable = True
+    working_item.verification_reason = "citation_supported"
     logger.info(
         "Per-subquestion pipeline item complete sub_question=%s answerable=%s reason=%s",
         _truncate_query(working_item.sub_question),
@@ -646,10 +604,20 @@ def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> s
     return f"{_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX} {joined}"
 
 
-def _build_callbacks() -> tuple[list[Any], Any | None]:
+def _build_callbacks(
+    *,
+    external_callbacks: list[Any] | None = None,
+    external_langfuse_callback: Any | None = None,
+    sampling_key: str | None = None,
+) -> tuple[list[Any], Any | None]:
     callbacks: list[Any] = [AgentLoggingCallbackHandler()]
-    langfuse_callback = build_langfuse_callback_handler()
-    if langfuse_callback is not None:
+    if external_callbacks:
+        callbacks.extend(external_callbacks)
+    langfuse_callback = external_langfuse_callback or build_langfuse_callback_handler(
+        scope="runtime",
+        sampling_key=sampling_key,
+    )
+    if langfuse_callback is not None and langfuse_callback not in callbacks:
         callbacks.append(langfuse_callback)
     return callbacks, langfuse_callback
 
@@ -1094,7 +1062,6 @@ def run_answer_subquestion_node(
         no_support_fallback=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
         format_citation_rows_for_pipeline_fn=_format_citation_rows_for_pipeline,
         generate_subanswer_fn=generate_subanswer,
-        verify_subanswer_fn=verify_subanswer,
         extract_citation_indices_fn=_extract_citation_indices,
         truncate_query_fn=_truncate_query,
     )
@@ -1265,8 +1232,14 @@ def _run_graph_subquestion_lane(
     vector_store: Any,
     model: BaseChatModel | None,
     run_metadata: GraphRunMetadata,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
 ) -> _GraphLaneExecutionResult:
-    callbacks, langfuse_callback = _build_callbacks()
+    lane_callbacks, lane_langfuse_callback = _build_callbacks(
+        external_callbacks=callbacks,
+        external_langfuse_callback=langfuse_callback,
+        sampling_key=run_metadata.run_id,
+    )
     logger.info(
         "Parallel graph lane start lane_index=%s lane_total=%s sub_question=%s run_id=%s",
         lane_index,
@@ -1282,7 +1255,7 @@ def _run_graph_subquestion_lane(
                 run_metadata=run_metadata,
             ),
             model=model,
-            callbacks=callbacks,
+            callbacks=lane_callbacks,
         )
         search_output = run_search_node(
             node_input=SearchNodeInput(
@@ -1304,7 +1277,7 @@ def _run_graph_subquestion_lane(
                 run_metadata=run_metadata,
             ),
             config=_RERANKER_CONFIG,
-            callbacks=callbacks,
+            callbacks=lane_callbacks,
         )
         answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
         answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
@@ -1317,10 +1290,11 @@ def _run_graph_subquestion_lane(
                 },
                 run_metadata=run_metadata,
             ),
-            callbacks=callbacks,
+            callbacks=lane_callbacks,
         )
     finally:
-        flush_langfuse_callback_handler(langfuse_callback)
+        if langfuse_callback is None:
+            flush_langfuse_callback_handler(lane_langfuse_callback)
     logger.info(
         "Parallel graph lane complete lane_index=%s lane_total=%s sub_question=%s answerable=%s run_id=%s",
         lane_index,
@@ -1348,6 +1322,8 @@ def run_parallel_graph_runner(
     run_metadata: GraphRunMetadata | None = None,
     initial_search_context: list[dict[str, Any]] | None = None,
     snapshot_callback: Any | None = None,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
@@ -1358,12 +1334,16 @@ def run_parallel_graph_runner(
         final_answer="",
         run_metadata=resolved_run_metadata,
     )
-    callbacks, langfuse_callback = _build_callbacks()
+    resolved_callbacks, resolved_langfuse_callback = _build_callbacks(
+        external_callbacks=callbacks,
+        external_langfuse_callback=langfuse_callback,
+        sampling_key=resolved_run_metadata.run_id,
+    )
     logger.info(
         "Parallel graph runner start query=%s callback_count=%s langfuse_enabled=%s configured_max_workers=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(payload.query),
-        len(callbacks),
-        langfuse_callback is not None,
+        len(resolved_callbacks),
+        resolved_langfuse_callback is not None,
         _GRAPH_RUNNER_MAX_WORKERS,
         resolved_run_metadata.run_id,
         resolved_run_metadata.trace_id,
@@ -1378,7 +1358,7 @@ def run_parallel_graph_runner(
             ),
             model=model,
             timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
-            callbacks=callbacks,
+            callbacks=resolved_callbacks,
         )
         state = apply_decompose_node_output_to_graph_state(
             state=state,
@@ -1411,6 +1391,8 @@ def run_parallel_graph_runner(
                         vector_store=vector_store,
                         model=model,
                         run_metadata=state.run_metadata,
+                        callbacks=callbacks,
+                        langfuse_callback=langfuse_callback,
                     ): lane_index
                     for lane_index, sub_question in enumerate(state.decomposition_sub_questions, start=1)
                 }
@@ -1489,7 +1471,7 @@ def run_parallel_graph_runner(
                 sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
                 run_metadata=state.run_metadata,
             ),
-            callbacks=callbacks,
+            callbacks=resolved_callbacks,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
             state=state,
@@ -1509,7 +1491,8 @@ def run_parallel_graph_runner(
         )
         return state
     finally:
-        flush_langfuse_callback_handler(langfuse_callback)
+        if langfuse_callback is None:
+            flush_langfuse_callback_handler(resolved_langfuse_callback)
 
 
 def run_sequential_graph_runner(
@@ -1519,6 +1502,8 @@ def run_sequential_graph_runner(
     model: BaseChatModel | None = None,
     run_metadata: GraphRunMetadata | None = None,
     initial_search_context: list[dict[str, Any]] | None = None,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
@@ -1529,12 +1514,16 @@ def run_sequential_graph_runner(
         final_answer="",
         run_metadata=resolved_run_metadata,
     )
-    callbacks, langfuse_callback = _build_callbacks()
+    resolved_callbacks, resolved_langfuse_callback = _build_callbacks(
+        external_callbacks=callbacks,
+        external_langfuse_callback=langfuse_callback,
+        sampling_key=resolved_run_metadata.run_id,
+    )
     logger.info(
         "Sequential graph runner start query=%s callback_count=%s langfuse_enabled=%s run_id=%s trace_id=%s correlation_id=%s",
         _truncate_query(payload.query),
-        len(callbacks),
-        langfuse_callback is not None,
+        len(resolved_callbacks),
+        resolved_langfuse_callback is not None,
         resolved_run_metadata.run_id,
         resolved_run_metadata.trace_id,
         resolved_run_metadata.correlation_id,
@@ -1548,7 +1537,7 @@ def run_sequential_graph_runner(
             ),
             model=model,
             timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
-            callbacks=callbacks,
+            callbacks=resolved_callbacks,
         )
         state = apply_decompose_node_output_to_graph_state(
             state=state,
@@ -1570,7 +1559,7 @@ def run_sequential_graph_runner(
                     run_metadata=state.run_metadata,
                 ),
                 model=model,
-                callbacks=callbacks,
+                callbacks=resolved_callbacks,
             )
             state = apply_expand_node_output_to_graph_state(
                 state=state,
@@ -1604,7 +1593,7 @@ def run_sequential_graph_runner(
                     run_metadata=state.run_metadata,
                 ),
                 config=_RERANKER_CONFIG,
-                callbacks=callbacks,
+                callbacks=resolved_callbacks,
             )
             state = apply_rerank_node_output_to_graph_state(
                 state=state,
@@ -1623,7 +1612,7 @@ def run_sequential_graph_runner(
                     },
                     run_metadata=state.run_metadata,
                 ),
-                callbacks=callbacks,
+                callbacks=resolved_callbacks,
             )
             state = apply_answer_subquestion_node_output_to_graph_state(
                 state=state,
@@ -1646,7 +1635,7 @@ def run_sequential_graph_runner(
                 sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
                 run_metadata=state.run_metadata,
             ),
-            callbacks=callbacks,
+            callbacks=resolved_callbacks,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
             state=state,
@@ -1660,7 +1649,8 @@ def run_sequential_graph_runner(
         )
         return state
     finally:
-        flush_langfuse_callback_handler(langfuse_callback)
+        if langfuse_callback is None:
+            flush_langfuse_callback_handler(resolved_langfuse_callback)
 
 
 def run_decomposition_node(

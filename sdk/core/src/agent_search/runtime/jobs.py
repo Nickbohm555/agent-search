@@ -23,21 +23,10 @@ from services.agent_service import (
     map_graph_state_to_runtime_response,
     run_parallel_graph_runner,
 )
-from services.vector_store_service import (
-    build_initial_search_context,
-    search_documents_for_context,
-)
 
 logger = logging.getLogger(__name__)
 
 _VECTOR_COLLECTION_NAME = os.getenv("VECTOR_COLLECTION_NAME", "agent_search_internal_data")
-_INITIAL_SEARCH_CONTEXT_K = int(os.getenv("INITIAL_SEARCH_CONTEXT_K", "5"))
-_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW = os.getenv("INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD")
-_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD = (
-    float(_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW)
-    if _INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD_RAW not in (None, "")
-    else None
-)
 _EXECUTOR = ThreadPoolExecutor(max_workers=4)
 _JOB_LOCK = threading.Lock()
 
@@ -158,18 +147,11 @@ def _run_agent_job(
             run_id,
         )
 
-        initial_context_docs = search_documents_for_context(
-            vector_store=resolved_vector_store,
-            query=payload.query,
-            k=_INITIAL_SEARCH_CONTEXT_K,
-            score_threshold=_INITIAL_SEARCH_CONTEXT_SCORE_THRESHOLD,
-        )
-        initial_search_context = build_initial_search_context(initial_context_docs)
+        initial_search_context: list[dict[str, Any]] = []
         logger.info(
-            "Runtime async job initial context built job_id=%s run_id=%s docs=%s",
+            "Runtime async job initial context retrieval disabled; proceeding with empty context job_id=%s run_id=%s",
             job_id,
             run_id,
-            len(initial_search_context),
         )
 
         def on_snapshot(snapshot: GraphStageSnapshot, _state: Any) -> None:

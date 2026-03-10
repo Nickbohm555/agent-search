@@ -80,6 +80,14 @@
         overflow-x: auto;
       }
 
+      .mermaid {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 10px;
+        overflow-x: auto;
+      }
+
       table {
         width: 100%;
         border-collapse: collapse;
@@ -127,12 +135,50 @@
 
 Backend
   routers/agent.py::runtime_agent_run
-    -> services/agent_service.py::run_runtime_agent
-      -> get_vector_store(...)
-      -> search_documents_for_context(...) + build_initial_search_context(...)
-      -> run_parallel_graph_runner(...)
+    -> agent_search.public_api::advanced_rag
+      -> agent_search.runtime.runner::run_runtime_agent
+      -> services/agent_service.py::run_parallel_graph_runner(...)
       -> map_graph_state_to_runtime_response(...)
       -> RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+      </div>
+
+      <div class="panel">
+        <h2>State Graph (Mermaid)</h2>
+        <pre class="mermaid">flowchart TD
+    A[POST /api/agents/run-async] --> B[run_runtime_agent payload.query]
+    B --> D[Decompose Node]
+    D -->|LM call #1 ChatOpenAI structured output| E[Sub-questions]
+
+    E --> F{{Parallel lanes per sub-question}}
+    F --> G[Expand Node]
+    G -->|LM call #2 MultiQueryRetriever.generate_queries| H[expanded_queries]
+    H --> I[Search Node vector similarity search]
+    I --> J[retrieved_docs + retrieval_provenance]
+    J --> K[Rerank Node]
+    K -->|Optional LM call #3 OpenAI rerank provider| L[reranked_docs]
+    K -->|Fallback provider| L2[Flashrank or deterministic order]
+    L --> M[Answer Node]
+    L2 --> M
+    M -->|LM call #4 generate_subanswer| N[sub_answer + citation indices]
+    N --> P[Synthesize Final Node]
+    P -->|LM call #5 generate_final_synthesis_answer| Q[final output]
+    Q --> R[RuntimeAgentRunResponse main_question + sub_qa + output]</pre>
+      </div>
+
+      <div class="panel">
+        <h2>Latency / Fallback Hotspots</h2>
+        <ul>
+          <li>Per-lane search is vector DB/network bound.</li>
+          <li>LLM-heavy nodes: <code>decompose</code>, <code>expand</code>, <code>answer</code>, <code>synthesize</code>.</li>
+          <li><code>rerank</code> adds another LLM hop per lane when <code>RERANK_PROVIDER=openai</code>.</li>
+          <li>High decomposition count increases lane fanout and queueing under <code>_GRAPH_RUNNER_MAX_WORKERS</code>.</li>
+          <li>Timeout guardrails can force partial fallbacks:
+            <code>INITIAL_SEARCH_TIMEOUT_S</code>,
+            <code>DECOMPOSITION_LLM_TIMEOUT_S</code>,
+            <code>RERANK_TIMEOUT_S</code>,
+            <code>SUBANSWER_GENERATION_TIMEOUT_S</code>.
+          </li>
+        </ul>
       </div>
 
       <div class="panel">
@@ -157,6 +203,7 @@ Backend
         <h2>Observability Path (Langfuse)</h2>
         <ul>
           <li>Tracing utility: <code>src/backend/utils/langfuse_tracing.py</code>.</li>
+          <li><code>advanced_rag(..., langfuse_callback=...)</code> supports passing an explicit callback; otherwise SDK builds one from env + sampling.</li>
           <li>Runtime scope can attach callback handler per run when enabled and sampled.</li>
           <li>Benchmark scope emits trace/span/score events for dataset, mode, and question execution.</li>
           <li>Sampling controls are independent per scope:</li>
@@ -235,5 +282,9 @@ docker compose exec backend uv run python benchmarks/export.py</div>
         <p class="small">Commands above are the same workflows used by this repository's runtime and benchmark docs.</p>
       </div>
     </div>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "default", securityLevel: "loose" });
+    </script>
   </body>
 </html>

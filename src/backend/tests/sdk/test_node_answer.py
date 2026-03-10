@@ -9,7 +9,6 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search.runtime.nodes import answer
 from schemas import AnswerSubquestionNodeInput, CitationSourceRow, GraphRunMetadata
-from services.subanswer_verification_service import SubanswerVerificationResult
 
 
 def _node_input(
@@ -77,18 +76,11 @@ def test_run_answer_node_returns_supported_answer_with_citation_rows() -> None:
         captured["callbacks"] = callbacks
         return "VAT changed in 2025 [1][2]."
 
-    def _fake_verify_subanswer(**_kwargs):
-        return SubanswerVerificationResult(
-            answerable=True,
-            reason="grounded_in_reranked_documents",
-        )
-
     callback_marker = object()
     output = answer.run_answer_node(
         node_input=_node_input(reranked_docs=docs),
         callbacks=[callback_marker],
         generate_subanswer_fn=_fake_generate_subanswer,
-        verify_subanswer_fn=_fake_verify_subanswer,
     )
 
     assert captured["sub_question"] == "What changed in VAT policy?"
@@ -97,7 +89,7 @@ def test_run_answer_node_returns_supported_answer_with_citation_rows() -> None:
 
     assert output.sub_answer == "VAT changed in 2025 [1][2]."
     assert output.answerable is True
-    assert output.verification_reason == "grounded_in_reranked_documents"
+    assert output.verification_reason == "citation_supported"
     assert output.citation_indices_used == [1, 2]
     assert sorted(output.citation_rows_by_index.keys()) == [1, 2]
     assert output.citation_rows_by_index[2].document_id == "doc-2"
@@ -118,10 +110,6 @@ def test_run_answer_node_enforces_missing_citation_markers_contract() -> None:
     output = answer.run_answer_node(
         node_input=_node_input(reranked_docs=docs),
         generate_subanswer_fn=lambda **_kwargs: "VAT changed in 2025.",
-        verify_subanswer_fn=lambda **_kwargs: SubanswerVerificationResult(
-            answerable=True,
-            reason="grounded_in_reranked_documents",
-        ),
     )
 
     assert output.sub_answer == "nothing relevant found"
@@ -146,10 +134,6 @@ def test_run_answer_node_enforces_missing_supporting_source_rows_contract() -> N
     output = answer.run_answer_node(
         node_input=_node_input(reranked_docs=docs),
         generate_subanswer_fn=lambda **_kwargs: "VAT changed in 2025 [3].",
-        verify_subanswer_fn=lambda **_kwargs: SubanswerVerificationResult(
-            answerable=True,
-            reason="grounded_in_reranked_documents",
-        ),
     )
 
     assert output.sub_answer == "nothing relevant found"
