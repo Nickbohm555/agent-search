@@ -1,7 +1,7 @@
 
 Tasks are in **required implementation order** (1...n). Each section = one context window. Complete one section at a time.
 
-Current section to work on: section 4. (move +1 after each turn)
+Current section to work on: section 5. (move +1 after each turn)
 
 ---
 
@@ -109,6 +109,9 @@ Current section to work on: section 4. (move +1 after each turn)
 **How to test:** Run the documented venv install + minimal script to confirm import and execution.
 
 **Test results:** (Add when section is complete.)
-- Command and outcome.
+- 2026-03-10: `python3 -m venv .venv && . .venv/bin/activate && python -m pip install "agent-search-core==0.1.0"` -> failed: no published distribution available (`No matching distribution found for agent-search-core==0.1.0`).
+- 2026-03-10: `./scripts/release_sdk.sh` -> passed; built local wheel/sdist and `twine check` passed.
+- 2026-03-10: `python3.11 -m venv .venv && . .venv/bin/activate && python -m pip install sdk/core/dist/agent_search_core-0.1.0-py3-none-any.whl` -> passed install.
+- 2026-03-10: `python smoke_run.py` (clean venv, wheel install) -> failed import smoke gate: `ModuleNotFoundError: No module named 'agent_search.public_api'` (artifact currently ships only `agent_search/__init__.py`).
 
 ---

@@ -79,3 +79,61 @@ RELEASE_TAG=agent-search-core-v0.1.0 PUBLISH=1 TWINE_API_TOKEN=*** ./scripts/rel
 
 - Always: clean `sdk/core/dist`, build wheel/sdist, run `twine check`.
 - With `PUBLISH=1`: require `TWINE_API_TOKEN`, then upload artifacts.
+
+## SDK install smoke test (clean venv, no Docker)
+
+Run from any temporary host directory with Python 3.11+.
+
+Install from PyPI (post-publish):
+
+```bash
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "agent-search-core==0.1.0"
+```
+
+Minimal in-process smoke script:
+
+```python
+from __future__ import annotations
+
+import json
+import logging
+
+from agent_search.public_api import run
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+
+class FakeVectorStore:
+    def similarity_search(self, query: str, k: int, filter=None) -> list[object]:
+        logging.info(
+            "FakeVectorStore.similarity_search called query=%s k=%s has_filter=%s",
+            query,
+            k,
+            filter is not None,
+        )
+        return []
+
+
+response = run(
+    "What does the smoke test validate?",
+    vector_store=FakeVectorStore(),
+    model=object(),
+)
+print(json.dumps(response.model_dump(), indent=2))
+```
+
+Expected smoke output characteristics:
+
+- Logs include SDK run lifecycle lines and one `FakeVectorStore.similarity_search` call.
+- JSON output includes:
+  - `main_question` set to the input query.
+  - `sub_qa` as a list.
+  - `output` as a non-empty string.
+
+Troubleshooting:
+
+- If install fails with a Python version error, use Python `>=3.11,<3.14`.
+- If import fails with `ModuleNotFoundError: No module named 'agent_search.public_api'`, the published artifact does not yet include runtime API modules and must be repackaged before this smoke test can pass.

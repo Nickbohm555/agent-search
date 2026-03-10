@@ -4065,3 +4065,78 @@ backend: GET /api/health 200 OK
 frontend: VITE v5.4.21 ready
 db: database system is ready to accept connections
 ```
+
+## Completed - 2026-03-10 - Section 4 (blocked)
+
+## Section 4: SDK install smoke test - clean venv run
+
+**Single goal:** Validate the published SDK installs cleanly and can execute a minimal in-process smoke run.
+
+**Details:**
+- Create a clean virtual environment, install the released `agent_search_core` package, and run a minimal `run()` call with a protocol-compatible fake vector store and mock model.
+- The smoke test must not require backend services or Docker.
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies; used released artifact and standard host venv/pip tooling.
+- Tooling (uv, poetry, Docker): no Dockerfile/dependency changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| sdk/core/README.md | Document clean-venv SDK install smoke test commands, expected output, and troubleshooting. |
+| IMPLEMENTATION_PLAN.md | Record Section 4 execution results and advance current section pointer. |
+
+**How to test:** Run the documented venv install + minimal script to confirm import and execution.
+
+**Test results:**
+- `python3 -m venv .venv && . .venv/bin/activate && python -m pip install "agent-search-core==0.1.0"` -> failed: package not found on index (`No matching distribution found for agent-search-core==0.1.0`).
+- `./scripts/release_sdk.sh` -> passed: built `agent_search_core-0.1.0` wheel/sdist; `twine check` passed.
+- `python3.11 -m venv .venv && . .venv/bin/activate && python -m pip install sdk/core/dist/agent_search_core-0.1.0-py3-none-any.whl` -> passed.
+- `python smoke_run.py` (clean venv) -> failed: `ModuleNotFoundError: No module named 'agent_search.public_api'`.
+
+**Blocked reason:**
+- Published artifact is not available on index yet.
+- Built wheel currently includes only `agent_search/__init__.py` and does not include runtime API modules required for `run()` smoke execution.
+
+**Completion notes:**
+- Reused existing release flow (`scripts/release_sdk.sh`) and SDK protocol pattern from existing backend SDK tests (`_CompatibleVectorStore` style).
+- Added clean-venv smoke instructions and expected output/troubleshooting in `sdk/core/README.md`.
+- Performed required full Docker reboot before work and verified backend/frontend/db logs + health status.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `curl -sS http://localhost:8000/api/health`
+- `docker compose logs --tail=80 db`
+- `docker compose logs --tail=80 backend`
+- `docker compose logs --tail=80 frontend`
+- `python3 -m venv /tmp/agent-search-core-smoke/.venv && ... && python -m pip install "agent-search-core==0.1.0"`
+- `./scripts/release_sdk.sh`
+- `python3.11 -m venv /tmp/agent-search-core-smoke-local/.venv && ... && python -m pip install sdk/core/dist/agent_search_core-0.1.0-py3-none-any.whl`
+- `python /tmp/agent-search-core-smoke-local/smoke_run.py`
+
+**Useful logs (excerpt):**
+```text
+ERROR: Could not find a version that satisfies the requirement agent-search-core==0.1.0 (from versions: none)
+ERROR: No matching distribution found for agent-search-core==0.1.0
+
+release_sdk: starting sdk_dir=/Users/nickbohm/Desktop/worktree/agent-search/sdk/core version=0.1.0 publish=0
+Successfully built agent_search_core-0.1.0.tar.gz and agent_search_core-0.1.0-py3-none-any.whl
+release_sdk: running twine check
+...agent_search_core-0.1.0-py3-none-any.whl: PASSED
+...agent_search_core-0.1.0.tar.gz: PASSED
+release_sdk: dry run complete; skipping upload (set PUBLISH=1 to publish)
+
+Traceback (most recent call last):
+  File "/private/tmp/agent-search-core-smoke-local/smoke_run.py", line 6, in <module>
+    from agent_search.public_api import run
+ModuleNotFoundError: No module named 'agent_search.public_api'
+
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+health: {"status":"ok"}
+```
