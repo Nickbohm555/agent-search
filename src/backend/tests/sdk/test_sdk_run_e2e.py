@@ -122,9 +122,63 @@ def test_runtime_runner_emits_langfuse_stage_hooks(monkeypatch) -> None:
         RuntimeAgentRunRequest(query="How do traces work?"),
         model=object(),
         vector_store=_CompatibleVectorStore(),
+        langfuse_callback=object(),
     )
 
     assert captured["traces"]
     assert any(item["name"] == "runtime.agent_run" for item in captured["traces"])
     assert captured["scores"]
     assert captured["ends"]
+
+
+def test_runtime_runner_skips_langfuse_stage_hooks_without_callback(monkeypatch) -> None:
+    captured: dict[str, list[dict[str, object]]] = {"traces": [], "spans": [], "scores": [], "ends": []}
+
+    monkeypatch.setattr(
+        runtime_runner,
+        "start_langfuse_trace",
+        lambda **kwargs: captured["traces"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "start_langfuse_span",
+        lambda **kwargs: captured["spans"].append(kwargs) or object(),
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "record_langfuse_score",
+        lambda **kwargs: captured["scores"].append(kwargs),
+    )
+    monkeypatch.setattr(
+        runtime_runner,
+        "end_langfuse_observation",
+        lambda observation, **kwargs: captured["ends"].append(kwargs),
+    )
+
+    monkeypatch.setattr(
+        agent_service,
+        "run_parallel_graph_runner",
+        lambda **kwargs: agent_service.build_agent_graph_state(
+            main_question=kwargs["payload"].query,
+            sub_qa=[],
+            final_answer="final answer",
+            run_metadata=kwargs["run_metadata"],
+        ),
+    )
+    monkeypatch.setattr(
+        agent_service,
+        "map_graph_state_to_runtime_response",
+        lambda state: RuntimeAgentRunResponse(
+            main_question=state.main_question,
+            sub_qa=state.sub_qa,
+            output=state.output,
+        ),
+    )
+
+    runtime_runner.run_runtime_agent(
+        RuntimeAgentRunRequest(query="No callback tracing"),
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+    )
+
+    assert captured == {"traces": [], "spans": [], "scores": [], "ends": []}

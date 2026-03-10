@@ -78,18 +78,11 @@ def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
 
 def _build_sync_callbacks(
     *,
-    query: str,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
-    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> tuple[list[Any] | None, Any | None]:
     resolved_callbacks = list(callbacks or [])
     resolved_langfuse_callback = langfuse_callback
-    if resolved_langfuse_callback is None and langfuse_settings is not None:
-        resolved_langfuse_callback = build_langfuse_callback(
-            sampling_key=query,
-            settings=langfuse_settings,
-        )
     if resolved_langfuse_callback is not None:
         resolved_callbacks.append(resolved_langfuse_callback)
     return (resolved_callbacks if resolved_callbacks else None), resolved_langfuse_callback
@@ -133,13 +126,16 @@ def advanced_rag(
         "SDK sync run vector_store validated vector_store_type=%s",
         type(compatible_vector_store).__name__,
     )
+    if langfuse_settings is not None and langfuse_callback is None:
+        logger.warning(
+            "SDK advanced_rag received langfuse_settings without langfuse_callback; "
+            "settings are ignored and tracing remains disabled"
+        )
 
     try:
         resolved_callbacks, resolved_langfuse_callback = _build_sync_callbacks(
-            query=query,
             callbacks=callbacks,
             langfuse_callback=langfuse_callback,
-            langfuse_settings=langfuse_settings,
         )
         response = run_runtime_agent(
             RuntimeAgentRunRequest(query=query),

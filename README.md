@@ -12,7 +12,7 @@
 flowchart TD
     A["SDK caller"] --> B["advanced_rag / run / run_async"]
     B --> C["Validate inputs<br/>model + vector_store required"]
-    C --> D["Build runtime config<br/>callbacks + optional Langfuse"]
+    C --> D["Build runtime config<br/>callbacks + optional Langfuse callback"]
     D --> E["run_runtime_agent(query, deps)"]
     E --> F["Decompose Node"]
     F -->|LM call #1<br/>Structured decomposition plan| G["sub-questions"]
@@ -47,13 +47,17 @@ Minimal usage (you must provide both a chat model and a vector store):
 
 ```python
 from langchain_openai import ChatOpenAI
-from agent_search import advanced_rag, build_langfuse_callback
+from langfuse.langchain import CallbackHandler
+from agent_search import advanced_rag
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
-
-langfuse_callback = build_langfuse_callback(sampling_key="customer-123")
+langfuse_callback = CallbackHandler(
+    public_key="...",
+    secret_key="...",
+    host="https://cloud.langfuse.com",
+)
 response = advanced_rag(
     "What is pgvector?",
     vector_store=vector_store,
@@ -67,28 +71,9 @@ print(response.output)
 
 Tracing behavior for `advanced_rag(...)`:
 
-- Pass `langfuse_callback=...` to supply an explicit callback.
-- Or pass `langfuse_settings={...}` and SDK builds the callback from that config.
-- If both are omitted, SDK does not trace the run.
-
-Config-driven tracing example:
-
-```python
-response = advanced_rag(
-    "What is pgvector?",
-    vector_store=vector_store,
-    model=model,
-    langfuse_settings={
-        "enabled": True,
-        "public_key": "...",
-        "secret_key": "...",
-        "host": "https://cloud.langfuse.com",
-        "environment": "production",
-        "release": "agent-search-core-0.1.8",
-        "runtime_sample_rate": 1.0,
-    },
-)
-```
+- Pass `langfuse_callback=...` (for example a `langfuse.langchain.CallbackHandler`) to enable tracing.
+- If `langfuse_callback` is omitted, SDK run tracing is disabled.
+- `langfuse_settings` is deprecated and ignored by `advanced_rag(...)`; pass a callback explicitly instead.
 
 Output schema for `advanced_rag(...)`:
 

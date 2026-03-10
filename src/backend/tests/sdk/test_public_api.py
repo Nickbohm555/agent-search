@@ -112,14 +112,12 @@ def test_build_langfuse_callback_delegates_to_tracing_utility(monkeypatch) -> No
     assert captured == {"scope": "runtime", "sampling_key": "sdk-test"}
 
 
-def test_advanced_rag_builds_langfuse_callback_from_settings(monkeypatch) -> None:
+def test_advanced_rag_does_not_build_langfuse_callback_from_settings(monkeypatch) -> None:
     captured: dict[str, object] = {}
-    callback_marker = object()
 
     def fake_build_langfuse_callback(*, sampling_key=None, settings=None):
-        captured["sampling_key"] = sampling_key
-        captured["settings"] = settings
-        return callback_marker
+        _ = sampling_key, settings
+        raise AssertionError("build_langfuse_callback should not be called by advanced_rag")
 
     def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
         captured["callbacks"] = callbacks
@@ -141,7 +139,5 @@ def test_advanced_rag_builds_langfuse_callback_from_settings(monkeypatch) -> Non
     )
 
     assert response.output == "ok"
-    assert captured["sampling_key"] == "query for settings"
-    assert isinstance(captured["settings"], dict)
-    assert captured["langfuse_callback"] is callback_marker
-    assert callback_marker in (captured["callbacks"] or [])
+    assert captured["langfuse_callback"] is None
+    assert captured["callbacks"] is None

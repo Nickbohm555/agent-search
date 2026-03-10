@@ -1,7 +1,7 @@
 [project]
 name = "agent-search-backend"
 version = "0.1.0"
-description = "Minimal FastAPI backend for agent-search"
+description = "FastAPI backend for agent-search with optional callback-driven Langfuse tracing"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "fastapi==0.115.12",

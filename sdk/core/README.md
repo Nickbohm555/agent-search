@@ -22,12 +22,17 @@ python -c "import agent_search; print(agent_search.__file__)"
 
 ```python
 from langchain_openai import ChatOpenAI
-from agent_search import advanced_rag, build_langfuse_callback
+from langfuse.langchain import CallbackHandler
+from agent_search import advanced_rag
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
-langfuse_callback = build_langfuse_callback(sampling_key="customer-123")
+langfuse_callback = CallbackHandler(
+    public_key="...",
+    secret_key="...",
+    host="https://cloud.langfuse.com",
+)
 
 response = advanced_rag(
     "What is pgvector?",
@@ -65,27 +70,8 @@ Primary functions exposed by `agent_search`:
 
 Tracing behavior for `advanced_rag(...)`:
 - If you pass `langfuse_callback=...`, SDK uses that callback for run tracing.
-- Or pass `langfuse_settings={...}` and SDK builds the callback from that config.
-- If both are omitted, SDK does not trace the run.
-
-Config-driven tracing example:
-
-```python
-response = advanced_rag(
-    "What is pgvector?",
-    vector_store=vector_store,
-    model=model,
-    langfuse_settings={
-        "enabled": True,
-        "public_key": "...",
-        "secret_key": "...",
-        "host": "https://cloud.langfuse.com",
-        "environment": "production",
-        "release": "agent-search-core-0.1.8",
-        "runtime_sample_rate": 1.0,
-    },
-)
-```
+- If `langfuse_callback` is omitted, SDK does not trace the run.
+- `langfuse_settings` is deprecated and ignored by `advanced_rag(...)`; pass an explicit callback instead.
 
 `advanced_rag(...)` output schema:
 
