@@ -67,9 +67,13 @@ All code blocks in this deep-dive section are repo-derived snippets (lifted/adap
 | Input schema | `DecomposeNodeInput { main_question: str, run_metadata: GraphRunMetadata, initial_search_context: list[dict[str, Any]] }` |
 | Output schema | `DecomposeNodeOutput { decomposition_sub_questions: list[str] }` |
 | How it works | `run_decomposition_node(...)` calls a structured-output LLM plan, normalizes/dedupes questions, and clamps count to the configured max. |
+| Reasoning math | `Q_sub = clip_K(dedupe(norm(parse(LLM(main_question, context)))))` where `K = DECOMPOSITION_ONLY_MAX_SUBQUESTIONS`. |
 | Why effective | Converts one broad task into atomic retrieval tasks, which raises recall for multi-hop questions. |
 | Knobs | `DECOMPOSITION_ONLY_MODEL`, `DECOMPOSITION_ONLY_TEMPERATURE`, `DECOMPOSITION_ONLY_MAX_SUBQUESTIONS`, `DECOMPOSITION_LLM_TIMEOUT_S`. |
 | Potential changes | Adaptive sub-question count from query complexity and token budget. |
+
+<details>
+<summary>Orchestration snippet</summary>
 
 ```python
 from agent_search.runtime.nodes.decompose import run_decomposition_node
@@ -86,6 +90,28 @@ output = run_decomposition_node(
 print(output.decomposition_sub_questions)
 ```
 
+</details>
+
+<details>
+<summary>Logic snippet (repo-derived)</summary>
+
+```python
+# Based on _parse_decomposition_output(...) in runtime/nodes/decompose.py
+normalized, seen = [], set()
+for candidate in candidates:
+    sq = normalize_sub_question(candidate)
+    if not sq:
+        continue
+    key = sq.casefold()
+    if key in seen:
+        continue
+    normalized.append(sq)
+    seen.add(key)
+decomposition_sub_questions = normalized[:max_subquestions]
+```
+
+</details>
+
 #### Expand Node
 
 | Field | Details |
@@ -94,9 +120,13 @@ print(output.decomposition_sub_questions)
 | Output schema | `ExpandNodeOutput { expanded_queries: list[str] }` |
 | How it works | `run_expansion_node(...)` generates alternate phrasings for each sub-question via the query expansion service. |
 | Query expansion internals | `expand_queries_for_subquestion(...)` normalizes whitespace, truncates by `max_query_length`, dedupes case-insensitively, always preserves original sub-question, and caps to `max_queries`. On model/API failure it falls back to `[normalized_sub_question]`. |
+| Reasoning math | `E = clip_M(dedupe(norm([q] + LLM_variants(q))))`, where `M = QUERY_EXPANSION_MAX_QUERIES`. |
 | Why effective | Reduces wording mismatch between question phrasing and chunk text. |
 | Knobs | `QUERY_EXPANSION_MODEL`, `QUERY_EXPANSION_TEMPERATURE`, `QUERY_EXPANSION_MAX_QUERIES`, `QUERY_EXPANSION_MAX_QUERY_LENGTH`. |
 | Potential changes | Domain-specific expansions and synonym lexicons. |
+
+<details>
+<summary>Orchestration snippet</summary>
 
 ```python
 from agent_search.runtime.nodes.expand import run_expansion_node
@@ -113,26 +143,29 @@ expanded = run_expansion_node(
 print(expanded.expanded_queries)
 ```
 
-```python
-# Query expansion service snippet (repo-adapted from services/query_expansion_service.py)
-from services.query_expansion_service import (
-    QueryExpansionConfig,
-    expand_queries_for_subquestion,
-)
+</details>
 
-queries = expand_queries_for_subquestion(
-    sub_question="What index types does pgvector support?",
-    model=model,  # optional; falls back to configured ChatOpenAI model
-    config=QueryExpansionConfig(
-        model="gpt-4.1-mini",
-        temperature=0.0,
-        max_queries=4,
-        max_query_length=256,
-    ),
-    callbacks=[],
-)
-print(queries)
+<details>
+<summary>Logic snippet (repo-derived)</summary>
+
+```python
+# Based on _normalize_query_candidates(...) in services/query_expansion_service.py
+normalized, seen = [], set()
+for candidate in [original_query, *generated_queries]:
+    q = normalize_query(candidate, max_query_length=max_len)
+    if not q:
+        continue
+    key = q.casefold()
+    if key in seen:
+        continue
+    normalized.append(q)
+    seen.add(key)
+    if len(normalized) >= max_queries:
+        break
+expanded_queries = normalized or [normalize_query(original_query, max_query_length=max_len)]
 ```
+
+</details>
 
 #### Search Node (Similarity Retrieval)
 
@@ -145,6 +178,9 @@ print(queries)
 | Why effective | Expansion + max-over-queries improves chance that at least one phrasing retrieves the right chunk. |
 | Knobs | `retrieval.search_node_k_fetch`, `retrieval.search_node_score_threshold`, `retrieval.search_node_merged_cap`. |
 | Potential changes | Hybrid ranking: `score = alpha * vector_score + (1 - alpha) * bm25_score`. |
+
+<details>
+<summary>Orchestration snippet</summary>
 
 ```python
 from agent_search.runtime.nodes.search import run_search_node
@@ -161,6 +197,30 @@ searched = run_search_node(
 print(len(searched.retrieved_docs))
 ```
 
+</details>
+
+<details>
+<summary>Logic snippet (repo-derived)</summary>
+
+```python
+# Based on run_search_node(...) in runtime/nodes/search.py
+docs_by_query = search_documents_for_queries(vector_store=store, queries=normalized_queries, k=k_fetch)
+merged_rows, seen = [], {}
+for query in normalized_queries:
+    for doc in docs_by_query.get(query, []):
+        row = build_citation_row(doc)
+        identity = build_document_identity(row.document_id, row.source, row.content)
+        if identity in seen:
+            idx = seen[identity]
+            merged_rows[idx].score = max_nullable(merged_rows[idx].score, row.score)
+            continue
+        seen[identity] = len(merged_rows)
+        merged_rows.append(row)
+retrieved_docs = merged_rows[:merged_cap]
+```
+
+</details>
+
 #### Rerank Node
 
 | Field | Details |
@@ -172,6 +232,9 @@ print(len(searched.retrieved_docs))
 | Why effective | Retrieval is high-recall; rerank is high-precision for top context used by generation. |
 | Knobs | `rerank.enabled`, `rerank.provider`, `rerank.top_n`, `RERANK_OPENAI_MODEL_NAME`, `RERANK_OPENAI_TEMPERATURE`, `timeout.rerank_timeout_s`. |
 | Potential changes | Add calibrated cutoff to drop low-confidence candidates before answer generation. |
+
+<details>
+<summary>Orchestration snippet</summary>
 
 ```python
 from agent_search.runtime.nodes.rerank import run_rerank_node
@@ -188,6 +251,23 @@ reranked = run_rerank_node(
 print([row.score for row in reranked.reranked_docs[:3]])
 ```
 
+</details>
+
+<details>
+<summary>Logic snippet (repo-derived)</summary>
+
+```python
+# Based on run_rerank_node(...) + services/reranker_service.py
+rerank_query = (expanded_query or "").strip() or sub_question
+ordered = rerank_documents(query=rerank_query, documents=to_retrieved_documents(retrieved_docs), config=config)
+reranked_docs = []
+for new_rank, item in enumerate(ordered, start=1):
+    reranked_docs.append(CitationSourceRow(rank=new_rank, citation_index=new_rank, score=item.score, ...))
+reranked_docs = reranked_docs[:top_n] if top_n else reranked_docs
+```
+
+</details>
+
 #### Answer Node
 
 | Field | Details |
@@ -195,9 +275,13 @@ print([row.score for row in reranked.reranked_docs[:3]])
 | Input schema | `AnswerSubquestionNodeInput { sub_question: str, reranked_docs: list[CitationSourceRow], citation_rows_by_index: dict[int, CitationSourceRow], run_metadata: GraphRunMetadata }` |
 | Output schema | `AnswerSubquestionNodeOutput { sub_answer: str, citation_indices_used: list[int], answerable: bool, verification_reason: str, citation_rows_by_index: dict[int, CitationSourceRow] }` |
 | How it works | `run_answer_node(...)` generates one sub-answer from reranked evidence, extracts citation markers like `[1]`, and validates they map to available rows. |
+| Reasoning math | `answerable = (|C_used| > 0) AND (C_used subseteq C_available)`, where `C_used` is citation indices extracted from generated text. |
 | Why effective | Enforces citation-supported answers per lane instead of unconstrained generation. |
 | Knobs | Generation model + `timeout.subanswer_generation_timeout_s`, `timeout.subanswer_verification_timeout_s`. |
 | Potential changes | Add passage-level quote extraction for stricter evidence binding. |
+
+<details>
+<summary>Orchestration snippet</summary>
 
 ```python
 from agent_search.runtime.nodes.answer import run_answer_node
@@ -215,6 +299,25 @@ subanswer = run_answer_node(
 print(subanswer.sub_answer, subanswer.citation_indices_used)
 ```
 
+</details>
+
+<details>
+<summary>Logic snippet (repo-derived)</summary>
+
+```python
+# Based on run_answer_node(...) in runtime/nodes/answer.py
+generated = generate_subanswer(sub_question=sub_question, reranked_retrieved_output=formatted_docs)
+citation_indices_used = extract_citation_indices(generated)
+invalid = [i for i in citation_indices_used if i not in citation_rows_by_index]
+if not citation_indices_used:
+    return fallback("missing_citation_markers")
+if invalid:
+    return fallback("missing_supporting_source_rows")
+return supported_answer(generated, citation_indices_used)
+```
+
+</details>
+
 #### Synthesize Final Node
 
 | Field | Details |
@@ -222,9 +325,13 @@ print(subanswer.sub_answer, subanswer.citation_indices_used)
 | Input schema | `SynthesizeFinalNodeInput { main_question: str, sub_qa: list[SubQuestionAnswer], sub_question_artifacts: list[SubQuestionArtifacts], run_metadata: GraphRunMetadata }` |
 | Output schema | `SynthesizeFinalNodeOutput { final_answer: str }` |
 | How it works | `run_synthesize_node(...)` composes sub-answers into a final response and enforces a final citation contract (fallback if citations are missing/invalid). |
+| Reasoning math | `A_final = synth(main_question, sub_qa)` then enforce `C_final subseteq C_available`; otherwise fallback to citation-valid sub-answers. |
 | Why effective | Produces one coherent answer while preserving lane-level provenance constraints. |
 | Knobs | Final synthesis model + `timeout.initial_answer_timeout_s`. |
 | Potential changes | Add contradiction detection and confidence scoring across sub-answers. |
+
+<details>
+<summary>Orchestration snippet</summary>
 
 ```python
 from agent_search.runtime.nodes.synthesize import run_synthesize_node
@@ -240,6 +347,24 @@ final = run_synthesize_node(
 )
 print(final.final_answer)
 ```
+
+</details>
+
+<details>
+<summary>Logic snippet (repo-derived)</summary>
+
+```python
+# Based on _enforce_final_synthesis_citation_contract(...) in runtime/nodes/synthesize.py
+generated_final = generate_final_synthesis_answer(main_question=main_question, sub_qa=sub_qa)
+used = extract_citation_indices(generated_final)
+available = collect_available_citation_indices(sub_question_artifacts)
+if not used or any(idx not in available for idx in used):
+    final_answer = build_final_synthesis_citation_fallback(sub_qa=sub_qa, available_indices=available)
+else:
+    final_answer = generated_final
+```
+
+</details>
 
 ## SDK Logic (In-Process)
 
