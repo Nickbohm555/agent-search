@@ -3818,3 +3818,58 @@ VITE v5.4.21  ready in 399 ms
 db runtime:
 database system is ready to accept connections
 ```
+
+## Completed - 2026-03-10 - Section 1
+
+## Section 1: Release readiness check - version and dry-run build
+
+**Single goal:** Confirm SDK version/tag alignment and dry-run release workflow readiness.
+
+**Details:**
+- Verify `sdk/core/pyproject.toml` version matches the intended tag format (`agent-search-core-vX.Y.Z`).
+- Run `scripts/release_sdk.sh` in dry-run mode (no publish).
+
+**Tech stack and dependencies**
+- Libraries/packages (pip, npm, uv, etc.): no new dependencies; used existing build/twine tooling defined in `sdk/core/pyproject.toml`.
+- Tooling (uv, poetry, Docker): no Dockerfile/dependency changes.
+
+**Files and purpose**
+
+| File | Purpose |
+|------|--------|
+| scripts/release_sdk.sh | Dry-run build + twine check verification. |
+| sdk/core/pyproject.toml | Source of SDK version metadata for tag alignment. |
+| .github/workflows/release-sdk.yml | Reference tag naming for release. |
+
+**How to test:** Run `scripts/release_sdk.sh` (dry-run) and confirm version/tag alignment.
+
+**Test results:**
+- `RELEASE_TAG=agent-search-core-v0.1.0 ./scripts/release_sdk.sh` -> passed; built `agent_search_core-0.1.0.tar.gz` and `agent_search_core-0.1.0-py3-none-any.whl`; `twine check` passed for both; upload skipped as expected (`PUBLISH=0`).
+
+**Completion notes:**
+- Verified package version in `sdk/core/pyproject.toml` is `0.1.0`.
+- Verified expected release tag resolves to `agent-search-core-v0.1.0` and aligns with workflow trigger `agent-search-core-v*` in `.github/workflows/release-sdk.yml`.
+- Reused existing `release_sdk.sh` validation/logging flow without code changes.
+
+**Commands run:**
+- `docker compose down -v --rmi all`
+- `docker compose build`
+- `docker compose up -d`
+- `docker compose ps`
+- `RELEASE_TAG=agent-search-core-v0.1.0 ./scripts/release_sdk.sh`
+- `docker compose logs --tail=120 backend`
+- `docker compose logs --tail=80 frontend`
+- `docker compose logs --tail=80 db`
+
+**Useful logs (excerpt):**
+```text
+release_sdk: starting sdk_dir=/Users/nickbohm/Desktop/worktree/agent-search/sdk/core version=0.1.0 publish=0
+Successfully built agent_search_core-0.1.0.tar.gz and agent_search_core-0.1.0-py3-none-any.whl
+release_sdk: running twine check
+...agent_search_core-0.1.0-py3-none-any.whl: PASSED
+...agent_search_core-0.1.0.tar.gz: PASSED
+release_sdk: dry run complete; skipping upload (set PUBLISH=1 to publish)
+backend: Application startup complete.
+frontend: VITE v5.4.21 ready
+db: database system is ready to accept connections
+```
