@@ -58,6 +58,17 @@ response = advanced_rag(
 print(response.output)
 ```
 
+Response schema from `advanced_rag(...)`:
+
+```python
+RuntimeAgentRunResponse(
+  main_question: str,
+  sub_qa: list[SubQuestionAnswer],
+  output: str,
+  final_citations: list[CitationSourceRow],
+)
+```
+
 ## Runtime State Graph (Data Flow + LM Calls)
 
 ```mermaid
