@@ -58,6 +58,8 @@ flowchart TD
 
 ### Deep Dive
 
+All code blocks in this deep-dive section are repo-derived snippets (lifted/adapted from files in `src/backend/agent_search/runtime/nodes/` and `src/backend/services/`) and trimmed for readability.
+
 #### Decompose Node
 
 | Field | Details |
@@ -91,8 +93,9 @@ print(output.decomposition_sub_questions)
 | Input schema | `ExpandNodeInput { main_question: str, sub_question: str, run_metadata: GraphRunMetadata }` |
 | Output schema | `ExpandNodeOutput { expanded_queries: list[str] }` |
 | How it works | `run_expansion_node(...)` generates alternate phrasings for each sub-question via the query expansion service. |
+| Query expansion internals | `expand_queries_for_subquestion(...)` normalizes whitespace, truncates by `max_query_length`, dedupes case-insensitively, always preserves original sub-question, and caps to `max_queries`. On model/API failure it falls back to `[normalized_sub_question]`. |
 | Why effective | Reduces wording mismatch between question phrasing and chunk text. |
-| Knobs | Expansion config (`max_queries`, `max_query_length`, model and temperature in query-expansion settings). |
+| Knobs | `QUERY_EXPANSION_MODEL`, `QUERY_EXPANSION_TEMPERATURE`, `QUERY_EXPANSION_MAX_QUERIES`, `QUERY_EXPANSION_MAX_QUERY_LENGTH`. |
 | Potential changes | Domain-specific expansions and synonym lexicons. |
 
 ```python
@@ -108,6 +111,27 @@ expanded = run_expansion_node(
     model=model,
 )
 print(expanded.expanded_queries)
+```
+
+```python
+# Query expansion service snippet (repo-adapted from services/query_expansion_service.py)
+from services.query_expansion_service import (
+    QueryExpansionConfig,
+    expand_queries_for_subquestion,
+)
+
+queries = expand_queries_for_subquestion(
+    sub_question="What index types does pgvector support?",
+    model=model,  # optional; falls back to configured ChatOpenAI model
+    config=QueryExpansionConfig(
+        model="gpt-4.1-mini",
+        temperature=0.0,
+        max_queries=4,
+        max_query_length=256,
+    ),
+    callbacks=[],
+)
+print(queries)
 ```
 
 #### Search Node (Similarity Retrieval)
