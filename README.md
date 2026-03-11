@@ -8,7 +8,7 @@
 
 ## Documentation
 
-The consolidated project reference is available at `docs/application-documentation.html`. It serves as the single HTML source of truth for the documented application structure, architecture, stack, integrations, testing, and known concerns.
+The consolidated project reference is available at `docs/application-documentation.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs.
 
 ## How The SDK Is Used
 
