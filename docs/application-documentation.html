@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tinkering Application Documentation</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --paper: #fffaf2;
+      --ink: #1f1d1a;
+      --muted: #5f5a52;
+      --line: #d8cdbd;
+      --accent: #9b5c2e;
+      --accent-soft: #f1dfc8;
+      --accent-strong: #6f3f1c;
+      --card: #fffdf8;
+      --shadow: 0 18px 40px rgba(62, 39, 17, 0.08);
+      --code: #2b2823;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      background:
+        radial-gradient(circle at top left, rgba(155, 92, 46, 0.12), transparent 28%),
+        linear-gradient(180deg, #efe5d6 0%, var(--bg) 25%, #f8f3eb 100%);
+      color: var(--ink);
+      line-height: 1.55;
+    }
+
+    a {
+      color: var(--accent-strong);
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.92em;
+      color: var(--code);
+      background: #f5eee5;
+      padding: 0.08rem 0.32rem;
+      border-radius: 0.28rem;
+    }
+
+    .layout {
+      width: min(1280px, calc(100vw - 32px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 24px;
+      padding: 24px 0 48px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      background: rgba(255, 250, 242, 0.88);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+    }
+
+    .brand {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .brand h1 {
+      margin: 0 0 10px;
+      font-size: 1.65rem;
+      line-height: 1.1;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .toc h2 {
+      margin: 0 0 10px;
+      font-size: 0.98rem;
+    }
+
+    .toc a {
+      display: block;
+      text-decoration: none;
+      color: var(--ink);
+      padding: 7px 10px;
+      border-radius: 10px;
+      margin-bottom: 4px;
+    }
+
+    .toc a:hover,
+    .toc a:focus {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+    }
+
+    .content {
+      min-width: 0;
+    }
+
+    .hero,
+    section {
+      background: rgba(255, 250, 242, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 34px;
+      margin-bottom: 24px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -60px;
+      top: -60px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(155, 92, 46, 0.18) 0%, rgba(155, 92, 46, 0) 70%);
+      pointer-events: none;
+    }
+
+    .hero h2 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 3vw, 3.1rem);
+      line-height: 0.96;
+      max-width: 10ch;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: 1.04rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .meta span {
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+    }
+
+    section {
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+
+    section h2 {
+      margin: 0 0 16px;
+      font-size: 1.75rem;
+    }
+
+    section h3 {
+      margin: 24px 0 10px;
+      font-size: 1.15rem;
+    }
+
+    section p {
+      margin: 0 0 14px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card h3,
+    .card h4 {
+      margin-top: 0;
+    }
+
+    .card p:last-child,
+    .card ul:last-child {
+      margin-bottom: 0;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 14px 20px;
+      padding: 0;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    .stat {
+      font-size: 2rem;
+      line-height: 1;
+      color: var(--accent-strong);
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card);
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 14px 16px;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      background: #f3e6d3;
+      color: var(--accent-strong);
+      font-size: 0.92rem;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .pill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      background: #f5eee4;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 0.9rem;
+    }
+
+    .flow-step {
+      border-left: 4px solid var(--accent);
+      padding-left: 14px;
+      margin-bottom: 16px;
+    }
+
+    .warning {
+      background: #fff3df;
+      border: 1px solid #e7cda4;
+    }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    @media (max-width: 1040px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        max-height: none;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .grid.two,
+      .grid.three {
+        grid-template-columns: 1fr;
+      }
+
+      .hero,
+      section,
+      .sidebar {
+        border-radius: 18px;
+      }
+
+      .hero,
+      section {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <p class="eyebrow">Single Source of Truth</p>
+        <h1>Tinkering Documentation</h1>
+        <p>Unified reference for the workspace, application surfaces, architecture, stack, testing, integrations, and known risks.</p>
+      </div>
+      <nav class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <a href="#overview">Overview</a>
+        <a href="#workspace">Workspace Map</a>
+        <a href="#projects">Project Breakdown</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#flows">Data Flows</a>
+        <a href="#entrypoints">Entry Points</a>
+        <a href="#stack">Technology Stack</a>
+        <a href="#integrations">Integrations</a>
+        <a href="#conventions">Conventions</a>
+        <a href="#testing">Testing</a>
+        <a href="#concerns">Risks And Concerns</a>
+        <a href="#operations">Operational Guidance</a>
+        <a href="#sources">Source Documents</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <header class="hero" id="overview">
+        <p class="eyebrow">Application Reference</p>
+        <h2>One document for the full application workspace.</h2>
+        <p>
+          This HTML document consolidates the generated planning documentation in <code>.planning/codebase</code> into a single navigable reference.
+          It covers the workspace layout, each major project, architectural patterns, runtime flows, technology choices, coding standards, external systems,
+          testing strategy, and the current set of known concerns.
+        </p>
+        <div class="meta">
+          <span>Workspace: <code>Tinkering/</code></span>
+          <span>Coverage date: 2026-03-10</span>
+          <span>Document type: consolidated reference</span>
+        </div>
+      </header>
+
+      <section id="workspace">
+        <h2>Workspace Map</h2>
+        <p>
+          The workspace is a polyrepo collection rather than a single deployable application. It groups focused products, workflow tooling, and a larger platform
+          under one top-level directory. Runtime code stays within each project root instead of being shared as one monolith across the workspace.
+        </p>
+        <div class="grid three">
+          <div class="card">
+            <div class="stat">5</div>
+            <p>Primary project roots with runtime or workflow responsibility.</p>
+          </div>
+          <div class="card">
+            <div class="stat">3</div>
+            <p>Primary runtime styles: containerized apps, pipeline CLI, and modular platform stack.</p>
+          </div>
+          <div class="card">
+            <div class="stat">7</div>
+            <p>Planning dimensions consolidated here: structure, architecture, stack, integrations, conventions, testing, and concerns.</p>
+          </div>
+        </div>
+        <h3>Top-Level Layout</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Directory</th>
+                <th>Purpose</th>
+                <th>Primary Shape</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>agent-search/</code></td>
+                <td>Focused runtime-agent product with backend, frontend, SDK, and compose infrastructure.</td>
+                <td>Containerized FastAPI + React/Vite app</td>
+              </tr>
+              <tr>
+                <td><code>agent-trace/</code></td>
+                <td>Trace ingestion, analysis, and change proposal workflow application.</td>
+                <td>Containerized FastAPI + React/Vite app</td>
+              </tr>
+              <tr>
+                <td><code>cli-skill/</code></td>
+                <td>Builds and installs skills from documentation using deterministic staged processing.</td>
+                <td>Go CLI pipeline</td>
+              </tr>
+              <tr>
+                <td><code>dream-workflow/</code></td>
+                <td>Prompt templates, loop scripts, and execution workflow guidance for agent-driven work.</td>
+                <td>Markdown + shell workflow layer</td>
+              </tr>
+              <tr>
+                <td><code>onyx/</code></td>
+                <td>Large AI platform repository with backend, web application, deployment assets, and auxiliary clients.</td>
+                <td>Modular FastAPI + Next.js platform</td>
+              </tr>
+              <tr>
+                <td><code>.planning/codebase/</code></td>
+                <td>Generated planning artifacts that describe the codebase.</td>
+                <td>Documentation source set</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="projects">
+        <h2>Project Breakdown</h2>
+        <div class="grid two">
+          <article class="card">
+            <h3><code>agent-search/</code></h3>
+            <p>Focused runtime-agent product combining a FastAPI backend, React frontend, database layer, and SDK-oriented runtime orchestration.</p>
+            <ul>
+              <li>Backend root: <code>src/backend/</code></li>
+              <li>Frontend root: <code>src/frontend/</code></li>
+              <li>Compose runtime: <code>docker-compose.yml</code></li>
+              <li>Core logic: <code>src/backend/agent_search/runtime/runner.py</code> and <code>src/backend/services/agent_service.py</code></li>
+              <li>Primary API boundary: <code>src/backend/routers/agent.py</code></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>agent-trace/</code></h3>
+            <p>Trace-analysis system that ingests traces, analyzes them, proposes harness changes, and exposes the workflow through API and UI layers.</p>
+            <ul>
+              <li>Backend root: <code>src/backend/</code></li>
+              <li>Frontend root: <code>src/frontend/</code></li>
+              <li>Trace orchestration: <code>src/backend/services/trace_analyzer_service.py</code></li>
+              <li>Agent graph: <code>src/backend/agents/deep_agent_tracer.py</code></li>
+              <li>Primary API boundary: <code>src/backend/routers/tracer.py</code></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>cli-skill/</code></h3>
+            <p>Deterministic staged CLI that turns documentation into installable skills with crawl, content, refinement, validation, overlap, and install steps.</p>
+            <ul>
+              <li>CLI entrypoint: <code>cmd/cli-skill/main.go</code></li>
+              <li>Command wiring: <code>internal/cli/command/process.go</code></li>
+              <li>Install stage: <code>internal/app/generate/install_stage.go</code></li>
+              <li>Package model: domain-first internal packages under <code>internal/</code></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>dream-workflow/</code></h3>
+            <p>Operational workflow layer for planning and build loops, with prompts, shell scripts, and reusable workflow documentation.</p>
+            <ul>
+              <li>Prompt files: <code>PROMPT_plan.md</code>, <code>PROMPT_build.md</code></li>
+              <li>Loop script: <code>loop.sh</code></li>
+              <li>Reference docs: <code>workflows/</code></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3><code>onyx/</code></h3>
+            <p>Large multi-surface platform with extensive backend feature modules, a Next.js web app, deployment overlays, connectors, and supporting desktop/widget code.</p>
+            <ul>
+              <li>Backend application: <code>backend/onyx/</code></li>
+              <li>Web application: <code>web/src/app/</code></li>
+              <li>Deployment assets: <code>deployment/</code></li>
+              <li>Main app entry: <code>backend/onyx/main.py</code></li>
+              <li>Web root: <code>web/src/app/page.tsx</code></li>
+            </ul>
+          </article>
+          <article class="card">
+            <h3>Generated Planning Docs</h3>
+            <p>The planning directory acts as a codebase map. It is generated, committed, and intended to guide planning and execution work.</p>
+            <ul>
+              <li>Architecture summary</li>
+              <li>Structure map</li>
+              <li>Stack and runtime inventory</li>
+              <li>Convention, testing, integration, and concern audits</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture</h2>
+        <p>
+          The workspace does not enforce one shared runtime architecture. Instead, each project root owns a distinct execution style while following a common preference:
+          thin entrypoints, explicit boundaries, and infrastructure composed through environment variables and container orchestration.
+        </p>
+        <h3>Dominant Patterns</h3>
+        <div class="grid two">
+          <div class="card">
+            <h3>Containerized Service Apps</h3>
+            <p><code>agent-search</code> and <code>agent-trace</code> split frontend, backend, and database services and run them through Docker Compose.</p>
+            <ul>
+              <li>FastAPI backend</li>
+              <li>React/Vite frontend</li>
+              <li>PostgreSQL-backed persistence</li>
+              <li>Router to service separation</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Pipeline CLI</h3>
+            <p><code>cli-skill</code> models workflow as explicit stages with approval gates and deterministic package boundaries.</p>
+            <ul>
+              <li>Command entrypoint via Cobra</li>
+              <li>Stage-based package composition</li>
+              <li>Installation transactions</li>
+              <li>Controlled crawl and content refinement</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Platform Monolith</h3>
+            <p><code>onyx</code> is large and modular, but operationally behaves as a central platform backend plus a separate Next.js frontend.</p>
+            <ul>
+              <li>Large FastAPI app factory</li>
+              <li>Feature-oriented server modules</li>
+              <li>App-router web surface</li>
+              <li>Broad infrastructure footprint</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Workflow Layer</h3>
+            <p><code>dream-workflow</code> and multiple <code>AGENTS.md</code> files define the process layer that guides planning, execution, and repeated work loops.</p>
+            <ul>
+              <li>Prompt-driven flow</li>
+              <li>Shell loop automation</li>
+              <li>Operational constraints and runbooks</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Layer Model</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Layer</th>
+                <th>Purpose</th>
+                <th>Representative Locations</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Workspace orchestration</td>
+                <td>Planning loops, workflow prompts, execution constraints, and operational contracts.</td>
+                <td><code>dream-workflow/</code>, project <code>AGENTS.md</code>, project loop scripts</td>
+              </tr>
+              <tr>
+                <td>Service app layer</td>
+                <td>Focused web products exposing APIs and UIs with separate deployable units.</td>
+                <td><code>agent-search/src/backend/</code>, <code>agent-search/src/frontend/</code>, <code>agent-trace/src/backend/</code>, <code>agent-trace/src/frontend/</code></td>
+              </tr>
+              <tr>
+                <td>Domain pipeline layer</td>
+                <td>CLI pipeline for documentation processing and skill installation.</td>
+                <td><code>cli-skill/cmd/</code>, <code>cli-skill/internal/</code></td>
+              </tr>
+              <tr>
+                <td>Platform layer</td>
+                <td>Full AI platform with backend APIs, web client, connectors, auth, search, and deployment overlays.</td>
+                <td><code>onyx/backend/onyx/</code>, <code>onyx/web/</code>, <code>onyx/deployment/</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Key Abstractions</h3>
+        <div class="grid three">
+          <div class="card">
+            <h4>Router-Service Boundary</h4>
+            <p>HTTP handlers remain thin and delegate business logic to services or domain modules.</p>
+          </div>
+          <div class="card">
+            <h4>Graph And Pipeline Runtime</h4>
+            <p>AI workflows are modeled as staged or graph-like execution units with typed inputs and explicit sequencing.</p>
+          </div>
+          <div class="card">
+            <h4>Environment-Composed Runtime</h4>
+            <p>Infrastructure dependencies are configured through compose files and environment variables, not a single in-process binary.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="flows">
+        <h2>Data Flows</h2>
+        <p>The core application behaviors can be understood through a small set of repeated runtime flows.</p>
+        <div class="flow-step">
+          <h3>Agent Search Request Flow</h3>
+          <ol>
+            <li>The frontend mounts from <code>agent-search/src/frontend/src/main.tsx</code> and calls the backend using configured API URLs.</li>
+            <li><code>agent-search/src/backend/main.py</code> registers the FastAPI app and routes requests into <code>routers/agent.py</code>.</li>
+            <li>The router delegates to <code>services/agent_service.py</code> and runtime orchestration in <code>agent_search/runtime/runner.py</code>.</li>
+            <li>Typed schema objects under <code>schemas/</code> shape request and response data.</li>
+          </ol>
+        </div>
+        <div class="flow-step">
+          <h3>Trace Analysis Flow</h3>
+          <ol>
+            <li><code>/api/tracer/run</code> enters <code>agent-trace/src/backend/routers/tracer.py</code>.</li>
+            <li>The router composes <code>TraceAnalyzerService</code> and invokes orchestration in <code>services/trace_analyzer_service.py</code>.</li>
+            <li>The service fetches or persists traces, prepares sandbox context, runs the tracer graph in <code>agents/deep_agent_tracer.py</code>, and aggregates change sets.</li>
+            <li>Responses are returned via typed API schema models such as <code>schemas/tracer_api.py</code>.</li>
+          </ol>
+        </div>
+        <div class="flow-step">
+          <h3>Onyx Platform Flow</h3>
+          <ol>
+            <li>The backend starts in <code>onyx/backend/onyx/main.py</code> through <code>get_application()</code> and lifespan initialization.</li>
+            <li>The main application includes many feature routers from server and feature packages.</li>
+            <li>The web application under <code>onyx/web/src/app/</code> interacts with those APIs using Next.js routing and rewrite configuration.</li>
+            <li>Persistent and background state is distributed across Postgres, Redis, search/index services, object storage, and model-serving infrastructure.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="entrypoints">
+        <h2>Entry Points</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Surface</th>
+                <th>Location</th>
+                <th>Responsibility</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Agent Search API</td>
+                <td><code>agent-search/src/backend/main.py</code></td>
+                <td>App bootstrapping, middleware, router registration, health endpoints.</td>
+              </tr>
+              <tr>
+                <td>Agent Trace API</td>
+                <td><code>agent-trace/src/backend/main.py</code></td>
+                <td>App creation, health and tracer route exposure.</td>
+              </tr>
+              <tr>
+                <td>CLI Skill Binary</td>
+                <td><code>cli-skill/cmd/cli-skill/main.go</code></td>
+                <td>Build command tree and execute the CLI process lifecycle.</td>
+              </tr>
+              <tr>
+                <td>Onyx API</td>
+                <td><code>onyx/backend/onyx/main.py</code></td>
+                <td>Startup lifecycle, auth, middleware, metrics, and feature-router composition.</td>
+              </tr>
+              <tr>
+                <td>Agent Search Frontend</td>
+                <td><code>agent-search/src/frontend/src/main.tsx</code></td>
+                <td>Mount root React app.</td>
+              </tr>
+              <tr>
+                <td>Agent Trace Frontend</td>
+                <td><code>agent-trace/src/frontend/src/main.tsx</code></td>
+                <td>Mount root React app.</td>
+              </tr>
+              <tr>
+                <td>Onyx Web Root</td>
+                <td><code>onyx/web/src/app/page.tsx</code></td>
+                <td>Route users into the web application experience.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="stack">
+        <h2>Technology Stack</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Primary Languages</h3>
+            <ul>
+              <li>Python 3.11+ for backend services and platform APIs.</li>
+              <li>TypeScript for React/Vite and Next.js frontends.</li>
+              <li>Go 1.25.x for CLI workflow tooling.</li>
+              <li>Rust in the Tauri desktop shell inside Onyx.</li>
+              <li>YAML for Docker Compose and deployment wiring.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Runtime And Package Managers</h3>
+            <ul>
+              <li>Python projects use <code>pyproject.toml</code> and a <code>uv</code>/PEP 621 workflow.</li>
+              <li>Frontend projects use <code>npm</code>.</li>
+              <li>CLI code uses Go Modules.</li>
+              <li>Docker Compose is the main local orchestration layer for service applications.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Frameworks</h3>
+            <ul>
+              <li>FastAPI for APIs.</li>
+              <li>React + Vite for lightweight service-app frontends.</li>
+              <li>Next.js for the Onyx web application.</li>
+              <li>Cobra for the Go CLI command system.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Core Infrastructure Libraries</h3>
+            <ul>
+              <li><code>sqlalchemy</code>, <code>psycopg</code>, and <code>pgvector</code> for relational/vector data.</li>
+              <li><code>openai</code>, LangChain packages, and <code>langfuse</code> for LLM-related execution and tracing.</li>
+              <li><code>redis</code> and <code>celery</code> in Onyx for cache and background execution.</li>
+              <li>OpenSearch/Vespa-related dependencies for search and indexing in Onyx.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Configuration Model</h3>
+        <p>
+          Environment variables are the dominant configuration contract. Service apps rely on <code>DATABASE_URL</code>, Postgres credentials,
+          frontend API base URLs, and provider keys. Onyx expands this substantially with auth mode, Redis, search/index hosts, model server settings,
+          and S3-compatible storage configuration.
+        </p>
+
+        <h3>Development Requirements</h3>
+        <div class="pill-list">
+          <span class="pill">Docker + Docker Compose</span>
+          <span class="pill">Python 3.11+</span>
+          <span class="pill">Node.js + npm</span>
+          <span class="pill">Go 1.25.x</span>
+        </div>
+      </section>
+
+      <section id="integrations">
+        <h2>Integrations</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>LLM Providers</h3>
+            <ul>
+              <li>OpenAI is a primary inference provider across projects.</li>
+              <li>Anthropic is supported as an optional provider in the agent apps and Onyx-related flows.</li>
+              <li>Provider credentials are environment-driven, primarily via <code>OPENAI_API_KEY</code> and <code>ANTHROPIC_API_KEY</code>.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Observability</h3>
+            <ul>
+              <li>Langfuse supports tracing and runtime observability across agent-oriented systems.</li>
+              <li>Sentry is present for Onyx backend and web error tracking.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Data And State Systems</h3>
+            <ul>
+              <li>PostgreSQL is the primary relational store.</li>
+              <li>Agent apps add pgvector for vector-backed workflows.</li>
+              <li>Onyx uses Redis for cache and coordination.</li>
+              <li>Onyx uses S3-compatible object storage with MinIO defaults in local deployment.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>External SaaS And Connectors</h3>
+            <p>Onyx integrates with a broad connector set, including Slack, Stripe, SendGrid, GitHub, Jira, Salesforce, Asana, Dropbox, and additional third-party systems.</p>
+          </div>
+        </div>
+
+        <h3>Authentication</h3>
+        <p>
+          Authentication strategy differs by project. The two smaller agent services are largely API-focused and environment-configured, while Onyx supports multiple auth modes,
+          including OAuth and SAML-related flows with callback routes in the web application.
+        </p>
+
+        <h3>Deployment Model</h3>
+        <p>
+          Docker Compose is the primary local and self-host deployment model for the service apps and for the Onyx stack. Onyx also supports registry-based image deployment through
+          compose-defined image references.
+        </p>
+      </section>
+
+      <section id="conventions">
+        <h2>Conventions</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Naming</h3>
+            <ul>
+              <li>Python modules: <code>snake_case.py</code></li>
+              <li>Python tests: <code>test_*.py</code></li>
+              <li>React components: <code>PascalCase.tsx</code></li>
+              <li>Frontend logic and hooks: <code>camelCase.ts</code></li>
+              <li>Next.js routes: <code>page.tsx</code> per route segment</li>
+              <li>Go source: <code>snake_case.go</code> with paired <code>_test.go</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Code Style</h3>
+            <ul>
+              <li>Web formatting uses Prettier.</li>
+              <li>Onyx backend uses Ruff with target <code>py311</code> and line length 130.</li>
+              <li>Backend code is expected to be type-heavy and mypy-clean.</li>
+              <li>Use descriptive names and explicit typed parameters.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Imports</h3>
+            <ol>
+              <li>External packages first.</li>
+              <li>Internal aliases second.</li>
+              <li>Relative imports last.</li>
+            </ol>
+            <p>Onyx web uses aliases such as <code>@/*</code>, <code>@tests/*</code>, <code>@public/*</code>, and <code>@opal/*</code>.</p>
+          </div>
+          <div class="card">
+            <h3>Error Handling And Logging</h3>
+            <ul>
+              <li>Frontend fetch flows use typed errors and propagate status/detail information.</li>
+              <li>Backend handlers translate domain failures into explicit <code>HTTPException</code> responses.</li>
+              <li>Python logging uses centralized logger setup instead of prints.</li>
+              <li>Comments are used for rationale, non-obvious setup, and operational tradeoffs.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="testing">
+        <h2>Testing</h2>
+        <p>
+          Testing expectations are strongest in the Onyx repository, where the planning docs identify distinct unit, integration, external dependency unit,
+          daily, and browser-level end-to-end layers.
+        </p>
+        <div class="grid three">
+          <div class="card">
+            <h3>Backend</h3>
+            <ul>
+              <li>Pytest is the primary runner.</li>
+              <li>Tests live under <code>onyx/backend/tests/</code> with unit, integration, and daily segregation.</li>
+              <li>Mocks are used in isolated unit tests; integration tests rely on running deployment infrastructure.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Web</h3>
+            <ul>
+              <li>Jest and Testing Library support unit and component integration testing.</li>
+              <li>Tests are primarily colocated under <code>onyx/web/src/**</code>.</li>
+              <li>Shared setup utilities live under <code>onyx/web/tests/setup</code>.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>E2E</h3>
+            <ul>
+              <li>Playwright covers browser workflows under <code>onyx/web/tests/e2e</code>.</li>
+              <li>Some flows remain flaky or skipped, leaving known gaps in drag-and-drop and similar UX behavior.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Typical Commands</h3>
+        <div class="card">
+          <ul>
+            <li><code>cd onyx/web &amp;&amp; npm test</code></li>
+            <li><code>cd onyx/web &amp;&amp; npm run test:coverage</code></li>
+            <li><code>source .venv/bin/activate &amp;&amp; cd onyx &amp;&amp; pytest -xv backend/tests/unit</code></li>
+            <li><code>cd onyx/web &amp;&amp; npx playwright test &lt;TEST_NAME&gt;</code></li>
+          </ul>
+        </div>
+
+        <h3>Testing Patterns</h3>
+        <ul>
+          <li>Frontend tests favor user-visible assertions and explicit API call expectations.</li>
+          <li>Backend unit tests patch DAL and service boundaries.</li>
+          <li>Shared fixtures and test utilities centralize repetitive setup.</li>
+          <li>No global backend coverage threshold is currently enforced.</li>
+        </ul>
+      </section>
+
+      <section id="concerns">
+        <h2>Risks And Concerns</h2>
+        <div class="grid two">
+          <div class="card warning">
+            <h3>Known Bugs</h3>
+            <ul>
+              <li><code>agent-search</code> has a CORS configuration mismatch: wildcard origins with credentials can break browser requests and is also a security concern.</li>
+              <li>Onyx has a skipped flaky E2E path around assistant drag-and-drop ordering.</li>
+            </ul>
+          </div>
+          <div class="card warning">
+            <h3>Security</h3>
+            <ul>
+              <li>Wildcard CORS with credentials in <code>agent-search</code> should be replaced with explicit trusted origins.</li>
+              <li>Per-user MCP permissions in Onyx are explicitly incomplete.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Tech Debt</h3>
+            <ul>
+              <li><code>onyx/backend/onyx/main.py</code> is an oversized startup and route-composition hotspot.</li>
+              <li>Deprecated or transitional schema contracts remain active in some Onyx manage models.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Performance</h3>
+            <ul>
+              <li>Onyx upload paths read full payloads into memory.</li>
+              <li><code>cli-skill</code> may duplicate fetch pressure by re-fetching content across crawl and process stages.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Fragility</h3>
+            <ul>
+              <li>Onyx process lifecycle management has acknowledged IO fragility in sandbox local process management.</li>
+              <li>Onyx startup couples auth, infra, metrics, and router assembly into one broad blast-radius path.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Scaling Limits</h3>
+            <ul>
+              <li><code>cli-skill</code> defaults to a 50-page crawl cap, limiting large documentation coverage.</li>
+              <li>Onyx connector orchestration remains highly dependent on Redis availability.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Coverage Gaps</h3>
+        <p>
+          The current planning audit explicitly calls out under-tested or unstable behavior in assistant ordering, scroll behavior, web-search providers,
+          and selected connector integration flows. This should be treated as active risk when changing those surfaces.
+        </p>
+      </section>
+
+      <section id="operations">
+        <h2>Operational Guidance</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Where To Add Backend Features</h3>
+            <ul>
+              <li><code>agent-search/src/backend/services/</code> and <code>routers/</code> for agent-search backend work.</li>
+              <li><code>agent-trace/src/backend/services/</code> and <code>routers/</code> for trace-analysis backend work.</li>
+              <li><code>cli-skill/internal/&lt;domain&gt;/</code> for CLI functionality.</li>
+              <li><code>onyx/backend/onyx/server/features/&lt;feature&gt;/</code> for Onyx feature endpoints.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Where To Add Frontend Or Web Features</h3>
+            <ul>
+              <li><code>agent-search/src/frontend/src/</code> and <code>agent-trace/src/frontend/src/</code> for service-app UI work.</li>
+              <li><code>onyx/web/src/app/</code> and <code>onyx/web/src/components/</code> for Onyx web work.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Where To Add Tests</h3>
+            <ul>
+              <li><code>agent-search/src/backend/tests/</code></li>
+              <li><code>agent-trace/src/backend/tests/</code></li>
+              <li><code>cli-skill/internal/**/*_test.go</code></li>
+              <li><code>onyx/backend/tests/</code> and <code>onyx/web/tests/</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Generated Or Special Directories</h3>
+            <ul>
+              <li><code>.planning/codebase/</code> contains generated planning artifacts and is committed.</li>
+              <li><code>onyx/backend/generated/</code> contains generated backend artifacts and is committed.</li>
+              <li>Frontend <code>node_modules/</code> trees are generated and not committed.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="sources">
+        <h2>Source Documents</h2>
+        <p>
+          This HTML file is a consolidation of the generated planning documents in <code>.planning/codebase/</code>. Those source files remain the underlying inputs for this summary.
+        </p>
+        <ul>
+          <li><code>ARCHITECTURE.md</code></li>
+          <li><code>STRUCTURE.md</code></li>
+          <li><code>STACK.md</code></li>
+          <li><code>CONVENTIONS.md</code></li>
+          <li><code>INTEGRATIONS.md</code></li>
+          <li><code>TESTING.md</code></li>
+          <li><code>CONCERNS.md</code></li>
+        </ul>
+        <p class="footer-note">
+          Document intent: provide a single browsable source of truth for the current documented state of the workspace and its applications.
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

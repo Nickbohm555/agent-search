@@ -6,6 +6,10 @@
 
 `agent-search` is an SDK for graph-based, citation-grounded RAG workflows. It turns a model + vector store into a traceable multi-step retrieval and synthesis pipeline.
 
+## Documentation
+
+The consolidated project reference is available at `docs/application-documentation.html`. It serves as the single HTML source of truth for the documented application structure, architecture, stack, integrations, testing, and known concerns.
+
 ## How The SDK Is Used
 
 Install dependencies first (`pip`, not “pippin”):
