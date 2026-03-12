@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -468,3 +469,74 @@ def test_post_run_cancel_not_found_maps_to_404(monkeypatch) -> None:
     response = client.post("/api/agents/run-cancel/missing-job")
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found or already finished."}
+
+
+def test_post_run_resume_returns_status_with_stable_thread_id(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStatusResponse, RuntimeAgentRunResponse
+
+    thread_id = "550e8400-e29b-41d4-a716-446655440003"
+    captured: dict[str, object] = {}
+
+    def fake_sdk_resume_run(job_id: str, *, resume):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id="run-003",
+            thread_id=thread_id,
+            status="success",
+            message="Completed.",
+            stage="completed",
+            result=RuntimeAgentRunResponse(
+                main_question="Approve run?",
+                thread_id=thread_id,
+                sub_qa=[],
+                output="Recovered successfully.",
+            ),
+        )
+
+    monkeypatch.setattr(agent_router_module, "sdk_resume_run", fake_sdk_resume_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-resume/job-003", json={"resume": {"approved": True}})
+
+    assert response.status_code == 200
+    assert response.json()["job_id"] == "job-003"
+    assert response.json()["thread_id"] == thread_id
+    assert response.json()["result"]["thread_id"] == thread_id
+    assert response.json()["result"]["output"] == "Recovered successfully."
+    assert captured == {"job_id": "job-003", "resume": {"approved": True}}
+
+
+@pytest.mark.parametrize(
+    ("detail", "expected_status"),
+    [
+        ("Run cannot be resumed from status 'running'.", 409),
+        ("Run cannot be resumed from status 'success'.", 409),
+        ("Run cannot be resumed from status 'cancelled'.", 409),
+        ("Job not found.", 404),
+    ],
+)
+def test_post_run_resume_maps_valid_and_invalid_transition_errors(
+    monkeypatch, detail: str, expected_status: int
+) -> None:
+    from routers import agent as agent_router_module
+
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_resume_run",
+        lambda _job_id, *, resume: (_ for _ in ()).throw(SDKConfigurationError(detail)),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-resume/job-transition", json={"resume": {"approved": True}})
+
+    assert response.status_code == expected_status
+    assert response.json() == {"detail": detail}

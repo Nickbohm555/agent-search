@@ -3009,3 +3009,73 @@ def test_run_checkpointed_agent_retry_replays_recorded_outcome_without_duplicate
     assert second.response.output == "The rule changed."
     assert second.state is not None
     assert second.state.final_answer == "The rule changed."
+
+
+def test_run_checkpointed_agent_replay_is_scoped_by_thread_identity(monkeypatch) -> None:
+    session_factory = _make_runtime_session_factory()
+    monkeypatch.setattr(idempotency_service, "SessionLocal", session_factory)
+    call_count = {"count": 0}
+
+    def fake_run_parallel_graph_runner(
+        *,
+        payload,
+        vector_store,
+        model,
+        run_metadata,
+        initial_search_context,
+        callbacks=None,
+        langfuse_callback=None,
+        snapshot_callback=None,
+    ):
+        _ = (vector_store, model, initial_search_context, callbacks, langfuse_callback, snapshot_callback)
+        call_count["count"] += 1
+        return agent_service.build_agent_graph_state(
+            main_question=payload.query,
+            decomposition_sub_questions=[payload.query],
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question=payload.query,
+                    sub_answer=f"Answered for {run_metadata.thread_id}.",
+                )
+            ],
+            final_answer=f"Answered for {run_metadata.thread_id}.",
+            run_metadata=run_metadata,
+        )
+
+    monkeypatch.setattr(runtime_runner.legacy_service, "run_parallel_graph_runner", fake_run_parallel_graph_runner)
+
+    payload_one = RuntimeAgentRunRequest(
+        query="What changed?",
+        thread_id="550e8400-e29b-41d4-a716-446655440203",
+    )
+    payload_two = RuntimeAgentRunRequest(
+        query="What changed?",
+        thread_id="550e8400-e29b-41d4-a716-446655440204",
+    )
+
+    first = runtime_runner.run_checkpointed_agent(
+        payload_one,
+        model="model",
+        vector_store="vector-store",
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-thread-1", thread_id=payload_one.thread_id),
+    )
+    replay = runtime_runner.run_checkpointed_agent(
+        payload_one,
+        model="model",
+        vector_store="vector-store",
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-thread-1", thread_id=payload_one.thread_id),
+    )
+    second_thread = runtime_runner.run_checkpointed_agent(
+        payload_two,
+        model="model",
+        vector_store="vector-store",
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-thread-2", thread_id=payload_two.thread_id),
+    )
+
+    assert call_count["count"] == 2
+    assert first.response is not None
+    assert replay.response is not None
+    assert second_thread.response is not None
+    assert first.response.output == "Answered for 550e8400-e29b-41d4-a716-446655440203."
+    assert replay.response.output == first.response.output
+    assert second_thread.response.output == "Answered for 550e8400-e29b-41d4-a716-446655440204."

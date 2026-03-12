@@ -254,3 +254,52 @@ def test_sdk_async_resume_rejects_invalid_transition_deterministically(monkeypat
 
     with pytest.raises(SDKConfigurationError, match="Run cannot be resumed from status 'success'."):
         public_api.resume_run(start_response.job_id)
+
+
+@pytest.mark.parametrize("initial_status", ["running", "error", "cancelled"])
+def test_sdk_async_resume_rejects_non_paused_transition_matrix(monkeypatch, initial_status: str) -> None:
+    monkeypatch.setattr(
+        public_api,
+        "resume_agent_run_job",
+        lambda _job_id, resume=True: (_ for _ in ()).throw(
+            SDKConfigurationError(f"Run cannot be resumed from status '{initial_status}'.")
+        ),
+    )
+
+    with pytest.raises(SDKConfigurationError, match=rf"Run cannot be resumed from status '{initial_status}'\."):
+        public_api.resume_run("job-transition-matrix", resume={"approved": True})
+
+
+def test_sdk_async_resume_status_preserves_thread_id_after_checkpoint_resume(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440013"
+
+    def fake_resume_agent_run_job(_job_id: str, *, resume=True):
+        assert resume == {"approved": True}
+        return runtime_jobs.AgentRunJobStatus(
+            job_id="job-resume-status",
+            run_id="run-resume-status",
+            thread_id=thread_id,
+            status="success",
+            query="Resume and report status",
+            message="Completed.",
+            stage="completed",
+            result=RuntimeAgentRunResponse(
+                main_question="Resume and report status",
+                thread_id=thread_id,
+                sub_qa=[],
+                output="Recovered from checkpoint.",
+            ),
+        )
+
+    monkeypatch.setattr(public_api, "resume_agent_run_job", fake_resume_agent_run_job)
+    monkeypatch.setattr(public_api, "get_agent_run_job", lambda _job_id: fake_resume_agent_run_job(_job_id, resume={"approved": True}))
+
+    resumed_status = public_api.resume_run("job-resume-status", resume={"approved": True})
+
+    assert resumed_status.job_id == "job-resume-status"
+    assert resumed_status.run_id == "run-resume-status"
+    assert resumed_status.thread_id == thread_id
+    assert resumed_status.status == "success"
+    assert resumed_status.result is not None
+    assert resumed_status.result.thread_id == thread_id
+    assert resumed_status.result.output == "Recovered from checkpoint."

@@ -10,7 +10,7 @@
 
 - Current phase: 2 - Durable Execution and Identity Semantics
 - Current plan: 02-03
-- Current task: 2
+- Current task: 3
 - Current status: implemented
 - Progress: 20% (1/5 phases complete)
 
@@ -43,6 +43,6 @@ Progress bar: `[#----] 20%`
 
 ## Session Continuity
 
-- Last completed artifact: `src/backend/agent_search/runtime/resume.py`, `src/backend/agent_search/runtime/jobs.py`, and `src/backend/tests/sdk/test_sdk_async_e2e.py` with checkpoint-resume wiring and paused-only transition coverage.
-- Last updated traceability: Phase 2 plan `02-03` task 1 marked implemented after Docker SDK pause/resume verification.
+- Last completed artifact: `src/backend/tests/sdk/test_sdk_async_e2e.py`, `src/backend/tests/services/test_agent_service.py`, and `src/backend/tests/api/test_agent_run.py` with resilience coverage for resume continuity, replay scoping, and resume transition errors.
+- Last updated traceability: Phase 2 plan `02-03` task 3 marked implemented after Docker resilience-suite verification and targeted resume/idempotency regression checks.
 - Next recommended command: `/gsd-implement-next`
