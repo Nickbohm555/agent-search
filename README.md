@@ -10,6 +10,14 @@
 
 The consolidated project reference is available at `docs/application-documentation.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs.
 
+## 1.0.0 Release
+
+Integrators adopting the LangGraph-native `1.0.0` release should start with:
+
+- [1.0.0 release notes](docs/releases/1.0.0-langgraph-migration.md)
+- [Migration guide](docs/migration-guide.md)
+- [Deprecation map](docs/deprecation-map.md)
+
 ## How The SDK Is Used
 
 Install dependencies first (`pip`, not “pippin”):
