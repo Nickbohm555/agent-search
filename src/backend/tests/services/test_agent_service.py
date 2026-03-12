@@ -7,7 +7,7 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -31,9 +31,11 @@ from schemas import (
 )
 from schemas.decomposition import DecompositionPlan
 from agent_search.runtime import runner as runtime_runner
+from models import RuntimeExecutionRun, RuntimeIdempotencyEffect
 from services import agent_jobs
 from services import document_validation_service
 from services import agent_service
+from services import idempotency_service
 from services import reranker_service
 
 
@@ -45,6 +47,18 @@ def _make_session() -> Session:
         poolclass=StaticPool,
     )
     return Session(engine)
+
+
+def _make_runtime_session_factory():
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    RuntimeExecutionRun.__table__.create(engine)
+    RuntimeIdempotencyEffect.__table__.create(engine)
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 
 def _serialize_agent_graph_state(state: agent_service.AgentGraphState) -> dict[str, object]:
@@ -2900,3 +2914,98 @@ def test_efficiency_eval_operating_ranges_identify_k_fetch_and_top_n_targets(
     assert set(candidate_ranges) == {(6, 2), (6, 3), (8, 2), (8, 3)}
     assert "Search node complete" in caplog.text
     assert "Rerank node complete" in caplog.text
+
+
+def test_execute_idempotent_effect_replays_completed_outcome_without_reinvoking_operation(monkeypatch) -> None:
+    session_factory = _make_runtime_session_factory()
+    monkeypatch.setattr(idempotency_service, "SessionLocal", session_factory)
+    call_count = {"count": 0}
+
+    def effect_fn() -> dict[str, object]:
+        call_count["count"] += 1
+        return {"status": "ok", "value": 7}
+
+    first = idempotency_service.execute_idempotent_effect(
+        run_id="run-idempotent",
+        thread_id="550e8400-e29b-41d4-a716-446655440201",
+        node_name="test-node",
+        effect_key="effect-1",
+        request_payload={"query": "What changed?"},
+        effect_fn=effect_fn,
+    )
+    second = idempotency_service.execute_idempotent_effect(
+        run_id="run-idempotent",
+        thread_id="550e8400-e29b-41d4-a716-446655440201",
+        node_name="test-node",
+        effect_key="effect-1",
+        request_payload={"query": "What changed?"},
+        effect_fn=effect_fn,
+    )
+
+    assert call_count["count"] == 1
+    assert first.replayed is False
+    assert second.replayed is True
+    assert second.response_payload == {"status": "ok", "value": 7}
+
+
+def test_run_checkpointed_agent_retry_replays_recorded_outcome_without_duplicate_execution(monkeypatch) -> None:
+    session_factory = _make_runtime_session_factory()
+    monkeypatch.setattr(idempotency_service, "SessionLocal", session_factory)
+    call_count = {"count": 0}
+    thread_id = "550e8400-e29b-41d4-a716-446655440202"
+
+    def fake_run_parallel_graph_runner(
+        *,
+        payload,
+        vector_store,
+        model,
+        run_metadata,
+        initial_search_context,
+        callbacks=None,
+        langfuse_callback=None,
+        snapshot_callback=None,
+    ):
+        _ = (payload, vector_store, model, initial_search_context, callbacks, langfuse_callback, snapshot_callback)
+        call_count["count"] += 1
+        return agent_service.build_agent_graph_state(
+            main_question="What changed?",
+            decomposition_sub_questions=["What changed?"],
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question="What changed?",
+                    sub_answer="The rule changed.",
+                )
+            ],
+            final_answer="The rule changed.",
+            run_metadata=run_metadata,
+        )
+
+    monkeypatch.setattr(runtime_runner.legacy_service, "run_parallel_graph_runner", fake_run_parallel_graph_runner)
+
+    compiled_graph = runtime_runner._LegacyCompiledGraph(
+        payload=RuntimeAgentRunRequest(query="What changed?", thread_id=thread_id),
+        vector_store="vector-store",
+        model="model",
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-retry", thread_id=thread_id),
+        callbacks=None,
+        langfuse_callback=None,
+        initial_search_context=[],
+        snapshot_callback=None,
+    )
+
+    first = compiled_graph.invoke(
+        RuntimeAgentRunRequest(query="What changed?", thread_id=thread_id),
+        config={"configurable": {"thread_id": thread_id}},
+    )
+    second = compiled_graph.invoke(
+        RuntimeAgentRunRequest(query="What changed?", thread_id=thread_id),
+        config={"configurable": {"thread_id": thread_id}},
+    )
+
+    assert call_count["count"] == 1
+    assert first.response is not None
+    assert second.response is not None
+    assert first.response.output == "The rule changed."
+    assert second.response.output == "The rule changed."
+    assert second.state is not None
+    assert second.state.final_answer == "The rule changed."

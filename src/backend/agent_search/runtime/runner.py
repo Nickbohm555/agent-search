@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import logging
 from typing import Any, Mapping
 
@@ -8,8 +10,9 @@ from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.persistence import compile_graph_with_checkpointer
 from agent_search.runtime.resume import build_resume_command
 from langgraph.types import Command
-from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from schemas import AgentGraphState, RuntimeAgentRunRequest, RuntimeAgentRunResponse
 from services import agent_service as legacy_service
+from services.idempotency_service import execute_idempotent_effect
 from utils.langfuse_tracing import (
     end_langfuse_observation,
     record_langfuse_score,
@@ -18,6 +21,7 @@ from utils.langfuse_tracing import (
 )
 
 logger = logging.getLogger(__name__)
+_LEGACY_RUNNER_NODE_NAME = "legacy_parallel_graph_runner"
 
 
 @dataclass
@@ -54,6 +58,48 @@ class _LegacyCompiledGraph:
     def invoke(self, graph_input: RuntimeAgentRunRequest | Command, *, config: Mapping[str, Any] | None = None) -> DurableExecutionOutcome:
         if isinstance(graph_input, Command):
             raise SDKConfigurationError("No paused checkpoint exists for this run.")
+        thread_id = None
+        if isinstance(config, Mapping):
+            configurable = config.get("configurable")
+            if isinstance(configurable, Mapping):
+                raw_thread_id = configurable.get("thread_id")
+                if raw_thread_id is not None:
+                    thread_id = str(raw_thread_id)
+        if not thread_id:
+            state = legacy_service.run_parallel_graph_runner(
+                payload=graph_input,
+                vector_store=self._vector_store,
+                model=self._model,
+                run_metadata=self._run_metadata,
+                initial_search_context=self._initial_search_context,
+                callbacks=self._callbacks,
+                langfuse_callback=self._langfuse_callback,
+                snapshot_callback=self._snapshot_callback,
+            )
+            response = legacy_service.map_graph_state_to_runtime_response(state)
+            return DurableExecutionOutcome(
+                status="completed",
+                state=state,
+                response=response,
+                checkpoint_id=thread_id,
+            )
+        request_payload = graph_input.model_dump(mode="json")
+        recorded_effect = execute_idempotent_effect(
+            run_id=self._run_metadata.run_id,
+            thread_id=thread_id,
+            node_name=_LEGACY_RUNNER_NODE_NAME,
+            effect_key=_build_effect_key(request_payload),
+            request_payload=request_payload,
+            effect_fn=lambda: self._invoke_and_serialize(graph_input=graph_input, thread_id=thread_id),
+        )
+        return _deserialize_recorded_outcome(recorded_effect.response_payload, thread_id=thread_id)
+
+    def _invoke_and_serialize(
+        self,
+        *,
+        graph_input: RuntimeAgentRunRequest,
+        thread_id: str,
+    ) -> dict[str, Any]:
         state = legacy_service.run_parallel_graph_runner(
             payload=graph_input,
             vector_store=self._vector_store,
@@ -65,19 +111,12 @@ class _LegacyCompiledGraph:
             snapshot_callback=self._snapshot_callback,
         )
         response = legacy_service.map_graph_state_to_runtime_response(state)
-        thread_id = None
-        if isinstance(config, Mapping):
-            configurable = config.get("configurable")
-            if isinstance(configurable, Mapping):
-                raw_thread_id = configurable.get("thread_id")
-                if raw_thread_id is not None:
-                    thread_id = str(raw_thread_id)
-        return DurableExecutionOutcome(
-            status="completed",
-            state=state,
-            response=response,
-            checkpoint_id=thread_id,
-        )
+        return {
+            "status": "completed",
+            "state": state.model_dump(mode="json"),
+            "response": response.model_dump(mode="json"),
+            "checkpoint_id": thread_id,
+        }
 
 
 class _LegacyGraphBuilder:
@@ -104,6 +143,28 @@ def _coerce_durable_outcome(result: Any, *, thread_id: str) -> DurableExecutionO
             checkpoint_id=result.get("checkpoint_id", thread_id),
         )
     return DurableExecutionOutcome(status="completed", state=result, checkpoint_id=thread_id)
+
+
+def _build_effect_key(request_payload: Mapping[str, Any]) -> str:
+    digest = hashlib.sha256(json.dumps(dict(request_payload), sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return f"request:{digest}"
+
+
+def _deserialize_recorded_outcome(recorded_outcome: Mapping[str, Any], *, thread_id: str) -> DurableExecutionOutcome:
+    state_payload = recorded_outcome.get("state")
+    response_payload = recorded_outcome.get("response")
+    state = AgentGraphState.model_validate(state_payload) if isinstance(state_payload, Mapping) else state_payload
+    response = (
+        RuntimeAgentRunResponse.model_validate(response_payload)
+        if isinstance(response_payload, Mapping)
+        else response_payload
+    )
+    return DurableExecutionOutcome(
+        status=str(recorded_outcome.get("status", "completed")),
+        state=state,
+        response=response,
+        checkpoint_id=str(recorded_outcome.get("checkpoint_id", thread_id)),
+    )
 
 
 def run_checkpointed_agent(
