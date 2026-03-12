@@ -101,7 +101,7 @@ Plans:
 
 | Phase | Goal | Requirements | Status |
 |-------|------|--------------|--------|
-| 1 - State Contract Foundation | Stable typed state and node contracts | SGF-01, SGF-02, SGF-03 | Pending |
+| 1 - State Contract Foundation | Stable typed state and node contracts | SGF-01, SGF-02, SGF-03 | Completed |
 | 2 - Durable Execution and Identity Semantics | Replay-safe durability and thread identity | REL-01, REL-02, REL-03, REL-04 | Pending |
 | 3 - End-to-End LangGraph RAG Cutover | Full RAG flow runs via LangGraph | SGF-04 | Pending |
 | 4 - Observability and Remote Runtime Validation | Streaming/tracing and remote deployment proof | OBS-01, OBS-02, REL-05 | Pending |
@@ -113,4 +113,3 @@ Plans:
 - Mapped requirements: 17
 - Unmapped requirements: 0
 - Duplicate mappings: 0
-
