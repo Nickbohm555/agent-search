@@ -177,9 +177,6 @@ def run(
     vector_store: Any,
     model: Any,
     config: dict[str, Any] | None = None,
-    callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
-    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.warning("SDK run() is deprecated; use advanced_rag()")
     return advanced_rag(
@@ -187,9 +184,6 @@ def run(
         vector_store=vector_store,
         model=model,
         config=config,
-        callbacks=callbacks,
-        langfuse_callback=langfuse_callback,
-        langfuse_settings=langfuse_settings,
     )
 
 
