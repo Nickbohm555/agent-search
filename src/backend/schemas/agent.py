@@ -1,13 +1,28 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+from pydantic import field_validator
 
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
     thread_id: str | None = None
+
+    @field_validator("thread_id")
+    @classmethod
+    def validate_thread_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("thread_id must be a non-empty UUID string.")
+        try:
+            return str(uuid.UUID(normalized_value))
+        except ValueError as exc:
+            raise ValueError("thread_id must be a valid UUID string.") from exc
 
 
 class SubQuestionAnswer(BaseModel):

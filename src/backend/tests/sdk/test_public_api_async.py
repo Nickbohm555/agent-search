@@ -57,6 +57,84 @@ def test_run_async_returns_job_start_shape(monkeypatch) -> None:
     }
 
 
+def test_run_async_returns_server_generated_thread_id_when_config_omits_it(monkeypatch) -> None:
+    generated_thread_id = "550e8400-e29b-41d4-a716-446655440111"
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        assert payload.query == "Show me async flow"
+        assert payload.thread_id is None
+        assert "model" in kwargs
+        assert "vector_store" in kwargs
+        return SimpleNamespace(
+            job_id="job-456",
+            run_id="run-456",
+            thread_id=generated_thread_id,
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "Show me async flow",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+    )
+
+    assert response.model_dump() == {
+        "job_id": "job-456",
+        "run_id": "run-456",
+        "thread_id": generated_thread_id,
+        "status": "running",
+    }
+
+
+def test_run_async_and_status_share_same_thread_id_for_one_run_lineage(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440001"
+
+    monkeypatch.setattr(
+        public_api,
+        "start_agent_run_job",
+        lambda payload, **kwargs: SimpleNamespace(
+            job_id="job-789",
+            run_id="run-789",
+            thread_id=thread_id,
+            status="running",
+        ),
+    )
+    monkeypatch.setattr(
+        public_api,
+        "get_agent_run_job",
+        lambda _job_id: SimpleNamespace(
+            job_id="job-789",
+            run_id="run-789",
+            thread_id=thread_id,
+            status="running",
+            message="Still running.",
+            stage="running",
+            stages=[],
+            decomposition_sub_questions=[],
+            sub_question_artifacts=[],
+            sub_qa=[],
+            output="",
+            result=None,
+            error=None,
+            cancel_requested=False,
+            started_at=None,
+            finished_at=None,
+        ),
+    )
+
+    start_response = public_api.run_async(
+        "Track continuity",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+    )
+    status_response = public_api.get_run_status("job-789")
+
+    assert start_response.thread_id == thread_id
+    assert status_response.thread_id == thread_id
+
+
 def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) -> None:
     def fake_get_agent_run_job(job_id):
         assert job_id == "job-456"
@@ -134,3 +212,19 @@ def test_cancel_run_raises_configuration_error_when_not_found_or_finished(monkey
         assert str(exc) == "Job not found or already finished."
     else:
         raise AssertionError("Expected SDKConfigurationError for uncancellable job")
+
+
+def test_run_async_rejects_invalid_thread_id_format(monkeypatch) -> None:
+    monkeypatch.setattr(public_api, "start_agent_run_job", lambda *args, **kwargs: None)
+
+    try:
+        public_api.run_async(
+            "Bad thread id",
+            vector_store=_CompatibleVectorStore(),
+            model=object(),
+            config={"thread_id": "not-a-uuid"},
+        )
+    except SDKConfigurationError as exc:
+        assert str(exc) == "run_async failed due to invalid SDK input or configuration."
+    else:
+        raise AssertionError("Expected SDKConfigurationError for invalid thread_id")

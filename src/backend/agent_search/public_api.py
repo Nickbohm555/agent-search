@@ -17,6 +17,7 @@ from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, s
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from config import LangfuseSettings
+from pydantic import ValidationError
 from utils.langfuse_tracing import build_langfuse_callback_handler as _build_langfuse_callback_handler
 from schemas import (
     RuntimeAgentRunRequest,
@@ -70,6 +71,8 @@ def build_langfuse_callback(
 def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
     if isinstance(exc, SDKError):
         return exc
+    if isinstance(exc, ValidationError):
+        return SDKConfigurationError(f"{operation} failed due to invalid SDK input or configuration.")
     if isinstance(exc, (TimeoutError, FuturesTimeoutError)):
         return SDKTimeoutError(f"{operation} timed out.")
 

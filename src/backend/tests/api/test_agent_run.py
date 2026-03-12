@@ -16,6 +16,40 @@ from db import get_db
 from routers.agent import router as agent_router
 
 
+def test_post_run_returns_server_generated_thread_id_when_request_omits_it(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunResponse
+
+    captured: dict[str, object] = {}
+    generated_thread_id = "550e8400-e29b-41d4-a716-446655440111"
+
+    def fake_sdk_run(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["vector_store"] = vector_store
+        captured["model"] = model
+        captured["config"] = config
+        return RuntimeAgentRunResponse(
+            main_question=query,
+            thread_id=generated_thread_id,
+            sub_qa=[],
+            output=f"Echo: {query}",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_advanced_rag", fake_sdk_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run", json={"query": "Generate a thread id"})
+
+    assert response.status_code == 200
+    assert response.json()["thread_id"] == generated_thread_id
+    assert captured["query"] == "Generate a thread id"
+    assert captured["config"] is None
+
+
 def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -143,6 +177,58 @@ def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
         "model": sentinel_model,
         "config": {"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
     }
+
+
+def test_run_async_and_status_preserve_same_thread_id(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse, RuntimeAgentRunAsyncStatusResponse
+
+    thread_id = "550e8400-e29b-41d4-a716-446655440002"
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_run_async",
+        lambda *args, **kwargs: RuntimeAgentRunAsyncStartResponse(
+            job_id="job-789",
+            run_id="run-789",
+            thread_id=thread_id,
+            status="running",
+        ),
+    )
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_get_run_status",
+        lambda _job_id: RuntimeAgentRunAsyncStatusResponse(
+            job_id="job-789",
+            run_id="run-789",
+            thread_id=thread_id,
+            status="running",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    start_response = client.post("/api/agents/run-async", json={"query": "Track continuity"})
+    status_response = client.get("/api/agents/run-status/job-789")
+
+    assert start_response.status_code == 200
+    assert status_response.status_code == 200
+    assert start_response.json()["thread_id"] == thread_id
+    assert status_response.json()["thread_id"] == thread_id
+
+
+def test_run_endpoints_reject_invalid_thread_id_format() -> None:
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run", json={"query": "Bad thread", "thread_id": "not-a-uuid"})
+
+    assert response.status_code == 422
+    assert any("thread_id must be a valid UUID string." in detail["msg"] for detail in response.json()["detail"])
 
 
 def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch) -> None:
