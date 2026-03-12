@@ -21,6 +21,8 @@ completed.md
 IMPLEMENTATION_PLAN.md
 implementation_plan.md
 **/*.md
+!.planning/**/*.md
+!IMPLEMENTATION_PLAN.md
 !**/README.md
 !**/readme.md
 *.png

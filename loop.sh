@@ -5,6 +5,92 @@ PROMPT_FILE="PROMPT_build.md"
 AGENTS_FILE="AGENTS.md"
 MAX_ITERATIONS=0
 REQUIRE_COMMIT_PER_ITERATION="${REQUIRE_COMMIT_PER_ITERATION:-1}"
+CODEX_CONTEXT_WINDOW="${CODEX_CONTEXT_WINDOW:-400000}"
+
+if ! [[ "$CODEX_CONTEXT_WINDOW" =~ ^[0-9]+$ ]] || [ "$CODEX_CONTEXT_WINDOW" -le 0 ]; then
+  echo "Error: CODEX_CONTEXT_WINDOW must be a positive integer."
+  exit 1
+fi
+
+is_codex_exec_command() {
+  [[ "${AGENT_CMD:-}" == codex\ exec* ]]
+}
+
+build_codex_exec_command() {
+  local output_last_message_file="$1"
+  local cmd="$AGENT_CMD"
+  if [[ "$cmd" != *" --json"* ]]; then
+    cmd="$cmd --json"
+  fi
+  if [[ "$cmd" != *" -o "* ]]; then
+    cmd="$cmd -o \"$output_last_message_file\""
+  fi
+  if [[ ! "$cmd" =~ (^|[[:space:]])-($|[[:space:]]) ]]; then
+    cmd="$cmd -"
+  fi
+  printf '%s' "$cmd"
+}
+
+print_codex_usage_summary() {
+  local iteration="$1"
+  local usage_jsonl_file="$2"
+  local usage_json
+  local input_tokens
+  local cached_input_tokens
+  local output_tokens
+  local total_tokens
+  local context_percent
+
+  usage_json="$(jq -c 'select(.type=="turn.completed" and .usage != null) | .usage' "$usage_jsonl_file" | tail -n 1)"
+  if [ -z "$usage_json" ]; then
+    echo "Codex usage: unavailable"
+    return
+  fi
+
+  input_tokens="$(printf '%s' "$usage_json" | jq -r '.input_tokens // 0')"
+  cached_input_tokens="$(printf '%s' "$usage_json" | jq -r '.cached_input_tokens // 0')"
+  output_tokens="$(printf '%s' "$usage_json" | jq -r '.output_tokens // 0')"
+  total_tokens=$((input_tokens + output_tokens))
+  context_percent="$(awk "BEGIN { printf \"%.2f\", ($total_tokens / $CODEX_CONTEXT_WINDOW) * 100 }")"
+
+  LAST_USAGE_ITERATION="$iteration"
+  LAST_USAGE_INPUT_TOKENS="$input_tokens"
+  LAST_USAGE_CACHED_INPUT_TOKENS="$cached_input_tokens"
+  LAST_USAGE_OUTPUT_TOKENS="$output_tokens"
+  LAST_USAGE_TOTAL_TOKENS="$total_tokens"
+  LAST_USAGE_CONTEXT_WINDOW="$CODEX_CONTEXT_WINDOW"
+  LAST_USAGE_CONTEXT_PERCENT="$context_percent"
+
+  echo "Codex usage: input=$input_tokens cached_input=$cached_input_tokens output=$output_tokens total=$total_tokens"
+  echo "Context used: ${context_percent}% of ${CODEX_CONTEXT_WINDOW} tokens"
+}
+
+write_codex_usage_markdown() {
+  local markdown_file="$1"
+
+  if [ -z "${LAST_USAGE_ITERATION:-}" ]; then
+    return
+  fi
+
+  cat > "$markdown_file" <<EOF
+# Token Usage
+
+- Latest iteration: $LAST_USAGE_ITERATION
+- Input tokens: $LAST_USAGE_INPUT_TOKENS
+- Cached input tokens: $LAST_USAGE_CACHED_INPUT_TOKENS
+- Output tokens: $LAST_USAGE_OUTPUT_TOKENS
+- Total tokens: $LAST_USAGE_TOTAL_TOKENS
+- Context window: $LAST_USAGE_CONTEXT_WINDOW
+- Context used: ${LAST_USAGE_CONTEXT_PERCENT}%
+- Last updated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+## Latest Iteration Formula
+
+\`total_tokens = input_tokens + output_tokens\`
+EOF
+
+  echo "Usage markdown: $markdown_file"
+}
 
 if [[ "${1:-}" =~ ^[0-9]+$ ]]; then
   MAX_ITERATIONS="$1"
@@ -64,17 +150,35 @@ while :; do
   ITERATION=$((ITERATION + 1))
   START_HEAD="$(git rev-parse --verify HEAD 2>/dev/null || true)"
   REPO_ROOT="$(git rev-parse --show-toplevel)"
+  LOOP_STATE_DIR="$REPO_ROOT/.git/ralph-loop"
   LOOP_MSG="$REPO_ROOT/.loop-commit-msg"
   LOOP_FULL="$REPO_ROOT/.loop-commit-msg.full"
+  LOOP_USAGE_MARKDOWN="$REPO_ROOT/.planning/token-usage.md"
+  LOOP_USAGE_JSONL="$LOOP_STATE_DIR/iteration-$ITERATION.jsonl"
+  LOOP_LAST_MESSAGE="$LOOP_STATE_DIR/iteration-$ITERATION.last-message.txt"
+  mkdir -p "$LOOP_STATE_DIR"
   rm -f "$LOOP_MSG" "$LOOP_FULL"
   echo "=================================================="
   echo "Ralph loop iteration: $ITERATION"
   echo "Prompt: $PROMPT_FILE"
   echo "Agents: $AGENTS_FILE"
+  if is_codex_exec_command; then
+    echo "Codex context window: $CODEX_CONTEXT_WINDOW"
+  fi
   [ "$MAX_ITERATIONS" -gt 0 ] && echo "Max iterations: $MAX_ITERATIONS"
   echo "=================================================="
 
-  cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$AGENT_CMD"
+  if is_codex_exec_command; then
+    rm -f "$LOOP_USAGE_JSONL" "$LOOP_LAST_MESSAGE"
+    cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$(build_codex_exec_command "$LOOP_LAST_MESSAGE")" > "$LOOP_USAGE_JSONL"
+    if [ -f "$LOOP_LAST_MESSAGE" ]; then
+      cat "$LOOP_LAST_MESSAGE"
+      printf '\n'
+    fi
+    print_codex_usage_summary "$ITERATION" "$LOOP_USAGE_JSONL"
+  else
+    cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$AGENT_CMD"
+  fi
 
   END_HEAD="$(git rev-parse --verify HEAD 2>/dev/null || true)"
   if [ "$START_HEAD" != "$END_HEAD" ]; then
@@ -140,3 +244,7 @@ while :; do
     break
   fi
 done
+
+if is_codex_exec_command; then
+  write_codex_usage_markdown "$LOOP_USAGE_MARKDOWN"
+fi
