@@ -6,9 +6,8 @@
 6. Do not run `git commit` or `git push` yourself. Instead, write `.loop-commit-msg` before stopping.
    The file must contain exactly one non-empty line: the final commit subject only.
    Use exactly one of these formats:
-   - `{type}({phase}-{plan}): {task-name}`
-   - `docs({phase}-{plan}): complete [plan-name] plan`
-   - `docs({phase}): complete {phase-name} phase`
+   - `{phase}-{plan}-task{task-number}`
+   - `{phase}-{plan}-summary`
    Do not include labels, bullets, explanations, markdown, or extra lines in `.loop-commit-msg`.
 8. Do not end the iteration with uncommitted changes.
 9. Stop after completing that section and return 20 thumbs up so the user knows we finished.

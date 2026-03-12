@@ -101,7 +101,7 @@ while :; do
       exit 1
     fi
 
-    if [[ ! "$COMMIT_SUBJECT" =~ ^(feat|fix|test|refactor|perf|chore|docs|style)\([0-9]{2}(-[0-9]{2})?\):\ .+ ]]; then
+    if [[ ! "$COMMIT_SUBJECT" =~ ^[0-9]{2}-[0-9]{2}-task[0-9]+$ && ! "$COMMIT_SUBJECT" =~ ^[0-9]{2}-[0-9]{2}-summary$ ]]; then
       echo "Error: .loop-commit-msg does not match the required convention."
       echo "Message: $COMMIT_SUBJECT"
       exit 1
@@ -126,7 +126,7 @@ while :; do
   fi
 
   LAST_SUBJECT="$(git log -1 --pretty=%s 2>/dev/null || true)"
-  if [[ ! "$LAST_SUBJECT" =~ ^(feat|fix|test|refactor|perf|chore|docs|style)\([0-9]{2}(-[0-9]{2})?\):\ .+ ]]; then
+  if [[ ! "$LAST_SUBJECT" =~ ^[0-9]{2}-[0-9]{2}-task[0-9]+$ && ! "$LAST_SUBJECT" =~ ^[0-9]{2}-[0-9]{2}-summary$ ]]; then
     echo "Error: latest commit does not match the required history convention."
     echo "Latest commit: $LAST_SUBJECT"
     exit 1
