@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agent_search import public_api
+from agent_search.errors import SDKConfigurationError
 from agent_search.runtime import jobs as runtime_jobs
 from schemas import GraphStageSnapshot, RuntimeAgentRunResponse, SubQuestionAnswer
 
@@ -40,7 +42,8 @@ class _CompatibleVectorStore:
 
 
 @pytest.fixture(autouse=True)
-def clear_runtime_jobs():
+def clear_runtime_jobs(monkeypatch):
+    monkeypatch.setattr(runtime_jobs, "_persist_job_status", lambda _job: None)
     with runtime_jobs._JOB_LOCK:
         runtime_jobs._JOBS.clear()
     yield
@@ -149,3 +152,105 @@ def test_sdk_async_cancel_e2e_preserves_cancellation_semantics(monkeypatch) -> N
     assert status_response.status == "cancelling"
     assert status_response.cancel_requested is True
     assert status_response.message == "Cancellation requested."
+
+
+def test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440010"
+    sentinel_model = object()
+    sentinel_vector_store = _CompatibleVectorStore()
+    captured: list[tuple[str, object | None]] = []
+
+    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-resume")
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
+
+    def fake_run_checkpointed_agent(*, payload, run_metadata, resume=None, **_kwargs):
+        captured.append((payload.query, resume))
+        if resume is None:
+            return SimpleNamespace(
+                status="paused",
+                state=None,
+                response=None,
+                interrupt_payload={"kind": "approval", "question": "Approve resume?"},
+                checkpoint_id="checkpoint-1",
+            )
+        return SimpleNamespace(
+            status="completed",
+            state=type(
+                "FakeState",
+                (),
+                {
+                    "decomposition_sub_questions": ["What changed?"],
+                    "sub_question_artifacts": [],
+                    "stage_snapshots": [],
+                    "run_metadata": run_metadata,
+                },
+            )(),
+            response=RuntimeAgentRunResponse(
+                main_question=payload.query,
+                thread_id=thread_id,
+                sub_qa=[SubQuestionAnswer(sub_question="What changed?", sub_answer="The checkpoint resumed.")],
+                output="The checkpoint resumed.",
+            ),
+            interrupt_payload=None,
+            checkpoint_id="checkpoint-2",
+        )
+
+    monkeypatch.setattr(runtime_jobs, "run_checkpointed_agent", fake_run_checkpointed_agent)
+
+    start_response = public_api.run_async(
+        "Resume this run",
+        model=sentinel_model,
+        vector_store=sentinel_vector_store,
+        config={"thread_id": thread_id},
+    )
+    paused_status = public_api.get_run_status(start_response.job_id)
+    resumed_status = public_api.resume_run(start_response.job_id, resume={"approved": True})
+
+    assert start_response.thread_id == thread_id
+    assert paused_status.status == "paused"
+    assert paused_status.thread_id == thread_id
+    assert paused_status.message == "Paused and awaiting resume input."
+    assert paused_status.stage == "paused"
+    assert resumed_status.status == "success"
+    assert resumed_status.thread_id == thread_id
+    assert resumed_status.result is not None
+    assert resumed_status.result.output == "The checkpoint resumed."
+    assert captured == [
+        ("Resume this run", None),
+        ("Resume this run", {"approved": True}),
+    ]
+
+
+def test_sdk_async_resume_rejects_invalid_transition_deterministically(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440011"
+
+    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-finished")
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
+    monkeypatch.setattr(
+        runtime_jobs,
+        "run_checkpointed_agent",
+        lambda **_kwargs: SimpleNamespace(
+            status="completed",
+            state=type(
+                "FakeState",
+                (),
+                {
+                    "decomposition_sub_questions": [],
+                    "sub_question_artifacts": [],
+                    "stage_snapshots": [],
+                },
+            )(),
+            response=RuntimeAgentRunResponse(main_question="Done", thread_id=thread_id, output="Done"),
+            checkpoint_id="checkpoint-final",
+        ),
+    )
+
+    start_response = public_api.run_async(
+        "Finish this run",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config={"thread_id": thread_id},
+    )
+
+    with pytest.raises(SDKConfigurationError, match="Run cannot be resumed from status 'success'."):
+        public_api.resume_run(start_response.job_id)

@@ -7,9 +7,14 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from agent_search.errors import SDKConfigurationError
+from agent_search.runtime.execution_identity import resolve_thread_identity
+from agent_search.runtime.resume import ResumeTransitionError, ensure_resume_allowed
+from db import SessionLocal
+from models import RuntimeCheckpointLink
 from schemas import (
     AgentRunStageMetadata,
     GraphStageSnapshot,
@@ -18,11 +23,8 @@ from schemas import (
     SubQuestionAnswer,
     SubQuestionArtifacts,
 )
-from services.agent_service import (
-    build_graph_run_metadata,
-    map_graph_state_to_runtime_response,
-    run_parallel_graph_runner,
-)
+from services.agent_service import build_graph_run_metadata
+from agent_search.runtime.runner import run_checkpointed_agent
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,7 @@ class AgentRunJobStatus:
     run_id: str
     thread_id: str
     status: str
+    query: str = ""
     message: str = ""
     stage: str = "queued"
     stages: list[AgentRunStageMetadata] = field(default_factory=list)
@@ -47,11 +50,66 @@ class AgentRunJobStatus:
     result: Optional[RuntimeAgentRunResponse] = None
     error: Optional[str] = None
     cancel_requested: bool = False
+    interrupt_payload: Any | None = None
+    checkpoint_id: str | None = None
+    runtime_model: Any | None = field(default=None, repr=False)
+    runtime_vector_store: Any | None = field(default=None, repr=False)
     started_at: float = field(default_factory=time.time)
     finished_at: Optional[float] = None
 
 
 _JOBS: dict[str, AgentRunJobStatus] = {}
+
+
+def _persist_job_status(job: AgentRunJobStatus) -> None:
+    session = SessionLocal()
+    try:
+        run = resolve_thread_identity(
+            session=session,
+            run_id=job.run_id,
+            thread_id=job.thread_id,
+            status=job.status,
+            metadata={"job_id": job.job_id, "stage": job.stage, "query": job.query},
+        )
+        run.status = job.status
+        metadata = dict(run.metadata_json or {})
+        metadata.update(
+            {
+                "job_id": job.job_id,
+                "stage": job.stage,
+                "message": job.message,
+                "query": job.query,
+            }
+        )
+        if job.interrupt_payload is not None:
+            metadata["interrupt_payload"] = job.interrupt_payload
+        run.metadata_json = metadata
+        run.error_message = job.error
+        if job.status in {"success", "error", "cancelled"}:
+            run.completed_at = datetime.now(timezone.utc)
+        if job.checkpoint_id:
+            checkpoint_link = (
+                session.query(RuntimeCheckpointLink)
+                .filter(RuntimeCheckpointLink.run_id == job.run_id)
+                .one_or_none()
+            )
+            if checkpoint_link is None:
+                checkpoint_link = RuntimeCheckpointLink(
+                    run_id=job.run_id,
+                    thread_id=job.thread_id,
+                    checkpoint_id=job.checkpoint_id,
+                    checkpoint_metadata={"job_id": job.job_id},
+                    is_latest=True,
+                )
+                session.add(checkpoint_link)
+            else:
+                checkpoint_link.thread_id = job.thread_id
+                checkpoint_link.checkpoint_id = job.checkpoint_id
+                checkpoint_link.checkpoint_metadata = {"job_id": job.job_id}
+                checkpoint_link.is_latest = True
+        session.commit()
+    finally:
+        session.close()
 
 
 def start_agent_run_job(
@@ -73,11 +131,15 @@ def start_agent_run_job(
         run_id=run_metadata.run_id,
         thread_id=run_metadata.thread_id,
         status="running",
+        query=payload.query,
         message="Run queued.",
         stage="queued",
+        runtime_model=model,
+        runtime_vector_store=vector_store,
     )
     with _JOB_LOCK:
         _JOBS[job_id] = status
+    _persist_job_status(status)
     logger.info(
         "Runtime async job created job_id=%s run_id=%s has_model=%s has_vector_store=%s",
         job_id,
@@ -104,8 +166,33 @@ def cancel_agent_run_job(job_id: str) -> bool:
         job.cancel_requested = True
         job.status = "cancelling"
         job.message = "Cancellation requested."
+        _persist_job_status(job)
         logger.info("Runtime async job cancel requested job_id=%s run_id=%s", job.job_id, job.run_id)
         return True
+
+
+def resume_agent_run_job(job_id: str, *, resume: Any = True) -> AgentRunJobStatus:
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise SDKConfigurationError("Job not found.")
+        try:
+            ensure_resume_allowed(job.status)
+        except ResumeTransitionError as exc:
+            raise SDKConfigurationError(str(exc)) from exc
+        if job.runtime_model is None or job.runtime_vector_store is None:
+            raise SDKConfigurationError("Job cannot be resumed because runtime dependencies are unavailable.")
+        job.status = "running"
+        job.message = "Resuming from checkpoint."
+        job.stage = "resuming"
+        job.interrupt_payload = None
+        job.finished_at = None
+        payload = RuntimeAgentRunRequest(query=job.query, thread_id=job.thread_id)
+        model = job.runtime_model
+        vector_store = job.runtime_vector_store
+    _persist_job_status(job)
+    _EXECUTOR.submit(_run_agent_job, job_id, payload, job.run_id, job.thread_id, model, vector_store, resume)
+    return job
 
 
 def _stage_from_snapshot(snapshot: GraphStageSnapshot) -> str:
@@ -121,6 +208,7 @@ def _run_agent_job(
     thread_id: str,
     model: Any | None,
     vector_store: Any | None,
+    resume: Any | None = None,
 ) -> None:
     job = get_agent_run_job(job_id)
     if job is None:
@@ -130,6 +218,7 @@ def _run_agent_job(
             job.status = "cancelled"
             job.message = "Cancelled before run started."
             job.finished_at = time.time()
+        _persist_job_status(job)
         logger.info("Runtime async job cancelled before start job_id=%s run_id=%s", job_id, run_id)
         return
 
@@ -137,6 +226,7 @@ def _run_agent_job(
     with _JOB_LOCK:
         job.stage = "initializing"
         job.message = "Initializing vector store."
+    _persist_job_status(job)
 
     try:
         resolved_vector_store = vector_store
@@ -188,15 +278,37 @@ def _run_agent_job(
                 len(snapshot.decomposition_sub_questions),
             )
 
-        state = run_parallel_graph_runner(
+        outcome = run_checkpointed_agent(
             payload=payload,
             vector_store=resolved_vector_store,
             model=model,
             run_metadata=build_graph_run_metadata(run_id=run_id, thread_id=thread_id),
             initial_search_context=initial_search_context,
             snapshot_callback=on_snapshot,
+            resume=resume,
         )
-        response = map_graph_state_to_runtime_response(state)
+        if outcome.status == "paused":
+            with _JOB_LOCK:
+                current_job = _JOBS.get(job_id)
+                if current_job is None:
+                    return
+                current_job.status = "paused"
+                current_job.message = "Paused and awaiting resume input."
+                current_job.stage = "paused"
+                current_job.interrupt_payload = outcome.interrupt_payload
+                current_job.checkpoint_id = outcome.checkpoint_id
+            _persist_job_status(current_job)
+            logger.info(
+                "Runtime async job paused job_id=%s run_id=%s checkpoint_id=%s",
+                job_id,
+                run_id,
+                outcome.checkpoint_id,
+            )
+            return
+        state = outcome.state
+        response = outcome.response
+        if state is None or response is None:
+            raise SDKConfigurationError("Runtime execution completed without a durable result payload.")
         with _JOB_LOCK:
             current_job = _JOBS.get(job_id)
             if current_job is None:
@@ -208,11 +320,14 @@ def _run_agent_job(
                 current_job.status = "success"
                 current_job.message = "Completed."
                 current_job.result = response
+            current_job.interrupt_payload = None
+            current_job.checkpoint_id = outcome.checkpoint_id
             current_job.sub_qa = [item.model_copy(deep=True) for item in response.sub_qa]
             current_job.decomposition_sub_questions = list(state.decomposition_sub_questions)
             current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in state.sub_question_artifacts]
             current_job.output = response.output
             current_job.finished_at = time.time()
+        _persist_job_status(current_job)
         logger.info(
             "Runtime async job finished job_id=%s run_id=%s status=%s sub_qa_count=%s output_len=%s",
             job_id,
@@ -236,3 +351,4 @@ def _run_agent_job(
                 current_job.message = "Failed."
                 current_job.error = str(exc)
             current_job.finished_at = time.time()
+        _persist_job_status(current_job)

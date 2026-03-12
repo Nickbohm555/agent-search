@@ -9,6 +9,7 @@ from agent_search.errors import SDKConfigurationError
 from agent_search.public_api import advanced_rag as sdk_advanced_rag
 from agent_search.public_api import cancel_run as sdk_cancel_run
 from agent_search.public_api import get_run_status as sdk_get_run_status
+from agent_search.public_api import resume_run as sdk_resume_run
 from agent_search.public_api import run_async as sdk_run_async
 from db import DATABASE_URL
 from db import get_db
@@ -17,6 +18,7 @@ from schemas import (
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunRequest,
+    RuntimeAgentRunResumeRequest,
     RuntimeAgentRunResponse,
 )
 from services.vector_store_service import get_vector_store
@@ -100,3 +102,15 @@ def runtime_agent_run_cancel(job_id: str) -> RuntimeAgentRunAsyncCancelResponse:
         return sdk_cancel_run(job_id)
     except SDKConfigurationError:
         raise HTTPException(status_code=404, detail="Job not found or already finished.")
+
+
+@router.post("/run-resume/{job_id}", response_model=RuntimeAgentRunAsyncStatusResponse)
+def runtime_agent_run_resume(job_id: str, payload: RuntimeAgentRunResumeRequest) -> RuntimeAgentRunAsyncStatusResponse:
+    logger.info("Agent router delegating async resume job_id=%s", job_id)
+    try:
+        return sdk_resume_run(job_id, resume=payload.resume)
+    except SDKConfigurationError as exc:
+        detail = str(exc)
+        if detail == "Job not found.":
+            raise HTTPException(status_code=404, detail=detail)
+        raise HTTPException(status_code=409, detail=detail)

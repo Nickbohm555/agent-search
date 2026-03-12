@@ -84,6 +84,10 @@ class RuntimeAgentRunAsyncCancelResponse(BaseModel):
     message: str
 
 
+class RuntimeAgentRunResumeRequest(BaseModel):
+    resume: Any = True
+
+
 class RuntimeAgentInfo(BaseModel):
     agent_name: str
 

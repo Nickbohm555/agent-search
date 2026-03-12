@@ -13,7 +13,7 @@ from agent_search.errors import (
     SDKRetrievalError,
     SDKTimeoutError,
 )
-from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, start_agent_run_job
+from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, resume_agent_run_job, start_agent_run_job
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from config import LangfuseSettings
@@ -307,6 +307,22 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
         response.elapsed_ms,
     )
     return response
+
+
+def resume_run(job_id: str, *, resume: Any = True) -> RuntimeAgentRunAsyncStatusResponse:
+    logger.info("SDK async resume requested job_id=%s", job_id)
+    try:
+        job = resume_agent_run_job(job_id, resume=resume)
+    except Exception as exc:  # noqa: BLE001
+        mapped = _map_sdk_error(operation="resume_run", exc=exc)
+        logger.exception(
+            "SDK async resume failed mapped_error=%s original_error=%s job_id=%s",
+            type(mapped).__name__,
+            type(exc).__name__,
+            job_id,
+        )
+        raise mapped from exc
+    return get_run_status(job.job_id)
 
 
 def cancel_run(job_id: str) -> RuntimeAgentRunAsyncCancelResponse:
