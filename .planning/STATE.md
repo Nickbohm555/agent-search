@@ -9,8 +9,8 @@
 ## Current Position
 
 - Current phase: 5 - Major Release and Migration Documentation
-- Current plan: 05-01
-- Current task: 3
+- Current plan: 05-02
+- Current task: 1
 - Current status: implemented
 - Progress: 80% (4/5 phases complete)
 
@@ -37,7 +37,7 @@ Progress bar: `[####-] 80%`
 
 ### TODOs
 
-- Finalize major-version release metadata and migration documentation for external adopters.
+- Finalize migration and deprecation documentation for external adopters.
 - Keep release documentation aligned with the completed LangGraph runtime and observability contracts.
 
 ### Blockers
@@ -46,6 +46,6 @@ Progress bar: `[####-] 80%`
 
 ## Session Continuity
 
-- Last completed artifact: `.planning/phases/04-observability-and-remote-runtime-validation/04-03-SUMMARY.md` with REL-05 validation evidence, matrix links, and Phase 4 completion markers.
-- Last updated traceability: Phase 4 summary recorded against task commits `70cafb2` and `409189c`, and roadmap/state advanced to Phase 5 on 2026-03-12.
+- Last completed artifact: `docs/migration-guide.md` with legacy-to-LangGraph mapping, stepwise migration flow, and command-level verification for each step.
+- Last updated traceability: Phase 5 plan `05-02` task 1 implemented on 2026-03-12; next work is the deprecation status map and SDK migration callout.
 - Next recommended command: `/gsd-implement-next`
