@@ -15,6 +15,7 @@ src/backend/.venv/
 
 # Local-only files
 .cursor/
+sdk-token.txt
 *.sh
 completed.md
 IMPLEMENTATION_PLAN.md
