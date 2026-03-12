@@ -13,6 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
+from agent_search.runtime.state import RAGState, from_rag_state, to_rag_state
 from schemas import (
     AgentGraphState,
     AnswerSubquestionNodeInput,
@@ -682,7 +683,7 @@ def build_agent_graph_state(
     resolved_decomposition = decomposition_sub_questions or [item.sub_question for item in normalized_sub_qa]
     resolved_metadata = run_metadata or build_graph_run_metadata()
     resolved_output = final_answer.strip()
-    state = AgentGraphState(
+    rag_state = RAGState(
         main_question=main_question,
         decomposition_sub_questions=list(resolved_decomposition),
         sub_question_artifacts=artifacts,
@@ -691,7 +692,9 @@ def build_agent_graph_state(
         run_metadata=resolved_metadata,
         sub_qa=normalized_sub_qa,
         output=resolved_output,
+        stage_snapshots=[],
     )
+    state = from_rag_state(rag_state)
     logger.info(
         "Agent graph state built main_question_len=%s decomposition_count=%s artifact_count=%s sub_qa_count=%s run_id=%s trace_id=%s correlation_id=%s",
         len(main_question),
@@ -705,17 +708,18 @@ def build_agent_graph_state(
     return state
 
 
-def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentRunResponse:
-    output = state.output.strip() or state.final_answer
+def map_graph_state_to_runtime_response(state: AgentGraphState | RAGState) -> RuntimeAgentRunResponse:
+    rag_state = to_rag_state(state)
+    output = rag_state["output"].strip() or rag_state["final_answer"]
     citation_indices = _extract_citation_indices(output)
     final_citations = [
-        state.citation_rows_by_index[index].model_copy(deep=True)
+        rag_state["citation_rows_by_index"][index].model_copy(deep=True)
         for index in sorted(set(citation_indices))
-        if index in state.citation_rows_by_index
+        if index in rag_state["citation_rows_by_index"]
     ]
     response = RuntimeAgentRunResponse(
-        main_question=state.main_question,
-        sub_qa=[item.model_copy(deep=True) for item in state.sub_qa],
+        main_question=rag_state["main_question"],
+        sub_qa=[item.model_copy(deep=True) for item in rag_state["sub_qa"]],
         output=output,
         final_citations=final_citations,
     )
@@ -723,21 +727,21 @@ def map_graph_state_to_runtime_response(state: AgentGraphState) -> RuntimeAgentR
         "Agent graph state mapped to runtime response sub_qa_count=%s output_len=%s run_id=%s",
         len(response.sub_qa),
         len(response.output),
-        state.run_metadata.run_id,
+        rag_state["run_metadata"].run_id,
     )
     return response
 
 
 def apply_decompose_node_output_to_graph_state(
     *,
-    state: AgentGraphState,
+    state: AgentGraphState | RAGState,
     node_output: DecomposeNodeOutput,
 ) -> AgentGraphState:
-    next_state = state.model_copy(deep=True)
+    next_state = to_rag_state(state)
     decomposition_sub_questions = list(node_output.decomposition_sub_questions)
-    next_state.decomposition_sub_questions = decomposition_sub_questions
-    next_state.sub_question_artifacts = [SubQuestionArtifacts(sub_question=item) for item in decomposition_sub_questions]
-    next_state.sub_qa = [
+    next_state["decomposition_sub_questions"] = decomposition_sub_questions
+    next_state["sub_question_artifacts"] = [SubQuestionArtifacts(sub_question=item) for item in decomposition_sub_questions]
+    next_state["sub_qa"] = [
         SubQuestionAnswer(
             sub_question=item,
             sub_answer="",
@@ -752,9 +756,9 @@ def apply_decompose_node_output_to_graph_state(
     logger.info(
         "Decomposition node state update sub_question_count=%s run_id=%s",
         len(decomposition_sub_questions),
-        next_state.run_metadata.run_id,
+        next_state["run_metadata"].run_id,
     )
-    return next_state
+    return from_rag_state(next_state)
 
 
 def _select_compat_expanded_query(*, sub_question: str, expanded_queries: list[str]) -> str:
@@ -854,25 +858,25 @@ def _extract_citation_indices(answer: str) -> list[int]:
 
 def apply_expand_node_output_to_graph_state(
     *,
-    state: AgentGraphState,
+    state: AgentGraphState | RAGState,
     sub_question: str,
     node_output: ExpandNodeOutput,
 ) -> AgentGraphState:
-    next_state = state.model_copy(deep=True)
+    next_state = to_rag_state(state)
     artifact = next(
-        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        (item for item in next_state["sub_question_artifacts"] if item.sub_question == sub_question),
         None,
     )
     if artifact is None:
         artifact = SubQuestionArtifacts(sub_question=sub_question)
-        next_state.sub_question_artifacts.append(artifact)
+        next_state["sub_question_artifacts"].append(artifact)
     artifact.expanded_queries = list(node_output.expanded_queries)
 
     compat_expanded_query = _select_compat_expanded_query(
         sub_question=sub_question,
         expanded_queries=node_output.expanded_queries,
     )
-    for item in next_state.sub_qa:
+    for item in next_state["sub_qa"]:
         if item.sub_question == sub_question:
             item.expanded_query = compat_expanded_query
             break
@@ -882,9 +886,9 @@ def apply_expand_node_output_to_graph_state(
         _truncate_query(sub_question),
         len(node_output.expanded_queries),
         _truncate_query(compat_expanded_query),
-        next_state.run_metadata.run_id,
+        next_state["run_metadata"].run_id,
     )
-    return next_state
+    return from_rag_state(next_state)
 
 
 def run_search_node(
@@ -909,18 +913,18 @@ def run_search_node(
 
 def apply_search_node_output_to_graph_state(
     *,
-    state: AgentGraphState,
+    state: AgentGraphState | RAGState,
     sub_question: str,
     node_output: SearchNodeOutput,
 ) -> AgentGraphState:
-    next_state = state.model_copy(deep=True)
+    next_state = to_rag_state(state)
     artifact = next(
-        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        (item for item in next_state["sub_question_artifacts"] if item.sub_question == sub_question),
         None,
     )
     if artifact is None:
         artifact = SubQuestionArtifacts(sub_question=sub_question)
-        next_state.sub_question_artifacts.append(artifact)
+        next_state["sub_question_artifacts"].append(artifact)
     artifact.retrieved_docs = [row.model_copy(deep=True) for row in node_output.retrieved_docs]
     artifact.retrieval_provenance = list(node_output.retrieval_provenance)
     artifact.citation_rows_by_index = {
@@ -929,7 +933,7 @@ def apply_search_node_output_to_graph_state(
     }
 
     for index, row in node_output.citation_rows_by_index.items():
-        next_state.citation_rows_by_index[index] = row.model_copy(deep=True)
+        next_state["citation_rows_by_index"][index] = row.model_copy(deep=True)
 
     retrieved_output = _format_citation_rows_for_pipeline(node_output.retrieved_docs)
     compat_input_payload = {
@@ -939,13 +943,13 @@ def apply_search_node_output_to_graph_state(
         "limit": len(node_output.retrieved_docs),
     }
     matched_sub_qa = None
-    for item in next_state.sub_qa:
+    for item in next_state["sub_qa"]:
         if item.sub_question == sub_question:
             matched_sub_qa = item
             break
     if matched_sub_qa is None:
         matched_sub_qa = SubQuestionAnswer(sub_question=sub_question, sub_answer="")
-        next_state.sub_qa.append(matched_sub_qa)
+        next_state["sub_qa"].append(matched_sub_qa)
 
     matched_sub_qa.sub_answer = retrieved_output
     matched_sub_qa.tool_call_input = json.dumps(compat_input_payload, ensure_ascii=True)
@@ -959,9 +963,9 @@ def apply_search_node_output_to_graph_state(
         _truncate_query(sub_question),
         len(node_output.retrieved_docs),
         len(node_output.retrieval_provenance),
-        next_state.run_metadata.run_id,
+        next_state["run_metadata"].run_id,
     )
-    return next_state
+    return from_rag_state(next_state)
 
 
 def run_rerank_node(
@@ -984,25 +988,25 @@ def run_rerank_node(
 
 def apply_rerank_node_output_to_graph_state(
     *,
-    state: AgentGraphState,
+    state: AgentGraphState | RAGState,
     sub_question: str,
     node_output: RerankNodeOutput,
 ) -> AgentGraphState:
-    next_state = state.model_copy(deep=True)
+    next_state = to_rag_state(state)
     artifact = next(
-        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        (item for item in next_state["sub_question_artifacts"] if item.sub_question == sub_question),
         None,
     )
     if artifact is None:
         artifact = SubQuestionArtifacts(sub_question=sub_question)
-        next_state.sub_question_artifacts.append(artifact)
+        next_state["sub_question_artifacts"].append(artifact)
     artifact.reranked_docs = [row.model_copy(deep=True) for row in node_output.reranked_docs]
     artifact.citation_rows_by_index = {
         key: value.model_copy(deep=True)
         for key, value in node_output.citation_rows_by_index.items()
     }
     for index, row in node_output.citation_rows_by_index.items():
-        next_state.citation_rows_by_index[index] = row.model_copy(deep=True)
+        next_state["citation_rows_by_index"][index] = row.model_copy(deep=True)
 
     reranked_output = _format_citation_rows_for_pipeline(node_output.reranked_docs)
     rerank_provenance = [
@@ -1016,13 +1020,13 @@ def apply_rerank_node_output_to_graph_state(
         for row in node_output.reranked_docs
     ]
     matched_sub_qa = None
-    for item in next_state.sub_qa:
+    for item in next_state["sub_qa"]:
         if item.sub_question == sub_question:
             matched_sub_qa = item
             break
     if matched_sub_qa is None:
         matched_sub_qa = SubQuestionAnswer(sub_question=sub_question, sub_answer="")
-        next_state.sub_qa.append(matched_sub_qa)
+        next_state["sub_qa"].append(matched_sub_qa)
     matched_sub_qa.sub_answer = reranked_output
 
     tool_call_payload: dict[str, Any] = {}
@@ -1041,9 +1045,9 @@ def apply_rerank_node_output_to_graph_state(
         "Rerank node state update sub_question=%s reranked_candidates=%s run_id=%s",
         _truncate_query(sub_question),
         len(node_output.reranked_docs),
-        next_state.run_metadata.run_id,
+        next_state["run_metadata"].run_id,
     )
-    return next_state
+    return from_rag_state(next_state)
 
 
 def run_answer_subquestion_node(
@@ -1066,34 +1070,34 @@ def run_answer_subquestion_node(
 
 def apply_answer_subquestion_node_output_to_graph_state(
     *,
-    state: AgentGraphState,
+    state: AgentGraphState | RAGState,
     sub_question: str,
     node_output: AnswerSubquestionNodeOutput,
 ) -> AgentGraphState:
-    next_state = state.model_copy(deep=True)
+    next_state = to_rag_state(state)
     artifact = next(
-        (item for item in next_state.sub_question_artifacts if item.sub_question == sub_question),
+        (item for item in next_state["sub_question_artifacts"] if item.sub_question == sub_question),
         None,
     )
     if artifact is None:
         artifact = SubQuestionArtifacts(sub_question=sub_question)
-        next_state.sub_question_artifacts.append(artifact)
+        next_state["sub_question_artifacts"].append(artifact)
     artifact.sub_answer = node_output.sub_answer
     artifact.citation_rows_by_index = {
         key: value.model_copy(deep=True)
         for key, value in node_output.citation_rows_by_index.items()
     }
     for index, row in node_output.citation_rows_by_index.items():
-        next_state.citation_rows_by_index[index] = row.model_copy(deep=True)
+        next_state["citation_rows_by_index"][index] = row.model_copy(deep=True)
 
     matched_sub_qa = None
-    for item in next_state.sub_qa:
+    for item in next_state["sub_qa"]:
         if item.sub_question == sub_question:
             matched_sub_qa = item
             break
     if matched_sub_qa is None:
         matched_sub_qa = SubQuestionAnswer(sub_question=sub_question, sub_answer="")
-        next_state.sub_qa.append(matched_sub_qa)
+        next_state["sub_qa"].append(matched_sub_qa)
 
     matched_sub_qa.sub_answer = node_output.sub_answer
     matched_sub_qa.answerable = node_output.answerable
@@ -1126,9 +1130,9 @@ def apply_answer_subquestion_node_output_to_graph_state(
         _truncate_query(sub_question),
         node_output.answerable,
         len(node_output.citation_indices_used),
-        next_state.run_metadata.run_id,
+        next_state["run_metadata"].run_id,
     )
-    return next_state
+    return from_rag_state(next_state)
 
 
 def run_synthesize_final_node(
@@ -1150,20 +1154,20 @@ def run_synthesize_final_node(
 
 def apply_synthesize_final_node_output_to_graph_state(
     *,
-    state: AgentGraphState,
+    state: AgentGraphState | RAGState,
     node_output: SynthesizeFinalNodeOutput,
 ) -> AgentGraphState:
-    next_state = state.model_copy(deep=True)
+    next_state = to_rag_state(state)
     resolved_final_answer = (node_output.final_answer or "").strip()
-    next_state.final_answer = resolved_final_answer
-    next_state.output = resolved_final_answer
+    next_state["final_answer"] = resolved_final_answer
+    next_state["output"] = resolved_final_answer
     logger.info(
         "Final synthesis node state update output_len=%s sub_qa_count=%s run_id=%s",
         len(resolved_final_answer),
-        len(next_state.sub_qa),
-        next_state.run_metadata.run_id,
+        len(next_state["sub_qa"]),
+        next_state["run_metadata"].run_id,
     )
-    return next_state
+    return from_rag_state(next_state)
 
 
 @dataclass(frozen=True)
