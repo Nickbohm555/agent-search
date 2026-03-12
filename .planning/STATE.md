@@ -10,8 +10,8 @@
 
 - Current phase: 2 - Durable Execution and Identity Semantics
 - Current plan: 02-01
-- Current task: 0
-- Current status: ready
+- Current task: 1
+- Current status: implemented
 - Progress: 20% (1/5 phases complete)
 
 Progress bar: `[#----] 20%`
@@ -34,7 +34,6 @@ Progress bar: `[#----] 20%`
 
 ### TODOs
 
-- Execute Phase 2 plan `02-01` starting with durable execution schema and checkpoint linkage work.
 - Validate checkpoint persistence helpers and thread identity rules against remote Docker execution behavior.
 - Keep thread identity and durability acceptance checks explicit in later validation plans.
 
@@ -44,6 +43,6 @@ Progress bar: `[#----] 20%`
 
 ## Session Continuity
 
-- Last completed artifact: `.planning/phases/01-state-contract-foundation/01-03-SUMMARY.md` capturing reducer semantics delivery and verification.
-- Last updated traceability: Phase 1 roadmap and state completion markers.
+- Last completed artifact: `src/backend/alembic/versions/008_add_runtime_execution_durability_tables.py` plus durability ORM additions in `src/backend/models.py`.
+- Last updated traceability: Phase 2 plan `02-01` task 1 marked implemented after migration verification.
 - Next recommended command: `/gsd-implement-next`
