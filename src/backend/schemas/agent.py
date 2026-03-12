@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
+    thread_id: str | None = None
 
 
 class SubQuestionAnswer(BaseModel):
@@ -21,6 +22,7 @@ class SubQuestionAnswer(BaseModel):
 
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
+    thread_id: str = ""
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
@@ -38,12 +40,14 @@ class AgentRunStageMetadata(BaseModel):
 class RuntimeAgentRunAsyncStartResponse(BaseModel):
     job_id: str
     run_id: str
+    thread_id: str = ""
     status: str
 
 
 class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     job_id: str
     run_id: str = ""
+    thread_id: str = ""
     status: str
     message: str = ""
     stage: str = ""

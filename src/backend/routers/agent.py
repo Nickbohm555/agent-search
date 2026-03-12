@@ -50,6 +50,12 @@ def _build_sdk_runtime_dependencies() -> tuple[object, object]:
     return vector_store, model
 
 
+def _build_thread_config(thread_id: str | None) -> dict[str, str] | None:
+    if thread_id is None:
+        return None
+    return {"thread_id": thread_id}
+
+
 @router.post("/run", response_model=RuntimeAgentRunResponse)
 def runtime_agent_run(
     payload: RuntimeAgentRunRequest,
@@ -58,14 +64,24 @@ def runtime_agent_run(
     del db
     vector_store, model = _build_sdk_runtime_dependencies()
     logger.info("Agent router delegating sync run query_len=%s", len(payload.query))
-    return sdk_advanced_rag(payload.query, vector_store=vector_store, model=model)
+    return sdk_advanced_rag(
+        payload.query,
+        vector_store=vector_store,
+        model=model,
+        config=_build_thread_config(payload.thread_id),
+    )
 
 
 @router.post("/run-async", response_model=RuntimeAgentRunAsyncStartResponse)
 def runtime_agent_run_async(payload: RuntimeAgentRunRequest) -> RuntimeAgentRunAsyncStartResponse:
     vector_store, model = _build_sdk_runtime_dependencies()
     logger.info("Agent router delegating async run query_len=%s", len(payload.query))
-    return sdk_run_async(payload.query, vector_store=vector_store, model=model)
+    return sdk_run_async(
+        payload.query,
+        vector_store=vector_store,
+        model=model,
+        config=_build_thread_config(payload.thread_id),
+    )
 
 
 @router.get("/run-status/{job_id}", response_model=RuntimeAgentRunAsyncStatusResponse)

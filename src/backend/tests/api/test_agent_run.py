@@ -32,12 +32,14 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
     sentinel_vector_store = object()
     sentinel_model = object()
 
-    def fake_sdk_run(query, *, vector_store, model):
+    def fake_sdk_run(query, *, vector_store, model, config=None):
         captured["query"] = query
         captured["vector_store"] = vector_store
         captured["model"] = model
+        captured["config"] = config
         return RuntimeAgentRunResponse(
             main_question=query,
+            thread_id="550e8400-e29b-41d4-a716-446655440000",
             sub_qa=[
                 SubQuestionAnswer(
                     sub_question="What changed in policy X?",
@@ -67,10 +69,14 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
     app.dependency_overrides[get_db] = override_get_db
     client = TestClient(app)
 
-    response = client.post("/api/agents/run", json={"query": "Find Hormuz risks"})
+    response = client.post(
+        "/api/agents/run",
+        json={"query": "Find Hormuz risks", "thread_id": "550e8400-e29b-41d4-a716-446655440000"},
+    )
     assert response.status_code == 200
     assert response.json() == {
         "main_question": "Find Hormuz risks",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440000",
         "sub_qa": [
             {
                 "sub_question": "What changed in policy X?",
@@ -89,6 +95,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "query": "Find Hormuz risks",
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
+        "config": {"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
     }
 
 
@@ -100,11 +107,17 @@ def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
     sentinel_vector_store = object()
     sentinel_model = object()
 
-    def fake_sdk_run_async(query, *, vector_store, model):
+    def fake_sdk_run_async(query, *, vector_store, model, config=None):
         captured["query"] = query
         captured["vector_store"] = vector_store
         captured["model"] = model
-        return RuntimeAgentRunAsyncStartResponse(job_id="job-123", run_id="run-123", status="running")
+        captured["config"] = config
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-123",
+            run_id="run-123",
+            thread_id="550e8400-e29b-41d4-a716-446655440000",
+            status="running",
+        )
 
     monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (sentinel_vector_store, sentinel_model))
     monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
@@ -113,17 +126,22 @@ def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
     app.include_router(agent_router)
     client = TestClient(app)
 
-    response = client.post("/api/agents/run-async", json={"query": "Show me async flow"})
+    response = client.post(
+        "/api/agents/run-async",
+        json={"query": "Show me async flow", "thread_id": "550e8400-e29b-41d4-a716-446655440000"},
+    )
     assert response.status_code == 200
     assert response.json() == {
         "job_id": "job-123",
         "run_id": "run-123",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440000",
         "status": "running",
     }
     assert captured == {
         "query": "Show me async flow",
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
+        "config": {"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
     }
 
 
@@ -136,6 +154,7 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
         return RuntimeAgentRunAsyncStatusResponse(
             job_id="job-123",
             run_id="run-123",
+            thread_id="550e8400-e29b-41d4-a716-446655440000",
             status="running",
             message="Stage completed: subquestions_ready",
             stage="subquestions_ready",
@@ -177,6 +196,7 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
     assert response.json() == {
         "job_id": "job-123",
         "run_id": "run-123",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440000",
         "status": "running",
         "message": "Stage completed: subquestions_ready",
         "stage": "subquestions_ready",
@@ -222,6 +242,7 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
         return RuntimeAgentRunAsyncStatusResponse(
             job_id="job-456",
             run_id="run-456",
+            thread_id="550e8400-e29b-41d4-a716-446655440001",
             status="completed",
             message="Run completed.",
             stage="completed",
@@ -237,6 +258,7 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
             output="NATO is a political and military alliance.",
             result=RuntimeAgentRunResponse(
                 main_question="What is NATO?",
+                thread_id="550e8400-e29b-41d4-a716-446655440001",
                 sub_qa=[
                     SubQuestionAnswer(
                         sub_question="What is NATO?",
@@ -263,6 +285,7 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
     assert response.json() == {
         "job_id": "job-456",
         "run_id": "run-456",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440001",
         "status": "completed",
         "message": "Run completed.",
         "stage": "completed",
@@ -283,6 +306,7 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
         "output": "NATO is a political and military alliance.",
         "result": {
             "main_question": "What is NATO?",
+            "thread_id": "550e8400-e29b-41d4-a716-446655440001",
             "sub_qa": [
                 {
                     "sub_question": "What is NATO?",
