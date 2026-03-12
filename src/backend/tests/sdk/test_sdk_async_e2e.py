@@ -13,6 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
 from agent_search.runtime import jobs as runtime_jobs
+from agent_search.runtime import runner as runtime_runner
 from schemas import GraphStageSnapshot, RuntimeAgentRunResponse, SubQuestionAnswer
 
 
@@ -93,6 +94,11 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
         }
 
     monkeypatch.setattr(runtime_jobs, "execute_runtime_graph", fake_execute_runtime_graph)
+    monkeypatch.setattr(
+        runtime_runner.legacy_service,
+        "run_parallel_graph_runner",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy async runner should not execute")),
+    )
 
     start_response = public_api.run_async(
         "How does SDK async wiring work?",
