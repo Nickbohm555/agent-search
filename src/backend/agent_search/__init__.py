@@ -6,6 +6,7 @@ from .errors import (
     SDKRetrievalError,
     SDKTimeoutError,
 )
+from .runtime.state import RAGState
 
 __all__ = [
     "advanced_rag",
@@ -18,6 +19,7 @@ __all__ = [
     "RuntimeTimeoutConfig",
     "RuntimeRetrievalConfig",
     "RuntimeRerankConfig",
+    "RAGState",
     "SDKError",
     "SDKConfigurationError",
     "SDKRetrievalError",
