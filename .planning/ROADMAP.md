@@ -103,7 +103,7 @@ Plans:
 |-------|------|--------------|--------|
 | 1 - State Contract Foundation | Stable typed state and node contracts | SGF-01, SGF-02, SGF-03 | Completed |
 | 2 - Durable Execution and Identity Semantics | Replay-safe durability and thread identity | REL-01, REL-02, REL-03, REL-04 | Completed |
-| 3 - End-to-End LangGraph RAG Cutover | Full RAG flow runs via LangGraph | SGF-04 | Pending |
+| 3 - End-to-End LangGraph RAG Cutover | Full RAG flow runs via LangGraph | SGF-04 | Completed |
 | 4 - Observability and Remote Runtime Validation | Streaming/tracing and remote deployment proof | OBS-01, OBS-02, REL-05 | Pending |
 | 5 - Major Release and Migration Documentation | Release adoption and migration clarity | DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Pending |
 
