@@ -46,7 +46,7 @@ if [ -z "${AGENT_CMD:-}" ]; then
         break
         ;;
       codex)
-        AGENT_CMD="codex exec --sandbox workspace-write -"
+        AGENT_CMD="codex exec --sandbox danger-full-access -"
         break
         ;;
       *)
