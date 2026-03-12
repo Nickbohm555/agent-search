@@ -65,29 +65,29 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SGF-01 | Phase TBD | Pending |
-| SGF-02 | Phase TBD | Pending |
-| SGF-03 | Phase TBD | Pending |
-| SGF-04 | Phase TBD | Pending |
-| REL-01 | Phase TBD | Pending |
-| REL-02 | Phase TBD | Pending |
-| REL-03 | Phase TBD | Pending |
-| REL-04 | Phase TBD | Pending |
-| REL-05 | Phase TBD | Pending |
-| OBS-01 | Phase TBD | Pending |
-| OBS-02 | Phase TBD | Pending |
-| DOC-01 | Phase TBD | Pending |
-| DOC-02 | Phase TBD | Pending |
-| DOC-03 | Phase TBD | Pending |
-| DOC-04 | Phase TBD | Pending |
-| DOC-05 | Phase TBD | Pending |
-| DOC-06 | Phase TBD | Pending |
+| SGF-01 | Phase 1 | Pending |
+| SGF-02 | Phase 1 | Pending |
+| SGF-03 | Phase 1 | Pending |
+| SGF-04 | Phase 3 | Pending |
+| REL-01 | Phase 2 | Pending |
+| REL-02 | Phase 2 | Pending |
+| REL-03 | Phase 2 | Pending |
+| REL-04 | Phase 2 | Pending |
+| REL-05 | Phase 4 | Pending |
+| OBS-01 | Phase 4 | Pending |
+| OBS-02 | Phase 4 | Pending |
+| DOC-01 | Phase 5 | Pending |
+| DOC-02 | Phase 5 | Pending |
+| DOC-03 | Phase 5 | Pending |
+| DOC-04 | Phase 5 | Pending |
+| DOC-05 | Phase 5 | Pending |
+| DOC-06 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 17 total
-- Mapped to phases: 0
-- Unmapped: 17
+- Mapped to phases: 17
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after initial definition*
+*Last updated: 2026-03-12 after roadmap creation*
