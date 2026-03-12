@@ -18,6 +18,7 @@ from schemas import AgentGraphState, RuntimeAgentRunRequest, RuntimeAgentRunResp
 from services import agent_service as legacy_service
 from services.idempotency_service import execute_idempotent_effect
 from utils.langfuse_tracing import (
+    build_trace_metadata,
     end_langfuse_observation,
     record_langfuse_score,
     start_langfuse_span,
@@ -26,6 +27,13 @@ from utils.langfuse_tracing import (
 
 logger = logging.getLogger(__name__)
 _LEGACY_RUNNER_NODE_NAME = "legacy_parallel_graph_runner"
+
+
+def _terminal_stage_name(stage_snapshots: list[Any]) -> str:
+    if not stage_snapshots:
+        return "runtime"
+    last_stage = getattr(stage_snapshots[-1], "stage", "")
+    return str(last_stage or "runtime")
 
 
 @dataclass
@@ -241,11 +249,11 @@ def run_runtime_agent(
             trace_id=run_metadata.trace_id,
             session_id=run_metadata.thread_id,
             input_payload={"query": payload.query},
-            metadata={
-                "run_id": run_metadata.run_id,
-                "trace_id": run_metadata.trace_id,
-                "correlation_id": run_metadata.correlation_id,
-            },
+            metadata=build_trace_metadata(
+                run_metadata=run_metadata,
+                stage="runtime",
+                status="running",
+            ),
         )
     logger.info(
         "Runtime core run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
@@ -268,18 +276,31 @@ def run_runtime_agent(
         run_metadata.run_id,
     )
 
-    state = execute_runtime_graph(
-        context=RuntimeGraphContext(
-            payload=payload,
-            model=model,
-            vector_store=selected_vector_store,
-            callbacks=list(callbacks or []),
-            langfuse_callback=langfuse_callback,
-            initial_search_context=initial_search_context,
-        ),
-        run_metadata=run_metadata,
-        lifecycle_callback=lifecycle_callback,
-    )
+    try:
+        state = execute_runtime_graph(
+            context=RuntimeGraphContext(
+                payload=payload,
+                model=model,
+                vector_store=selected_vector_store,
+                callbacks=list(callbacks or []),
+                langfuse_callback=langfuse_callback,
+                initial_search_context=initial_search_context,
+            ),
+            run_metadata=run_metadata,
+            lifecycle_callback=lifecycle_callback,
+        )
+    except Exception as exc:
+        if runtime_trace is not None:
+            end_langfuse_observation(
+                runtime_trace,
+                output_payload={"error": str(exc)},
+                metadata=build_trace_metadata(
+                    run_metadata=run_metadata,
+                    stage="runtime",
+                    status="error",
+                ),
+            )
+        raise
     rag_state = to_rag_state(state)
     if runtime_trace is not None:
         stage_snapshots = rag_state["stage_snapshots"]
@@ -288,17 +309,17 @@ def run_runtime_agent(
             stage_span = start_langfuse_span(
                 parent=runtime_trace,
                 name=f"runtime.stage.{stage_name}",
-                metadata={
-                    "run_id": run_metadata.run_id,
-                    "trace_id": run_metadata.trace_id,
-                    "correlation_id": run_metadata.correlation_id,
-                    "stage": snapshot.stage,
-                    "status": snapshot.status,
-                    "sub_question": snapshot.sub_question,
-                    "lane_index": snapshot.lane_index,
-                    "lane_total": snapshot.lane_total,
-                    "snapshot_index": snapshot_index,
-                },
+                metadata=build_trace_metadata(
+                    run_metadata=run_metadata,
+                    stage=snapshot.stage,
+                    status=snapshot.status,
+                    metadata={
+                        "sub_question": snapshot.sub_question,
+                        "lane_index": snapshot.lane_index,
+                        "lane_total": snapshot.lane_total,
+                        "snapshot_index": snapshot_index,
+                    },
+                ),
             )
             end_langfuse_observation(
                 stage_span,
@@ -314,7 +335,11 @@ def run_runtime_agent(
             parent=runtime_trace,
             name="runtime.sub_question_count",
             value=float(len(response.sub_qa)),
-            metadata={"run_id": run_metadata.run_id},
+            metadata=build_trace_metadata(
+                run_metadata=run_metadata,
+                stage=_terminal_stage_name(rag_state["stage_snapshots"]),
+                status="success",
+            ),
         )
         end_langfuse_observation(
             runtime_trace,
@@ -324,8 +349,12 @@ def run_runtime_agent(
                 "final_citation_count": len(response.final_citations),
                 "snapshot_count": len(rag_state["stage_snapshots"]),
             },
-                metadata={"run_id": run_metadata.run_id},
-            )
+            metadata=build_trace_metadata(
+                run_metadata=run_metadata,
+                stage=_terminal_stage_name(rag_state["stage_snapshots"]),
+                status="success",
+            ),
+        )
     logger.info(
         "Runtime core run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
         len(response.sub_qa),

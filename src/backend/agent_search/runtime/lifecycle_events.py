@@ -7,6 +7,7 @@ from typing import Any, Callable
 from pydantic import BaseModel
 
 from schemas import GraphRunMetadata
+from utils.langfuse_tracing import build_trace_metadata
 
 
 class RuntimeLifecycleEvent(BaseModel):
@@ -147,14 +148,19 @@ class LifecycleEventBuilder:
     ) -> RuntimeLifecycleEvent:
         self._sequence += 1
         emitted_at = self._clock().isoformat()
+        metadata = build_trace_metadata(
+            run_metadata=self._run_metadata,
+            stage=stage,
+            status=status,
+        )
         return RuntimeLifecycleEvent(
             event_type=event_type,
             event_id=f"{self._run_metadata.run_id}:{self._sequence:06d}",
-            run_id=self._run_metadata.run_id,
-            thread_id=self._run_metadata.thread_id,
-            trace_id=self._run_metadata.trace_id,
-            stage=stage,
-            status=status,
+            run_id=str(metadata["run_id"]),
+            thread_id=str(metadata["thread_id"]),
+            trace_id=str(metadata["trace_id"]),
+            stage=str(metadata["stage"]),
+            status=str(metadata["status"]),
             emitted_at=emitted_at,
             error=error,
         )

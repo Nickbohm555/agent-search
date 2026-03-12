@@ -9,8 +9,8 @@
 ## Current Position
 
 - Current phase: 4 - Observability and Remote Runtime Validation
-- Current plan: 04-01
-- Current task: 2
+- Current plan: 04-02
+- Current task: 1
 - Current status: implemented
 - Progress: 60% (3/5 phases complete)
 
@@ -36,7 +36,7 @@ Progress bar: `[###--] 60%`
 
 ### TODOs
 
-- Emit a canonical lifecycle event stream for graph runs with deterministic ordering and stable correlation identity.
+- Add correlation joinability regression coverage across runtime and API metadata surfaces.
 - Keep remote-runtime validation explicit once observability contracts are in place.
 
 ### Blockers
@@ -45,6 +45,6 @@ Progress bar: `[###--] 60%`
 
 ## Session Continuity
 
-- Last completed artifact: `.planning/phases/03-end-to-end-langgraph-rag-cutover/03-03-SUMMARY.md` with Phase 3 cutover validation outcomes and completion markers.
-- Last updated traceability: Phase 3 plan `03-03` summary recorded against task commits `b850cae`, `07cf22c`, and `0186f6e`, and roadmap/state advanced to Phase 4.
+- Last completed artifact: runtime trace correlation tuple propagation for Phase 4 plan `04-02` task `1`, including canonical Langfuse metadata wiring and lifecycle-event correlation assertions.
+- Last updated traceability: `IMPLEMENTATION_PLAN.md` advanced to section 38 and runtime verification passed via `docker compose exec backend uv run pytest tests/runtime -k "trace or correlation"` on 2026-03-12.
 - Next recommended command: `/gsd-implement-next`

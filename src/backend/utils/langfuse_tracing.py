@@ -14,6 +14,8 @@ _LangfuseScope = Literal["runtime"]
 _UNSET: object = object()
 _cached_langfuse_client: Any | object = _UNSET
 _cache_lock = threading.Lock()
+TRACE_CORRELATION_KEYS: tuple[str, str, str] = ("run_id", "thread_id", "trace_id")
+TRACE_METADATA_KEYS: tuple[str, ...] = TRACE_CORRELATION_KEYS + ("stage", "status")
 
 
 def _normalize_identifier(value: str | None) -> str:
@@ -51,6 +53,41 @@ def build_langfuse_run_metadata(
 
 def _as_dict(mapping: Mapping[str, Any] | None) -> dict[str, Any]:
     return dict(mapping) if isinstance(mapping, Mapping) else {}
+
+
+def build_trace_metadata(
+    *,
+    run_metadata: Any | None = None,
+    run_id: str | None = None,
+    thread_id: str | None = None,
+    trace_id: str | None = None,
+    stage: str | None = None,
+    status: str | None = None,
+    correlation_id: str | None = None,
+    metadata: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = _as_dict(metadata)
+
+    resolved_run_id = _normalize_identifier(run_id or getattr(run_metadata, "run_id", None))
+    resolved_thread_id = _normalize_identifier(thread_id or getattr(run_metadata, "thread_id", None))
+    resolved_trace_id = _normalize_identifier(trace_id or getattr(run_metadata, "trace_id", None))
+    resolved_stage = _normalize_identifier(stage)
+    resolved_status = _normalize_identifier(status)
+    resolved_correlation_id = _normalize_identifier(correlation_id or getattr(run_metadata, "correlation_id", None))
+
+    if resolved_run_id:
+        payload["run_id"] = resolved_run_id
+    if resolved_thread_id:
+        payload["thread_id"] = resolved_thread_id
+    if resolved_trace_id:
+        payload["trace_id"] = resolved_trace_id
+    if resolved_stage:
+        payload["stage"] = resolved_stage
+    if resolved_status:
+        payload["status"] = resolved_status
+    if resolved_correlation_id:
+        payload["correlation_id"] = resolved_correlation_id
+    return payload
 
 
 def _call_with_supported_kwargs(target: Any, kwargs: Mapping[str, Any]) -> Any:
