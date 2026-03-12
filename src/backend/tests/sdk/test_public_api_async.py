@@ -11,12 +11,26 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
-from schemas import AgentRunStageMetadata, CitationSourceRow, RuntimeAgentRunResponse, SubQuestionAnswer
+from agent_search.runtime import jobs as runtime_jobs
+from agent_search.runtime import runner as runtime_runner
+from schemas import AgentRunStageMetadata, CitationSourceRow, GraphStageSnapshot, RuntimeAgentRunResponse, SubQuestionAnswer
+from services import agent_service
 
 
 class _CompatibleVectorStore:
     def similarity_search(self, query: str, k: int, filter=None) -> list[object]:
         return []
+
+
+class _InlineExecutor:
+    def submit(self, fn, *args, **kwargs):
+        fn(*args, **kwargs)
+
+        class _CompletedFuture:
+            def result(self):
+                return None
+
+        return _CompletedFuture()
 
 
 def test_run_async_signature_requires_query_vector_store_and_model() -> None:
@@ -270,3 +284,87 @@ def test_run_async_rejects_invalid_thread_id_format(monkeypatch) -> None:
         assert str(exc) == "run_async failed due to invalid SDK input or configuration."
     else:
         raise AssertionError("Expected SDKConfigurationError for invalid thread_id")
+
+
+def test_run_async_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
+    sentinel_model = object()
+    sentinel_vector_store = _CompatibleVectorStore()
+    thread_id = "550e8400-e29b-41d4-a716-446655440123"
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-cutover")
+    monkeypatch.setattr(runtime_jobs, "_persist_job_status", lambda _job: None)
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
+
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+        captured["query"] = context.payload.query
+        captured["payload_thread_id"] = context.payload.thread_id
+        captured["vector_store"] = context.vector_store
+        captured["model"] = context.model
+        captured["run_thread_id"] = run_metadata.thread_id
+        captured["config"] = config
+        return {
+            "main_question": context.payload.query,
+            "decomposition_sub_questions": ["Which runtime completed the request?"],
+            "sub_question_artifacts": [],
+            "final_answer": "The LangGraph async runtime path completed the request.",
+            "citation_rows_by_index": {},
+            "run_metadata": run_metadata,
+            "sub_qa": [
+                SubQuestionAnswer(
+                    sub_question="Which runtime completed the request?",
+                    sub_answer="The LangGraph async runtime path completed the request.",
+                )
+            ],
+            "output": "The LangGraph async runtime path completed the request.",
+            "stage_snapshots": [
+                GraphStageSnapshot(
+                    stage="decompose",
+                    status="completed",
+                    decomposition_sub_questions=["Which runtime completed the request?"],
+                    output="The LangGraph async runtime path completed the request.",
+                )
+            ],
+        }
+
+    monkeypatch.setattr(runtime_jobs, "execute_runtime_graph", fake_execute_runtime_graph)
+    monkeypatch.setattr(
+        runtime_jobs,
+        "run_checkpointed_agent",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("checkpointed legacy orchestration should not execute")),
+    )
+    monkeypatch.setattr(
+        runtime_runner.legacy_service,
+        "run_parallel_graph_runner",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy orchestration should not execute")),
+    )
+
+    with runtime_jobs._JOB_LOCK:
+        runtime_jobs._JOBS.clear()
+
+    start_response = public_api.run_async(
+        "Which runtime completed the request?",
+        vector_store=sentinel_vector_store,
+        model=sentinel_model,
+        config={"thread_id": thread_id},
+    )
+    status_response = public_api.get_run_status(start_response.job_id)
+
+    assert start_response.model_dump() == {
+        "job_id": "job-cutover",
+        "run_id": "job-cutover",
+        "thread_id": thread_id,
+        "status": "success",
+    }
+    assert status_response.status == "success"
+    assert status_response.thread_id == thread_id
+    assert status_response.result is not None
+    assert status_response.result.output == "The LangGraph async runtime path completed the request."
+    assert captured == {
+        "query": "Which runtime completed the request?",
+        "payload_thread_id": thread_id,
+        "vector_store": sentinel_vector_store,
+        "model": sentinel_model,
+        "run_thread_id": thread_id,
+        "config": None,
+    }

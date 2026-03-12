@@ -10,7 +10,9 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
+from agent_search.runtime import runner as runtime_runner
 from schemas import CitationSourceRow, RuntimeAgentRunResponse, SubQuestionAnswer
+from services import agent_service
 
 
 class _CompatibleVectorStore:
@@ -175,3 +177,48 @@ def test_advanced_rag_does_not_build_langfuse_callback_from_settings(monkeypatch
     assert response.output == "ok"
     assert captured["langfuse_callback"] is None
     assert captured["callbacks"] is None
+
+
+def test_advanced_rag_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
+    sentinel_model = object()
+    sentinel_vector_store = _CompatibleVectorStore()
+    captured: dict[str, object] = {}
+
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+        captured["query"] = context.payload.query
+        captured["vector_store"] = context.vector_store
+        captured["model"] = context.model
+        captured["config"] = config
+        return agent_service.build_agent_graph_state(
+            main_question=context.payload.query,
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="Which runtime completed the request?",
+                    sub_answer="The LangGraph runtime path completed the request.",
+                )
+            ],
+            final_answer="The LangGraph runtime path completed the request.",
+            run_metadata=run_metadata,
+        )
+
+    monkeypatch.setattr(runtime_runner, "execute_runtime_graph", fake_execute_runtime_graph)
+    monkeypatch.setattr(
+        runtime_runner.legacy_service,
+        "run_parallel_graph_runner",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy orchestration should not execute")),
+    )
+
+    response = public_api.advanced_rag(
+        "Which runtime completed the request?",
+        model=sentinel_model,
+        vector_store=sentinel_vector_store,
+    )
+
+    assert response.output == "The LangGraph runtime path completed the request."
+    assert response.sub_qa[0].sub_answer == "The LangGraph runtime path completed the request."
+    assert captured == {
+        "query": "Which runtime completed the request?",
+        "vector_store": sentinel_vector_store,
+        "model": sentinel_model,
+        "config": None,
+    }

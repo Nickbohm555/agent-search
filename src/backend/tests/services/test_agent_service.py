@@ -1693,6 +1693,51 @@ def test_run_runtime_agent_wrapper_delegates_to_runtime_runner(monkeypatch) -> N
     assert response.sub_qa[0].sub_question == "Wrapper sub-question?"
 
 
+def test_runtime_cutover_sync_path_blocks_legacy_orchestration(monkeypatch) -> None:
+    sentinel_model = object()
+    sentinel_vector_store = object()
+    captured: dict[str, object] = {}
+
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+        captured["query"] = context.payload.query
+        captured["vector_store"] = context.vector_store
+        captured["model"] = context.model
+        captured["config"] = config
+        return agent_service.build_agent_graph_state(
+            main_question=context.payload.query,
+            sub_qa=[
+                agent_service.SubQuestionAnswer(
+                    sub_question="Which runtime completed the request?",
+                    sub_answer="The LangGraph runtime path completed the request.",
+                )
+            ],
+            final_answer="The LangGraph runtime path completed the request.",
+            run_metadata=run_metadata,
+        )
+
+    monkeypatch.setattr(runtime_runner, "execute_runtime_graph", fake_execute_runtime_graph)
+    monkeypatch.setattr(
+        runtime_runner.legacy_service,
+        "run_parallel_graph_runner",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy orchestration should not execute")),
+    )
+
+    response = runtime_runner.run_runtime_agent(
+        RuntimeAgentRunRequest(query="Which runtime completed the request?"),
+        model=sentinel_model,
+        vector_store=sentinel_vector_store,
+    )
+
+    assert response.output == "The LangGraph runtime path completed the request."
+    assert response.sub_qa[0].sub_answer == "The LangGraph runtime path completed the request."
+    assert captured == {
+        "query": "Which runtime completed the request?",
+        "vector_store": sentinel_vector_store,
+        "model": sentinel_model,
+        "config": None,
+    }
+
+
 def test_agent_jobs_start_wrapper_delegates_to_runtime_jobs(monkeypatch) -> None:
     payload = RuntimeAgentRunRequest(query="Start wrapper delegation?")
     captured: dict[str, object] = {}
