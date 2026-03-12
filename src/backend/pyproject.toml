@@ -18,5 +18,6 @@ dependencies = [
   "langfuse>=3.0.0",
   "wikipedia>=1.4.0",
   "langchain-text-splitters>=1.1.1",
+  "langgraph>=1.0.10",
   "langgraph-checkpoint-postgres>=3.0.4",
 ]
