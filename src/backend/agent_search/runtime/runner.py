@@ -7,8 +7,11 @@ import logging
 from typing import Any, Mapping
 
 from agent_search.errors import SDKConfigurationError
+from agent_search.runtime.graph.execution import execute_runtime_graph
+from agent_search.runtime.graph.state import RuntimeGraphContext
 from agent_search.runtime.persistence import compile_graph_with_checkpointer
 from agent_search.runtime.resume import build_resume_command
+from agent_search.runtime.state import to_rag_state
 from langgraph.types import Command
 from schemas import AgentGraphState, RuntimeAgentRunRequest, RuntimeAgentRunResponse
 from services import agent_service as legacy_service
@@ -250,17 +253,21 @@ def run_runtime_agent(
         run_metadata.run_id,
     )
 
-    state = legacy_service.run_parallel_graph_runner(
-        payload=payload,
-        vector_store=selected_vector_store,
-        model=model,
+    state = execute_runtime_graph(
+        context=RuntimeGraphContext(
+            payload=payload,
+            model=model,
+            vector_store=selected_vector_store,
+            callbacks=list(callbacks or []),
+            langfuse_callback=langfuse_callback,
+            initial_search_context=initial_search_context,
+        ),
         run_metadata=run_metadata,
-        initial_search_context=initial_search_context,
-        callbacks=callbacks,
-        langfuse_callback=langfuse_callback,
     )
+    rag_state = to_rag_state(state)
     if runtime_trace is not None:
-        for snapshot_index, snapshot in enumerate(state.stage_snapshots, start=1):
+        stage_snapshots = rag_state["stage_snapshots"]
+        for snapshot_index, snapshot in enumerate(stage_snapshots, start=1):
             stage_name = "final" if snapshot.stage == "synthesize_final" else snapshot.stage
             stage_span = start_langfuse_span(
                 parent=runtime_trace,
@@ -299,15 +306,15 @@ def run_runtime_agent(
                 "sub_qa_count": len(response.sub_qa),
                 "output_length": len(response.output),
                 "final_citation_count": len(response.final_citations),
-                "snapshot_count": len(state.stage_snapshots),
+                "snapshot_count": len(rag_state["stage_snapshots"]),
             },
-            metadata={"run_id": run_metadata.run_id},
-        )
+                metadata={"run_id": run_metadata.run_id},
+            )
     logger.info(
         "Runtime core run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
         len(response.sub_qa),
         len(response.output),
-        len(state.stage_snapshots),
+        len(rag_state["stage_snapshots"]),
         run_metadata.run_id,
     )
     return response

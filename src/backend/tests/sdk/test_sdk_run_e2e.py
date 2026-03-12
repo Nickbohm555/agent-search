@@ -9,6 +9,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.runtime import runner as runtime_runner
+from agent_search.runtime.graph.state import RuntimeGraphContext
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse, SubQuestionAnswer
 from services import agent_service
 
@@ -24,18 +25,20 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
-        agent_service,
-        "run_parallel_graph_runner",
-        lambda *, payload, vector_store, model, run_metadata, initial_search_context: captured.update(
+        runtime_runner,
+        "execute_runtime_graph",
+        lambda *, context, run_metadata, config=None: captured.update(
             {
-                "payload_query": payload.query,
-                "run_vector_store": vector_store,
-                "run_model": model,
-                "initial_search_context": initial_search_context,
+                "payload_query": context.payload.query,
+                "run_vector_store": context.vector_store,
+                "run_model": context.model,
+                "initial_search_context": context.initial_search_context,
+                "run_metadata": run_metadata,
+                "config": config,
             }
         )
         or agent_service.build_agent_graph_state(
-            main_question=payload.query,
+            main_question=context.payload.query,
             sub_qa=[
                 SubQuestionAnswer(
                     sub_question="What is the key fact?",
@@ -47,13 +50,9 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
         ),
     )
     monkeypatch.setattr(
-        agent_service,
-        "map_graph_state_to_runtime_response",
-        lambda state: RuntimeAgentRunResponse(
-            main_question=state.main_question,
-            sub_qa=state.sub_qa,
-            output=state.output,
-        ),
+        runtime_runner.legacy_service,
+        "run_parallel_graph_runner",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy sync runner should not execute")),
     )
 
     response = public_api.advanced_rag(
@@ -71,6 +70,8 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
         "run_vector_store": sentinel_vector_store,
         "run_model": sentinel_model,
         "initial_search_context": [],
+        "run_metadata": captured["run_metadata"],
+        "config": None,
     }
 
 
@@ -99,22 +100,42 @@ def test_runtime_runner_emits_langfuse_stage_hooks(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        agent_service,
+        runtime_runner,
+        "execute_runtime_graph",
+        lambda *, context, run_metadata, config=None: {
+            "main_question": context.payload.query,
+            "decomposition_sub_questions": [],
+            "sub_question_artifacts": [],
+            "final_answer": "final answer",
+            "citation_rows_by_index": {},
+            "run_metadata": run_metadata,
+            "sub_qa": [],
+            "output": "final answer",
+            "stage_snapshots": [
+                agent_service.GraphStageSnapshot(
+                    stage="decompose",
+                    status="completed",
+                    decomposition_sub_questions=[],
+                    sub_qa=[],
+                    sub_question_artifacts=[],
+                    output="",
+                )
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        runtime_runner.legacy_service,
         "run_parallel_graph_runner",
-        lambda **kwargs: agent_service.build_agent_graph_state(
-            main_question=kwargs["payload"].query,
-            sub_qa=[],
-            final_answer="final answer",
-            run_metadata=kwargs["run_metadata"],
-        ),
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy sync runner should not execute")),
     )
     monkeypatch.setattr(
         agent_service,
         "map_graph_state_to_runtime_response",
         lambda state: RuntimeAgentRunResponse(
-            main_question=state.main_question,
-            sub_qa=state.sub_qa,
-            output=state.output,
+            main_question=state["main_question"],
+            thread_id=state["run_metadata"].thread_id,
+            sub_qa=state["sub_qa"],
+            output=state["output"],
         ),
     )
 
@@ -156,22 +177,33 @@ def test_runtime_runner_skips_langfuse_stage_hooks_without_callback(monkeypatch)
     )
 
     monkeypatch.setattr(
-        agent_service,
+        runtime_runner,
+        "execute_runtime_graph",
+        lambda *, context, run_metadata, config=None: {
+            "main_question": context.payload.query,
+            "decomposition_sub_questions": [],
+            "sub_question_artifacts": [],
+            "final_answer": "final answer",
+            "citation_rows_by_index": {},
+            "run_metadata": run_metadata,
+            "sub_qa": [],
+            "output": "final answer",
+            "stage_snapshots": [],
+        },
+    )
+    monkeypatch.setattr(
+        runtime_runner.legacy_service,
         "run_parallel_graph_runner",
-        lambda **kwargs: agent_service.build_agent_graph_state(
-            main_question=kwargs["payload"].query,
-            sub_qa=[],
-            final_answer="final answer",
-            run_metadata=kwargs["run_metadata"],
-        ),
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy sync runner should not execute")),
     )
     monkeypatch.setattr(
         agent_service,
         "map_graph_state_to_runtime_response",
         lambda state: RuntimeAgentRunResponse(
-            main_question=state.main_question,
-            sub_qa=state.sub_qa,
-            output=state.output,
+            main_question=state["main_question"],
+            thread_id=state["run_metadata"].thread_id,
+            sub_qa=state["sub_qa"],
+            output=state["output"],
         ),
     )
 
