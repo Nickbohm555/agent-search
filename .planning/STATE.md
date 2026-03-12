@@ -4,17 +4,17 @@
 
 - Project: LangGraph State Graph Migration for Agent Search
 - Core value: Every query run executes end-to-end through a LangGraph-native state graph that is reliable in remote environments and produces production-ready answers.
-- Current focus: Execute Phase 2 to establish durable execution and stable thread identity semantics.
+- Current focus: Execute Phase 3 to cut over production RAG orchestration onto the LangGraph runtime path.
 
 ## Current Position
 
-- Current phase: 2 - Durable Execution and Identity Semantics
-- Current plan: 02-03
-- Current task: 3
-- Current status: implemented
-- Progress: 20% (1/5 phases complete)
+- Current phase: 3 - End-to-End LangGraph RAG Cutover
+- Current plan: 03-01
+- Current task: 1
+- Current status: ready
+- Progress: 40% (2/5 phases complete)
 
-Progress bar: `[#----] 20%`
+Progress bar: `[##---] 40%`
 
 ## Performance Metrics
 
@@ -31,11 +31,12 @@ Progress bar: `[#----] 20%`
 - Full v1 requirement coverage is enforced with one-to-one phase mapping per requirement.
 - Documentation and major release work is isolated to the final phase after runtime proof in remote environments.
 - Phase 1 is complete with canonical state, node contract registry, and deterministic reducer semantics in place.
+- Phase 2 is complete with checkpoint resume, stable thread identity, replay-safe idempotency, and HITL transition coverage in place.
 
 ### TODOs
 
-- Validate checkpoint persistence helpers and thread identity rules against remote Docker execution behavior.
-- Keep thread identity and durability acceptance checks explicit in later validation plans.
+- Cut the main RAG execution path over to LangGraph graph modules without regressing production answer flow.
+- Keep observability and remote-runtime validation explicit once the cutover path is stable.
 
 ### Blockers
 
@@ -43,6 +44,6 @@ Progress bar: `[#----] 20%`
 
 ## Session Continuity
 
-- Last completed artifact: `src/backend/tests/sdk/test_sdk_async_e2e.py`, `src/backend/tests/services/test_agent_service.py`, and `src/backend/tests/api/test_agent_run.py` with resilience coverage for resume continuity, replay scoping, and resume transition errors.
-- Last updated traceability: Phase 2 plan `02-03` task 3 marked implemented after Docker resilience-suite verification and targeted resume/idempotency regression checks.
+- Last completed artifact: `.planning/phases/02-durable-execution-and-identity-semantics/02-03-SUMMARY.md` with Phase 2 durability outcomes and completion markers.
+- Last updated traceability: Phase 2 plan `02-03` summary recorded against task commits `b782b66`, `2c35b72`, and `75a51aa`, and roadmap/state advanced to Phase 3.
 - Next recommended command: `/gsd-implement-next`
