@@ -12,7 +12,10 @@ from typing import Any, Optional
 
 from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.execution_identity import resolve_thread_identity
+from agent_search.runtime.graph.execution import execute_runtime_graph
+from agent_search.runtime.graph.state import RuntimeGraphContext
 from agent_search.runtime.resume import ResumeTransitionError, ensure_resume_allowed
+from agent_search.runtime.state import to_rag_state
 from db import SessionLocal
 from models import RuntimeCheckpointLink
 from schemas import (
@@ -23,7 +26,7 @@ from schemas import (
     SubQuestionAnswer,
     SubQuestionArtifacts,
 )
-from services.agent_service import build_graph_run_metadata
+from services.agent_service import build_graph_run_metadata, map_graph_state_to_runtime_response
 from agent_search.runtime.runner import run_checkpointed_agent
 
 logger = logging.getLogger(__name__)
@@ -278,15 +281,40 @@ def _run_agent_job(
                 len(snapshot.decomposition_sub_questions),
             )
 
-        outcome = run_checkpointed_agent(
-            payload=payload,
-            vector_store=resolved_vector_store,
-            model=model,
-            run_metadata=build_graph_run_metadata(run_id=run_id, thread_id=thread_id),
-            initial_search_context=initial_search_context,
-            snapshot_callback=on_snapshot,
-            resume=resume,
-        )
+        run_metadata = build_graph_run_metadata(run_id=run_id, thread_id=thread_id)
+        if resume is None:
+            state = execute_runtime_graph(
+                context=RuntimeGraphContext(
+                    payload=payload,
+                    model=model,
+                    vector_store=resolved_vector_store,
+                    initial_search_context=initial_search_context,
+                ),
+                run_metadata=run_metadata,
+            )
+            for snapshot in state["stage_snapshots"]:
+                on_snapshot(snapshot, state)
+            outcome = type(
+                "GraphExecutionOutcome",
+                (),
+                {
+                    "status": "completed",
+                    "state": state,
+                    "response": map_graph_state_to_runtime_response(state),
+                    "interrupt_payload": None,
+                    "checkpoint_id": None,
+                },
+            )()
+        else:
+            outcome = run_checkpointed_agent(
+                payload=payload,
+                vector_store=resolved_vector_store,
+                model=model,
+                run_metadata=run_metadata,
+                initial_search_context=initial_search_context,
+                snapshot_callback=on_snapshot,
+                resume=resume,
+            )
         if outcome.status == "paused":
             with _JOB_LOCK:
                 current_job = _JOBS.get(job_id)
@@ -309,6 +337,7 @@ def _run_agent_job(
         response = outcome.response
         if state is None or response is None:
             raise SDKConfigurationError("Runtime execution completed without a durable result payload.")
+        rag_state = to_rag_state(state)
         with _JOB_LOCK:
             current_job = _JOBS.get(job_id)
             if current_job is None:
@@ -323,8 +352,8 @@ def _run_agent_job(
             current_job.interrupt_payload = None
             current_job.checkpoint_id = outcome.checkpoint_id
             current_job.sub_qa = [item.model_copy(deep=True) for item in response.sub_qa]
-            current_job.decomposition_sub_questions = list(state.decomposition_sub_questions)
-            current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in state.sub_question_artifacts]
+            current_job.decomposition_sub_questions = list(rag_state["decomposition_sub_questions"])
+            current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in rag_state["sub_question_artifacts"]]
             current_job.output = response.output
             current_job.finished_at = time.time()
         _persist_job_status(current_job)

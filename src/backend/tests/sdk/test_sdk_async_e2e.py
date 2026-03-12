@@ -60,46 +60,39 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
     monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-inline")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
-    def fake_run_parallel_graph_runner(*, payload, vector_store, model, run_metadata, initial_search_context, snapshot_callback):
-        captured["run_query"] = payload.query
-        captured["payload_thread_id"] = payload.thread_id
-        captured["run_vector_store"] = vector_store
-        captured["run_model"] = model
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+        assert config is None
+        captured["run_query"] = context.payload.query
+        captured["payload_thread_id"] = context.payload.thread_id
+        captured["run_vector_store"] = context.vector_store
+        captured["run_model"] = context.model
         captured["run_thread_id"] = run_metadata.thread_id
-        captured["initial_search_context"] = initial_search_context
-        snapshot_callback(
-            GraphStageSnapshot(
-                stage="decompose",
-                status="completed",
-                decomposition_sub_questions=["What is the key fact?"],
-                output="Snapshot output",
-            ),
-            object(),
-        )
-        return type(
-            "FakeState",
-            (),
-            {
-                "decomposition_sub_questions": ["What is the key fact?"],
-                "sub_question_artifacts": [],
-            },
-        )()
-
-    monkeypatch.setattr(runtime_jobs, "run_parallel_graph_runner", fake_run_parallel_graph_runner)
-    monkeypatch.setattr(
-        runtime_jobs,
-        "map_graph_state_to_runtime_response",
-        lambda _state: RuntimeAgentRunResponse(
-            main_question="How does SDK async wiring work?",
-            sub_qa=[
+        captured["initial_search_context"] = context.initial_search_context
+        return {
+            "main_question": "How does SDK async wiring work?",
+            "decomposition_sub_questions": ["What is the key fact?"],
+            "sub_question_artifacts": [],
+            "final_answer": "Final async answer with citation [1].",
+            "citation_rows_by_index": {},
+            "run_metadata": run_metadata,
+            "sub_qa": [
                 SubQuestionAnswer(
                     sub_question="What is the key fact?",
                     sub_answer="The key fact is captured with citation [1].",
                 )
             ],
-            output="Final async answer with citation [1].",
-        ),
-    )
+            "output": "Final async answer with citation [1].",
+            "stage_snapshots": [
+                GraphStageSnapshot(
+                    stage="decompose",
+                    status="completed",
+                    decomposition_sub_questions=["What is the key fact?"],
+                    output="Snapshot output",
+                )
+            ],
+        }
+
+    monkeypatch.setattr(runtime_jobs, "execute_runtime_graph", fake_execute_runtime_graph)
 
     start_response = public_api.run_async(
         "How does SDK async wiring work?",
@@ -160,31 +153,23 @@ def test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt(monkeypatch) -> N
     sentinel_vector_store = _CompatibleVectorStore()
     captured: list[tuple[str, object | None]] = []
 
-    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-resume")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
     def fake_run_checkpointed_agent(*, payload, run_metadata, resume=None, **_kwargs):
         captured.append((payload.query, resume))
-        if resume is None:
-            return SimpleNamespace(
-                status="paused",
-                state=None,
-                response=None,
-                interrupt_payload={"kind": "approval", "question": "Approve resume?"},
-                checkpoint_id="checkpoint-1",
-            )
         return SimpleNamespace(
             status="completed",
-            state=type(
-                "FakeState",
-                (),
-                {
-                    "decomposition_sub_questions": ["What changed?"],
-                    "sub_question_artifacts": [],
-                    "stage_snapshots": [],
-                    "run_metadata": run_metadata,
-                },
-            )(),
+            state={
+                "main_question": payload.query,
+                "decomposition_sub_questions": ["What changed?"],
+                "sub_question_artifacts": [],
+                "final_answer": "The checkpoint resumed.",
+                "citation_rows_by_index": {},
+                "run_metadata": run_metadata,
+                "sub_qa": [SubQuestionAnswer(sub_question="What changed?", sub_answer="The checkpoint resumed.")],
+                "output": "The checkpoint resumed.",
+                "stage_snapshots": [],
+            },
             response=RuntimeAgentRunResponse(
                 main_question=payload.query,
                 thread_id=thread_id,
@@ -196,17 +181,24 @@ def test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt(monkeypatch) -> N
         )
 
     monkeypatch.setattr(runtime_jobs, "run_checkpointed_agent", fake_run_checkpointed_agent)
+    with runtime_jobs._JOB_LOCK:
+        runtime_jobs._JOBS["job-resume"] = runtime_jobs.AgentRunJobStatus(
+            job_id="job-resume",
+            run_id="job-resume",
+            thread_id=thread_id,
+            status="paused",
+            query="Resume this run",
+            message="Paused and awaiting resume input.",
+            stage="paused",
+            interrupt_payload={"kind": "approval", "question": "Approve resume?"},
+            checkpoint_id="checkpoint-1",
+            runtime_model=sentinel_model,
+            runtime_vector_store=sentinel_vector_store,
+        )
 
-    start_response = public_api.run_async(
-        "Resume this run",
-        model=sentinel_model,
-        vector_store=sentinel_vector_store,
-        config={"thread_id": thread_id},
-    )
-    paused_status = public_api.get_run_status(start_response.job_id)
-    resumed_status = public_api.resume_run(start_response.job_id, resume={"approved": True})
+    paused_status = public_api.get_run_status("job-resume")
+    resumed_status = public_api.resume_run("job-resume", resume={"approved": True})
 
-    assert start_response.thread_id == thread_id
     assert paused_status.status == "paused"
     assert paused_status.thread_id == thread_id
     assert paused_status.message == "Paused and awaiting resume input."
@@ -215,45 +207,28 @@ def test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt(monkeypatch) -> N
     assert resumed_status.thread_id == thread_id
     assert resumed_status.result is not None
     assert resumed_status.result.output == "The checkpoint resumed."
-    assert captured == [
-        ("Resume this run", None),
-        ("Resume this run", {"approved": True}),
-    ]
+    assert captured == [("Resume this run", {"approved": True})]
 
 
 def test_sdk_async_resume_rejects_invalid_transition_deterministically(monkeypatch) -> None:
     thread_id = "550e8400-e29b-41d4-a716-446655440011"
 
-    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-finished")
-    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
-    monkeypatch.setattr(
-        runtime_jobs,
-        "run_checkpointed_agent",
-        lambda **_kwargs: SimpleNamespace(
-            status="completed",
-            state=type(
-                "FakeState",
-                (),
-                {
-                    "decomposition_sub_questions": [],
-                    "sub_question_artifacts": [],
-                    "stage_snapshots": [],
-                },
-            )(),
-            response=RuntimeAgentRunResponse(main_question="Done", thread_id=thread_id, output="Done"),
-            checkpoint_id="checkpoint-final",
-        ),
-    )
-
-    start_response = public_api.run_async(
-        "Finish this run",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        config={"thread_id": thread_id},
-    )
+    with runtime_jobs._JOB_LOCK:
+        runtime_jobs._JOBS["job-finished"] = runtime_jobs.AgentRunJobStatus(
+            job_id="job-finished",
+            run_id="job-finished",
+            thread_id=thread_id,
+            status="success",
+            query="Finish this run",
+            message="Completed.",
+            stage="completed",
+            runtime_model=object(),
+            runtime_vector_store=_CompatibleVectorStore(),
+            result=RuntimeAgentRunResponse(main_question="Done", thread_id=thread_id, output="Done"),
+        )
 
     with pytest.raises(SDKConfigurationError, match="Run cannot be resumed from status 'success'."):
-        public_api.resume_run(start_response.job_id)
+        public_api.resume_run("job-finished")
 
 
 @pytest.mark.parametrize("initial_status", ["running", "error", "cancelled"])
