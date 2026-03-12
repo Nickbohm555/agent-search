@@ -14,6 +14,7 @@ from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.execution_identity import resolve_thread_identity
 from agent_search.runtime.graph.execution import execute_runtime_graph
 from agent_search.runtime.graph.state import RuntimeGraphContext
+from agent_search.runtime.lifecycle_events import RuntimeLifecycleEvent
 from agent_search.runtime.resume import ResumeTransitionError, ensure_resume_allowed
 from agent_search.runtime.state import to_rag_state
 from db import SessionLocal
@@ -55,6 +56,7 @@ class AgentRunJobStatus:
     cancel_requested: bool = False
     interrupt_payload: Any | None = None
     checkpoint_id: str | None = None
+    lifecycle_events: list[RuntimeLifecycleEvent] = field(default_factory=list)
     runtime_model: Any | None = field(default=None, repr=False)
     runtime_vector_store: Any | None = field(default=None, repr=False)
     started_at: float = field(default_factory=time.time)
@@ -62,6 +64,57 @@ class AgentRunJobStatus:
 
 
 _JOBS: dict[str, AgentRunJobStatus] = {}
+_TERMINAL_LIFECYCLE_EVENT_TYPES = frozenset({"run.completed", "run.failed", "run.paused"})
+
+
+def _event_sequence(event_id: str | None) -> int:
+    if event_id is None:
+        return 0
+    _, _, raw_sequence = event_id.rpartition(":")
+    try:
+        return int(raw_sequence)
+    except ValueError:
+        return 0
+
+
+def append_agent_run_event(job_id: str, event: RuntimeLifecycleEvent) -> None:
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            return
+        job.lifecycle_events.append(event.model_copy(deep=True))
+
+
+def list_agent_run_events(job_id: str, *, after_event_id: str | None = None) -> list[RuntimeLifecycleEvent]:
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise SDKConfigurationError("Job not found.")
+        min_sequence = _event_sequence(after_event_id)
+        return [event.model_copy(deep=True) for event in job.lifecycle_events if _event_sequence(event.event_id) > min_sequence]
+
+
+def iter_agent_run_events(
+    job_id: str,
+    *,
+    after_event_id: str | None = None,
+    poll_interval: float = 0.05,
+):
+    last_event_id = after_event_id
+    while True:
+        events = list_agent_run_events(job_id, after_event_id=last_event_id)
+        for event in events:
+            last_event_id = event.event_id
+            yield event
+            if event.event_type in _TERMINAL_LIFECYCLE_EVENT_TYPES:
+                return
+        with _JOB_LOCK:
+            job = _JOBS.get(job_id)
+            if job is None:
+                return
+            if job.status in {"success", "error", "cancelled", "paused"}:
+                return
+        time.sleep(poll_interval)
 
 
 def _persist_job_status(job: AgentRunJobStatus) -> None:
@@ -291,6 +344,7 @@ def _run_agent_job(
                     initial_search_context=initial_search_context,
                 ),
                 run_metadata=run_metadata,
+                lifecycle_callback=lambda event: append_agent_run_event(job_id, event),
             )
             for snapshot in state["stage_snapshots"]:
                 on_snapshot(snapshot, state)
@@ -312,6 +366,7 @@ def _run_agent_job(
                 model=model,
                 run_metadata=run_metadata,
                 initial_search_context=initial_search_context,
+                lifecycle_callback=lambda event: append_agent_run_event(job_id, event),
                 snapshot_callback=on_snapshot,
                 resume=resume,
             )

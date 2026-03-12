@@ -179,6 +179,7 @@ def run_checkpointed_agent(
     run_metadata: Any,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
+    lifecycle_callback: Callable[[RuntimeLifecycleEvent], None] | None = None,
     initial_search_context: list[dict[str, Any]] | None = None,
     snapshot_callback: Any | None = None,
     resume: Any | None = None,
@@ -198,9 +199,21 @@ def run_checkpointed_agent(
     graph_input: RuntimeAgentRunRequest | Command = payload
     if resume is not None:
         graph_input = build_resume_command(resume)
+    lifecycle_builder = LifecycleEventBuilder(run_metadata=run_metadata) if lifecycle_callback is not None else None
     with compile_graph_with_checkpointer(builder) as graph:
-        result = graph.invoke(graph_input, config=config)
-    return _coerce_durable_outcome(result, thread_id=run_metadata.thread_id)
+        try:
+            if lifecycle_builder is not None:
+                lifecycle_callback(lifecycle_builder.emit_recovery_started())
+            result = graph.invoke(graph_input, config=config)
+            outcome = _coerce_durable_outcome(result, thread_id=run_metadata.thread_id)
+            if lifecycle_builder is not None:
+                terminal_status = "paused" if outcome.status == "paused" else "success"
+                lifecycle_callback(lifecycle_builder.emit_terminal(status=terminal_status))
+            return outcome
+        except Exception as exc:
+            if lifecycle_builder is not None:
+                lifecycle_callback(lifecycle_builder.emit_terminal(status="error", error=str(exc)))
+            raise
 
 
 def run_runtime_agent(

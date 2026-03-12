@@ -1,7 +1,9 @@
 import logging
 import os
+import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from langchain_openai import ChatOpenAI
 from sqlalchemy.orm import Session
 
@@ -11,6 +13,7 @@ from agent_search.public_api import cancel_run as sdk_cancel_run
 from agent_search.public_api import get_run_status as sdk_get_run_status
 from agent_search.public_api import resume_run as sdk_resume_run
 from agent_search.public_api import run_async as sdk_run_async
+from agent_search.runtime.jobs import get_agent_run_job, iter_agent_run_events
 from db import DATABASE_URL
 from db import get_db
 from schemas import (
@@ -58,6 +61,11 @@ def _build_thread_config(thread_id: str | None) -> dict[str, str] | None:
     return {"thread_id": thread_id}
 
 
+def _encode_sse_event(event: object) -> str:
+    payload = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
+    return f"id: {event.event_id}\nevent: {event.event_type}\ndata: {payload}\n\n"
+
+
 @router.post("/run", response_model=RuntimeAgentRunResponse)
 def runtime_agent_run(
     payload: RuntimeAgentRunRequest,
@@ -93,6 +101,26 @@ def runtime_agent_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
         return sdk_get_run_status(job_id)
     except SDKConfigurationError:
         raise HTTPException(status_code=404, detail="Job not found.")
+
+
+@router.get("/run-events/{job_id}")
+def runtime_agent_run_events(
+    job_id: str,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+) -> StreamingResponse:
+    logger.info("Agent router streaming lifecycle events job_id=%s last_event_id=%s", job_id, last_event_id)
+    if get_agent_run_job(job_id) is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    def event_stream():
+        for event in iter_agent_run_events(job_id, after_event_id=last_event_id):
+            yield _encode_sse_event(event)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 
 @router.post("/run-cancel/{job_id}", response_model=RuntimeAgentRunAsyncCancelResponse)
