@@ -10,7 +10,7 @@
 
 - Current phase: 2 - Durable Execution and Identity Semantics
 - Current plan: 02-01
-- Current task: 1
+- Current task: 2
 - Current status: implemented
 - Progress: 20% (1/5 phases complete)
 
@@ -43,6 +43,6 @@ Progress bar: `[#----] 20%`
 
 ## Session Continuity
 
-- Last completed artifact: `src/backend/alembic/versions/008_add_runtime_execution_durability_tables.py` plus durability ORM additions in `src/backend/models.py`.
-- Last updated traceability: Phase 2 plan `02-01` task 1 marked implemented after migration verification.
+- Last completed artifact: `src/backend/agent_search/runtime/persistence.py` with Postgres checkpointer bootstrap and graph compile helpers.
+- Last updated traceability: Phase 2 plan `02-01` task 2 marked implemented after Docker bootstrap verification.
 - Next recommended command: `/gsd-implement-next`
