@@ -4,10 +4,11 @@ from dataclasses import dataclass
 import hashlib
 import json
 import logging
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.graph.execution import execute_runtime_graph
+from agent_search.runtime.lifecycle_events import RuntimeLifecycleEvent
 from agent_search.runtime.graph.state import RuntimeGraphContext
 from agent_search.runtime.persistence import compile_graph_with_checkpointer
 from agent_search.runtime.resume import build_resume_command
@@ -209,6 +210,7 @@ def run_runtime_agent(
     vector_store: Any | None = None,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
+    lifecycle_callback: Callable[[RuntimeLifecycleEvent], None] | None = None,
 ) -> RuntimeAgentRunResponse:
     if model is None:
         logger.error("Runtime core run rejected missing model")
@@ -263,6 +265,7 @@ def run_runtime_agent(
             initial_search_context=initial_search_context,
         ),
         run_metadata=run_metadata,
+        lifecycle_callback=lifecycle_callback,
     )
     rag_state = to_rag_state(state)
     if runtime_trace is not None:
