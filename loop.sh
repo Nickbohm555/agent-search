@@ -31,6 +31,16 @@ build_codex_exec_command() {
   printf '%s' "$cmd"
 }
 
+print_input_file() {
+  local label="$1"
+  local path="$2"
+
+  echo "----- BEGIN $label: $path -----"
+  cat "$path"
+  printf '\n'
+  echo "----- END $label: $path -----"
+}
+
 print_codex_usage_summary() {
   local iteration="$1"
   local usage_jsonl_file="$2"
@@ -167,6 +177,9 @@ while :; do
   fi
   [ "$MAX_ITERATIONS" -gt 0 ] && echo "Max iterations: $MAX_ITERATIONS"
   echo "=================================================="
+
+  print_input_file "PROMPT" "$PROMPT_FILE"
+  print_input_file "AGENTS" "$AGENTS_FILE"
 
   if is_codex_exec_command; then
     rm -f "$LOOP_USAGE_JSONL" "$LOOP_LAST_MESSAGE"
