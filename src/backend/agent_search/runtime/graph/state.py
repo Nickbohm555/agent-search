@@ -3,8 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
-from agent_search.runtime.state import RAGState, to_rag_state
-from schemas import RuntimeAgentRunRequest
+from typing_extensions import TypedDict
+
+from agent_search.runtime.state import (
+    CitationRowsByIndexChannel,
+    DecompositionSubQuestionsChannel,
+    StageSnapshotsChannel,
+    SubQAChannel,
+    SubQuestionArtifactsChannel,
+    to_rag_state,
+)
+from schemas import GraphRunMetadata, RuntimeAgentRunRequest
 
 
 @dataclass(slots=True)
@@ -20,10 +29,10 @@ class RuntimeGraphContext:
 def to_runtime_graph_state(
     payload: RuntimeAgentRunRequest,
     *,
-    run_metadata: Any,
+    run_metadata: GraphRunMetadata,
     initial_search_context: list[dict[str, Any]] | None = None,
-) -> RAGState:
-    return to_rag_state(
+) -> "RuntimeGraphState":
+    base_state = to_rag_state(
         {
             "main_question": payload.query,
             "decomposition_sub_questions": [],
@@ -34,12 +43,27 @@ def to_runtime_graph_state(
             "sub_qa": [],
             "output": "",
             "stage_snapshots": [],
-            "initial_search_context": list(initial_search_context or []),
         }
+    )
+    return RuntimeGraphState(
+        **base_state,
+        initial_search_context=list(initial_search_context or []),
     )
 
 
-RuntimeGraphState = RAGState
+class RuntimeGraphState(TypedDict):
+    main_question: str
+    decomposition_sub_questions: DecompositionSubQuestionsChannel
+    sub_question_artifacts: SubQuestionArtifactsChannel
+    final_answer: str
+    citation_rows_by_index: CitationRowsByIndexChannel
+    run_metadata: GraphRunMetadata
+    sub_qa: SubQAChannel
+    output: str
+    stage_snapshots: StageSnapshotsChannel
+    initial_search_context: list[dict[str, Any]]
+
+
 RuntimeGraphStateMapping = Mapping[str, Any]
 
 

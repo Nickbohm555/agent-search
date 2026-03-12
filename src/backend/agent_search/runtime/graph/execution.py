@@ -6,19 +6,31 @@ from agent_search.runtime.graph.builder import build_runtime_graph
 from agent_search.runtime.graph.state import RuntimeGraphContext, to_runtime_graph_state
 
 
+def _build_execution_config(
+    *,
+    run_metadata: Any,
+    config: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    resolved = dict(config or {})
+    configurable = dict(resolved.get("configurable") or {})
+    configurable.setdefault("thread_id", getattr(run_metadata, "thread_id", ""))
+    resolved["configurable"] = configurable
+    return resolved
+
+
 def execute_runtime_graph(
     *,
     context: RuntimeGraphContext,
     run_metadata: Any,
     config: Mapping[str, Any] | None = None,
 ) -> Any:
-    graph = build_runtime_graph()
+    graph = build_runtime_graph(context=context)
     graph_input = to_runtime_graph_state(
         context.payload,
         run_metadata=run_metadata,
         initial_search_context=context.initial_search_context,
     )
-    return graph.invoke(graph_input, config=config)
+    return graph.invoke(graph_input, config=_build_execution_config(run_metadata=run_metadata, config=config))
 
 
 __all__ = ["execute_runtime_graph"]
