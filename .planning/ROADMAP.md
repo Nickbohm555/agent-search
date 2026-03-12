@@ -73,9 +73,9 @@ This roadmap is derived directly from the v1 requirements for LangGraph migratio
 **Plans:** 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md - Runtime lifecycle streaming contract and SSE delivery
-- [ ] 04-02-PLAN.md - Trace correlation tuple propagation and contract validation
-- [ ] 04-03-PLAN.md - Remote Compose + pip SDK validation matrix and evidence
+- [x] 04-01-PLAN.md - Runtime lifecycle streaming contract and SSE delivery
+- [x] 04-02-PLAN.md - Trace correlation tuple propagation and contract validation
+- [x] 04-03-PLAN.md - Remote Compose + pip SDK validation matrix and evidence
 
 ### Phase 5 - Major Release and Migration Documentation
 
@@ -104,7 +104,7 @@ Plans:
 | 1 - State Contract Foundation | Stable typed state and node contracts | SGF-01, SGF-02, SGF-03 | Completed |
 | 2 - Durable Execution and Identity Semantics | Replay-safe durability and thread identity | REL-01, REL-02, REL-03, REL-04 | Completed |
 | 3 - End-to-End LangGraph RAG Cutover | Full RAG flow runs via LangGraph | SGF-04 | Completed |
-| 4 - Observability and Remote Runtime Validation | Streaming/tracing and remote deployment proof | OBS-01, OBS-02, REL-05 | Pending |
+| 4 - Observability and Remote Runtime Validation | Streaming/tracing and remote deployment proof | OBS-01, OBS-02, REL-05 | Completed |
 | 5 - Major Release and Migration Documentation | Release adoption and migration clarity | DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Pending |
 
 ## Coverage Validation
