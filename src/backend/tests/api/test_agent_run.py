@@ -322,7 +322,7 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
 
 def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypatch) -> None:
     from routers import agent as agent_router_module
-    from schemas import RuntimeAgentRunAsyncStatusResponse, RuntimeAgentRunResponse, SubQuestionAnswer
+    from schemas import AgentRunStageMetadata, CitationSourceRow, RuntimeAgentRunAsyncStatusResponse, RuntimeAgentRunResponse, SubQuestionAnswer
 
     def fake_sdk_get_run_status(job_id):
         assert job_id == "job-456"
@@ -333,16 +333,36 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
             status="completed",
             message="Run completed.",
             stage="completed",
-            stages=[],
+            stages=[
+                AgentRunStageMetadata(
+                    stage="subquestions_ready",
+                    status="completed",
+                    sub_question="",
+                    lane_index=0,
+                    lane_total=1,
+                    emitted_at=101.0,
+                ),
+                AgentRunStageMetadata(
+                    stage="synthesize",
+                    status="completed",
+                    sub_question="What is NATO?",
+                    lane_index=1,
+                    lane_total=1,
+                    emitted_at=101.4,
+                ),
+            ],
             decomposition_sub_questions=["What is NATO?"],
             sub_question_artifacts=[],
             sub_qa=[
                 SubQuestionAnswer(
                     sub_question="What is NATO?",
                     sub_answer="A political and military alliance.",
+                    expanded_query="What is NATO and how is it structured?",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
                 )
             ],
-            output="NATO is a political and military alliance.",
+            output="NATO is a political and military alliance. [1]",
             result=RuntimeAgentRunResponse(
                 main_question="What is NATO?",
                 thread_id="550e8400-e29b-41d4-a716-446655440001",
@@ -350,9 +370,23 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
                     SubQuestionAnswer(
                         sub_question="What is NATO?",
                         sub_answer="A political and military alliance.",
+                        expanded_query="What is NATO and how is it structured?",
+                        answerable=True,
+                        verification_reason="grounded_in_reranked_documents",
                     )
                 ],
-                output="NATO is a political and military alliance.",
+                output="NATO is a political and military alliance. [1]",
+                final_citations=[
+                    CitationSourceRow(
+                        citation_index=1,
+                        rank=1,
+                        title="NATO overview",
+                        source="docs://nato-overview",
+                        content="NATO is a political and military alliance.",
+                        document_id="doc-nato-overview",
+                        score=0.96,
+                    )
+                ],
             ),
             error=None,
             cancel_requested=False,
@@ -376,7 +410,24 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
         "status": "completed",
         "message": "Run completed.",
         "stage": "completed",
-        "stages": [],
+        "stages": [
+            {
+                "stage": "subquestions_ready",
+                "status": "completed",
+                "sub_question": "",
+                "lane_index": 0,
+                "lane_total": 1,
+                "emitted_at": 101.0,
+            },
+            {
+                "stage": "synthesize",
+                "status": "completed",
+                "sub_question": "What is NATO?",
+                "lane_index": 1,
+                "lane_total": 1,
+                "emitted_at": 101.4,
+            },
+        ],
         "decomposition_sub_questions": ["What is NATO?"],
         "sub_question_artifacts": [],
         "sub_qa": [
@@ -384,13 +435,13 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
                 "sub_question": "What is NATO?",
                 "sub_answer": "A political and military alliance.",
                 "tool_call_input": "",
-                "expanded_query": "",
+                "expanded_query": "What is NATO and how is it structured?",
                 "sub_agent_response": "",
-                "answerable": False,
-                "verification_reason": "",
+                "answerable": True,
+                "verification_reason": "grounded_in_reranked_documents",
             }
         ],
-        "output": "NATO is a political and military alliance.",
+        "output": "NATO is a political and military alliance. [1]",
         "result": {
             "main_question": "What is NATO?",
             "thread_id": "550e8400-e29b-41d4-a716-446655440001",
@@ -399,14 +450,24 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
                     "sub_question": "What is NATO?",
                     "sub_answer": "A political and military alliance.",
                     "tool_call_input": "",
-                    "expanded_query": "",
+                    "expanded_query": "What is NATO and how is it structured?",
                     "sub_agent_response": "",
-                    "answerable": False,
-                    "verification_reason": "",
+                    "answerable": True,
+                    "verification_reason": "grounded_in_reranked_documents",
                 }
             ],
-            "output": "NATO is a political and military alliance.",
-            "final_citations": [],
+            "output": "NATO is a political and military alliance. [1]",
+            "final_citations": [
+                {
+                    "citation_index": 1,
+                    "rank": 1,
+                    "title": "NATO overview",
+                    "source": "docs://nato-overview",
+                    "content": "NATO is a political and military alliance.",
+                    "document_id": "doc-nato-overview",
+                    "score": 0.96,
+                }
+            ],
         },
         "error": None,
         "cancel_requested": False,

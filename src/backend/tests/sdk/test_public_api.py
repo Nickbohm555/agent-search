@@ -10,7 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
-from schemas import RuntimeAgentRunResponse
+from schemas import CitationSourceRow, RuntimeAgentRunResponse, SubQuestionAnswer
 
 
 class _CompatibleVectorStore:
@@ -38,7 +38,33 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
         captured["vector_store"] = vector_store
         captured["callbacks"] = callbacks
         captured["langfuse_callback"] = langfuse_callback
-        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+        return RuntimeAgentRunResponse(
+            main_question=payload.query,
+            thread_id="550e8400-e29b-41d4-a716-446655440020",
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="Which lane completed?",
+                    sub_answer="The synthesis lane completed with grounded evidence.",
+                    tool_call_input='{"query":"Which lane completed?"}',
+                    expanded_query="Which orchestration lane completed under LangGraph?",
+                    sub_agent_response="The lane completed after retrieval and synthesis.",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            output="ok [2]",
+            final_citations=[
+                CitationSourceRow(
+                    citation_index=2,
+                    rank=1,
+                    title="Lifecycle evidence",
+                    source="docs://lifecycle",
+                    content="Synthesis completed after retrieval and answer stages.",
+                    document_id="doc-2",
+                    score=0.91,
+                )
+            ],
+        )
 
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
     sentinel_model = object()
@@ -53,7 +79,12 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
 
     assert isinstance(response, RuntimeAgentRunResponse)
     assert response.main_question == "sdk contract query"
-    assert response.output == "ok"
+    assert response.thread_id == "550e8400-e29b-41d4-a716-446655440020"
+    assert response.output == "ok [2]"
+    assert response.sub_qa[0].answerable is True
+    assert response.sub_qa[0].verification_reason == "grounded_in_reranked_documents"
+    assert response.final_citations[0].citation_index == 2
+    assert response.final_citations[0].title == "Lifecycle evidence"
     assert captured == {
         "query": "sdk contract query",
         "model": sentinel_model,
@@ -100,16 +131,19 @@ def test_build_langfuse_callback_delegates_to_tracing_utility(monkeypatch) -> No
     marker = object()
     captured: dict[str, object] = {}
 
-    def fake_builder(*, scope: str, sampling_key: str | None = None):
+    def fake_builder(*, scope: str, sampling_key: str | None = None, settings=None):
         captured["scope"] = scope
         captured["sampling_key"] = sampling_key
+        captured["settings"] = settings
         return marker
 
     monkeypatch.setattr(public_api, "_build_langfuse_callback_handler", fake_builder)
     callback = public_api.build_langfuse_callback(sampling_key="sdk-test")
 
     assert callback is marker
-    assert captured == {"scope": "runtime", "sampling_key": "sdk-test"}
+    assert captured["scope"] == "runtime"
+    assert captured["sampling_key"] == "sdk-test"
+    assert captured["settings"] is not None
 
 
 def test_advanced_rag_does_not_build_langfuse_callback_from_settings(monkeypatch) -> None:

@@ -11,7 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
-from schemas import AgentRunStageMetadata, RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import AgentRunStageMetadata, CitationSourceRow, RuntimeAgentRunResponse, SubQuestionAnswer
 
 
 class _CompatibleVectorStore:
@@ -151,18 +151,54 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
                     status="completed",
                     sub_question="",
                     lane_index=0,
-                    lane_total=2,
+                    lane_total=1,
                     emitted_at=123.0,
+                ),
+                AgentRunStageMetadata(
+                    stage="synthesize",
+                    status="completed",
+                    sub_question="What is NATO?",
+                    lane_index=1,
+                    lane_total=1,
+                    emitted_at=124.5,
                 )
             ],
             decomposition_sub_questions=["What is NATO?"],
             sub_question_artifacts=[],
-            sub_qa=[SubQuestionAnswer(sub_question="What is NATO?", sub_answer="An alliance.")],
-            output="NATO is an alliance.",
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What is NATO?",
+                    sub_answer="An alliance.",
+                    expanded_query="What is NATO and how is it structured?",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            output="NATO is an alliance. [1]",
             result=RuntimeAgentRunResponse(
                 main_question="What is NATO?",
-                sub_qa=[SubQuestionAnswer(sub_question="What is NATO?", sub_answer="An alliance.")],
-                output="NATO is an alliance.",
+                thread_id="550e8400-e29b-41d4-a716-446655440000",
+                sub_qa=[
+                    SubQuestionAnswer(
+                        sub_question="What is NATO?",
+                        sub_answer="An alliance.",
+                        expanded_query="What is NATO and how is it structured?",
+                        answerable=True,
+                        verification_reason="grounded_in_reranked_documents",
+                    )
+                ],
+                output="NATO is an alliance. [1]",
+                final_citations=[
+                    CitationSourceRow(
+                        citation_index=1,
+                        rank=1,
+                        title="NATO reference",
+                        source="docs://nato",
+                        content="NATO is a political and military alliance.",
+                        document_id="doc-nato",
+                        score=0.97,
+                    )
+                ],
             ),
             error=None,
             cancel_requested=False,
@@ -180,8 +216,14 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
     assert payload["status"] == "completed"
     assert payload["stage"] == "completed"
     assert payload["elapsed_ms"] == 1500
+    assert [stage["stage"] for stage in payload["stages"]] == ["subquestions_ready", "synthesize"]
+    assert payload["sub_qa"][0]["answerable"] is True
+    assert payload["sub_qa"][0]["verification_reason"] == "grounded_in_reranked_documents"
     assert payload["result"]["main_question"] == "What is NATO?"
-    assert payload["result"]["output"] == "NATO is an alliance."
+    assert payload["result"]["thread_id"] == "550e8400-e29b-41d4-a716-446655440000"
+    assert payload["result"]["output"] == "NATO is an alliance. [1]"
+    assert payload["result"]["final_citations"][0]["citation_index"] == 1
+    assert payload["result"]["final_citations"][0]["title"] == "NATO reference"
 
 
 def test_cancel_run_returns_success_shape(monkeypatch) -> None:
