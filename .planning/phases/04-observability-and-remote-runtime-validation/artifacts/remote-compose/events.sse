@@ -1,0 +1,80 @@
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000001
+event: run.started
+data: {"event_type":"run.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000001","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"runtime","status":"running","emitted_at":"2026-03-12T23:37:48.112925+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000002
+event: stage.started
+data: {"event_type":"stage.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000002","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"decompose","status":"running","emitted_at":"2026-03-12T23:37:56.682413+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000003
+event: stage.updated
+data: {"event_type":"stage.updated","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000003","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"decompose","status":"running","emitted_at":"2026-03-12T23:37:56.682613+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000004
+event: stage.completed
+data: {"event_type":"stage.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000004","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"decompose","status":"completed","emitted_at":"2026-03-12T23:37:56.682650+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000005
+event: stage.started
+data: {"event_type":"stage.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000005","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"expand","status":"running","emitted_at":"2026-03-12T23:37:56.682673+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000006
+event: stage.updated
+data: {"event_type":"stage.updated","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000006","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"expand","status":"running","emitted_at":"2026-03-12T23:37:56.682695+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000007
+event: stage.completed
+data: {"event_type":"stage.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000007","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"expand","status":"completed","emitted_at":"2026-03-12T23:37:56.682714+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000008
+event: stage.started
+data: {"event_type":"stage.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000008","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"search","status":"running","emitted_at":"2026-03-12T23:37:56.682736+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000009
+event: stage.updated
+data: {"event_type":"stage.updated","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000009","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"search","status":"running","emitted_at":"2026-03-12T23:37:56.682762+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000010
+event: stage.completed
+data: {"event_type":"stage.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000010","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"search","status":"completed","emitted_at":"2026-03-12T23:37:56.682782+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000011
+event: stage.started
+data: {"event_type":"stage.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000011","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"rerank","status":"running","emitted_at":"2026-03-12T23:37:56.682800+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000012
+event: stage.updated
+data: {"event_type":"stage.updated","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000012","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"rerank","status":"running","emitted_at":"2026-03-12T23:37:56.682818+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000013
+event: stage.completed
+data: {"event_type":"stage.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000013","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"rerank","status":"completed","emitted_at":"2026-03-12T23:37:56.682838+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000014
+event: stage.started
+data: {"event_type":"stage.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000014","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"answer","status":"running","emitted_at":"2026-03-12T23:37:56.682855+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000015
+event: stage.updated
+data: {"event_type":"stage.updated","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000015","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"answer","status":"running","emitted_at":"2026-03-12T23:37:56.682872+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000016
+event: stage.completed
+data: {"event_type":"stage.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000016","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"answer","status":"completed","emitted_at":"2026-03-12T23:37:56.682889+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000017
+event: stage.started
+data: {"event_type":"stage.started","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000017","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"synthesize_final","status":"running","emitted_at":"2026-03-12T23:37:56.682905+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000018
+event: stage.updated
+data: {"event_type":"stage.updated","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000018","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"synthesize_final","status":"running","emitted_at":"2026-03-12T23:37:56.682921+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000019
+event: stage.completed
+data: {"event_type":"stage.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000019","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"synthesize_final","status":"completed","emitted_at":"2026-03-12T23:37:56.682937+00:00","error":null}
+
+id: 2be12870-543b-46dc-9da6-3d211f283bd4:000020
+event: run.completed
+data: {"event_type":"run.completed","event_id":"2be12870-543b-46dc-9da6-3d211f283bd4:000020","run_id":"2be12870-543b-46dc-9da6-3d211f283bd4","thread_id":"550e8400-e29b-41d4-a716-44665544c040","trace_id":"2be12870-543b-46dc-9da6-3d211f283bd4","stage":"synthesize_final","status":"success","emitted_at":"2026-03-12T23:37:56.682973+00:00","error":null}
+

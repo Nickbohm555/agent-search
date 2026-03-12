@@ -9,8 +9,8 @@
 ## Current Position
 
 - Current phase: 4 - Observability and Remote Runtime Validation
-- Current plan: 04-02
-- Current task: 2
+- Current plan: 04-03
+- Current task: 1
 - Current status: implemented
 - Progress: 60% (3/5 phases complete)
 
@@ -44,6 +44,6 @@ Progress bar: `[###--] 60%`
 
 ## Session Continuity
 
-- Last completed artifact: correlation joinability regression coverage for Phase 4 plan `04-02` task `2`, including success/failure-path assertions across runtime tracing and API lifecycle metadata surfaces.
-- Last updated traceability: `IMPLEMENTATION_PLAN.md` advanced to section 39 after verification passed via `docker compose exec backend uv run pytest src/backend/tests/runtime/test_trace_correlation.py src/backend/tests/api/test_trace_metadata_contract.py` on 2026-03-12.
+- Last completed artifact: remote Compose and fresh pip SDK validation scripts for Phase 4 plan `04-03` task `1`, including end-to-end run, lifecycle stream, and run/thread/trace evidence artifacts for both environments.
+- Last updated traceability: `IMPLEMENTATION_PLAN.md` advanced to section 41 after verification passed via `bash scripts/validation/phase4_remote_compose.sh` and `bash scripts/validation/phase4_remote_sdk.sh` on 2026-03-12.
 - Next recommended command: `/gsd-implement-next`

@@ -1,0 +1,640 @@
+{
+  "environment": "remote-compose",
+  "checked_at": "2026-03-12T23:37:56Z",
+  "health": {
+    "status": "ok"
+  },
+  "start": {
+    "job_id": "2be12870-543b-46dc-9da6-3d211f283bd4",
+    "run_id": "2be12870-543b-46dc-9da6-3d211f283bd4",
+    "thread_id": "550e8400-e29b-41d4-a716-44665544c040",
+    "status": "running"
+  },
+  "terminal_status": {
+    "job_id": "2be12870-543b-46dc-9da6-3d211f283bd4",
+    "run_id": "2be12870-543b-46dc-9da6-3d211f283bd4",
+    "thread_id": "550e8400-e29b-41d4-a716-44665544c040",
+    "status": "success",
+    "message": "Completed.",
+    "stage": "synthesize_final",
+    "stages": [
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6833408
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6835308
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.683578
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6836247
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6836572
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6837986
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6838436
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6839206
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.684
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6840465
+      },
+      {
+        "stage": "rerank",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.68419
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6843386
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6843936
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6844225
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6844614
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6844954
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6846194
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6846614
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.684695
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6847332
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.684762
+      },
+      {
+        "stage": "rerank",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6848829
+      },
+      {
+        "stage": "answer",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685084
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685227
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6852808
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685316
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6853542
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685387
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6855075
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685548
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.68558
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6856177
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6856446
+      },
+      {
+        "stage": "rerank",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6857638
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.68591
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685951
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.685978
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6860137
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.686054
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.686213
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6862557
+      },
+      {
+        "stage": "subquestions_ready",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6862893
+      },
+      {
+        "stage": "expand",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6863272
+      },
+      {
+        "stage": "search",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.686354
+      },
+      {
+        "stage": "rerank",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6864908
+      },
+      {
+        "stage": "answer",
+        "status": "completed",
+        "sub_question": "What does the acronym NATO stand for?",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6866324
+      },
+      {
+        "stage": "synthesize_final",
+        "status": "completed",
+        "sub_question": "",
+        "lane_index": 0,
+        "lane_total": 0,
+        "emitted_at": 1773358676.6867695
+      }
+    ],
+    "decomposition_sub_questions": [
+      "What does the acronym NATO stand for?"
+    ],
+    "sub_question_artifacts": [
+      {
+        "sub_question": "What does the acronym NATO stand for?",
+        "expanded_queries": [
+          "What does the acronym NATO stand for?",
+          "What is the full form of the acronym NATO?",
+          "Can you explain the meaning behind the abbreviation NATO?",
+          "What words make up the acronym NATO?"
+        ],
+        "retrieved_docs": [
+          {
+            "citation_index": 1,
+            "rank": 1,
+            "title": "North Atlantic Treaty",
+            "source": "https://example.test/north-atlantic-treaty",
+            "content": "The North Atlantic Treaty established NATO as a collective defense alliance among member states.",
+            "document_id": "",
+            "score": 0.02474937855367798
+          },
+          {
+            "citation_index": 2,
+            "rank": 2,
+            "title": "NATO Article 5",
+            "source": "https://example.test/nato-article-5",
+            "content": "Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.",
+            "document_id": "",
+            "score": 0.031880972526441065
+          },
+          {
+            "citation_index": 3,
+            "rank": 3,
+            "title": "NATO",
+            "source": "https://example.test/nato",
+            "content": "NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.",
+            "document_id": "",
+            "score": 0.016656038437243503
+          }
+        ],
+        "retrieval_provenance": [
+          {
+            "query": "What does the acronym NATO stand for?",
+            "query_index": 1,
+            "query_rank": 1,
+            "document_identity": "source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.",
+            "document_id": "",
+            "source": "https://example.test/north-atlantic-treaty",
+            "deduped": false
+          },
+          {
+            "query": "What is the full form of the acronym NATO?",
+            "query_index": 2,
+            "query_rank": 1,
+            "document_identity": "source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.",
+            "document_id": "",
+            "source": "https://example.test/north-atlantic-treaty",
+            "deduped": true
+          },
+          {
+            "query": "What is the full form of the acronym NATO?",
+            "query_index": 2,
+            "query_rank": 2,
+            "document_identity": "source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.",
+            "document_id": "",
+            "source": "https://example.test/nato-article-5",
+            "deduped": false
+          },
+          {
+            "query": "Can you explain the meaning behind the abbreviation NATO?",
+            "query_index": 3,
+            "query_rank": 1,
+            "document_identity": "source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.",
+            "document_id": "",
+            "source": "https://example.test/nato-article-5",
+            "deduped": true
+          },
+          {
+            "query": "Can you explain the meaning behind the abbreviation NATO?",
+            "query_index": 3,
+            "query_rank": 2,
+            "document_identity": "source_content:https://example.test/nato|NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.",
+            "document_id": "",
+            "source": "https://example.test/nato",
+            "deduped": false
+          },
+          {
+            "query": "What words make up the acronym NATO?",
+            "query_index": 4,
+            "query_rank": 1,
+            "document_identity": "source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.",
+            "document_id": "",
+            "source": "https://example.test/nato-article-5",
+            "deduped": true
+          },
+          {
+            "query": "What words make up the acronym NATO?",
+            "query_index": 4,
+            "query_rank": 2,
+            "document_identity": "source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.",
+            "document_id": "",
+            "source": "https://example.test/north-atlantic-treaty",
+            "deduped": true
+          },
+          {
+            "query": "What words make up the acronym NATO?",
+            "query_index": 4,
+            "query_rank": 3,
+            "document_identity": "source_content:https://example.test/nato|NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.",
+            "document_id": "",
+            "source": "https://example.test/nato",
+            "deduped": true
+          }
+        ],
+        "reranked_docs": [
+          {
+            "citation_index": 1,
+            "rank": 1,
+            "title": "NATO",
+            "source": "https://example.test/nato",
+            "content": "NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.",
+            "document_id": "",
+            "score": 1.0
+          },
+          {
+            "citation_index": 2,
+            "rank": 2,
+            "title": "North Atlantic Treaty",
+            "source": "https://example.test/north-atlantic-treaty",
+            "content": "The North Atlantic Treaty established NATO as a collective defense alliance among member states.",
+            "document_id": "",
+            "score": 0.6
+          },
+          {
+            "citation_index": 3,
+            "rank": 3,
+            "title": "NATO Article 5",
+            "source": "https://example.test/nato-article-5",
+            "content": "Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.",
+            "document_id": "",
+            "score": 0.2
+          }
+        ],
+        "sub_answer": "NATO stands for the North Atlantic Treaty Organization [1].",
+        "citation_rows_by_index": {
+          "1": {
+            "citation_index": 1,
+            "rank": 1,
+            "title": "NATO",
+            "source": "https://example.test/nato",
+            "content": "NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.",
+            "document_id": "",
+            "score": 1.0
+          }
+        }
+      }
+    ],
+    "sub_qa": [
+      {
+        "sub_question": "What does the acronym NATO stand for?",
+        "sub_answer": "NATO stands for the North Atlantic Treaty Organization [1].",
+        "tool_call_input": "{\"query\": \"What does the acronym NATO stand for?\", \"expanded_queries\": [\"What does the acronym NATO stand for?\", \"What is the full form of the acronym NATO?\", \"Can you explain the meaning behind the abbreviation NATO?\", \"What words make up the acronym NATO?\"], \"retrieval_provenance\": [{\"query\": \"What does the acronym NATO stand for?\", \"query_index\": 1, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.\", \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\", \"deduped\": false}, {\"query\": \"What is the full form of the acronym NATO?\", \"query_index\": 2, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.\", \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\", \"deduped\": true}, {\"query\": \"What is the full form of the acronym NATO?\", \"query_index\": 2, \"query_rank\": 2, \"document_identity\": \"source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.\", \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\", \"deduped\": false}, {\"query\": \"Can you explain the meaning behind the abbreviation NATO?\", \"query_index\": 3, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.\", \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\", \"deduped\": true}, {\"query\": \"Can you explain the meaning behind the abbreviation NATO?\", \"query_index\": 3, \"query_rank\": 2, \"document_identity\": \"source_content:https://example.test/nato|NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.\", \"document_id\": \"\", \"source\": \"https://example.test/nato\", \"deduped\": false}, {\"query\": \"What words make up the acronym NATO?\", \"query_index\": 4, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.\", \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\", \"deduped\": true}, {\"query\": \"What words make up the acronym NATO?\", \"query_index\": 4, \"query_rank\": 2, \"document_identity\": \"source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.\", \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\", \"deduped\": true}, {\"query\": \"What words make up the acronym NATO?\", \"query_index\": 4, \"query_rank\": 3, \"document_identity\": \"source_content:https://example.test/nato|NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.\", \"document_id\": \"\", \"source\": \"https://example.test/nato\", \"deduped\": true}], \"limit\": 3, \"rerank_provenance\": [{\"reranked_rank\": 1, \"citation_index\": 1, \"score\": 1.0, \"document_id\": \"\", \"source\": \"https://example.test/nato\"}, {\"reranked_rank\": 2, \"citation_index\": 2, \"score\": 0.6, \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\"}, {\"reranked_rank\": 3, \"citation_index\": 3, \"score\": 0.2, \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\"}], \"rerank_top_n\": 3, \"citation_usage\": [1], \"supporting_source_rows\": [{\"citation_index\": 1, \"rank\": 1, \"title\": \"NATO\", \"source\": \"https://example.test/nato\", \"document_id\": \"\", \"score\": 1.0}]}",
+        "expanded_query": "What is the full form of the acronym NATO?",
+        "sub_agent_response": "",
+        "answerable": true,
+        "verification_reason": "citation_supported"
+      }
+    ],
+    "output": "NATO stands for the North Atlantic Treaty Organization [1] (source: sub-question answer).",
+    "result": {
+      "main_question": "What does NATO stand for?",
+      "thread_id": "",
+      "sub_qa": [
+        {
+          "sub_question": "What does the acronym NATO stand for?",
+          "sub_answer": "NATO stands for the North Atlantic Treaty Organization [1].",
+          "tool_call_input": "{\"query\": \"What does the acronym NATO stand for?\", \"expanded_queries\": [\"What does the acronym NATO stand for?\", \"What is the full form of the acronym NATO?\", \"Can you explain the meaning behind the abbreviation NATO?\", \"What words make up the acronym NATO?\"], \"retrieval_provenance\": [{\"query\": \"What does the acronym NATO stand for?\", \"query_index\": 1, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.\", \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\", \"deduped\": false}, {\"query\": \"What is the full form of the acronym NATO?\", \"query_index\": 2, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.\", \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\", \"deduped\": true}, {\"query\": \"What is the full form of the acronym NATO?\", \"query_index\": 2, \"query_rank\": 2, \"document_identity\": \"source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.\", \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\", \"deduped\": false}, {\"query\": \"Can you explain the meaning behind the abbreviation NATO?\", \"query_index\": 3, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.\", \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\", \"deduped\": true}, {\"query\": \"Can you explain the meaning behind the abbreviation NATO?\", \"query_index\": 3, \"query_rank\": 2, \"document_identity\": \"source_content:https://example.test/nato|NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.\", \"document_id\": \"\", \"source\": \"https://example.test/nato\", \"deduped\": false}, {\"query\": \"What words make up the acronym NATO?\", \"query_index\": 4, \"query_rank\": 1, \"document_identity\": \"source_content:https://example.test/nato-article-5|Article 5 states that an armed attack against one NATO ally is treated as an attack against all allies.\", \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\", \"deduped\": true}, {\"query\": \"What words make up the acronym NATO?\", \"query_index\": 4, \"query_rank\": 2, \"document_identity\": \"source_content:https://example.test/north-atlantic-treaty|The North Atlantic Treaty established NATO as a collective defense alliance among member states.\", \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\", \"deduped\": true}, {\"query\": \"What words make up the acronym NATO?\", \"query_index\": 4, \"query_rank\": 3, \"document_identity\": \"source_content:https://example.test/nato|NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.\", \"document_id\": \"\", \"source\": \"https://example.test/nato\", \"deduped\": true}], \"limit\": 3, \"rerank_provenance\": [{\"reranked_rank\": 1, \"citation_index\": 1, \"score\": 1.0, \"document_id\": \"\", \"source\": \"https://example.test/nato\"}, {\"reranked_rank\": 2, \"citation_index\": 2, \"score\": 0.6, \"document_id\": \"\", \"source\": \"https://example.test/north-atlantic-treaty\"}, {\"reranked_rank\": 3, \"citation_index\": 3, \"score\": 0.2, \"document_id\": \"\", \"source\": \"https://example.test/nato-article-5\"}], \"rerank_top_n\": 3, \"citation_usage\": [1], \"supporting_source_rows\": [{\"citation_index\": 1, \"rank\": 1, \"title\": \"NATO\", \"source\": \"https://example.test/nato\", \"document_id\": \"\", \"score\": 1.0}]}",
+          "expanded_query": "What is the full form of the acronym NATO?",
+          "sub_agent_response": "",
+          "answerable": true,
+          "verification_reason": "citation_supported"
+        }
+      ],
+      "output": "NATO stands for the North Atlantic Treaty Organization [1] (source: sub-question answer).",
+      "final_citations": [
+        {
+          "citation_index": 1,
+          "rank": 1,
+          "title": "NATO",
+          "source": "https://example.test/nato",
+          "content": "NATO stands for the North Atlantic Treaty Organization. It is a political and military alliance founded in 1949.",
+          "document_id": "",
+          "score": 1.0
+        }
+      ]
+    },
+    "error": null,
+    "cancel_requested": false,
+    "started_at": 1773358667.9779785,
+    "finished_at": 1773358676.6991358,
+    "elapsed_ms": 8721
+  },
+  "correlation": {
+    "run_id": "2be12870-543b-46dc-9da6-3d211f283bd4",
+    "thread_id": "550e8400-e29b-41d4-a716-44665544c040",
+    "trace_id": "2be12870-543b-46dc-9da6-3d211f283bd4",
+    "event_count": 20,
+    "event_types": [
+      "run.started",
+      "stage.started",
+      "stage.updated",
+      "stage.completed",
+      "stage.started",
+      "stage.updated",
+      "stage.completed",
+      "stage.started",
+      "stage.updated",
+      "stage.completed",
+      "stage.started",
+      "stage.updated",
+      "stage.completed",
+      "stage.started",
+      "stage.updated",
+      "stage.completed",
+      "stage.started",
+      "stage.updated",
+      "stage.completed",
+      "run.completed"
+    ]
+  },
+  "artifacts": {
+    "events_ndjson": "/Users/nickbohm/Desktop/tinkering/agent-search/.planning/phases/04-observability-and-remote-runtime-validation/artifacts/remote-compose/events.ndjson",
+    "events_sse": "/Users/nickbohm/Desktop/tinkering/agent-search/.planning/phases/04-observability-and-remote-runtime-validation/artifacts/remote-compose/events.sse"
+  },
+  "assertions": {
+    "health_passed": true,
+    "run_passed": true,
+    "lifecycle_passed": true,
+    "correlation_passed": true,
+    "all_passed": true
+  }
+}
