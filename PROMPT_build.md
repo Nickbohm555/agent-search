@@ -7,8 +7,10 @@
    The file must contain exactly one non-empty line: the final commit subject only.
    Use exactly one of these formats:
    - `{phase}-{plan}-task{task-number}`
+   - `{phase}-{plan}-test{test-number}`
    - `{phase}-{plan}-summary`
    Do not include labels, bullets, explanations, markdown, or extra lines in `.loop-commit-msg`.
+7. If the current section is a testing section, update the corresponding test-plan result notes before stopping. When the source test markdown is a file such as `01-02-tests.md`, write the actual outcome back into that file too and keep the plan notes aligned.
 8. Do not end the iteration with uncommitted changes.
 9. Stop after completing that section and return 20 thumbs up so the user knows we finished.
 
