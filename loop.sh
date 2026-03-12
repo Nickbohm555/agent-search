@@ -21,7 +21,8 @@ fi
 if [ -z "${AGENT_CMD:-}" ]; then
   while :; do
     read -r -p "Which agent are you using? (claude/codex): " AGENT_CHOICE
-    case "${AGENT_CHOICE,,}" in
+    AGENT_CHOICE_LOWER="$(printf '%s' "$AGENT_CHOICE" | tr '[:upper:]' '[:lower:]')"
+    case "$AGENT_CHOICE_LOWER" in
       claude)
         AGENT_CMD="claude -p"
         break

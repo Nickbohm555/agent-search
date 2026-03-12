@@ -70,6 +70,13 @@ This roadmap is derived directly from the v1 requirements for LangGraph migratio
 2. Traces correlate node-level execution, thread context, and final outcome for troubleshooting and auditability.
 3. The migrated system is proven to run successfully in both remote Docker Compose and fresh remote pip-installed SDK environments.
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 04-01-PLAN.md - Runtime lifecycle streaming contract and SSE delivery
+- [ ] 04-02-PLAN.md - Trace correlation tuple propagation and contract validation
+- [ ] 04-03-PLAN.md - Remote Compose + pip SDK validation matrix and evidence
+
 ### Phase 5 - Major Release and Migration Documentation
 
 **Goal:** Integrators can adopt the LangGraph architecture via a clear major release, migration path, and updated docs.
