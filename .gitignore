@@ -24,6 +24,7 @@ implementation_plan.md
 !.planning/**/*.md
 !IMPLEMENTATION_PLAN.md
 !docs/langgraph-node-io-contracts.md
+!docs/langgraph-reducer-semantics.md
 !**/README.md
 !**/readme.md
 *.png

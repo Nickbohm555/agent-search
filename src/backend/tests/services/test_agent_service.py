@@ -47,6 +47,10 @@ def _make_session() -> Session:
     return Session(engine)
 
 
+def _serialize_agent_graph_state(state: agent_service.AgentGraphState) -> dict[str, object]:
+    return state.model_dump(mode="json")
+
+
 def test_build_runtime_timeout_config_from_env_defaults(monkeypatch) -> None:
     keys = [
         "VECTOR_STORE_ACQUISITION_TIMEOUT_S",
@@ -1118,7 +1122,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
     ]
     assert [item.sub_question for item in state.sub_qa] == ["Sub-question A?", "Sub-question B?"]
     assert state.output == "Final from 2 subanswers."
-    assert captured_flush["handler"] is langfuse_callback
+    assert captured_flush == {}
 
 
 def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapshots(monkeypatch) -> None:
@@ -1246,7 +1250,211 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
     assert state.stage_snapshots[5].sub_question == "Sub-question B?"
     assert state.stage_snapshots[5].lane_index == 2
     assert state.stage_snapshots[-1].output == "Final from 2 subanswers."
-    assert captured_flush["handler"] is langfuse_callback
+    assert captured_flush == {}
+
+
+def test_run_parallel_graph_runner_is_deterministic_across_repeat_runs(monkeypatch) -> None:
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(
+            decomposition_sub_questions=["Sub-question A?", "Sub-question B?"]
+        )
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        if node_input.sub_question == "Sub-question A?":
+            time.sleep(0.05)
+        return agent_service.ExpandNodeOutput(
+            expanded_queries=[node_input.sub_question, f"{node_input.sub_question} alt"]
+        )
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Doc for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Evidence for {node_input.sub_question}",
+            document_id=f"doc-{node_input.sub_question}",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.sub_question, "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = config, callbacks
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Reranked for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Reranked evidence for {node_input.sub_question}",
+            document_id=f"reranked-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.RerankNodeOutput(
+            reranked_docs=[row],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+        _ = callbacks
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Answer source for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Answer evidence for {node_input.sub_question}",
+            document_id=f"answer-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer=f"Answer for {node_input.sub_question} [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.SynthesizeFinalNodeOutput(
+            final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
+        )
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+    monkeypatch.setattr(agent_service, "flush_langfuse_callback_handler", lambda handler: handler)
+
+    states = [
+        agent_service.run_parallel_graph_runner(
+            payload=RuntimeAgentRunRequest(query="Main question?"),
+            vector_store="fake-store",
+            initial_search_context=[{"rank": 1, "title": "Initial context"}],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-parallel-deterministic"),
+        )
+        for _ in range(3)
+    ]
+
+    serialized_states = [_serialize_agent_graph_state(state) for state in states]
+
+    assert serialized_states == [serialized_states[0]] * 3
+    assert [snapshot["stage"] for snapshot in serialized_states[0]["stage_snapshots"]] == [
+        "decompose",
+        "expand",
+        "search",
+        "rerank",
+        "answer",
+        "expand",
+        "search",
+        "rerank",
+        "answer",
+        "synthesize_final",
+    ]
+
+
+def test_run_sequential_graph_runner_is_deterministic_across_repeat_runs(monkeypatch) -> None:
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(
+            decomposition_sub_questions=["Sub-question A?", "Sub-question B?"]
+        )
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        return agent_service.ExpandNodeOutput(
+            expanded_queries=[node_input.sub_question, f"{node_input.sub_question} alt"]
+        )
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Doc for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Evidence for {node_input.sub_question}",
+            document_id=f"doc-{node_input.sub_question}",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.sub_question, "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = config, callbacks
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Reranked for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Reranked evidence for {node_input.sub_question}",
+            document_id=f"reranked-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.RerankNodeOutput(
+            reranked_docs=[row],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+        _ = callbacks
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Answer source for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Answer evidence for {node_input.sub_question}",
+            document_id=f"answer-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer=f"Answer for {node_input.sub_question} [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.SynthesizeFinalNodeOutput(
+            final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
+        )
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+    monkeypatch.setattr(agent_service, "flush_langfuse_callback_handler", lambda handler: handler)
+
+    states = [
+        agent_service.run_sequential_graph_runner(
+            payload=RuntimeAgentRunRequest(query="Main question?"),
+            vector_store="fake-store",
+            initial_search_context=[{"rank": 1, "title": "Initial context"}],
+            run_metadata=agent_service.build_graph_run_metadata(run_id="run-sequential-deterministic"),
+        )
+        for _ in range(3)
+    ]
+
+    serialized_states = [_serialize_agent_graph_state(state) for state in states]
+
+    assert serialized_states == [serialized_states[0]] * 3
+    assert [item["sub_question"] for item in serialized_states[0]["sub_qa"]] == [
+        "Sub-question A?",
+        "Sub-question B?",
+    ]
 
 
 def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
