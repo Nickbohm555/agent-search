@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Annotated, Any, Mapping
 
 from typing_extensions import TypedDict
 
@@ -14,6 +14,33 @@ from agent_search.runtime.state import (
     to_rag_state,
 )
 from schemas import GraphRunMetadata, RuntimeAgentRunRequest
+
+
+def _merge_stable_main_question(current: str, update: str) -> str:
+    if current and update and current != update:
+        raise ValueError(f"main_question must remain stable across graph lanes: {current!r} != {update!r}")
+    return update or current
+
+
+def _merge_stable_optional_text(current: str, update: str) -> str:
+    if current and update and current != update:
+        raise ValueError(f"text channel must remain stable across graph lanes: {current!r} != {update!r}")
+    return update or current
+
+
+def _merge_stable_run_metadata(current: GraphRunMetadata, update: GraphRunMetadata) -> GraphRunMetadata:
+    if current.model_dump(mode="json") != update.model_dump(mode="json"):
+        raise ValueError("run_metadata must remain stable across graph lanes.")
+    return update.model_copy(deep=True)
+
+
+def _merge_stable_initial_search_context(
+    current: list[dict[str, Any]],
+    update: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if current and update and current != update:
+        raise ValueError("initial_search_context must remain stable across graph lanes.")
+    return [dict(item) for item in (update or current)]
 
 
 @dataclass(slots=True)
@@ -52,16 +79,16 @@ def to_runtime_graph_state(
 
 
 class RuntimeGraphState(TypedDict):
-    main_question: str
+    main_question: Annotated[str, _merge_stable_main_question]
     decomposition_sub_questions: DecompositionSubQuestionsChannel
     sub_question_artifacts: SubQuestionArtifactsChannel
-    final_answer: str
+    final_answer: Annotated[str, _merge_stable_optional_text]
     citation_rows_by_index: CitationRowsByIndexChannel
-    run_metadata: GraphRunMetadata
+    run_metadata: Annotated[GraphRunMetadata, _merge_stable_run_metadata]
     sub_qa: SubQAChannel
-    output: str
+    output: Annotated[str, _merge_stable_optional_text]
     stage_snapshots: StageSnapshotsChannel
-    initial_search_context: list[dict[str, Any]]
+    initial_search_context: Annotated[list[dict[str, Any]], _merge_stable_initial_search_context]
 
 
 RuntimeGraphStateMapping = Mapping[str, Any]

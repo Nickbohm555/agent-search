@@ -29,6 +29,10 @@ from schemas import (
     SynthesizeFinalNodeInput,
     SynthesizeFinalNodeOutput,
 )
+from agent_search.runtime.graph.builder import build_runtime_graph
+from agent_search.runtime.graph.execution import execute_runtime_graph
+from agent_search.runtime.graph.routes import route_post_decompose
+from agent_search.runtime.graph.state import RuntimeGraphContext, to_runtime_graph_state
 from schemas.decomposition import DecompositionPlan
 from agent_search.runtime import runner as runtime_runner
 from models import RuntimeExecutionRun, RuntimeIdempotencyEffect
@@ -204,6 +208,145 @@ def test_map_graph_state_to_runtime_response_is_backward_compatible() -> None:
     assert response.output == "final from graph"
     assert len(response.sub_qa) == 1
     assert response.sub_qa[0].sub_question == "Sub-question?"
+
+
+def test_build_runtime_graph_compiles_into_callable_graph() -> None:
+    graph = build_runtime_graph(
+        context=RuntimeGraphContext(
+            payload=RuntimeAgentRunRequest(query="Main question?"),
+        )
+    )
+
+    assert callable(graph.invoke)
+    assert {"decompose", "expand", "search", "rerank", "answer", "synthesize"} <= set(graph.get_graph().nodes)
+
+
+def test_route_post_decompose_fans_out_one_expand_send_per_subquestion() -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-route")
+    state = to_runtime_graph_state(
+        RuntimeAgentRunRequest(query="Main question?"),
+        run_metadata=run_metadata,
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+    )
+    state["decomposition_sub_questions"] = ["Sub-question A?", "Sub-question B?"]
+
+    routed = route_post_decompose(state)
+
+    assert [send.node for send in routed] == ["expand", "expand"]
+    assert [send.arg["decomposition_sub_questions"] for send in routed] == [
+        ["Sub-question A?"],
+        ["Sub-question B?"],
+    ]
+    assert all(send.arg["main_question"] == "Main question?" for send in routed)
+    assert all(send.arg["run_metadata"].run_id == "run-route" for send in routed)
+    assert all(send.arg["sub_question_artifacts"] == [] for send in routed)
+    assert all(send.arg["sub_qa"] == [] for send in routed)
+    assert all(send.arg["citation_rows_by_index"] == {} for send in routed)
+
+
+def test_execute_runtime_graph_preserves_deterministic_fan_in_order(monkeypatch) -> None:
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(
+            decomposition_sub_questions=["Sub-question A?", "Sub-question B?"]
+        )
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        if node_input.sub_question == "Sub-question A?":
+            time.sleep(0.05)
+        return agent_service.ExpandNodeOutput(
+            expanded_queries=[node_input.sub_question, f"{node_input.sub_question} alt"]
+        )
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Doc for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Evidence for {node_input.sub_question}",
+            document_id=f"doc-{node_input.sub_question}",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.sub_question, "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = config, callbacks
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Reranked for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Reranked evidence for {node_input.sub_question}",
+            document_id=f"reranked-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.RerankNodeOutput(
+            reranked_docs=[row],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+        _ = callbacks
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Answer source for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Answer evidence for {node_input.sub_question}",
+            document_id=f"answer-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer=f"Answer for {node_input.sub_question} [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.SynthesizeFinalNodeOutput(
+            final_answer=" | ".join(item.sub_question for item in node_input.sub_qa)
+        )
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+
+    results = [
+        execute_runtime_graph(
+            context=RuntimeGraphContext(
+                payload=RuntimeAgentRunRequest(query="Main question?"),
+                model="fake-model",
+                vector_store="fake-store",
+                initial_search_context=[{"rank": 1, "title": "Initial context"}],
+            ),
+            run_metadata=agent_service.build_graph_run_metadata(run_id=f"run-langgraph-{index}"),
+        )
+        for index in range(3)
+    ]
+
+    assert [
+        [item.sub_question for item in result["sub_qa"]]
+        for result in results
+    ] == [["Sub-question A?", "Sub-question B?"]] * 3
+    assert [
+        [item.sub_question for item in result["sub_question_artifacts"]]
+        for result in results
+    ] == [["Sub-question A?", "Sub-question B?"]] * 3
+    assert [result["output"] for result in results] == [
+        "Sub-question A? | Sub-question B?"
+    ] * 3
 
 
 def test_parse_decomposition_output_accepts_json_array_and_normalizes_questions() -> None:
