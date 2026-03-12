@@ -183,7 +183,7 @@ while :; do
 
   if is_codex_exec_command; then
     rm -f "$LOOP_USAGE_JSONL" "$LOOP_LAST_MESSAGE"
-    cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$(build_codex_exec_command "$LOOP_LAST_MESSAGE")" > "$LOOP_USAGE_JSONL"
+    cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$(build_codex_exec_command "$LOOP_LAST_MESSAGE")" | tee "$LOOP_USAGE_JSONL"
     if [ -f "$LOOP_LAST_MESSAGE" ]; then
       cat "$LOOP_LAST_MESSAGE"
       printf '\n'
