@@ -1,9 +1,15 @@
 from __future__ import annotations
 
-import operator
 from typing import Annotated, Any, Mapping, cast
 from typing_extensions import TypedDict
 
+from agent_search.runtime.reducers import (
+    merge_citation_rows_by_index,
+    merge_decomposition_sub_questions,
+    merge_stage_snapshots,
+    merge_sub_qa,
+    merge_sub_question_artifacts,
+)
 from schemas import (
     AgentGraphState,
     CitationSourceRow,
@@ -13,11 +19,11 @@ from schemas import (
     SubQuestionArtifacts,
 )
 
-DecompositionSubQuestionsChannel = Annotated[list[str], operator.add]
-SubQuestionArtifactsChannel = Annotated[list[SubQuestionArtifacts], operator.add]
-CitationRowsByIndexChannel = Annotated[dict[int, CitationSourceRow], operator.or_]
-SubQAChannel = Annotated[list[SubQuestionAnswer], operator.add]
-StageSnapshotsChannel = Annotated[list[GraphStageSnapshot], operator.add]
+DecompositionSubQuestionsChannel = Annotated[list[str], merge_decomposition_sub_questions]
+SubQuestionArtifactsChannel = Annotated[list[SubQuestionArtifacts], merge_sub_question_artifacts]
+CitationRowsByIndexChannel = Annotated[dict[int, CitationSourceRow], merge_citation_rows_by_index]
+SubQAChannel = Annotated[list[SubQuestionAnswer], merge_sub_qa]
+StageSnapshotsChannel = Annotated[list[GraphStageSnapshot], merge_stage_snapshots]
 
 
 class RAGState(TypedDict):
