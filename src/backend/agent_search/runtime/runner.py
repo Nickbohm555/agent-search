@@ -30,7 +30,7 @@ def run_runtime_agent(
     if vector_store is None:
         logger.error("Runtime core run rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
-    run_metadata = legacy_service.build_graph_run_metadata()
+    run_metadata = legacy_service.build_graph_run_metadata(thread_id=payload.thread_id)
     runtime_trace = None
     if langfuse_callback is not None:
         runtime_trace = start_langfuse_trace(

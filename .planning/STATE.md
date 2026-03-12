@@ -10,7 +10,7 @@
 
 - Current phase: 2 - Durable Execution and Identity Semantics
 - Current plan: 02-02
-- Current task: 1
+- Current task: 2
 - Current status: implemented
 - Progress: 20% (1/5 phases complete)
 
@@ -43,6 +43,6 @@ Progress bar: `[#----] 20%`
 
 ## Session Continuity
 
-- Last completed artifact: `src/backend/routers/agent.py` and `src/backend/schemas/agent.py` with HTTP thread identity pass-through for sync and async run contracts.
-- Last updated traceability: Phase 2 plan `02-02` task 1 marked implemented after Docker API contract verification.
+- Last completed artifact: `src/backend/agent_search/public_api.py`, `src/backend/agent_search/runtime/jobs.py`, and `src/backend/services/agent_jobs.py` with stable thread identity propagation across async SDK/runtime job lifecycle.
+- Last updated traceability: Phase 2 plan `02-02` task 2 marked implemented after Docker SDK async lifecycle verification.
 - Next recommended command: `/gsd-implement-next`

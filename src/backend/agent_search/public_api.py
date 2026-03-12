@@ -29,6 +29,15 @@ from schemas import (
 logger = logging.getLogger(__name__)
 
 
+def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str | None:
+    if not isinstance(config, Mapping):
+        return None
+    thread_id = config.get("thread_id")
+    if thread_id is None:
+        return None
+    return str(thread_id)
+
+
 def _resolve_langfuse_settings(settings: Mapping[str, Any] | None = None) -> LangfuseSettings:
     if settings is None:
         return LangfuseSettings.from_env()
@@ -137,7 +146,7 @@ def advanced_rag(
             langfuse_callback=langfuse_callback,
         )
         response = run_runtime_agent(
-            RuntimeAgentRunRequest(query=query),
+            RuntimeAgentRunRequest(query=query, thread_id=_resolve_request_thread_id(config)),
             model=model,
             vector_store=compatible_vector_store,
             callbacks=resolved_callbacks,
@@ -217,7 +226,7 @@ def run_async(
     try:
         # Async runtime currently resolves dependencies in service layer.
         job = start_agent_run_job(
-            RuntimeAgentRunRequest(query=query),
+            RuntimeAgentRunRequest(query=query, thread_id=_resolve_request_thread_id(config)),
             model=model,
             vector_store=compatible_vector_store,
         )
@@ -229,7 +238,12 @@ def run_async(
             type(exc).__name__,
         )
         raise mapped from exc
-    response = RuntimeAgentRunAsyncStartResponse(job_id=job.job_id, run_id=job.run_id, status=job.status)
+    response = RuntimeAgentRunAsyncStartResponse(
+        job_id=job.job_id,
+        run_id=job.run_id,
+        thread_id=job.thread_id,
+        status=job.status,
+    )
     logger.info(
         "SDK async run queued job_id=%s run_id=%s status=%s",
         response.job_id,
@@ -266,6 +280,7 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
     response = RuntimeAgentRunAsyncStatusResponse(
         job_id=job.job_id,
         run_id=job.run_id,
+        thread_id=getattr(job, "thread_id", ""),
         status=job.status,
         message=job.message,
         stage=job.stage,

@@ -52,14 +52,17 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
     sentinel_model = object()
     sentinel_vector_store = _CompatibleVectorStore()
     captured: dict[str, object] = {}
+    thread_id = "550e8400-e29b-41d4-a716-446655440000"
 
     monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-inline")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
     def fake_run_parallel_graph_runner(*, payload, vector_store, model, run_metadata, initial_search_context, snapshot_callback):
         captured["run_query"] = payload.query
+        captured["payload_thread_id"] = payload.thread_id
         captured["run_vector_store"] = vector_store
         captured["run_model"] = model
+        captured["run_thread_id"] = run_metadata.thread_id
         captured["initial_search_context"] = initial_search_context
         snapshot_callback(
             GraphStageSnapshot(
@@ -99,15 +102,18 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
         "How does SDK async wiring work?",
         model=sentinel_model,
         vector_store=sentinel_vector_store,
+        config={"thread_id": thread_id},
     )
     status_response = public_api.get_run_status(start_response.job_id)
 
     assert start_response.model_dump() == {
         "job_id": "job-inline",
         "run_id": "job-inline",
+        "thread_id": thread_id,
         "status": "success",
     }
     assert status_response.status == "success"
+    assert status_response.thread_id == thread_id
     assert status_response.stage == "subquestions_ready"
     assert status_response.result is not None
     assert status_response.result.output == "Final async answer with citation [1]."
@@ -115,8 +121,10 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
     assert status_response.stages[0].stage == "subquestions_ready"
     assert captured == {
         "run_query": "How does SDK async wiring work?",
+        "payload_thread_id": thread_id,
         "run_vector_store": sentinel_vector_store,
         "run_model": sentinel_model,
+        "run_thread_id": thread_id,
         "initial_search_context": [],
     }
 
@@ -124,16 +132,20 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
 def test_sdk_async_cancel_e2e_preserves_cancellation_semantics(monkeypatch) -> None:
     monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-cancel")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _NoopExecutor())
+    thread_id = "550e8400-e29b-41d4-a716-446655440001"
 
     start_response = public_api.run_async(
         "Cancel this async run",
         model=object(),
         vector_store=_CompatibleVectorStore(),
+        config={"thread_id": thread_id},
     )
     cancel_response = public_api.cancel_run(start_response.job_id)
     status_response = public_api.get_run_status(start_response.job_id)
 
     assert cancel_response.model_dump() == {"status": "success", "message": "Cancellation requested."}
+    assert start_response.thread_id == thread_id
+    assert status_response.thread_id == thread_id
     assert status_response.status == "cancelling"
     assert status_response.cancel_requested is True
     assert status_response.message == "Cancellation requested."

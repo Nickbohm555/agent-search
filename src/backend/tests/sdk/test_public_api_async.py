@@ -30,17 +30,29 @@ def test_run_async_signature_requires_query_vector_store_and_model() -> None:
 def test_run_async_returns_job_start_shape(monkeypatch) -> None:
     def fake_start_agent_run_job(payload, **kwargs):
         assert payload.query == "Show me async flow"
+        assert payload.thread_id == "550e8400-e29b-41d4-a716-446655440000"
         assert "model" in kwargs
         assert "vector_store" in kwargs
-        return SimpleNamespace(job_id="job-123", run_id="run-123", status="running")
+        return SimpleNamespace(
+            job_id="job-123",
+            run_id="run-123",
+            thread_id="550e8400-e29b-41d4-a716-446655440000",
+            status="running",
+        )
 
     monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
 
-    response = public_api.run_async("Show me async flow", vector_store=_CompatibleVectorStore(), model=object())
+    response = public_api.run_async(
+        "Show me async flow",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
+    )
 
     assert response.model_dump() == {
         "job_id": "job-123",
         "run_id": "run-123",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440000",
         "status": "running",
     }
 
@@ -51,6 +63,7 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
         return SimpleNamespace(
             job_id="job-456",
             run_id="run-456",
+            thread_id="550e8400-e29b-41d4-a716-446655440000",
             status="completed",
             message="Run completed.",
             stage="completed",
@@ -85,6 +98,7 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
     payload = response.model_dump()
     assert payload["job_id"] == "job-456"
     assert payload["run_id"] == "run-456"
+    assert payload["thread_id"] == "550e8400-e29b-41d4-a716-446655440000"
     assert payload["status"] == "completed"
     assert payload["stage"] == "completed"
     assert payload["elapsed_ms"] == 1500

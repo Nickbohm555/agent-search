@@ -35,6 +35,7 @@ _JOB_LOCK = threading.Lock()
 class AgentRunJobStatus:
     job_id: str
     run_id: str
+    thread_id: str
     status: str
     message: str = ""
     stage: str = "queued"
@@ -66,10 +67,11 @@ def start_agent_run_job(
         logger.error("Runtime async job rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
     job_id = str(uuid.uuid4())
-    run_metadata = build_graph_run_metadata(run_id=job_id)
+    run_metadata = build_graph_run_metadata(run_id=job_id, thread_id=payload.thread_id)
     status = AgentRunJobStatus(
         job_id=job_id,
         run_id=run_metadata.run_id,
+        thread_id=run_metadata.thread_id,
         status="running",
         message="Run queued.",
         stage="queued",
@@ -83,7 +85,7 @@ def start_agent_run_job(
         model is not None,
         vector_store is not None,
     )
-    _EXECUTOR.submit(_run_agent_job, job_id, payload, run_metadata.run_id, model, vector_store)
+    _EXECUTOR.submit(_run_agent_job, job_id, payload, run_metadata.run_id, run_metadata.thread_id, model, vector_store)
     return status
 
 
@@ -116,6 +118,7 @@ def _run_agent_job(
     job_id: str,
     payload: RuntimeAgentRunRequest,
     run_id: str,
+    thread_id: str,
     model: Any | None,
     vector_store: Any | None,
 ) -> None:
@@ -189,7 +192,7 @@ def _run_agent_job(
             payload=payload,
             vector_store=resolved_vector_store,
             model=model,
-            run_metadata=build_graph_run_metadata(run_id=run_id),
+            run_metadata=build_graph_run_metadata(run_id=run_id, thread_id=thread_id),
             initial_search_context=initial_search_context,
             snapshot_callback=on_snapshot,
         )
