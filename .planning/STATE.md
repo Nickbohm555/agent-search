@@ -10,7 +10,7 @@
 
 - **Current phase:** 1
 - **Current plan:** 01-03
-- **Status:** Task 2 implemented
+- **Status:** Task 3 implemented
 - **Progress:** 0/6 phases complete
 - **Progress bar:** `░░░░░░` (0%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 1 Plan 01-03 Task 3.
-- Add compatibility tests ensuring `sub_answers` remains additive while legacy fields stay stable.
+- Start Phase 1 Plan 01-03 summary.
+- Create the Phase 1 Plan 01-03 summary from completed task evidence.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 11 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 01-03 Task 2 is complete, and the next dependency-ordered work item is Plan 01-03 Task 3.
-- **Resume note:** State update: `phase=01`, `plan=01-03`, `task=2`, `status=implemented`.
+- **Next command:** Implement Section 12 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 01-03 Task 3 is complete, and the next dependency-ordered work item is the Plan 01-03 summary.
+- **Resume note:** State update: `phase=01`, `plan=01-03`, `task=3`, `status=implemented`.

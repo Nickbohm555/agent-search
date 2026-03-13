@@ -4,16 +4,20 @@ import inspect
 import sys
 from pathlib import Path
 
+import pytest
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agent_search import public_api
+from pydantic import ValidationError
 from schemas import (
     RuntimeAgentRunAsyncCancelResponse,
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunResponse,
+    SubQuestionAnswer,
 )
 
 
@@ -49,3 +53,58 @@ def test_public_api_return_annotations_are_runtime_models() -> None:
     annotations = inspect.get_annotations(public_api.cancel_run, eval_str=True)
     assert annotations["return"] is RuntimeAgentRunAsyncCancelResponse
 
+
+def test_runtime_agent_run_response_contract_keeps_legacy_fields_and_additive_sub_answers() -> None:
+    schema = RuntimeAgentRunResponse.model_json_schema()
+
+    assert schema["required"] == ["output"]
+    assert "main_question" in schema["properties"]
+    assert "sub_qa" in schema["properties"]
+    assert "final_citations" in schema["properties"]
+    assert "sub_answers" in schema["properties"]
+
+    legacy_payload = {
+        "output": "Final answer",
+        "main_question": "Main question?",
+        "sub_qa": [
+            {
+                "sub_question": "Sub-question?",
+                "sub_answer": "Legacy answer",
+            }
+        ],
+        "final_citations": [],
+    }
+
+    legacy_response = RuntimeAgentRunResponse.model_validate(legacy_payload)
+
+    assert legacy_response.sub_qa == [SubQuestionAnswer(sub_question="Sub-question?", sub_answer="Legacy answer")]
+    assert legacy_response.sub_answers == []
+
+    additive_response = RuntimeAgentRunResponse.model_validate(
+        {
+            **legacy_payload,
+            "sub_answers": [
+                {
+                    "sub_question": "Sub-question?",
+                    "sub_answer": "Additive answer",
+                }
+            ],
+        }
+    )
+
+    assert additive_response.sub_qa == legacy_response.sub_qa
+    assert additive_response.sub_answers == [
+        SubQuestionAnswer(sub_question="Sub-question?", sub_answer="Additive answer")
+    ]
+
+
+def test_runtime_agent_run_response_still_requires_output() -> None:
+    with pytest.raises(ValidationError):
+        RuntimeAgentRunResponse.model_validate(
+            {
+                "main_question": "Main question?",
+                "sub_qa": [],
+                "sub_answers": [],
+                "final_citations": [],
+            }
+        )

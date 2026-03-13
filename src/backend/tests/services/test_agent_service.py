@@ -207,6 +207,13 @@ def test_map_graph_state_to_runtime_response_is_backward_compatible() -> None:
     assert response.output == "final from graph"
     assert len(response.sub_qa) == 1
     assert response.sub_qa[0].sub_question == "Sub-question?"
+    assert len(response.sub_answers) == 1
+    assert response.sub_answers[0].model_dump() == response.sub_qa[0].model_dump()
+
+    response.sub_answers[0].sub_answer = "mutated alias copy"
+
+    assert response.sub_qa[0].sub_answer == "sub-answer"
+    assert response.sub_answers[0].sub_answer == "mutated alias copy"
 
 
 def test_build_runtime_graph_compiles_into_callable_graph() -> None:
