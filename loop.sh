@@ -4,6 +4,7 @@ set -euo pipefail
 PROMPT_FILE="PROMPT_build.md"
 AGENTS_FILE="AGENTS.md"
 MAX_ITERATIONS=0
+AGENT_CMD="codex exec --sandbox danger-full-access -"
 REQUIRE_COMMIT_PER_ITERATION="${REQUIRE_COMMIT_PER_ITERATION:-1}"
 CODEX_CONTEXT_WINDOW="${CODEX_CONTEXT_WINDOW:-400000}"
 
@@ -34,26 +35,6 @@ fi
 if ! [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
   echo "Error: max iterations must be a non-negative integer."
   exit 1
-fi
-
-if [ -z "${AGENT_CMD:-}" ]; then
-  while :; do
-    read -r -p "Which agent are you using? (claude/codex): " AGENT_CHOICE
-    AGENT_CHOICE_LOWER="$(printf '%s' "$AGENT_CHOICE" | tr '[:upper:]' '[:lower:]')"
-    case "$AGENT_CHOICE_LOWER" in
-      claude)
-        AGENT_CMD="claude -p"
-        break
-        ;;
-      codex)
-        AGENT_CMD="codex exec --sandbox danger-full-access -"
-        break
-        ;;
-      *)
-        echo "Invalid option. Choose claude or codex."
-        ;;
-    esac
-  done
 fi
 
 if [ ! -f "$PROMPT_FILE" ]; then
@@ -97,11 +78,7 @@ while :; do
   [ "$MAX_ITERATIONS" -gt 0 ] && echo "Max iterations: $MAX_ITERATIONS"
   echo "=================================================="
 
-  if is_codex_exec_command; then
-    cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$(build_codex_exec_command)"
-  else
-    cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$AGENT_CMD"
-  fi
+  cat "$PROMPT_FILE" "$AGENTS_FILE" | eval "$(build_codex_exec_command)"
 
   END_HEAD="$(git rev-parse --verify HEAD 2>/dev/null || true)"
   if [ "$START_HEAD" != "$END_HEAD" ]; then
