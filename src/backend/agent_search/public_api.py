@@ -29,6 +29,7 @@ from schemas import (
     RuntimeQueryExpansionControl,
     RuntimeRerankControl,
     RuntimeAgentRunResponse,
+    RuntimeSubquestionHitlControl,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,15 @@ def _has_mapping_key(config: Mapping[str, Any] | None, key: str) -> bool:
     return isinstance(config, Mapping) and key in config
 
 
+def _get_nested_mapping(config: Mapping[str, Any] | None, key: str) -> Mapping[str, Any] | None:
+    if not isinstance(config, Mapping):
+        return None
+    value = config.get(key)
+    if isinstance(value, Mapping):
+        return value
+    return None
+
+
 def _build_request_controls(
     config: Mapping[str, Any] | None,
     *,
@@ -58,7 +68,11 @@ def _build_request_controls(
     if _has_mapping_key(config, "query_expansion"):
         controls.query_expansion = RuntimeQueryExpansionControl(enabled=runtime_config.query_expansion.enabled)
     if _has_mapping_key(config, "hitl"):
-        controls.hitl = RuntimeHitlControl(enabled=runtime_config.hitl.enabled)
+        hitl = RuntimeHitlControl(enabled=runtime_config.hitl.enabled)
+        hitl_config = _get_nested_mapping(config, "hitl")
+        if _has_mapping_key(hitl_config, "subquestions"):
+            hitl.subquestions = RuntimeSubquestionHitlControl(enabled=runtime_config.hitl.subquestions_enabled)
+        controls.hitl = hitl
     return controls if controls.model_fields_set else None
 
 

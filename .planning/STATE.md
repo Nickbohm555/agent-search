@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-01
-- **Status:** Phase 1 complete; next section queued
+- **Status:** Phase 2 Plan 02-01 Task 1 implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-01 Task 1.
-- Implement additive subquestion HITL start/resume contracts.
+- Start Phase 2 Plan 02-01 Task 2.
+- Add API regressions for typed subquestion HITL request/resume validation.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 13 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 1 summary is complete, and the next dependency-ordered work item is Phase 2 Plan 02-01 Task 1.
-- **Resume note:** State update: `phase=01`, `plan=01-03`, `task=summary`, `status=implemented`; Phase 1 marked complete.
+- **Next command:** Implement Section 14 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-01 Task 1 is complete, and the next dependency-ordered work item is the API regression section for the same plan.
+- **Resume note:** State update: `phase=02`, `plan=02-01`, `task=1`, `status=implemented`; subquestion HITL request/resume contracts added and verified.

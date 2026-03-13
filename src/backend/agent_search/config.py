@@ -270,16 +270,28 @@ class RuntimeQueryExpansionConfig:
 @dataclass(frozen=True)
 class RuntimeHitlConfig:
     enabled: bool = False
+    subquestions_enabled: bool = False
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeHitlConfig:
         values = dict(data or {})
+        subquestions_data = values.get("subquestions")
+        if subquestions_data is not None and not isinstance(subquestions_data, Mapping):
+            logger.warning("RuntimeConfig hitl.subquestions section must be a mapping; using defaults")
+            subquestions_data = None
+        subquestions_enabled = _read_bool(
+            value=(subquestions_data or {}).get("enabled"),
+            default=False,
+            field_name="hitl.subquestions.enabled",
+        )
+        enabled = _read_bool(
+            value=values.get("enabled"),
+            default=False,
+            field_name="hitl.enabled",
+        )
         return cls(
-            enabled=_read_bool(
-                value=values.get("enabled"),
-                default=False,
-                field_name="hitl.enabled",
-            )
+            enabled=enabled or subquestions_enabled,
+            subquestions_enabled=subquestions_enabled,
         )
 
 
@@ -324,12 +336,13 @@ class RuntimeConfig:
             hitl=RuntimeHitlConfig.from_dict(hitl_data),
         )
         logger.info(
-            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s query_expansion_enabled=%s hitl_enabled=%s",
+            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s query_expansion_enabled=%s hitl_enabled=%s hitl_subquestions_enabled=%s",
             config.timeout.rerank_timeout_s,
             config.retrieval.search_node_k_fetch,
             config.rerank.enabled,
             config.rerank.provider,
             config.query_expansion.enabled,
             config.hitl.enabled,
+            config.hitl.subquestions_enabled,
         )
         return config

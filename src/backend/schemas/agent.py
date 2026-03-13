@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic import field_validator
+from pydantic import model_validator
 
 
 class RuntimeRerankControl(BaseModel):
@@ -15,8 +16,19 @@ class RuntimeQueryExpansionControl(BaseModel):
     enabled: bool | None = None
 
 
+class RuntimeSubquestionHitlControl(BaseModel):
+    enabled: bool = False
+
+
 class RuntimeHitlControl(BaseModel):
     enabled: bool = False
+    subquestions: RuntimeSubquestionHitlControl | None = None
+
+    @model_validator(mode="after")
+    def normalize_enabled(self) -> "RuntimeHitlControl":
+        if self.subquestions is not None and self.subquestions.enabled:
+            self.enabled = True
+        return self
 
 
 class RuntimeAgentRunControls(BaseModel):
@@ -105,8 +117,39 @@ class RuntimeAgentRunAsyncCancelResponse(BaseModel):
     message: str
 
 
+class RuntimeSubquestionDecision(BaseModel):
+    subquestion_id: str = Field(min_length=1)
+    action: Literal["approve", "edit", "deny", "skip"]
+    edited_text: str | None = None
+
+    @model_validator(mode="after")
+    def validate_edit_payload(self) -> "RuntimeSubquestionDecision":
+        if self.action == "edit":
+            if self.edited_text is None or not self.edited_text.strip():
+                raise ValueError("edited_text is required when action='edit'.")
+        elif self.edited_text is not None:
+            self.edited_text = self.edited_text.strip() or None
+        return self
+
+
+class RuntimeSubquestionResumeEnvelope(BaseModel):
+    checkpoint_id: str = Field(min_length=1)
+    decisions: list[RuntimeSubquestionDecision] = Field(min_length=1)
+
+
 class RuntimeAgentRunResumeRequest(BaseModel):
-    resume: Any = True
+    resume: bool | dict[str, Any] | RuntimeSubquestionResumeEnvelope = True
+
+    @field_validator("resume", mode="before")
+    @classmethod
+    def validate_resume(cls, value: Any) -> Any:
+        if isinstance(value, bool):
+            return value
+        if not isinstance(value, dict):
+            raise ValueError("resume must be a boolean, legacy object payload, or typed decision envelope.")
+        if "checkpoint_id" in value or "decisions" in value:
+            return RuntimeSubquestionResumeEnvelope.model_validate(value)
+        return value
 
 
 class RuntimeAgentInfo(BaseModel):
