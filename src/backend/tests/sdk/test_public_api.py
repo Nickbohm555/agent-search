@@ -184,11 +184,12 @@ def test_advanced_rag_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
     sentinel_vector_store = _CompatibleVectorStore()
     captured: dict[str, object] = {}
 
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
         captured["query"] = context.payload.query
         captured["vector_store"] = context.vector_store
         captured["model"] = context.model
         captured["config"] = config
+        captured["lifecycle_callback"] = lifecycle_callback
         return agent_service.build_agent_graph_state(
             main_question=context.payload.query,
             sub_qa=[
@@ -221,4 +222,5 @@ def test_advanced_rag_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
         "config": None,
+        "lifecycle_callback": None,
     }

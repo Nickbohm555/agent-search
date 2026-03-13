@@ -21,16 +21,18 @@ def start_agent_run_job(
     vector_store: Any | None = None,
 ) -> AgentRunJobStatus:
     logger.info(
-        "Agent jobs service wrapper delegating start to runtime jobs query_len=%s has_model=%s has_vector_store=%s",
+        "Agent jobs service wrapper delegating start to runtime jobs query_len=%s thread_id=%s has_model=%s has_vector_store=%s",
         len(payload.query),
+        payload.thread_id,
         model is not None,
         vector_store is not None,
     )
     status = runtime_start_agent_run_job(payload, model=model, vector_store=vector_store)
     logger.info(
-        "Agent jobs service wrapper start delegated job_id=%s run_id=%s status=%s",
+        "Agent jobs service wrapper start delegated job_id=%s run_id=%s thread_id=%s status=%s",
         status.job_id,
         status.run_id,
+        status.thread_id,
         status.status,
     )
     return status

@@ -27,7 +27,7 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
     monkeypatch.setattr(
         runtime_runner,
         "execute_runtime_graph",
-        lambda *, context, run_metadata, config=None: captured.update(
+        lambda *, context, run_metadata, config=None, lifecycle_callback=None: captured.update(
             {
                 "payload_query": context.payload.query,
                 "run_vector_store": context.vector_store,
@@ -35,6 +35,7 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
                 "initial_search_context": context.initial_search_context,
                 "run_metadata": run_metadata,
                 "config": config,
+                "lifecycle_callback": lifecycle_callback,
             }
         )
         or agent_service.build_agent_graph_state(
@@ -72,6 +73,7 @@ def test_sdk_sync_run_e2e_uses_runtime_runner_with_caller_dependencies(monkeypat
         "initial_search_context": [],
         "run_metadata": captured["run_metadata"],
         "config": None,
+        "lifecycle_callback": None,
     }
 
 
@@ -102,7 +104,7 @@ def test_runtime_runner_emits_langfuse_stage_hooks(monkeypatch) -> None:
     monkeypatch.setattr(
         runtime_runner,
         "execute_runtime_graph",
-        lambda *, context, run_metadata, config=None: {
+        lambda *, context, run_metadata, config=None, lifecycle_callback=None: {
             "main_question": context.payload.query,
             "decomposition_sub_questions": [],
             "sub_question_artifacts": [],
@@ -179,7 +181,7 @@ def test_runtime_runner_skips_langfuse_stage_hooks_without_callback(monkeypatch)
     monkeypatch.setattr(
         runtime_runner,
         "execute_runtime_graph",
-        lambda *, context, run_metadata, config=None: {
+        lambda *, context, run_metadata, config=None, lifecycle_callback=None: {
             "main_question": context.payload.query,
             "decomposition_sub_questions": [],
             "sub_question_artifacts": [],

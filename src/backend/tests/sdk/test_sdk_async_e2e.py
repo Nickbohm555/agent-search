@@ -61,7 +61,7 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
     monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-inline")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
         assert config is None
         captured["run_query"] = context.payload.query
         captured["payload_thread_id"] = context.payload.thread_id
@@ -69,6 +69,7 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
         captured["run_model"] = context.model
         captured["run_thread_id"] = run_metadata.thread_id
         captured["initial_search_context"] = context.initial_search_context
+        captured["lifecycle_callback"] = lifecycle_callback
         return {
             "main_question": "How does SDK async wiring work?",
             "decomposition_sub_questions": ["What is the key fact?"],
@@ -128,6 +129,7 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
         "run_model": sentinel_model,
         "run_thread_id": thread_id,
         "initial_search_context": [],
+        "lifecycle_callback": captured["lifecycle_callback"],
     }
 
 

@@ -1,12 +1,28 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+from pydantic import field_validator
 
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
+    thread_id: str | None = None
+
+    @field_validator("thread_id")
+    @classmethod
+    def validate_thread_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("thread_id must be a non-empty UUID string.")
+        try:
+            return str(uuid.UUID(normalized_value))
+        except ValueError as exc:
+            raise ValueError("thread_id must be a valid UUID string.") from exc
 
 
 class SubQuestionAnswer(BaseModel):
@@ -21,6 +37,7 @@ class SubQuestionAnswer(BaseModel):
 
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
+    thread_id: str = ""
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
@@ -38,12 +55,14 @@ class AgentRunStageMetadata(BaseModel):
 class RuntimeAgentRunAsyncStartResponse(BaseModel):
     job_id: str
     run_id: str
+    thread_id: str = ""
     status: str
 
 
 class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     job_id: str
     run_id: str = ""
+    thread_id: str = ""
     status: str
     message: str = ""
     stage: str = ""
@@ -63,6 +82,10 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
     status: Literal["success"]
     message: str
+
+
+class RuntimeAgentRunResumeRequest(BaseModel):
+    resume: Any = True
 
 
 class RuntimeAgentInfo(BaseModel):

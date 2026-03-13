@@ -296,13 +296,14 @@ def test_run_async_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
     monkeypatch.setattr(runtime_jobs, "_persist_job_status", lambda _job: None)
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
         captured["query"] = context.payload.query
         captured["payload_thread_id"] = context.payload.thread_id
         captured["vector_store"] = context.vector_store
         captured["model"] = context.model
         captured["run_thread_id"] = run_metadata.thread_id
         captured["config"] = config
+        captured["lifecycle_callback"] = lifecycle_callback
         return {
             "main_question": context.payload.query,
             "decomposition_sub_questions": ["Which runtime completed the request?"],
@@ -367,4 +368,5 @@ def test_run_async_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
         "model": sentinel_model,
         "run_thread_id": thread_id,
         "config": None,
+        "lifecycle_callback": captured["lifecycle_callback"],
     }

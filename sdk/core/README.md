@@ -1,9 +1,11 @@
 # agent-search core SDK
 
-In-process Python SDK for `agent-search`. This package lets you call the runtime directly inside your own app.
+In-process Python SDK for `agent-search`.
+
+The PyPI package is intentionally narrow: consumers should call `advanced_rag(...)` and treat that as the supported entrypoint.
 
 The SDK always requires both:
-- A **chat model** (e.g. `langchain_openai.ChatOpenAI`)
+- A **chat model** (for example `langchain_openai.ChatOpenAI`)
 - A **vector store** that implements `similarity_search(query, k, filter=None)`
 
 It does not auto-build these dependencies for you.
@@ -22,23 +24,16 @@ python -c "import agent_search; print(agent_search.__file__)"
 
 ```python
 from langchain_openai import ChatOpenAI
-from langfuse.langchain import CallbackHandler
 from agent_search import advanced_rag
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
-langfuse_callback = CallbackHandler(
-    public_key="...",
-    secret_key="...",
-    host="https://cloud.langfuse.com",
-)
 
 response = advanced_rag(
     "What is pgvector?",
     vector_store=vector_store,
     model=model,
-    langfuse_callback=langfuse_callback,
 )
 print(response.output)
 ```
@@ -55,39 +50,30 @@ cd sdk/core
 python -m build
 ```
 
-## Runtime API surface
+## Supported API
 
-Primary functions exposed by `agent_search`:
+The supported callable exported by `agent_search` is:
 
 - `advanced_rag`
-- `build_langfuse_callback`
-- `run`
-- `run_async`
-- `get_run_status`
-- `cancel_run`
 
-`run(...)` remains available as a compatibility alias and delegates to `advanced_rag(...)`.
-
-Tracing behavior for `advanced_rag(...)`:
-- If you pass `langfuse_callback=...`, SDK uses that callback for run tracing.
-- If `langfuse_callback` is omitted, SDK does not trace the run.
-- `langfuse_settings` is deprecated and ignored by `advanced_rag(...)`; pass an explicit callback instead.
+Notes about `advanced_rag(...)`:
+- It is a synchronous call that runs the full retrieval-and-answer workflow and returns a `RuntimeAgentRunResponse`.
+- You supply the model and vector store; the SDK orchestrates the LangGraph-based runtime around them.
+- Optional `config={"thread_id": "..."}` lets you pass a stable execution identity into the run.
+- If you pass `langfuse_callback=...`, the SDK includes that callback in runtime tracing.
+- `langfuse_settings` is accepted for compatibility but ignored unless you provide an explicit `langfuse_callback`.
 
 `advanced_rag(...)` output schema:
 
 ```python
 RuntimeAgentRunResponse(
   main_question: str,
+  thread_id: str,
   sub_qa: list[SubQuestionAnswer],
   output: str,
   final_citations: list[CitationSourceRow],
 )
 ```
-
-Config and errors exposed by `agent_search`:
-
-- `RuntimeConfig`, `RuntimeTimeoutConfig`, `RuntimeRetrievalConfig`, `RuntimeRerankConfig`
-- `SDKError`, `SDKConfigurationError`, `SDKRetrievalError`, `SDKModelError`, `SDKTimeoutError`
 
 ## Vector store compatibility
 
@@ -98,7 +84,8 @@ For LangChain-backed stores, use:
 
 ## Notes
 
-- For the full app (API, DB, UI), run this repo with Docker Compose.
+- This package is the SDK surface only. For the full app experience, run the repository with Docker Compose.
+- The PyPI package is intentionally narrower than the backend internals; consumer integrations should rely on `advanced_rag(...)` only.
 - For SDK-only use, install from PyPI and supply your own model + vector store.
 
 ## Release guidance
