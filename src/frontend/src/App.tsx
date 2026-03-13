@@ -43,6 +43,7 @@ type RunSummary = {
 };
 
 export default function App() {
+  const streamErrorGracePeriodMs = 3000;
   const orderedStages: AgentStageName[] = ["decompose", "expand", "search", "rerank", "answer", "final"];
   const [wikiSources, setWikiSources] = useState<WikiSourceOption[]>(DEFAULT_WIKI_SOURCES);
   const [wikiSourceId, setWikiSourceId] = useState(DEFAULT_WIKI_SOURCES[0]?.source_id ?? "");
@@ -83,6 +84,8 @@ export default function App() {
   });
   const [lastSuccessfulSynthesis, setLastSuccessfulSynthesis] = useState<RuntimeAgentRunResponse | null>(null);
   const runEventsUnsubscribeRef = useRef<(() => void) | null>(null);
+  const runStreamRef = useRef<{ jobId: string | null; terminal: boolean }>({ jobId: null, terminal: false });
+  const runStreamErrorTimeoutRef = useRef<number | null>(null);
 
   const selectedWikiSource = useMemo(
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
@@ -113,8 +116,13 @@ export default function App() {
 
   useEffect(() => {
     return () => {
+      if (runStreamErrorTimeoutRef.current !== null) {
+        window.clearTimeout(runStreamErrorTimeoutRef.current);
+        runStreamErrorTimeoutRef.current = null;
+      }
       runEventsUnsubscribeRef.current?.();
       runEventsUnsubscribeRef.current = null;
+      runStreamRef.current = { jobId: null, terminal: false };
     };
   }, []);
 
@@ -273,11 +281,20 @@ export default function App() {
     const jobId = startResult.data.job_id;
     setRunJobId(jobId);
     setRunStatusMessage("Run started.");
+    if (runStreamErrorTimeoutRef.current !== null) {
+      window.clearTimeout(runStreamErrorTimeoutRef.current);
+      runStreamErrorTimeoutRef.current = null;
+    }
+    runStreamRef.current = { jobId, terminal: false };
     console.info("Async run started.", { submittedQuery: submitted, jobId, runId: startResult.data.run_id });
     runEventsUnsubscribeRef.current?.();
 
     runEventsUnsubscribeRef.current = subscribeToAgentRunEvents(jobId, {
       onEvent: (lifecycleEvent) => {
+        if (runStreamErrorTimeoutRef.current !== null) {
+          window.clearTimeout(runStreamErrorTimeoutRef.current);
+          runStreamErrorTimeoutRef.current = null;
+        }
         setRunEvents((current) => current.concat(lifecycleEvent));
         setRunCurrentStage(lifecycleEvent.stage);
         setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
@@ -301,6 +318,7 @@ export default function App() {
         });
 
         if (isTerminalLifecycleEvent(lifecycleEvent)) {
+          runStreamRef.current = { jobId, terminal: true };
           setRunState(lifecycleEvent.status === "success" ? "success" : "error");
           if (lifecycleEvent.status !== "success") {
             setRunStatusMessage(lifecycleEvent.error || formatLifecycleEventLabel(lifecycleEvent));
@@ -311,12 +329,24 @@ export default function App() {
         }
       },
       onError: () => {
-        setRunState("error");
-        setRunStatusMessage("Run event stream disconnected.");
-        setRunJobId(null);
-        runEventsUnsubscribeRef.current?.();
-        runEventsUnsubscribeRef.current = null;
-        console.error("Async run event stream failed.", { submittedQuery: submitted, jobId });
+        if (runStreamRef.current.jobId !== jobId || runStreamRef.current.terminal) {
+          return;
+        }
+        if (runStreamErrorTimeoutRef.current !== null) {
+          window.clearTimeout(runStreamErrorTimeoutRef.current);
+        }
+        runStreamErrorTimeoutRef.current = window.setTimeout(() => {
+          if (runStreamRef.current.jobId !== jobId || runStreamRef.current.terminal) {
+            return;
+          }
+          setRunState("error");
+          setRunStatusMessage("Run event stream disconnected.");
+          setRunJobId(null);
+          runStreamRef.current = { jobId, terminal: true };
+          runEventsUnsubscribeRef.current?.();
+          runEventsUnsubscribeRef.current = null;
+          console.error("Async run event stream failed.", { submittedQuery: submitted, jobId });
+        }, streamErrorGracePeriodMs);
       },
     });
   }

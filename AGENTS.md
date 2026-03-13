@@ -30,6 +30,8 @@ If frontend changes are made and you need to verify it is there / functionality 
   `print(json.dumps(pages, indent=2))`
   `PY`
 - When scripting CDP, prefer the page target from `json/list` whose `url` starts with `http://localhost:5173`, then connect to its `webSocketDebuggerUrl`.
+- For agent runs, the backend SSE endpoint is `/api/agents/run-events/{job_id}` and it emits typed events such as `stage.completed` and `run.completed`. Frontend code and test fakes must listen with `addEventListener(...)` for those event names; `onmessage` alone is not sufficient in a real browser.
+- For CDP verification of the agent stream, it is acceptable to instrument `window.fetch` and `window.EventSource` in the page before submitting the form, then confirm the browser opened `/api/agents/run-events/...` and did not request `/api/agents/run-status/...`.
 - If direct CDP websocket attachment fails with `403 Forbidden`, the local Chrome session was likely started without the remote-origin flag. Restart that Chrome session through `launch-devtools.sh`, which now launches Chrome with `--remote-allow-origins='*'`.
 - The browser-control workaround is: `launch-devtools.sh` -> `json/list` -> pick the `localhost:5173` target -> drive it over CDP directly.
 - Do not rely on `localhost` from inside a Docker-hosted browser. Use the local Chrome session from `launch-devtools.sh` so `localhost:5173` and `localhost:8000` resolve correctly.

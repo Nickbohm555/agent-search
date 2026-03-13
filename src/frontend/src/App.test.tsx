@@ -25,6 +25,7 @@ class FakeEventSource {
 
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
   onerror: (() => void) | null = null;
+  private readonly listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
   closed = false;
 
   constructor(public readonly url: string) {
@@ -35,20 +36,38 @@ class FakeEventSource {
     this.closed = true;
   }
 
+  addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void {
+    const listenersForType = this.listeners.get(type) ?? new Set<(event: MessageEvent<string>) => void>();
+    listenersForType.add(listener);
+    this.listeners.set(type, listenersForType);
+  }
+
+  removeEventListener(type: string, listener: (event: MessageEvent<string>) => void): void {
+    const listenersForType = this.listeners.get(type);
+    if (!listenersForType) return;
+    listenersForType.delete(listener);
+    if (listenersForType.size === 0) {
+      this.listeners.delete(type);
+    }
+  }
+
   emit(event: LifecycleEventShape): void {
-    if (this.closed || this.onmessage === null) return;
+    if (this.closed) return;
+    const payload = new MessageEvent<string>(event.event_type, {
+      data: JSON.stringify({
+        thread_id: "thread-1",
+        trace_id: "trace-1",
+        emitted_at: "2026-03-13T00:00:00Z",
+        error: null,
+        ...event,
+      }),
+    });
     act(() => {
-      this.onmessage?.(
-        new MessageEvent("message", {
-          data: JSON.stringify({
-            thread_id: "thread-1",
-            trace_id: "trace-1",
-            emitted_at: "2026-03-13T00:00:00Z",
-            error: null,
-            ...event,
-          }),
-        }),
-      );
+      const listenersForType = this.listeners.get(event.event_type);
+      listenersForType?.forEach((listener) => listener(payload));
+      if (event.event_type === "message") {
+        this.onmessage?.(payload);
+      }
     });
   }
 }
@@ -394,6 +413,107 @@ describe("App run query flow", () => {
       "answer",
       "final",
     ]);
+  });
+
+  it("completes from SSE events without polling run-status", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-sse", run_id: "run-sse", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "What is NATO?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const eventSource = await findLatestEventSource();
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-sse:000001",
+      elapsed_ms: 250,
+      output: "NATO is a military alliance.",
+      result: {
+        final_citations: [],
+        main_question: "What is NATO?",
+        output: "NATO is a military alliance.",
+        sub_qa: [],
+      },
+      run_id: "run-sse",
+      stage: "synthesize_final",
+      status: "success",
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/agents/run-status/"))).toBe(false);
+  });
+
+  it("keeps the terminal success state when the SSE stream closes after completion", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-close", run_id: "run-close", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "What is NATO?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const eventSource = await findLatestEventSource();
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-close:000001",
+      elapsed_ms: 250,
+      output: "NATO is a military alliance.",
+      result: {
+        final_citations: [],
+        main_question: "What is NATO?",
+        output: "NATO is a military alliance.",
+        sub_qa: [],
+      },
+      run_id: "run-close",
+      stage: "synthesize_final",
+      status: "success",
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    act(() => {
+      eventSource.onerror?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Run status: Run event stream disconnected.")).not.toBeInTheDocument();
   });
 
   it("renders reranked evidence order and fallback indicator", async () => {

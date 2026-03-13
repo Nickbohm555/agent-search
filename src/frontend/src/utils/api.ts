@@ -323,6 +323,16 @@ export function subscribeToAgentRunEvents(
   },
 ): () => void {
   const eventSource = new EventSource(`${API_BASE_URL}/api/agents/run-events/${jobId}`);
+  const eventTypes = [
+    "stage.started",
+    "stage.updated",
+    "stage.retrying",
+    "stage.completed",
+    "stage.failed",
+    "run.completed",
+    "run.failed",
+    "run.paused",
+  ] as const;
 
   const handleMessage = (message: MessageEvent<string>) => {
     try {
@@ -336,11 +346,17 @@ export function subscribeToAgentRunEvents(
   };
 
   eventSource.onmessage = handleMessage;
+  for (const eventType of eventTypes) {
+    eventSource.addEventListener(eventType, handleMessage as EventListener);
+  }
   eventSource.onerror = () => {
     handlers.onError?.();
   };
 
   return () => {
+    for (const eventType of eventTypes) {
+      eventSource.removeEventListener(eventType, handleMessage as EventListener);
+    }
     eventSource.close();
   };
 }
