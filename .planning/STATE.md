@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-02
-- **Status:** Phase 2 Plan 02-02 Task 3 implemented; next section queued
+- **Status:** Phase 2 Plan 02-02 summary implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-02 Summary.
-- Continue Phase 2 in dependency order after the completed 02-02 Task 3.
+- Start Phase 2 Plan 02-03 Task 1.
+- Continue Phase 2 in dependency order after the completed 02-02 summary.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 19 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-02 Task 3 is complete, and the next dependency-ordered work item is the Plan 02-02 summary section.
-- **Resume note:** State update: `phase=02`, `plan=02-02`, `task=3`, `status=implemented`; frontend regressions now cover actionable paused review, typed approve/edit/deny/skip resume payloads, resumed completion, and unchanged non-HITL completion behavior.
+- **Next command:** Implement Section 20 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-02 summary is complete, and the next dependency-ordered work item is Phase 2 Plan 02-03 Task 1.
+- **Resume note:** State update: `phase=02`, `plan=02-02`, `task=summary`, `status=implemented`; summary evidence now captures typed frontend HITL contracts, paused review UX, resumed completion coverage, and unchanged non-HITL behavior.
