@@ -242,7 +242,59 @@ def test_post_run_accepts_additive_controls_payload_without_breaking_legacy_forw
     assert response.json()["sub_answers"] == []
     assert captured == {
         "query": "Run with additive controls",
-        "config": None,
+        "config": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    }
+
+
+def test_post_run_async_forwards_same_normalized_controls_as_sync_run(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run_async(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-456",
+            run_id="run-456",
+            thread_id="550e8400-e29b-41d4-a716-446655440012",
+            status="queued",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-async",
+        json={
+            "query": "Queue with additive controls",
+            "thread_id": "550e8400-e29b-41d4-a716-446655440012",
+            "controls": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+                "hitl": {"enabled": False},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Queue with additive controls",
+        "config": {
+            "thread_id": "550e8400-e29b-41d4-a716-446655440012",
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": False},
+        },
     }
 
 

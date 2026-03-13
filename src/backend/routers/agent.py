@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -55,10 +56,21 @@ def _build_sdk_runtime_dependencies() -> tuple[object, object]:
     return vector_store, model
 
 
-def _build_thread_config(thread_id: str | None) -> dict[str, str] | None:
-    if thread_id is None:
-        return None
-    return {"thread_id": thread_id}
+def _build_run_config(payload: RuntimeAgentRunRequest) -> dict[str, Any] | None:
+    config: dict[str, Any] = {}
+    if payload.thread_id is not None:
+        config["thread_id"] = payload.thread_id
+
+    controls = payload.controls
+    if controls is not None:
+        if controls.rerank is not None:
+            config["rerank"] = controls.rerank.model_dump(exclude_none=True)
+        if controls.query_expansion is not None:
+            config["query_expansion"] = controls.query_expansion.model_dump(exclude_none=True)
+        if controls.hitl is not None:
+            config["hitl"] = controls.hitl.model_dump(exclude_none=True)
+
+    return config or None
 
 
 def _encode_sse_event(event: object) -> str:
@@ -78,7 +90,7 @@ def runtime_agent_run(
         payload.query,
         vector_store=vector_store,
         model=model,
-        config=_build_thread_config(payload.thread_id),
+        config=_build_run_config(payload),
     )
 
 
@@ -90,7 +102,7 @@ def runtime_agent_run_async(payload: RuntimeAgentRunRequest) -> RuntimeAgentRunA
         payload.query,
         vector_store=vector_store,
         model=model,
-        config=_build_thread_config(payload.thread_id),
+        config=_build_run_config(payload),
     )
 
 
