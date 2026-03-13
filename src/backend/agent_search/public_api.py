@@ -29,6 +29,7 @@ from schemas import (
     RuntimeQueryExpansionControl,
     RuntimeRerankControl,
     RuntimeAgentRunResponse,
+    RuntimeAgentRunResumeRequest,
     RuntimeSubquestionHitlControl,
 )
 
@@ -87,6 +88,10 @@ def _build_runtime_request_payload(
         thread_id=_resolve_request_thread_id(config),
         controls=_build_request_controls(config, runtime_config=runtime_config),
     )
+
+
+def _normalize_resume_payload(resume: Any) -> Any:
+    return RuntimeAgentRunResumeRequest.model_validate({"resume": resume}).resume
 
 
 def _resolve_langfuse_settings(settings: Mapping[str, Any] | None = None) -> LangfuseSettings:
@@ -368,6 +373,8 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
         result=job.result.model_copy(deep=True) if job.result is not None else None,
         error=job.error,
         cancel_requested=job.cancel_requested,
+        interrupt_payload=getattr(job, "interrupt_payload", None),
+        checkpoint_id=getattr(job, "checkpoint_id", None),
         started_at=started_at,
         finished_at=finished_at,
         elapsed_ms=elapsed_ms,
@@ -385,7 +392,7 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
 def resume_run(job_id: str, *, resume: Any = True) -> RuntimeAgentRunAsyncStatusResponse:
     logger.info("SDK async resume requested job_id=%s", job_id)
     try:
-        job = resume_agent_run_job(job_id, resume=resume)
+        job = resume_agent_run_job(job_id, resume=_normalize_resume_payload(resume))
     except Exception as exc:  # noqa: BLE001
         mapped = _map_sdk_error(operation="resume_run", exc=exc)
         logger.exception(

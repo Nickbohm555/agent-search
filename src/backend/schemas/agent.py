@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel, Field
 from pydantic import field_validator
@@ -107,6 +107,8 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     result: RuntimeAgentRunResponse | None = None
     error: str | None = None
     cancel_requested: bool = False
+    interrupt_payload: Any | None = None
+    checkpoint_id: str | None = None
     started_at: float | None = None
     finished_at: float | None = None
     elapsed_ms: int | None = None
@@ -138,7 +140,7 @@ class RuntimeSubquestionResumeEnvelope(BaseModel):
 
 
 class RuntimeAgentRunResumeRequest(BaseModel):
-    resume: bool | dict[str, Any] | RuntimeSubquestionResumeEnvelope = True
+    resume: Union[bool, dict[str, Any], RuntimeSubquestionResumeEnvelope] = True
 
     @field_validator("resume", mode="before")
     @classmethod

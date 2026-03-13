@@ -14,6 +14,7 @@ from agent_search.errors import SDKConfigurationError
 from agent_search.runtime import jobs as runtime_jobs
 from agent_search.runtime import runner as runtime_runner
 from schemas import AgentRunStageMetadata, CitationSourceRow, GraphStageSnapshot, RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import RuntimeSubquestionResumeEnvelope
 from services import agent_service
 
 
@@ -338,6 +339,8 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
             ),
             error=None,
             cancel_requested=False,
+            interrupt_payload={"kind": "subquestions", "items": [{"id": "sq-1", "text": "What is NATO?"}]},
+            checkpoint_id="checkpoint-456",
             started_at=100.0,
             finished_at=101.5,
         )
@@ -360,6 +363,8 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
     assert payload["result"]["output"] == "NATO is an alliance. [1]"
     assert payload["result"]["final_citations"][0]["citation_index"] == 1
     assert payload["result"]["final_citations"][0]["title"] == "NATO reference"
+    assert payload["interrupt_payload"] == {"kind": "subquestions", "items": [{"id": "sq-1", "text": "What is NATO?"}]}
+    assert payload["checkpoint_id"] == "checkpoint-456"
 
 
 def test_cancel_run_returns_success_shape(monkeypatch) -> None:
@@ -578,4 +583,69 @@ def test_resume_run_reconstructs_full_request_payload(monkeypatch) -> None:
             },
         },
         "resume": {"approved": True},
+    }
+
+
+def test_resume_run_validates_typed_subquestion_decisions_before_dispatch(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_resume_agent_run_job(job_id: str, *, resume=True):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return SimpleNamespace(job_id=job_id)
+
+    monkeypatch.setattr(public_api, "resume_agent_run_job", fake_resume_agent_run_job)
+    monkeypatch.setattr(
+        public_api,
+        "get_agent_run_job",
+        lambda _job_id: SimpleNamespace(
+            job_id="job-typed-resume",
+            run_id="run-typed-resume",
+            thread_id="550e8400-e29b-41d4-a716-446655440099",
+            status="running",
+            message="Resume accepted.",
+            stage="resuming",
+            stages=[],
+            decomposition_sub_questions=[],
+            sub_question_artifacts=[],
+            sub_qa=[],
+            output="",
+            result=None,
+            error=None,
+            cancel_requested=False,
+            interrupt_payload=None,
+            checkpoint_id="checkpoint-typed",
+            started_at=None,
+            finished_at=None,
+        ),
+    )
+
+    response = public_api.resume_run(
+        "job-typed-resume",
+        resume={
+            "checkpoint_id": "checkpoint-typed",
+            "decisions": [
+                {"subquestion_id": "sq-1", "action": "approve"},
+                {"subquestion_id": "sq-2", "action": "edit", "edited_text": "Edited subquestion"},
+                {"subquestion_id": "sq-3", "action": "deny"},
+                {"subquestion_id": "sq-4", "action": "skip"},
+            ],
+        },
+    )
+
+    assert response.job_id == "job-typed-resume"
+    assert isinstance(captured["resume"], RuntimeSubquestionResumeEnvelope)
+    assert captured == {
+        "job_id": "job-typed-resume",
+        "resume": RuntimeSubquestionResumeEnvelope.model_validate(
+            {
+                "checkpoint_id": "checkpoint-typed",
+                "decisions": [
+                    {"subquestion_id": "sq-1", "action": "approve"},
+                    {"subquestion_id": "sq-2", "action": "edit", "edited_text": "Edited subquestion"},
+                    {"subquestion_id": "sq-3", "action": "deny"},
+                    {"subquestion_id": "sq-4", "action": "skip"},
+                ],
+            }
+        ),
     }

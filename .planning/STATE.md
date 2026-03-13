@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-03
-- **Status:** Phase 2 Plan 02-03 task 1 implemented; next section queued
+- **Status:** Phase 2 Plan 02-03 task 2 implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-03 Task 2.
-- Continue Phase 2 in dependency order after the completed 02-03 task 1.
+- Start Phase 2 Plan 02-03 Task 3.
+- Continue Phase 2 in dependency order after the completed 02-03 task 2.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 21 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-03 Task 1 is complete, and the next dependency-ordered work item is Phase 2 Plan 02-03 Task 2.
-- **Resume note:** State update: `phase=02`, `plan=02-03`, `task=1`, `status=implemented`; SDK core schemas now mirror backend HITL controls and typed resume envelope defaults.
+- **Next command:** Implement Section 22 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-03 Task 2 is complete, and the next dependency-ordered work item is Phase 2 Plan 02-03 Task 3.
+- **Resume note:** State update: `phase=02`, `plan=02-03`, `task=2`, `status=implemented`; SDK async resume now validates typed subquestion decisions and paused status exposes checkpoint metadata.
