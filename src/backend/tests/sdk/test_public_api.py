@@ -96,6 +96,76 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
     }
 
 
+def test_advanced_rag_propagates_explicit_controls_without_mutation(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        captured["callbacks"] = callbacks
+        captured["langfuse_callback"] = langfuse_callback
+        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    response = public_api.advanced_rag(
+        "sdk controls query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440210",
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    )
+
+    assert response.output == "ok"
+    assert captured["payload"] == {
+        "query": "sdk controls query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440210",
+        "controls": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    }
+
+
+def test_advanced_rag_preserves_omitted_controls_and_hitl_default_off(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    omitted_response = public_api.advanced_rag(
+        "omitted controls query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+    )
+    omitted_payload = captured["payload"]
+
+    explicit_default_response = public_api.advanced_rag(
+        "explicit default hitl query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config={"hitl": {}},
+    )
+    explicit_default_payload = captured["payload"]
+
+    assert omitted_response.output == "ok"
+    assert explicit_default_response.output == "ok"
+    assert omitted_payload == {"query": "omitted controls query"}
+    assert explicit_default_payload == {
+        "query": "explicit default hitl query",
+        "controls": {"hitl": {"enabled": False}},
+    }
+
+
 def test_advanced_rag_raises_configuration_error_when_model_is_none() -> None:
     try:
         public_api.advanced_rag("q", model=None, vector_store=_CompatibleVectorStore())

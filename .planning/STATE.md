@@ -10,7 +10,7 @@
 
 - **Current phase:** 1
 - **Current plan:** 01-02
-- **Status:** Task 2 implemented
+- **Status:** Task 3 implemented
 - **Progress:** 0/6 phases complete
 - **Progress bar:** `░░░░░░` (0%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 1 Plan 01-02 Task 3.
-- Add SDK regression tests for sync/async control propagation and default-off HITL behavior.
+- Start Phase 1 Plan 01-02 Summary.
+- Create the 01-02 summary from executed task evidence.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 7 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 01-02 Task 2 is implemented, and the next dependency-ordered work item is SDK regression coverage for sync/async control propagation.
-- **Resume note:** State update: `phase=01`, `plan=01-02`, `task=2`, `status=implemented`.
+- **Next command:** Implement Section 8 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 01-02 Task 3 is implemented, and the next dependency-ordered work item is the plan summary.
+- **Resume note:** State update: `phase=01`, `plan=01-02`, `task=3`, `status=implemented`.

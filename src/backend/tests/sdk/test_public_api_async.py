@@ -113,6 +113,83 @@ def test_run_async_returns_server_generated_thread_id_when_config_omits_it(monke
     }
 
 
+def test_run_async_propagates_explicit_controls_to_job_payload(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            job_id="job-controls",
+            run_id="run-controls",
+            thread_id="550e8400-e29b-41d4-a716-446655440211",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "async controls query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440211",
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    )
+
+    assert response.job_id == "job-controls"
+    assert captured["payload"] == {
+        "query": "async controls query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440211",
+        "controls": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    }
+
+
+def test_run_async_preserves_omitted_controls_and_hitl_default_off(monkeypatch) -> None:
+    captured_payloads: list[dict[str, object]] = []
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        _ = kwargs
+        captured_payloads.append(payload.model_dump(mode="json", exclude_none=True))
+        return SimpleNamespace(
+            job_id=f"job-{len(captured_payloads)}",
+            run_id=f"run-{len(captured_payloads)}",
+            thread_id="550e8400-e29b-41d4-a716-446655440212",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    omitted_response = public_api.run_async(
+        "async omitted controls",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+    )
+    explicit_default_response = public_api.run_async(
+        "async explicit default hitl",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={"hitl": {}},
+    )
+
+    assert omitted_response.job_id == "job-1"
+    assert explicit_default_response.job_id == "job-2"
+    assert captured_payloads == [
+        {"query": "async omitted controls"},
+        {
+            "query": "async explicit default hitl",
+            "controls": {"hitl": {"enabled": False}},
+        },
+    ]
+
+
 def test_run_async_and_status_share_same_thread_id_for_one_run_lineage(monkeypatch) -> None:
     thread_id = "550e8400-e29b-41d4-a716-446655440001"
 
