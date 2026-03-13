@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-03
-- **Status:** Phase 2 Plan 02-03 task 3 implemented; summary section queued
+- **Status:** Phase 2 Plan 02-03 summary implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create the Phase 2 Plan 02-03 summary.
+- Start Phase 2 Plan 02-04 Task 1.
 - Continue Phase 2 in dependency order after the completed 02-03 summary.
 - Keep using git-evidenced summaries before advancing plans.
 
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 23 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-03 Task 3 is complete, and the next dependency-ordered work item is the Phase 2 Plan 02-03 summary.
-- **Resume note:** State update: `phase=02`, `plan=02-03`, `task=3`, `status=implemented`; SDK async regressions now cover typed approve/edit/deny/skip resumes, malformed envelope errors, and default-off subquestion HITL behavior.
+- **Next command:** Implement Section 24 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-03 summary is complete, and the next dependency-ordered work item is Phase 2 Plan 02-04 Task 1.
+- **Resume note:** State update: `phase=02`, `plan=02-03`, `task=summary`, `status=implemented`; SDK async parity now covers typed HITL enablement, typed approve/edit/deny/skip resumes, malformed envelope errors, and default-off compatibility.
