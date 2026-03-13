@@ -9,9 +9,9 @@
 ## Current Position
 
 - Current phase: 5 - Major Release and Migration Documentation
-- Current plan: 05-02
-- Current task: 3
-- Current status: implemented
+- Current plan: 05-03
+- Current task: 1
+- Current status: ready
 - Progress: 80% (4/5 phases complete)
 
 Progress bar: `[####-] 80%`
@@ -37,8 +37,8 @@ Progress bar: `[####-] 80%`
 
 ### TODOs
 
-- Create the Phase 5 Plan 05-02 execution summary.
-- Keep release documentation aligned with the completed LangGraph runtime and observability contracts.
+- Regenerate the canonical `openapi.json` artifact and validate it against the runtime export flow.
+- Keep generated SDK references aligned with the committed OpenAPI contract and Phase 5 migration documentation.
 
 ### Blockers
 
@@ -46,6 +46,6 @@ Progress bar: `[####-] 80%`
 
 ## Session Continuity
 
-- Last completed artifact: `sdk/README.md` with a top-level migration and deprecation callout linking the Phase 5 migration docs.
-- Last updated traceability: Phase 5 plan `05-02` task 3 implemented on 2026-03-13; next work is the plan summary section.
+- Last completed artifact: `.planning/phases/05-major-release-and-migration-documentation/05-02-SUMMARY.md` with traceable `05-02` outcomes and the migration-guide evidence gap called out.
+- Last updated traceability: Phase 5 plan `05-02` summary completed on 2026-03-13; next work is `05-03` task 1 for OpenAPI export parity.
 - Next recommended command: `/gsd-implement-next`
