@@ -133,9 +133,69 @@ export interface RuntimeAgentRunAsyncStartResponse {
   status: string;
 }
 
+export interface RuntimeRerankControl {
+  enabled?: boolean;
+}
+
+export interface RuntimeQueryExpansionControl {
+  enabled?: boolean;
+}
+
+export interface RuntimeSubquestionHitlControl {
+  enabled: boolean;
+}
+
+export interface RuntimeHitlControl {
+  enabled: boolean;
+  subquestions?: RuntimeSubquestionHitlControl;
+}
+
+export interface RuntimeAgentRunControls {
+  rerank?: RuntimeRerankControl;
+  query_expansion?: RuntimeQueryExpansionControl;
+  hitl?: RuntimeHitlControl;
+}
+
+export interface RuntimeAgentRunRequest {
+  query: string;
+  thread_id?: string;
+  controls?: RuntimeAgentRunControls;
+}
+
+export interface RuntimeSubquestionReviewItem {
+  subquestion_id: string;
+  sub_question: string;
+  index?: number | null;
+}
+
+export interface RuntimeSubquestionPausePayload {
+  checkpoint_id: string;
+  stage?: string;
+  kind?: string;
+  subquestions: RuntimeSubquestionReviewItem[];
+}
+
+export type RuntimeSubquestionDecisionAction = "approve" | "edit" | "deny" | "skip";
+
+export interface RuntimeSubquestionDecision {
+  subquestion_id: string;
+  action: RuntimeSubquestionDecisionAction;
+  edited_text?: string | null;
+}
+
+export interface RuntimeSubquestionResumeEnvelope {
+  checkpoint_id: string;
+  decisions: RuntimeSubquestionDecision[];
+}
+
+export interface RuntimeAgentRunResumeRequest {
+  resume: boolean | Record<string, unknown> | RuntimeSubquestionResumeEnvelope;
+}
+
 export interface RuntimeAgentRunAsyncStatusResponse {
   job_id: string;
   run_id: string;
+  thread_id?: string;
   status: string;
   message: string;
   stage: string;
@@ -148,6 +208,8 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   result?: RuntimeAgentRunResponse | null;
   error?: string | null;
   cancel_requested: boolean;
+  interrupt_payload?: RuntimeSubquestionPausePayload | null;
+  checkpoint_id?: string | null;
   started_at?: number | null;
   finished_at?: number | null;
   elapsed_ms?: number | null;
@@ -169,6 +231,8 @@ export interface RuntimeLifecycleEvent {
   sub_answers?: SubQuestionAnswer[] | null;
   output?: string | null;
   result?: RuntimeAgentRunResponse | null;
+  interrupt_payload?: RuntimeSubquestionPausePayload | null;
+  checkpoint_id?: string | null;
   elapsed_ms?: number | null;
 }
 
@@ -276,10 +340,27 @@ export async function runAgent(query: string): Promise<ApiResult<RuntimeAgentRun
   });
 }
 
-export async function startAgentRun(query: string): Promise<ApiResult<RuntimeAgentRunAsyncStartResponse>> {
+export function buildRuntimeAgentRunRequest(
+  query: string,
+  options: Omit<RuntimeAgentRunRequest, "query"> = {},
+): RuntimeAgentRunRequest {
+  const payload: RuntimeAgentRunRequest = { query };
+  if (typeof options.thread_id === "string" && options.thread_id.trim()) {
+    payload.thread_id = options.thread_id.trim();
+  }
+  if (options.controls !== undefined) {
+    payload.controls = options.controls;
+  }
+  return payload;
+}
+
+export async function startAgentRun(
+  query: string,
+  options: Omit<RuntimeAgentRunRequest, "query"> = {},
+): Promise<ApiResult<RuntimeAgentRunAsyncStartResponse>> {
   return requestJson<RuntimeAgentRunAsyncStartResponse>("/api/agents/run-async", {
     method: "POST",
-    payload: { query },
+    payload: buildRuntimeAgentRunRequest(query, options),
     validate: (v): v is RuntimeAgentRunAsyncStartResponse =>
       isObject(v) &&
       typeof v.job_id === "string" &&
@@ -289,33 +370,28 @@ export async function startAgentRun(query: string): Promise<ApiResult<RuntimeAge
   });
 }
 
+export function buildRuntimeAgentRunResumeRequest(
+  resume: RuntimeAgentRunResumeRequest["resume"] = true,
+): RuntimeAgentRunResumeRequest {
+  return { resume };
+}
+
+export async function resumeAgentRun(
+  jobId: string,
+  resume: RuntimeAgentRunResumeRequest["resume"] = true,
+): Promise<ApiResult<RuntimeAgentRunAsyncStatusResponse>> {
+  return requestJson<RuntimeAgentRunAsyncStatusResponse>(`/api/agents/run-resume/${jobId}`, {
+    method: "POST",
+    payload: buildRuntimeAgentRunResumeRequest(resume),
+    validate: (v): v is RuntimeAgentRunAsyncStatusResponse => isRuntimeAgentRunAsyncStatusResponse(v),
+    timeoutMs: AGENT_RUN_TIMEOUT_MS,
+  });
+}
+
 export async function getAgentRunStatus(jobId: string): Promise<ApiResult<RuntimeAgentRunAsyncStatusResponse>> {
   return requestJson<RuntimeAgentRunAsyncStatusResponse>(`/api/agents/run-status/${jobId}`, {
     method: "GET",
-    validate: (v): v is RuntimeAgentRunAsyncStatusResponse =>
-      isObject(v) &&
-      typeof v.job_id === "string" &&
-      typeof v.run_id === "string" &&
-      typeof v.status === "string" &&
-      typeof v.message === "string" &&
-      typeof v.stage === "string" &&
-      Array.isArray(v.stages) &&
-      v.stages.every(isAgentRunStageMetadata) &&
-      Array.isArray(v.decomposition_sub_questions) &&
-      v.decomposition_sub_questions.every((item) => typeof item === "string") &&
-      Array.isArray(v.sub_question_artifacts) &&
-      v.sub_question_artifacts.every(isSubQuestionArtifact) &&
-      Array.isArray(v.sub_qa) &&
-      v.sub_qa.every(isSubQuestionAnswer) &&
-      (v.sub_answers === undefined ||
-        (Array.isArray(v.sub_answers) && v.sub_answers.every(isSubQuestionAnswer))) &&
-      typeof v.output === "string" &&
-      (v.result === undefined || v.result === null || validateRuntimeAgentRunResponse(v.result)) &&
-      (v.error === undefined || v.error === null || typeof v.error === "string") &&
-      typeof v.cancel_requested === "boolean" &&
-      (v.started_at === undefined || v.started_at === null || typeof v.started_at === "number") &&
-      (v.finished_at === undefined || v.finished_at === null || typeof v.finished_at === "number") &&
-      (v.elapsed_ms === undefined || v.elapsed_ms === null || typeof v.elapsed_ms === "number"),
+    validate: (v): v is RuntimeAgentRunAsyncStatusResponse => isRuntimeAgentRunAsyncStatusResponse(v),
     timeoutMs: AGENT_RUN_TIMEOUT_MS,
   });
 }
@@ -429,6 +505,39 @@ function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata
   );
 }
 
+function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeAgentRunAsyncStatusResponse {
+  return (
+    isObject(value) &&
+    typeof value.job_id === "string" &&
+    typeof value.run_id === "string" &&
+    (value.thread_id === undefined || typeof value.thread_id === "string") &&
+    typeof value.status === "string" &&
+    typeof value.message === "string" &&
+    typeof value.stage === "string" &&
+    Array.isArray(value.stages) &&
+    value.stages.every(isAgentRunStageMetadata) &&
+    Array.isArray(value.decomposition_sub_questions) &&
+    value.decomposition_sub_questions.every((item) => typeof item === "string") &&
+    Array.isArray(value.sub_question_artifacts) &&
+    value.sub_question_artifacts.every(isSubQuestionArtifact) &&
+    Array.isArray(value.sub_qa) &&
+    value.sub_qa.every(isSubQuestionAnswer) &&
+    (value.sub_answers === undefined ||
+      (Array.isArray(value.sub_answers) && value.sub_answers.every(isSubQuestionAnswer))) &&
+    typeof value.output === "string" &&
+    (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
+    (value.error === undefined || value.error === null || typeof value.error === "string") &&
+    typeof value.cancel_requested === "boolean" &&
+    (value.interrupt_payload === undefined ||
+      value.interrupt_payload === null ||
+      isRuntimeSubquestionPausePayload(value.interrupt_payload, value.checkpoint_id)) &&
+    (value.checkpoint_id === undefined || value.checkpoint_id === null || typeof value.checkpoint_id === "string") &&
+    (value.started_at === undefined || value.started_at === null || typeof value.started_at === "number") &&
+    (value.finished_at === undefined || value.finished_at === null || typeof value.finished_at === "number") &&
+    (value.elapsed_ms === undefined || value.elapsed_ms === null || typeof value.elapsed_ms === "number")
+  );
+}
+
 function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent {
   return (
     isObject(value) &&
@@ -454,8 +563,82 @@ function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent
       (Array.isArray(value.sub_answers) && value.sub_answers.every(isSubQuestionAnswer))) &&
     (value.output === undefined || value.output === null || typeof value.output === "string") &&
     (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
+    (value.interrupt_payload === undefined ||
+      value.interrupt_payload === null ||
+      isRuntimeSubquestionPausePayload(value.interrupt_payload, value.checkpoint_id)) &&
+    (value.checkpoint_id === undefined || value.checkpoint_id === null || typeof value.checkpoint_id === "string") &&
     (value.elapsed_ms === undefined || value.elapsed_ms === null || typeof value.elapsed_ms === "number")
   );
+}
+
+function isRuntimeSubquestionPausePayload(
+  value: unknown,
+  parentCheckpointId?: unknown,
+): value is RuntimeSubquestionPausePayload {
+  if (!isObject(value)) return false;
+
+  const rawCheckpointId =
+    typeof value.checkpoint_id === "string" && value.checkpoint_id.trim()
+      ? value.checkpoint_id
+      : typeof parentCheckpointId === "string" && parentCheckpointId.trim()
+        ? parentCheckpointId
+        : null;
+  if (rawCheckpointId === null) return false;
+
+  const normalizedSubquestions = normalizeRuntimeSubquestionReviewItems(value);
+  if (normalizedSubquestions === null) return false;
+
+  value.checkpoint_id = rawCheckpointId;
+  value.subquestions = normalizedSubquestions;
+  return (
+    (value.stage === undefined || typeof value.stage === "string") &&
+    (value.kind === undefined || typeof value.kind === "string")
+  );
+}
+
+function normalizeRuntimeSubquestionReviewItems(value: Record<string, unknown>): RuntimeSubquestionReviewItem[] | null {
+  const rawItems = value.subquestions ?? value.proposed_subquestions;
+  if (!Array.isArray(rawItems)) return null;
+
+  const normalizedItems: RuntimeSubquestionReviewItem[] = [];
+  for (let index = 0; index < rawItems.length; index += 1) {
+    const normalizedItem = normalizeRuntimeSubquestionReviewItem(rawItems[index], index);
+    if (normalizedItem === null) return null;
+    normalizedItems.push(normalizedItem);
+  }
+  return normalizedItems;
+}
+
+function normalizeRuntimeSubquestionReviewItem(
+  value: unknown,
+  fallbackIndex: number,
+): RuntimeSubquestionReviewItem | null {
+  if (!isObject(value)) return null;
+
+  const subquestionId =
+    typeof value.subquestion_id === "string" && value.subquestion_id.trim()
+      ? value.subquestion_id
+      : typeof value.id === "string" && value.id.trim()
+        ? value.id
+        : typeof value.index === "number"
+          ? `index:${value.index}`
+          : `index:${fallbackIndex}`;
+
+  const subQuestion =
+    typeof value.sub_question === "string" && value.sub_question.trim()
+      ? value.sub_question
+      : typeof value.question === "string" && value.question.trim()
+        ? value.question
+        : typeof value.text === "string" && value.text.trim()
+          ? value.text
+          : null;
+  if (subQuestion === null) return null;
+
+  return {
+    subquestion_id: subquestionId,
+    sub_question: subQuestion,
+    index: typeof value.index === "number" ? value.index : fallbackIndex,
+  };
 }
 
 function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {

@@ -9,8 +9,8 @@
 ## Current Position
 
 - **Current phase:** 2
-- **Current plan:** 02-01
-- **Status:** Phase 2 Plan 02-01 summary implemented; next section queued
+- **Current plan:** 02-02
+- **Status:** Phase 2 Plan 02-02 Task 1 implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-02 Task 1.
-- Continue Phase 2 in dependency order after the completed 02-01 summary.
+- Start Phase 2 Plan 02-02 Task 2.
+- Continue Phase 2 in dependency order after the completed 02-02 Task 1.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 16 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-01 is complete, and the next dependency-ordered work item is Plan 02-02 Task 1.
-- **Resume note:** State update: `phase=02`, `plan=02-01`, `task=summary`, `status=implemented`; summary added with commit traceability plus verification notes covering the backend container path deviation.
+- **Next command:** Implement Section 17 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-02 Task 1 is complete, and the next dependency-ordered work item is Plan 02-02 Task 2.
+- **Resume note:** State update: `phase=02`, `plan=02-02`, `task=1`, `status=implemented`; frontend API contracts now cover HITL start/resume payloads plus typed paused metadata parsing.
