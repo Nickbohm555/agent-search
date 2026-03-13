@@ -4,15 +4,15 @@
 
 - **Core value:** Users can safely control and customize how the agent thinks (subquestions/query expansion/prompting) without breaking the existing advanced RAG experience.
 - **Current milestone roadmap:** `.planning/ROADMAP.md`
-- **Current focus:** Phase 1 - Contract Foundation and Compatibility Baseline
+- **Current focus:** Phase 2 - Subquestion HITL End-to-End
 
 ## Current Position
 
-- **Current phase:** 1
-- **Current plan:** 01-03
-- **Status:** Task 3 implemented
-- **Progress:** 0/6 phases complete
-- **Progress bar:** `░░░░░░` (0%)
+- **Current phase:** 2
+- **Current plan:** 02-01
+- **Status:** Phase 1 complete; next section queued
+- **Progress:** 1/6 phases complete
+- **Progress bar:** `█░░░░░` (17%)
 
 ## Performance Metrics
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 1 Plan 01-03 summary.
-- Create the Phase 1 Plan 01-03 summary from completed task evidence.
+- Start Phase 2 Plan 02-01 Task 1.
+- Implement additive subquestion HITL start/resume contracts.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 12 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 01-03 Task 3 is complete, and the next dependency-ordered work item is the Plan 01-03 summary.
-- **Resume note:** State update: `phase=01`, `plan=01-03`, `task=3`, `status=implemented`.
+- **Next command:** Implement Section 13 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 1 summary is complete, and the next dependency-ordered work item is Phase 2 Plan 02-01 Task 1.
+- **Resume note:** State update: `phase=01`, `plan=01-03`, `task=summary`, `status=implemented`; Phase 1 marked complete.
