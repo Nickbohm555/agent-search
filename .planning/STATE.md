@@ -10,7 +10,7 @@
 
 - **Current phase:** 1
 - **Current plan:** 01-01
-- **Status:** Task 3 implemented
+- **Status:** Summary implemented
 - **Progress:** 0/6 phases complete
 - **Progress bar:** `░░░░░░` (0%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create Phase 1 Plan 01-01 summary.
-- Confirm phase-level test strategy and acceptance checks during summary creation.
+- Start Phase 1 Plan 01-02 Task 1.
+- Keep public API/runtime config changes compatibility-safe and default-off.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 4 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Summary work should capture the completed 01-01 contract, router mapping, and compatibility test evidence.
-- **Resume note:** State update: `phase=01`, `plan=01-01`, `task=3`, `status=implemented`.
+- **Next command:** Implement Section 5 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 01-01 is summarized and the next dependency-ordered work item is public API/runtime config normalization for Plan 01-02 Task 1.
+- **Resume note:** State update: `phase=01`, `plan=01-01`, `task=summary`, `status=implemented`.
