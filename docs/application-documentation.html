@@ -288,13 +288,13 @@
         <p class="eyebrow">Application Reference</p>
         <h2>One document for how agent-search is built and why it behaves the way it does.</h2>
         <p>
-          <code>agent-search</code> is a graph-based, citation-grounded RAG application that exists in two forms at once:
+          <code>agent-search</code> is a LangGraph-first, citation-grounded RAG application that exists in two forms at once:
           an SDK for direct runtime use and a containerized web application with a FastAPI backend, React/Vite frontend,
-          pgvector-backed storage, and async status polling for long-running runs and wiki ingestion.
+          pgvector-backed storage, canonical <code>thread_id</code> handling, and async lifecycle delivery for long-running runs and wiki ingestion.
         </p>
         <div class="meta">
           <span>Project root: <code>agent-search/</code></span>
-          <span>Planning sources dated: 2026-03-10</span>
+          <span>Planning sources dated: 2026-03-13</span>
           <span>Scope: agent-search only</span>
         </div>
       </header>
@@ -332,7 +332,7 @@
         <h2>Architecture</h2>
         <p>
           The core architectural pattern is a containerized service app wrapped around a reusable SDK runtime. The HTTP API is thin and mostly delegates to SDK entrypoints,
-          while the actual question-answering logic runs through a staged graph pipeline.
+          while the actual question-answering logic now executes through a compiled LangGraph <code>StateGraph</code> over a canonical runtime state contract.
         </p>
         <div class="grid two">
           <div class="card">
@@ -340,9 +340,9 @@
             <ul>
               <li>Frontend UI in <code>src/frontend/</code> for wiki loading, run submission, polling, and visualization.</li>
               <li>FastAPI backend in <code>src/backend/</code> for HTTP routing, dependency setup, and persistence.</li>
-              <li>SDK/runtime core in <code>src/backend/agent_search/</code> for public API methods, vector store protocol enforcement, and runtime jobs.</li>
-              <li>Service modules in <code>src/backend/services/</code> for decomposition, search, rerank, answering, refinement, and ingestion helpers.</li>
-              <li>Postgres + pgvector persistence for stored documents, chunks, and vector search.</li>
+              <li>SDK/runtime core in <code>src/backend/agent_search/</code> for public API methods, LangGraph execution, checkpoint bootstrap, and runtime jobs.</li>
+              <li>Runtime nodes and compatibility services cooperate: LangGraph nodes live under <code>agent_search/runtime/</code>, while legacy service functions still supply node logic and mapping helpers.</li>
+              <li>Postgres + pgvector persistence stores internal documents and chunks, and Postgres also tracks runtime executions, checkpoint links, and idempotency effects.</li>
             </ul>
           </div>
           <div class="card">
@@ -350,7 +350,9 @@
             <ul>
               <li>Entrypoint to router to service separation.</li>
               <li>SDK as the main business-logic surface, with HTTP as a wrapper around it.</li>
-              <li>Graph-style staged execution with per-stage snapshots.</li>
+              <li>LangGraph state-graph execution with typed reducers, stable channels, and per-stage snapshots.</li>
+              <li>Stable <code>thread_id</code> identity across sync, async, retry, and resume flows.</li>
+              <li>Lifecycle events streamed over SSE while job status remains queryable over REST.</li>
               <li>Environment-composed runtime via Docker Compose and env vars.</li>
               <li>Fallback-first behavior when retrieval or model dependencies are unavailable or slow.</li>
             </ul>
@@ -361,7 +363,7 @@
         <p>
           The repo keeps the runtime logic inside the Python package and reuses it from both the SDK-facing API and the web backend.
           That is the most important design choice in this codebase: the web app is not a separate implementation of the algorithm,
-          it is a transport and orchestration layer over the same runtime core.
+          it is a transport and orchestration layer over the same LangGraph runtime core. Phase 5 documents the project after the migration rather than describing a future cutover.
         </p>
       </section>
 
@@ -385,7 +387,7 @@
               <tr>
                 <td><code>src/backend/agent_search/</code></td>
                 <td>Public SDK package and runtime-specific modules.</td>
-                <td><code>public_api.py</code>, <code>runtime/runner.py</code>, <code>runtime/jobs.py</code>, <code>vectorstore/protocol.py</code></td>
+                <td><code>public_api.py</code>, <code>runtime/graph/</code>, <code>runtime/runner.py</code>, <code>runtime/jobs.py</code>, <code>runtime/persistence.py</code></td>
               </tr>
               <tr>
                 <td><code>src/frontend/</code></td>
@@ -437,7 +439,7 @@
       <section id="flow">
         <h2>How It Works</h2>
         <p>
-          The application has two major workflows: internal wiki ingestion and runtime query execution. Both are exposed synchronously and asynchronously at different points in the stack.
+          The application has two major workflows: internal wiki ingestion and LangGraph runtime query execution. Query execution now has one canonical state-graph path, with sync, async, SSE, and resume behavior layered around that shared runtime.
         </p>
 
         <div class="flow">
@@ -457,21 +459,33 @@
             <li>The UI submits a query through <code>/api/agents/run-async</code> and begins polling <code>/api/agents/run-status/{job_id}</code>.</li>
             <li><code>routers/agent.py</code> builds runtime dependencies: a vector store pointed at the configured collection and a <code>ChatOpenAI</code> model instance.</li>
             <li>The router delegates to SDK functions in <code>agent_search/public_api.py</code>.</li>
-            <li>The SDK validates inputs, normalizes config, and sends the request into the runtime graph runner.</li>
-            <li>The graph decomposes the query into sub-questions, expands queries, searches, reranks, answers each sub-question, and synthesizes a final answer.</li>
-            <li>Stage snapshots are emitted during the async run so the frontend can display the timeline, sub-questions, artifacts, retrieval counts, rerank bypasses, and citation coverage.</li>
+            <li>The SDK validates inputs, normalizes config, preserves or mints a canonical <code>thread_id</code>, and sends the request into the LangGraph runtime.</li>
+            <li><code>agent_search/runtime/graph/builder.py</code> compiles the runtime graph and <code>runtime/graph/execution.py</code> executes it with LangGraph stream modes for values, tasks, updates, and checkpoints.</li>
+            <li>The graph decomposes the query into sub-questions, expands queries, searches, reranks, answers each sub-question, and synthesizes a final answer into canonical <code>RAGState</code>.</li>
+            <li>Stage snapshots and lifecycle events are emitted during the async run so the frontend can display the timeline, sub-questions, artifacts, retrieval counts, rerank bypasses, and citation coverage.</li>
           </ol>
         </div>
 
         <div class="flow">
-          <h3>3. Runtime Stages</h3>
+          <h3>3. Runtime State And Recovery</h3>
+          <ol>
+            <li><strong>Canonical state</strong>: <code>RAGState</code> is the named runtime contract; LangGraph uses <code>RuntimeGraphState</code> to add graph-only channels such as initial search context.</li>
+            <li><strong>Stable identity</strong>: <code>thread_id</code> is validated as a UUID and stays stable across run creation, status reads, and resume operations.</li>
+            <li><strong>Checkpoint support</strong>: the durable runner can compile with a Postgres-backed LangGraph checkpointer, bootstrap checkpoint tables automatically, and resume from interrupt payloads.</li>
+            <li><strong>Execution ledger</strong>: runtime execution rows, checkpoint links, and idempotency effects are stored in Postgres so retries and resumptions have a durable record.</li>
+            <li><strong>Delivery split</strong>: REST status and SSE events are caller-facing, while checkpoints and execution identity are runtime-facing infrastructure.</li>
+          </ol>
+        </div>
+
+        <div class="flow">
+          <h3>4. Runtime Stages</h3>
           <ol>
             <li><strong>Decompose</strong>: turn the user question into narrow atomic sub-questions.</li>
             <li><strong>Expand</strong>: generate alternate search queries for each sub-question.</li>
             <li><strong>Search</strong>: retrieve candidate passages from the vector store.</li>
             <li><strong>Rerank</strong>: reorder passages, usually with OpenAI-backed reranking.</li>
             <li><strong>Answer</strong>: generate grounded sub-answers and verify whether each answer is supported.</li>
-            <li><strong>Final</strong>: synthesize the final response and map citation indices back to stored evidence rows.</li>
+            <li><strong>Synthesize</strong>: produce the final response and map citation indices back to stored evidence rows.</li>
           </ol>
         </div>
 
@@ -491,7 +505,9 @@
               <li><code>POST /api/agents/run</code>: synchronous run returning a <code>RuntimeAgentRunResponse</code>.</li>
               <li><code>POST /api/agents/run-async</code>: start async run and return job metadata.</li>
               <li><code>GET /api/agents/run-status/{job_id}</code>: retrieve status, stage snapshots, artifacts, partial outputs, and final result when available.</li>
+              <li><code>GET /api/agents/run-events/{job_id}</code>: stream lifecycle events over server-sent events.</li>
               <li><code>POST /api/agents/run-cancel/{job_id}</code>: request cancellation.</li>
+              <li><code>POST /api/agents/run-resume/{job_id}</code>: resume a paused run from checkpoint state.</li>
             </ul>
           </div>
           <div class="card">
@@ -510,13 +526,13 @@
         <h3>Public SDK Surface</h3>
         <p>
           The public Python entrypoints live in <code>src/backend/agent_search/public_api.py</code>. The main methods are <code>advanced_rag()</code>,
-          <code>run()</code> as a deprecated alias, <code>run_async()</code>, <code>get_run_status()</code>, and <code>cancel_run()</code>.
+          <code>run()</code> as a deprecated alias, <code>run_async()</code>, <code>get_run_status()</code>, <code>resume_run()</code>, and <code>cancel_run()</code>.
         </p>
 
         <h3>Async Contract</h3>
         <p>
-          Async runs are backed by an in-process <code>ThreadPoolExecutor</code> and an in-memory job registry. This makes local development and UI feedback simple,
-          but it also means job state is not durable across process restarts and is not currently distributed across multiple backend instances.
+          Async runs still execute through an in-process <code>ThreadPoolExecutor</code> and active job registry, but the runtime now also persists execution identity,
+          checkpoint linkage, and idempotency records in Postgres. That means live status/SSE delivery remains single-process today, while run lineage and checkpoint recovery data survive independently of the in-memory job object.
         </p>
       </section>
 
@@ -528,14 +544,17 @@
             <ul>
               <li><code>internal_documents</code>: source metadata and original content for loaded wiki documents.</li>
               <li><code>internal_document_chunks</code>: per-chunk text, vector embedding, and JSON metadata.</li>
-              <li>Additional Alembic migrations also show benchmark-related tables, indicating benchmarking support exists in the schema history.</li>
+              <li><code>runtime_execution_runs</code>: canonical run and <code>thread_id</code> registry.</li>
+              <li><code>runtime_checkpoint_links</code>: latest checkpoint linkage for resumable runs.</li>
+              <li><code>runtime_idempotency_effects</code>: replay-safe effect ledger for durable execution paths.</li>
             </ul>
           </div>
           <div class="card">
             <h3>Runtime State</h3>
             <ul>
               <li><code>RuntimeAgentRunRequest</code> and <code>RuntimeAgentRunResponse</code> define the outer API contract.</li>
-              <li><code>AgentGraphState</code> carries decomposition results, artifacts, final answer text, citations, run metadata, and snapshots.</li>
+              <li><code>RAGState</code> is the canonical runtime state contract for decomposition results, artifacts, final answer text, citations, run metadata, and snapshots.</li>
+              <li><code>RuntimeGraphState</code> wraps <code>RAGState</code> with LangGraph-only channels and reducer semantics.</li>
               <li><code>SubQuestionArtifacts</code> retains the evidence chain for each lane: expanded queries, retrieved docs, reranked docs, and citation rows.</li>
             </ul>
           </div>
@@ -564,6 +583,7 @@
             <h3>Core Runtime Dependencies</h3>
             <ul>
               <li><code>langchain</code>, <code>langchain-openai</code>, and <code>langchain-community</code> for model and retriever integration.</li>
+              <li><code>langgraph</code> and <code>langgraph-checkpoint-postgres</code> for compiled state-graph execution and checkpoint persistence.</li>
               <li><code>langfuse</code> for callback-driven tracing.</li>
               <li><code>wikipedia</code> and text splitters for internal source ingestion.</li>
             </ul>
@@ -740,7 +760,7 @@
           <div class="card">
             <h3>Operational Fragility</h3>
             <ul>
-              <li>Async runs and ingestion jobs are stored in memory, so process restarts lose job state.</li>
+              <li>Active async status and SSE delivery still depend on in-memory job objects, so process restarts can interrupt live polling behavior.</li>
               <li>The backend resolves critical dependencies at request time rather than through a managed service container abstraction.</li>
               <li>Many stages depend on OpenAI availability for best quality, even though fallback behavior exists.</li>
             </ul>
@@ -762,8 +782,9 @@
           <div class="card">
             <h3>Why The Current Design Is Good</h3>
             <ul>
-              <li>One runtime implementation serves both SDK and web use cases.</li>
+              <li>One LangGraph runtime implementation serves both SDK and web use cases.</li>
               <li>Stage snapshots make the system inspectable, not just opaque.</li>
+              <li>Stable <code>thread_id</code> and checkpoint-aware execution improve operational traceability.</li>
               <li>Curated wiki ingestion gives the app a deterministic internal corpus for demos and controlled tests.</li>
               <li>Fallback logic prevents many empty-screen failures.</li>
             </ul>
@@ -771,7 +792,7 @@
           <div class="card">
             <h3>What The Design Trades Away</h3>
             <ul>
-              <li>In-memory async job tracking sacrifices durability and horizontal scaling.</li>
+              <li>In-memory async job tracking still limits horizontal scaling even though run identity and checkpoints are persisted.</li>
               <li>Router-level dependency construction is simple but couples request handling to concrete provider setup.</li>
               <li>Heavy fallback behavior improves uptime but can mask quality regressions unless carefully monitored.</li>
               <li>One main frontend page keeps the UI simple, but it concentrates a lot of workflow complexity in <code>App.tsx</code>.</li>
@@ -793,7 +814,8 @@
           <li>The frontend expects the backend base URL via <code>VITE_API_BASE_URL</code> and uses long request timeouts for runs and ingestion.</li>
           <li>The backend logs runtime progress aggressively to stdout to make container debugging easier.</li>
           <li>The default vector collection name is <code>agent_search_internal_data</code>.</li>
-          <li>Initial search context retrieval is currently disabled in the runtime runner; the graph proceeds with an empty initial context before decomposition.</li>
+          <li>Initial search context retrieval is currently disabled in the runtime runner; the LangGraph path proceeds with an empty initial context before decomposition.</li>
+          <li>The migration to LangGraph-first execution is complete; remaining release work is documentation, SDK surface hygiene, and migration guidance rather than runtime cutover.</li>
         </ul>
         <p class="footer-note">
           Document purpose: serve as the canonical HTML reference for <code>agent-search</code>, built from the planning notes plus direct repo inspection.
