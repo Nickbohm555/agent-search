@@ -51,15 +51,6 @@ services:
       - /app/node_modules
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
 
-  chrome:
-    image: browserless/chrome:latest
-    container_name: agent-search-chrome
-    ports:
-      - "9222:3000"
-    environment:
-      TOKEN: ""
-      MAX_CONCURRENT_SESSIONS: 2
-
 volumes:
   pg_data:
   backend_venv:

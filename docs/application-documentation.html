@@ -315,8 +315,8 @@
             <p>Primary surfaces: SDK/runtime library and web application.</p>
           </div>
           <div class="card">
-            <div class="stat">4</div>
-            <p>Compose services in the default local topology: database, backend, frontend, and a browserless Chrome container.</p>
+            <div class="stat">3</div>
+            <p>Compose services in the default local topology: database, backend, and frontend. Browser verification uses a local Chrome DevTools session via <code>launch-devtools.sh</code>.</p>
           </div>
         </div>
         <h3>Primary Inputs Used For This HTML</h3>
@@ -491,8 +491,8 @@
 
         <h3>Fallback Behavior</h3>
         <p>
-          This app is intentionally defensive. The service layer contains timeout guards and fallback text for retrieval outages, slow generations,
-          missing API keys, malformed model outputs, rerank failures, and verification timeouts. The result is a system that often returns partial output rather than hard-failing.
+          This app no longer applies runtime timeout guardrails. The service layer still handles missing API keys, malformed model outputs, retrieval outages,
+          and citation-contract fallbacks, but it does not cut off work based on elapsed time.
         </p>
       </section>
 
@@ -616,11 +616,6 @@
                 <td>Vite development server.</td>
                 <td><code>5173</code></td>
               </tr>
-              <tr>
-                <td><code>chrome</code></td>
-                <td>Browserless Chrome container for browser-driven flows.</td>
-                <td><code>9222</code></td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -632,7 +627,7 @@
           <li><code>VECTOR_COLLECTION_NAME</code> to select the pgvector collection.</li>
           <li><code>RUNTIME_AGENT_MODEL</code> and <code>DECOMPOSITION_ONLY_MODEL</code> to control model selection.</li>
           <li><code>VITE_API_BASE_URL</code> and frontend timeout variables for browser behavior.</li>
-          <li>Multiple timeout env vars for stage-specific guardrails in <code>services/agent_service.py</code>.</li>
+          <li>Runtime timeout env vars remain in config surfaces for compatibility, but the app no longer enforces timeout guardrails during execution.</li>
         </ul>
       </section>
 

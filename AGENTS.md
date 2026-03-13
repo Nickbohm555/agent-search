@@ -1,0 +1,58 @@
+2. Stack: Docker Compose + FastAPI + React/TypeScript/Vite + Postgres + Alembic + pgvector.
+2. Always use react for frontend, not html
+3. Source roots: `src/backend/`, `src/frontend/`, and `docker-compose.yml`.
+4. Backend dependencies are managed with `uv` (`pyproject.toml` + `uv.lock`).
+
+If you need to make changes to PyPi use the token in sdk-token.txt. 
+
+If you made backend changes, simply refresh the containers changes. run docker locally, not in a virtual env.
+- Refresh (normal iteration): Restart backend to pick up code changes: `docker compose restart backend`. No need to tear down or rebuild unless you change dependencies or Dockerfile.
+
+Only completely restart everything if there are dependency changes in uv
+-  Start fresh (when needed): Remove all services, volumes, and images: `docker compose down -v --rmi all`, then `docker compose build` and `docker compose up -d`.
+
+After you refresh or restart, if it is backend changes then check the logs of specific containers such as:
+- Tail backend logs - also use for backend checks: `docker compose logs -f backend`.
+
+If frontend changes are made and you need to verify it is there / functionality as well, use a local Chrome DevTools session, not a Docker chrome service. here are the instructions:
+- `launch-devtools.sh` is not a one-time setup command; run it whenever you want to start or reuse a local Chrome DevTools session.
+- `launch-devtools.sh` should be the default entry point. It now reuses an existing `9222` session when possible and otherwise launches a dedicated local Chrome instance with its own profile.
+- Launch debug browser: `./launch-devtools.sh http://localhost:5173`.
+- DevTools targets endpoint: `http://127.0.0.1:9222/json/list`.
+- Verify debug endpoint: `curl http://127.0.0.1:9222/json/list` (expect JSON with targets and `webSocketDebuggerUrl`).
+- Keep the Chrome app/process running; tab can be closed/reopened.
+- If port `9222` is already in use and `curl http://127.0.0.1:9222/json/list` returns targets, reuse that active session instead of relaunching.
+- If port `9222` is already in use but `json/list` does not respond, stop the stale listener first or choose a different `PORT`.
+- If the browser-control tool is unavailable in the session, use CDP programmatically against the DevTools endpoint:
+  `python3 - <<'PY'`
+  `import json, urllib.request`
+  `pages = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/list"))`
+  `print(json.dumps(pages, indent=2))`
+  `PY`
+- When scripting CDP, prefer the target from `json/list` whose `url` starts with `http://localhost:5173`, then connect to its `webSocketDebuggerUrl`.
+- Do not rely on `localhost` from inside a Docker-hosted browser. Use the local Chrome session from `launch-devtools.sh` so `localhost:5173` and `localhost:8000` resolve correctly.
+11. Frontend URL: `http://localhost:5173`.
+12. Backend URL: `http://localhost:8000`.
+13. Health endpoint: `http://localhost:8000/api/health`.
+
+
+If you mess with the backend DB, here are useful commands for updating the DB. Use alembic and migration commands when we are changing DB schemas...
+22. DB shell: `docker compose exec db psql -U ${POSTGRES_USER:-agent_user} -d ${POSTGRES_DB:-agent_search}`.
+23. Alembic upgrade: `docker compose exec backend uv run alembic upgrade head`.
+24. Create migration: `docker compose exec backend uv run alembic revision -m "describe_change"`.
+25. Alembic history: `docker compose exec backend uv run alembic history`.
+26. Alembic current: `docker compose exec backend uv run alembic current`.
+27. Verify pgvector extension: `docker compose exec db psql -U agent_user -d agent_search -c "\\dx"`.
+28. Verify tables: `docker compose exec db psql -U agent_user -d agent_search -c "\\dt"`.
+29. Wipe internal data (documents + chunks only): `POST /api/internal-data/wipe` or `docker compose exec db psql -U agent_user -d agent_search -c "TRUNCATE internal_documents CASCADE;"`.
+
+To run specific tests, here are commands
+30. Backend tests: `docker compose exec backend uv run pytest`.
+31. Backend smoke tests: `docker compose exec backend uv run pytest tests/api -m smoke`.
+32. Frontend tests: `docker compose exec frontend npm run test`.
+33. Frontend typecheck: `docker compose exec frontend npm run typecheck`.
+34. Frontend build check: `docker compose exec frontend npm run build`.
+35. Browser debug workflow for E2E feature testing:
+- Start app services: `docker compose up -d backend frontend`.
+
+
