@@ -153,6 +153,44 @@ def test_run_async_propagates_explicit_controls_to_job_payload(monkeypatch) -> N
     }
 
 
+def test_run_async_propagates_subquestion_hitl_enablement_to_job_payload(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            job_id="job-subquestion-hitl",
+            run_id="run-subquestion-hitl",
+            thread_id="550e8400-e29b-41d4-a716-446655440213",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "async subquestion hitl query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440213",
+            "hitl": {"subquestions": {"enabled": True}},
+        },
+    )
+
+    assert response.job_id == "job-subquestion-hitl"
+    assert captured["payload"] == {
+        "query": "async subquestion hitl query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440213",
+        "controls": {
+            "hitl": {
+                "enabled": True,
+                "subquestions": {"enabled": True},
+            }
+        },
+    }
+
+
 def test_run_async_preserves_omitted_controls_and_hitl_default_off(monkeypatch) -> None:
     captured_payloads: list[dict[str, object]] = []
 
@@ -649,3 +687,32 @@ def test_resume_run_validates_typed_subquestion_decisions_before_dispatch(monkey
             }
         ),
     }
+
+
+def test_resume_run_rejects_malformed_typed_subquestion_decisions_before_dispatch(monkeypatch) -> None:
+    monkeypatch.setattr(
+        public_api,
+        "resume_agent_run_job",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("resume dispatch should not occur")),
+    )
+
+    malformed_payloads = [
+        {"checkpoint_id": "checkpoint-typed", "decisions": []},
+        {
+            "checkpoint_id": "checkpoint-typed",
+            "decisions": [{"subquestion_id": "sq-1", "action": "edit"}],
+        },
+        {
+            "checkpoint_id": "checkpoint-typed",
+            "decisions": [{"subquestion_id": "sq-1", "action": "reject"}],
+        },
+        {"decisions": [{"subquestion_id": "sq-1", "action": "approve"}]},
+    ]
+
+    for resume in malformed_payloads:
+        try:
+            public_api.resume_run("job-malformed-typed-resume", resume=resume)
+        except SDKConfigurationError as exc:
+            assert str(exc) == "resume_run failed due to invalid SDK input or configuration."
+        else:
+            raise AssertionError("Expected SDKConfigurationError for malformed typed resume payload")

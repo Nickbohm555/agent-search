@@ -253,6 +253,179 @@ def test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt(monkeypatch) -> N
     assert captured == [("Resume this run", {"approved": True})]
 
 
+@pytest.mark.parametrize(
+    ("decision", "expected_output"),
+    [
+        ({"subquestion_id": "sq-1", "action": "approve"}, "Approved subquestion set."),
+        (
+            {
+                "subquestion_id": "sq-1",
+                "action": "edit",
+                "edited_text": "What changed after review?",
+            },
+            "Edited subquestion set.",
+        ),
+        ({"subquestion_id": "sq-1", "action": "deny"}, "Denied subquestion removed."),
+        ({"subquestion_id": "sq-1", "action": "skip"}, "Skipped subquestion review."),
+    ],
+)
+def test_sdk_async_resume_e2e_supports_typed_subquestion_decision_matrix(
+    monkeypatch,
+    decision: dict[str, object],
+    expected_output: str,
+) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440014"
+    sentinel_model = object()
+    sentinel_vector_store = _CompatibleVectorStore()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
+
+    def fake_run_checkpointed_agent(*, payload, run_metadata, resume=None, **_kwargs):
+        captured["payload_query"] = payload.query
+        captured["resume"] = resume
+        return SimpleNamespace(
+            status="completed",
+            state={
+                "main_question": payload.query,
+                "decomposition_sub_questions": ["What changed?"],
+                "sub_question_artifacts": [],
+                "final_answer": expected_output,
+                "citation_rows_by_index": {},
+                "run_metadata": run_metadata,
+                "sub_qa": [SubQuestionAnswer(sub_question="What changed?", sub_answer=expected_output)],
+                "output": expected_output,
+                "stage_snapshots": [],
+            },
+            response=RuntimeAgentRunResponse(
+                main_question=payload.query,
+                thread_id=thread_id,
+                sub_qa=[SubQuestionAnswer(sub_question="What changed?", sub_answer=expected_output)],
+                output=expected_output,
+            ),
+            interrupt_payload=None,
+            checkpoint_id="checkpoint-typed-2",
+        )
+
+    monkeypatch.setattr(runtime_jobs, "run_checkpointed_agent", fake_run_checkpointed_agent)
+    with runtime_jobs._JOB_LOCK:
+        runtime_jobs._JOBS["job-typed-decision"] = runtime_jobs.AgentRunJobStatus(
+            job_id="job-typed-decision",
+            run_id="job-typed-decision",
+            thread_id=thread_id,
+            status="paused",
+            query="Resume with typed decision",
+            request_payload={
+                "query": "Resume with typed decision",
+                "thread_id": thread_id,
+                "controls": {
+                    "hitl": {
+                        "enabled": True,
+                        "subquestions": {"enabled": True},
+                    }
+                },
+            },
+            message="Paused and awaiting resume input.",
+            stage="paused",
+            interrupt_payload={"kind": "subquestions", "items": [{"id": "sq-1", "text": "What changed?"}]},
+            checkpoint_id="checkpoint-typed-1",
+            runtime_model=sentinel_model,
+            runtime_vector_store=sentinel_vector_store,
+        )
+
+    resumed_status = public_api.resume_run(
+        "job-typed-decision",
+        resume={"checkpoint_id": "checkpoint-typed-1", "decisions": [decision]},
+    )
+
+    assert resumed_status.status == "success"
+    assert resumed_status.thread_id == thread_id
+    assert resumed_status.result is not None
+    assert resumed_status.result.output == expected_output
+    assert captured["payload_query"] == "Resume with typed decision"
+    assert captured["resume"].model_dump(mode="json", exclude_none=True) == {
+        "checkpoint_id": "checkpoint-typed-1",
+        "decisions": [decision],
+    }
+
+
+def test_sdk_async_run_e2e_preserves_default_off_subquestion_hitl_path(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440015"
+    sentinel_model = object()
+    sentinel_vector_store = _CompatibleVectorStore()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-default-off")
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
+
+    def fake_execute_runtime_graph(
+        *,
+        context,
+        run_metadata,
+        config=None,
+        lifecycle_callback=None,
+        snapshot_callback=None,
+        emit_success_terminal_event=True,
+    ):
+        captured["payload"] = context.payload.model_dump(mode="json", exclude_none=True)
+        captured["config"] = config
+        captured["lifecycle_callback"] = lifecycle_callback
+        _ = snapshot_callback, emit_success_terminal_event
+        return {
+            "main_question": context.payload.query,
+            "decomposition_sub_questions": ["Which path ran?"],
+            "sub_question_artifacts": [],
+            "final_answer": "Default-off path completed without pausing.",
+            "citation_rows_by_index": {},
+            "run_metadata": run_metadata,
+            "sub_qa": [
+                SubQuestionAnswer(
+                    sub_question="Which path ran?",
+                    sub_answer="Default-off path completed without pausing.",
+                )
+            ],
+            "output": "Default-off path completed without pausing.",
+            "stage_snapshots": [],
+        }
+
+    monkeypatch.setattr(runtime_jobs, "execute_runtime_graph", fake_execute_runtime_graph)
+    monkeypatch.setattr(
+        runtime_jobs,
+        "run_checkpointed_agent",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("checkpoint runtime should not execute for default-off path")),
+    )
+
+    start_response = public_api.run_async(
+        "Use default-off subquestion HITL behavior",
+        model=sentinel_model,
+        vector_store=sentinel_vector_store,
+        config={
+            "thread_id": thread_id,
+            "hitl": {"subquestions": {"enabled": False}},
+        },
+    )
+    status_response = public_api.get_run_status(start_response.job_id)
+
+    assert start_response.status == "success"
+    assert status_response.status == "success"
+    assert status_response.stage == "initializing"
+    assert status_response.interrupt_payload is None
+    assert status_response.checkpoint_id is None
+    assert status_response.result is not None
+    assert status_response.result.output == "Default-off path completed without pausing."
+    assert captured["payload"] == {
+        "query": "Use default-off subquestion HITL behavior",
+        "thread_id": thread_id,
+        "controls": {
+            "hitl": {
+                "enabled": False,
+                "subquestions": {"enabled": False},
+            }
+        },
+    }
+    assert captured["config"] is None
+
+
 def test_sdk_async_resume_rejects_invalid_transition_deterministically(monkeypatch) -> None:
     thread_id = "550e8400-e29b-41d4-a716-446655440011"
 
