@@ -645,6 +645,179 @@ describe("App run query flow", () => {
     expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
   });
 
+  it("skips paused subquestion review with skip decisions and resumes to completion", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-hitl-skip", run_id: "run-hitl-skip", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-hitl-skip",
+            run_id: "run-hitl-skip",
+            status: "running",
+            message: "Resume accepted.",
+            stage: "subquestions_ready",
+            stages: [],
+            decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
+            sub_question_artifacts: [],
+            sub_qa: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+            checkpoint_id: "checkpoint-skip",
+            interrupt_payload: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Skip my subquestion review" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const pausedEventSource = await findLatestEventSource();
+    pausedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-hitl-skip:000001",
+      run_id: "run-hitl-skip",
+      stage: "subquestions_ready",
+      status: "paused",
+      checkpoint_id: "checkpoint-skip",
+      decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
+      sub_qa: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-skip",
+        kind: "subquestion_review",
+        stage: "subquestions_ready",
+        subquestions: [
+          { subquestion_id: "sq-1", sub_question: "Keep this?" },
+          { subquestion_id: "sq-2", sub_question: "Change this?" },
+          { subquestion_id: "sq-3", sub_question: "Remove this?" },
+        ],
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Subquestion Review" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip Review" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8000/api/agents/run-resume/job-hitl-skip",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resume: {
+              checkpoint_id: "checkpoint-skip",
+              decisions: [
+                { subquestion_id: "sq-1", action: "skip" },
+                { subquestion_id: "sq-2", action: "skip" },
+                { subquestion_id: "sq-3", action: "skip" },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText("Run status: Resume accepted.")).toBeInTheDocument();
+    expect(screen.queryByText(/run\.paused · subquestions_ready · paused/)).not.toBeInTheDocument();
+
+    const resumedEventSource = await findLatestEventSource();
+    expect(resumedEventSource).not.toBe(pausedEventSource);
+    resumedEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-hitl-skip:000002",
+      run_id: "run-hitl-skip",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Skipped review answer.",
+      result: {
+        final_citations: [],
+        main_question: "Skip my subquestion review",
+        output: "Skipped review answer.",
+        sub_qa: [],
+      },
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Skipped review answer.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
+  });
+
+  it("keeps non-HITL runs on the default completion path without review UI or resume calls", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-no-hitl", run_id: "run-no-hitl", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Standard async run" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const eventSource = await findLatestEventSource();
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-no-hitl:000001",
+      run_id: "run-no-hitl",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Standard async answer.",
+      result: {
+        final_citations: [],
+        main_question: "Standard async run",
+        output: "Standard async answer.",
+        sub_qa: [],
+      },
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/agents/run-resume/"))).toBe(false);
+    expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Run status: Run paused for subquestion review.")).not.toBeInTheDocument();
+  });
+
   it("renders reranked evidence order and fallback indicator", async () => {
     const fetchMock = vi
       .fn()

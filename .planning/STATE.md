@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-02
-- **Status:** Phase 2 Plan 02-02 Task 2 implemented; next section queued
+- **Status:** Phase 2 Plan 02-02 Task 3 implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-02 Task 3.
-- Continue Phase 2 in dependency order after the completed 02-02 Task 2.
+- Start Phase 2 Plan 02-02 Summary.
+- Continue Phase 2 in dependency order after the completed 02-02 Task 3.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 18 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-02 Task 2 is complete, and the next dependency-ordered work item is Plan 02-02 Task 3.
-- **Resume note:** State update: `phase=02`, `plan=02-02`, `task=2`, `status=implemented`; the frontend now treats subquestion pauses as actionable review, resumes with typed decisions bound to `job_id` + `checkpoint_id`, and keeps the run stream moving to completion.
+- **Next command:** Implement Section 19 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-02 Task 3 is complete, and the next dependency-ordered work item is the Plan 02-02 summary section.
+- **Resume note:** State update: `phase=02`, `plan=02-02`, `task=3`, `status=implemented`; frontend regressions now cover actionable paused review, typed approve/edit/deny/skip resume payloads, resumed completion, and unchanged non-HITL completion behavior.
