@@ -1,7 +1,7 @@
 # Feature Research
 
-**Domain:** LangGraph-native RAG orchestration SDK/app migration
-**Researched:** 2026-03-12
+**Domain:** Developer-facing HITL-enabled advanced RAG workflow (backend API + frontend UX + SDK + PyPI docs)
+**Researched:** 2026-03-13
 **Confidence:** HIGH
 
 ## Feature Landscape
@@ -12,14 +12,14 @@ Features users assume exist. Missing these = product feels incomplete.
 
 | Feature | Why Expected | Complexity | Notes |
 |---------|--------------|------------|-------|
-| Explicit state graph contracts (typed state, explicit node I/O, deterministic edges) | Migration buyers expect clear replacement for opaque chain logic and safer production changes | MEDIUM | Foundation for all other graph capabilities; define schema/versioning early. |
-| Durable execution with checkpoints + thread resume | Production RAG cannot lose multi-step runs during failures or operator pauses | MEDIUM | Requires checkpointer + `thread_id` discipline; dependency for HITL, resume, and long-running tasks. |
-| Streaming execution + structured run lifecycle events | Users expect progressive responses and debuggable run status in SDK and UI | MEDIUM | Must expose `invoke/stream/get_state` consistently for local and remote use. |
-| First-class observability (trace spans, node-level visibility, run/thread correlation) | Teams need to debug retrieval errors, latency spikes, and hallucination regressions quickly | MEDIUM | Baseline should include LangSmith/OpenTelemetry-compatible context propagation. |
-| Retrieval parity with legacy pipeline (ingestion, indexing, retrieval, rerank hooks) | Migration must preserve answer quality and relevance before adding net-new orchestration features | HIGH | Depends on state contracts and adapter layer for existing retriever/index abstractions. |
-| Remote deployment reliability primitives (thread isolation, queue-backed execution, retry-safe behavior) | SDK consumers expect cloud/remote execution to match local semantics under load | HIGH | Depends on Agent Server/queue + idempotent node design; required for enterprise rollout. |
-| SDK release hygiene (semver, migration guide, deprecation map, compatibility matrix) | SDK consumers expect safe upgrades and explicit breaking-change handling | MEDIUM | Should ship with every release; directly reduces migration support burden. |
-| Human-in-the-loop interrupts with safe resume | Production teams need approval/edit checkpoints for risky actions and compliance workflows | MEDIUM | Depends on checkpoints + thread continuity; include resume contract tests. |
+| Explicit HITL decisions (`approve` / `edit` / `reject`) for risky agent actions | LangChain HITL documents these as core decision types, so developers expect this vocabulary and flow | MEDIUM | Baseline contract for backend, frontend, and SDK; do not rename semantics per surface. |
+| Durable pause/resume with thread-scoped state | HITL requires pausing execution and resuming later; users expect no lost context | MEDIUM | Depends on persistent checkpointer + stable `thread_id` usage across API/SDK calls. |
+| Step-level HITL policy with safe bypass (`interrupt_on` true/false and allowed decisions) | Teams need both strict-review paths and fast no-HITL paths in the same product | MEDIUM | Critical for milestone requirement to keep default behavior unchanged for existing users. |
+| Frontend review UX for pending actions (show proposed payload, allow approve/edit/reject) | Review without context is unusable; operators expect a clear decision console | MEDIUM | Must mirror backend review config and preserve decision ordering when multiple actions pause. |
+| Typed run lifecycle events for paused/resumed/completed states | Existing staged async workflows already expose run progress; HITL must integrate into same event model | MEDIUM | SSE/WebSocket events should include interrupt metadata and decision outcomes for auditability. |
+| API/SDK surface for submitting decisions and resuming execution | Developer-facing products are expected to be automatable, not UI-only | MEDIUM | Include typed request/response models and helpers for multi-decision resume payloads. |
+| Output contract includes `sub_answers` in final run artifact | Developers integrating RAG workflows expect inspectable intermediate reasoning artifacts | LOW | Should be backward compatible: additive field, no contract break for existing consumers. |
+| Published docs for PyPI + API + frontend workflow (install, configure, no-HITL defaults, HITL examples) | Developer trust depends on copy-pasteable docs and migration guidance | LOW | Must include "default unchanged" migration note and end-to-end examples for approve/edit/reject. |
 
 ### Differentiators (Competitive Advantage)
 
@@ -27,12 +27,12 @@ Features that set the product apart. Not required, but valuable.
 
 | Feature | Value Proposition | Complexity | Notes |
 |---------|-------------------|------------|-------|
-| Dual-run migration harness (legacy pipeline vs LangGraph graph) with diff scoring | De-risks migration by proving parity/regression deltas before cutover | HIGH | Depends on observability + eval datasets + deterministic replay controls. |
-| Time-travel + branch replay UX for root-cause analysis | Faster incident triage and safer experimentation on real run histories | HIGH | Built on checkpoint history; strong value for production support teams. |
-| Built-in evaluation loop (offline regression + online quality monitors) | Turns SDK into a quality platform, not just an orchestrator runtime | HIGH | Depends on tracing + dataset management + evaluator wiring. |
-| Composable remote subgraph marketplace/pattern library | Speeds team delivery by reusing proven retrieval, guardrail, and post-processing flows | HIGH | Depends on RemoteGraph contracts, auth boundaries, and versioned subgraph APIs. |
-| Policy-aware orchestration (node-level safety/compliance gates) | Enterprise customers can encode governance without hardcoding per app | HIGH | Depends on interrupts, metadata tagging, and auditable run/thread storage. |
-| Cost/latency optimization advisor from run telemetry | Converts observability data into actionable tuning recommendations | MEDIUM | Depends on rich tracing + benchmark baselines; high operational ROI. |
+| Targeted HITL gates on subquestion proposal and query expansion (instead of global pauses) | Gives review power where quality risk is highest without slowing every run | MEDIUM | Depends on clear stage boundaries in runtime graph and stage-specific review payload schemas. |
+| Query expansion toggle + rerank toggle exposed consistently (UI, API, SDK) | Enables controlled quality/cost tradeoffs per run and cleaner experimentation | LOW | Must preserve previous defaults when omitted; pair with run metadata for later analysis. |
+| Prompt customization for subanswer and final synthesis with guardrails | Lets teams adapt domain behavior without forking code paths | MEDIUM | Depends on prompt registry/versioning + validation to prevent malformed runtime prompts. |
+| Diff-first review UX for edits (before/after arguments or expanded queries) | Reduces operator error and accelerates approval throughput | MEDIUM | Builds on base approve/edit/reject flow; especially useful for query expansion review. |
+| SDK "single-call + callbacks" helper for interrupt handling | Improves DX by minimizing manual thread/interrupt plumbing in client code | MEDIUM | Wraps invoke/stream + resume semantics while preserving explicit low-level APIs. |
+| Documentation bundles by persona (backend integrator, frontend operator, SDK user) | Cuts onboarding time and support load by showing the same feature from each interface | LOW | Can be shipped incrementally; highest ROI docs include migration snippets and failure modes. |
 
 ### Anti-Features (Commonly Requested, Often Problematic)
 
@@ -40,48 +40,51 @@ Features that seem good but create problems.
 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
-| "Auto-migrate everything" one-click conversion from legacy chains | Sounds fast and low-risk | Produces brittle graphs, hidden state assumptions, and poor debuggability | Guided migration playbooks + parity harness + explicit state modeling |
-| Opaque shared mutable global state across nodes | Feels convenient during early prototyping | Breaks determinism, replay, and reliability in distributed execution | Typed state channels with explicit reducers and node I/O contracts |
-| Default sync durability for all workloads | Marketed as safest mode | Can cause avoidable latency/cost spikes for high-throughput workloads | Configurable durability modes per workflow (`sync/async/exit`) with policy defaults |
-| Unversioned SDK "latest only" API surface | Reduces docs overhead short-term | Breaks integrators and blocks enterprise adoption | Semver + compatibility matrix + deprecation windows |
-| Deep coupling to one model provider/tooling stack | Faster initial implementation | Increases lock-in and migration risk for customers | Provider-agnostic adapters behind stable orchestration interfaces |
+| Enabling HITL by default for all existing users | "Safer by default" sounds appealing | Breaks current behavior and increases latency/friction unexpectedly | Keep current default path unchanged; opt-in HITL per workspace/request/policy |
+| "Edit anything" without constraints | Maximizes operator flexibility | Large edits can destabilize agent planning and trigger repeated tool calls | Allow conservative edits only; validate shape and maintain action intent |
+| Silent auto-approval fallback when review UI/API is unavailable | Avoids blocked runs | Hides risk and undermines trust/compliance expectations | Use explicit timeout policy: fail-safe reject or configured bypass with audit event |
+| Divergent schemas across UI/API/SDK for the same decision object | Teams optimize each surface separately | Creates integration bugs and documentation drift | One canonical decision schema shared across backend models and SDK types |
+| Shipping prompt customization without versioning/audit trail | Fast initial implementation | Makes regressions hard to trace and roll back | Version prompts, log selected prompt IDs, and allow per-run override metadata |
 
 ## Feature Dependencies
 
 ```text
-[State graph contracts]
-    └──requires──> [SDK release hygiene]
+[Persistent checkpoints + thread_id discipline]
+    └──requires──> [Pause/resume API contract]
+                       └──enables──> [approve/edit/reject decision flow]
+                       └──enables──> [targeted HITL on subquestion/query-expansion stages]
 
-[Durable execution + checkpoints]
-    └──requires──> [thread_id strategy + checkpointer backend]
-                       └──enables──> [HITL interrupts]
-                       └──enables──> [time-travel replay]
+[Canonical decision schema]
+    └──requires──> [Backend validation models]
+                       └──enables──> [Frontend decision UI]
+                       └──enables──> [SDK typed decision helpers]
 
-[Observability + distributed tracing]
-    └──requires──> [structured run/thread IDs]
-                       └──enables──> [dual-run migration harness]
-                       └──enables──> [evaluation loop]
+[Stage lifecycle events]
+    └──requires──> [staged async runtime integration]
+                       └──enables──> [interrupt surfaced in UI]
+                       └──enables──> [auditable pause/resume timeline]
 
-[Retrieval parity adapters]
-    └──requires──> [state graph contracts]
-                       └──prerequisite for──> [migration cutover]
+[Query expansion + rerank toggles]
+    └──requires──> [request-level config plumbing]
+                       └──conflicts──> [hardcoded global defaults]
 
-[Remote deployment reliability]
-    └──requires──> [idempotent node/task boundaries]
-                       └──conflicts with──> [implicit global mutable state]
+[Prompt customization]
+    └──requires──> [prompt registry/versioning]
+                       └──enables──> [subanswer customization]
+                       └──enables──> [final synthesis customization]
 
-[Remote subgraph composition]
-    └──requires──> [versioned APIs + auth boundaries]
-                       └──conflicts with──> [self-calling same deployment]
+[Output contract: sub_answers]
+    └──requires──> [stable subanswer aggregation]
+                       └──must remain additive to──> [existing response schema]
 ```
 
 ### Dependency Notes
 
-- **State graph contracts require SDK release hygiene:** once state/node contracts ship, breaking changes must be versioned and documented or migrations become unsafe.
-- **Durable execution requires thread/checkpointer discipline:** checkpoint resume, HITL, and replay all fail without stable thread identity and persisted state.
-- **Observability enables migration confidence:** parity testing and evaluation loops are only trustworthy when traces correlate legacy and graph runs.
-- **Remote reliability requires idempotent boundaries:** retries/replays are expected in distributed runtimes, so side effects must be task-scoped and repeat-safe.
-- **Remote subgraph composition conflicts with self-calls:** calling the same deployment via RemoteGraph risks deadlock/resource exhaustion.
+- **Pause/resume depends on checkpoint durability:** without persisted state and stable `thread_id`, HITL cannot reliably resume.
+- **Targeted HITL depends on stage identity:** subquestion and query-expansion review need explicit stage boundaries and payload contracts.
+- **No-HITL compatibility depends on policy defaults:** default request path must keep `interrupt_on` off unless explicitly enabled.
+- **Prompt customization depends on versioned prompt definitions:** unversioned free-text prompts make regression analysis and rollback fragile.
+- **`sub_answers` depends on additive schema evolution:** return shape should add fields without changing required existing fields.
 
 ## MVP Definition
 
@@ -89,41 +92,42 @@ Features that seem good but create problems.
 
 Minimum viable product - what's needed to validate the concept.
 
-- [x] Explicit state/node I/O contracts - core of LangGraph-native migration target.
-- [x] Durable execution + checkpointed thread resume - baseline production reliability.
-- [x] Observability + streaming run lifecycle - required for debugging and operational trust.
-- [x] Retrieval parity adapters for existing ingestion/vector retrieval - prevents quality regression at cutover.
-- [x] SDK versioning + migration docs + deprecation map - required for safe customer adoption.
+- [x] Approve/edit/reject decision contract and resume API for HITL actions.
+- [x] Opt-in HITL at subquestion proposal and query expansion stages, with no-HITL default preserved.
+- [x] Query expansion toggle and rerank toggle exposed in backend API and frontend controls.
+- [x] Prompt customization inputs for subanswer and final synthesis with basic validation.
+- [x] Additive output contract including `sub_answers`.
+- [x] Updated SDK + PyPI docs covering enable/disable HITL paths and decision payload examples.
 
 ### Add After Validation (v1.x)
 
 Features to add once core is working.
 
-- [ ] Dual-run migration harness - add when initial graph parity is stable and baseline traces are in place.
-- [ ] Online evaluators and quality gates - add when live traffic volume supports meaningful continuous scoring.
-- [ ] Remote subgraph composition patterns - add when at least two reusable graph modules are mature.
+- [ ] Diff-first edit UX and batch decision handling for multiple simultaneous interrupts.
+- [ ] Rich policy presets (e.g., approve-only vs approve/reject) by stage and environment.
+- [ ] Interrupt analytics dashboard (approval rate, edit rate, rejection reasons by stage).
 
 ### Future Consideration (v2+)
 
 Features to defer until product-market fit is established.
 
-- [ ] Cost/latency optimization advisor - defer until enough telemetry history exists for robust recommendations.
-- [ ] Policy-as-code orchestration packs - defer until customer governance requirements converge.
+- [ ] Role-based reviewer routing and escalation workflows for enterprise governance.
+- [ ] A/B experimentation framework for prompt variants tied to quality metrics.
 
 ## Feature Prioritization Matrix
 
 | Feature | User Value | Implementation Cost | Priority |
 |---------|------------|---------------------|----------|
-| Explicit state/node I/O contracts | HIGH | MEDIUM | P1 |
-| Durable execution + checkpoint resume | HIGH | MEDIUM | P1 |
-| Observability + tracing + streaming | HIGH | MEDIUM | P1 |
-| Retrieval parity adapters | HIGH | HIGH | P1 |
-| SDK migration docs + semver policy | HIGH | MEDIUM | P1 |
-| HITL interrupts | MEDIUM | MEDIUM | P2 |
-| Dual-run migration harness | HIGH | HIGH | P2 |
-| Time-travel replay UX | MEDIUM | HIGH | P2 |
-| Remote subgraph marketplace | MEDIUM | HIGH | P3 |
-| Cost/latency optimization advisor | MEDIUM | MEDIUM | P3 |
+| Approve/edit/reject decision contract | HIGH | MEDIUM | P1 |
+| Durable pause/resume with `thread_id` | HIGH | MEDIUM | P1 |
+| Stage-scoped HITL (subquestion + query expansion) | HIGH | MEDIUM | P1 |
+| No-HITL default compatibility path | HIGH | LOW | P1 |
+| Query expansion + rerank toggles | HIGH | LOW | P1 |
+| Prompt customization (subanswer + synthesis) | MEDIUM | MEDIUM | P1 |
+| Additive `sub_answers` response field | HIGH | LOW | P1 |
+| SDK helper for interrupt handling | MEDIUM | MEDIUM | P2 |
+| Diff-first/batch decision UX | MEDIUM | MEDIUM | P2 |
+| Interrupt analytics | MEDIUM | MEDIUM | P3 |
 
 **Priority key:**
 - P1: Must have for launch
@@ -132,28 +136,21 @@ Features to defer until product-market fit is established.
 
 ## Competitor Feature Analysis
 
-| Feature | Competitor A (LangGraph Platform patterns) | Competitor B (LlamaIndex workflow patterns) | Our Approach |
-|---------|---------------------------------------------|----------------------------------------------|--------------|
-| Durable, resumable orchestration | Native checkpoints/threads and HITL resume primitives | Workflow/state support varies by deployment model | Keep LangGraph-native durability as baseline; publish explicit reliability profile |
-| Remote execution SDK ergonomics | RemoteGraph API parity with local graph methods | SDK interfaces differ from local execution semantics | Preserve strict local/remote API parity in our SDK facade |
-| Observability and trace correlation | Strong LangSmith integration and distributed tracing docs | Broad integrations, less standardized trace model across stacks | Node-level tracing with migration-focused parity views |
-| Migration documentation quality | Official v1 migration/deprecation guidance available | Migration docs available but less centered on state-graph parity workflows | Ship migration cookbook + deprecation map + parity checklist per release |
-| Evaluation integration | LangSmith offline/online evaluation flows documented | Evaluation support via external tooling and framework-specific workflows | Bundle curated eval recipes specifically for RAG migration acceptance gates |
+| Feature | Competitor A (LangChain/LangGraph HITL baseline) | Competitor B (custom in-house RAG flows) | Our Approach |
+|---------|---------------------------------------------------|-------------------------------------------|--------------|
+| Decision model | Explicit `approve` / `edit` / `reject` decisions | Often ad hoc approve-only patterns | Adopt explicit three-decision model end-to-end |
+| Pause/resume semantics | Checkpointer + `thread_id` required for safe resume | Frequently process-memory only, brittle across restarts | Persisted thread-scoped resume in API/SDK |
+| Per-action policy control | `interrupt_on` supports true/false and allowed decisions | Typically global on/off toggles | Stage-scoped policies with default-off compatibility |
+| Multiple pending actions | Decision ordering and per-action responses are defined | Usually ambiguous batching behavior | Deterministic ordering + optional batch tooling |
+| Docs posture | Official examples for middleware and interrupt resume | Usually sparse internal docs | Persona-based docs for backend, frontend, SDK, and PyPI |
 
 ## Sources
 
-- [LangGraph Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) (HIGH)
-- [LangGraph Persistence](https://docs.langchain.com/oss/javascript/langgraph/persistence) (HIGH)
-- [LangGraph Durable Execution](https://docs.langchain.com/oss/javascript/langgraph/durable-execution) (HIGH)
-- [LangGraph Human-in-the-loop](https://docs.langchain.com/oss/python/langgraph/human-in-the-loop) (HIGH)
-- [LangGraph RemoteGraph Usage](https://docs.langchain.com/langgraph-platform/use-remote-graph) (HIGH)
-- [Agent Server Runtime + Deployment](https://docs.langchain.com/langgraph-platform/langgraph-server) (HIGH)
-- [Distributed Tracing with Agent Server](https://docs.langchain.com/langsmith/agent-server-distributed-tracing) (HIGH)
-- [LangSmith Evaluation](https://docs.langchain.com/langsmith/evaluation) (HIGH)
-- [LangGraph v1 Migration Guide](https://docs.langchain.com/oss/python/migrate/langgraph-v1) (HIGH)
-- [LangGraph v1 Release Notes](https://docs.langchain.com/oss/python/releases/langgraph-v1) (HIGH)
-- [Agent Server Changelog](https://docs.langchain.com/langsmith/agent-server-changelog) (MEDIUM, interpreted for trend signals)
+- [LangChain Human-in-the-Loop Middleware](https://docs.langchain.com/oss/python/langchain/human-in-the-loop) (HIGH, primary)
+- [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) (HIGH)
+- [FastAPI Features (OpenAPI + automatic docs)](https://fastapi.tiangolo.com/features/) (HIGH)
+- [Python Packaging User Guide - Packaging Python Projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/) (HIGH)
 
 ---
-*Feature research for: LangGraph-native migration for production RAG orchestration SDK/app*
-*Researched: 2026-03-12*
+*Feature research for: HITL-enabled advanced RAG workflow milestone (subquestion/query-expansion review, toggles, prompt customization, additive output contract)*
+*Researched: 2026-03-13*

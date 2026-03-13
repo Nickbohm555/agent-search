@@ -1,313 +1,292 @@
 # Architecture Research
 
-**Domain:** Production RAG orchestration migration from custom workflow engine to LangGraph state graphs (FastAPI + React + Postgres/pgvector)
-**Researched:** 2026-03-12
-**Confidence:** HIGH (LangGraph primitives, persistence, and state model), MEDIUM (migration sequencing details are architecture recommendations)
+**Domain:** Brownfield HITL checkpoints for an existing FastAPI + LangGraph-like advanced RAG pipeline with React + SDK mirror surfaces
+**Researched:** 2026-03-13
+**Confidence:** HIGH (LangChain/LangGraph HITL interrupt mechanics and required persistence), HIGH (current codebase boundaries), MEDIUM (exact payload shape recommendation for this milestone)
 
 ## Standard Architecture
 
 ### System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                  Experience / API Layer                                    │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  React App (unchanged API client usage)                                                    │
-│      │                                                                                     │
-│      ▼                                                                                     │
-│  SDK + Generated Client (major-version compatibility facade)                               │
-│      │                                                                                     │
-│      ▼                                                                                     │
-│  FastAPI Routers (stable external contracts where required)                                │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│                              Orchestration / Domain Layer                                  │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  Orchestrator Adapter (feature flag + traffic routing)                                     │
-│      ├──────────────► Legacy Orchestrator (read-only during migration tail)               │
-│      └──────────────► LangGraph Runtime (StateGraph)                                       │
-│                          ├── Ingestion Subgraph                                             │
-│                          ├── Retrieval Subgraph                                             │
-│                          ├── Answer/Citation Subgraph                                       │
-│                          └── Evaluation/Guardrails Subgraph                                 │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│                                 Data / Integration Layer                                   │
-├─────────────────────────────────────────────────────────────────────────────────────────────┤
-│  Postgres + pgvector  │  LangGraph Checkpointer (PostgresSaver)  │  Document/Chunk Store  │
-│  Embedding/LLM Provider Clients (OpenAI via LangChain integrations)                        │
-│  Telemetry: LangSmith traces + app metrics/logs                                             │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   Client Experience Layer                                   │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│  React app                                                                                  │
+│    - starts async run (/api/agents/run-async)                                               │
+│    - subscribes to SSE (/api/agents/run-events/{job_id})                                   │
+│    - renders pause cards + approve/edit/deny + skip/no-HITL controls                        │
+│                                                                                              │
+│  SDK mirror (core + generated OpenAPI client)                                               │
+│    - same request/response contracts as backend                                              │
+│    - exposes typed resume payload helpers                                                    │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                   API / Contract Layer                                      │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│  FastAPI router (existing endpoints kept)                                                    │
+│    POST /run-async     GET /run-status/{job_id}     GET /run-events/{job_id}               │
+│    POST /run-resume/{job_id}                                                               │
+│                                                                                              │
+│  Contract mapper                                                                              │
+│    - maps runtime pause/interrupt data to status + SSE payloads                              │
+│    - preserves legacy behavior when HITL disabled                                            │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│                               Runtime Orchestration Layer                                    │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│  Runtime graph execution (existing)                                                          │
+│    decompose -> expand -> search -> rerank -> answer -> synthesize                          │
+│                                                                                              │
+│  HITL gateway node logic (new, narrow scope)                                                 │
+│    - checkpoint: subquestions_ready                                                          │
+│    - checkpoint: query_expansion_ready (per lane/subquestion)                                │
+│    - emits interrupt payload + pauses job                                                    │
+│    - resumes with decision list (approve/edit/reject)                                        │
+│                                                                                              │
+│  Job controller (existing async jobs + resume path)                                          │
+│    - stores interrupt payload + checkpoint id                                                 │
+│    - enforces resume transition only from paused                                              │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                   Persistence Layer                                          │
+├──────────────────────────────────────────────────────────────────────────────────────────────┤
+│  Postgres runtime tables + checkpoint link + idempotency effects                             │
+│  LangGraph PostgresSaver checkpoint data                                                      │
+│  pgvector retrieval data                                                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Responsibilities
 
 | Component | Responsibility | Typical Implementation |
 |-----------|----------------|------------------------|
-| React frontend | Collect user queries, display streaming answers/citations, no orchestration logic | Existing React + TypeScript app calling SDK client |
-| SDK + generated client | Keep API surface stable across migration versions | Generated OpenAPI client plus compatibility wrappers |
-| FastAPI routers | Validate request/auth, map HTTP contracts to domain service calls | Thin router handlers + Pydantic request/response models |
-| Orchestrator adapter | Single boundary that decides legacy vs LangGraph path | Strategy/factory selected by feature flag, tenant, or endpoint version |
-| LangGraph entry graph | Canonical workflow for query handling and response generation | `StateGraph` with typed state, reducers, conditional edges |
-| LangGraph subgraphs | Isolated capability units (retrieval, synthesis, eval) with clear state contracts | Compiled subgraphs invoked by parent graph or added as nodes |
-| Retrieval services | Deterministic retrieval over pgvector + metadata filters | Repository services wrapped as graph nodes/tasks |
-| LLM/embedding gateway | Provider abstraction, retries, rate-limit handling, idempotency keys | LangChain model wrappers + internal retry policies |
-| Checkpoint store | Durable execution, resumability, thread memory, rollback support | `langgraph-checkpoint-postgres` on existing Postgres cluster |
-| Observability pipeline | End-to-end run traces and node-level visibility | LangSmith tracing + structured logs + metrics/alerts |
+| React workflow UI | Render pending reviews, collect approve/edit/deny/skip decisions, continue showing existing stage timeline | Extend existing `run-events` listener and add a compact review panel keyed by `job_id` + interrupt payload |
+| Frontend API client | Keep API usage stable while adding optional HITL payloads | Extend existing `RuntimeAgentRunRequest`, `RuntimeAgentRunAsyncStatusResponse`, `RuntimeLifecycleEvent` guards |
+| FastAPI router | Keep endpoint topology stable and delegate only | Reuse existing `/run-async`, `/run-status`, `/run-events`, `/run-resume` with expanded schemas |
+| Runtime job manager | Own lifecycle state (`running`, `paused`, `success`, etc.) and checkpoint resume transitions | Existing `AgentRunJobStatus` plus structured `interrupt_payload` + reviewer metadata |
+| Runtime graph / nodes | Generate subquestions and query expansions; pause only at configured checkpoints | Existing graph execution plus two explicit HITL checkpoints (no full graph redesign) |
+| HITL decision normalizer | Validate decision order and allowed actions per checkpoint; map UI/SDK payload to runtime resume input | New utility module near runtime resume logic |
+| SDK core mirror | Mirror backend schema and convenience methods | `sdk/core` schema parity + helper methods for resume decisions |
+| Generated Python SDK | Preserve OpenAPI compatibility for external users | regenerate `sdk/python/openapi_client` from updated backend OpenAPI |
 
 ## Recommended Project Structure
 
 ```
 src/
 ├── backend/
-│   ├── api/
-│   │   ├── routers/                      # Existing FastAPI routes (stable contract boundary)
-│   │   └── schemas/                      # HTTP input/output models
-│   ├── orchestration/
-│   │   ├── adapter.py                    # Legacy vs LangGraph dispatch and migration flags
-│   │   ├── legacy/                       # Legacy orchestrator kept for fallback during cutover
-│   │   └── langgraph/
-│   │       ├── state.py                  # Canonical graph state schemas and reducers
-│   │       ├── graph.py                  # Root StateGraph compile/wiring
-│   │       ├── subgraphs/
-│   │       │   ├── ingestion.py          # Optional ingest path
-│   │       │   ├── retrieval.py          # Retrieve + rerank + context assembly
-│   │       │   ├── answer.py             # Synthesis + citations + formatting
-│   │       │   └── guardrails.py         # Policy and confidence checks
-│   │       ├── nodes/                    # Pure node logic and task wrappers
-│   │       ├── edges/                    # Routing/branching conditions
-│   │       └── io/
-│   │           ├── checkpointer.py       # PostgresSaver/AsyncPostgresSaver setup
-│   │           └── stream_mapper.py      # Graph stream events -> API response chunks
-│   ├── services/
-│   │   ├── retrieval_service.py          # pgvector access, filters, ranking
-│   │   ├── llm_service.py                # LLM calls and retries
-│   │   └── embedding_service.py          # embedding creation / cache
-│   └── observability/
-│       ├── tracing.py                    # LangSmith instrumentation
-│       └── metrics.py                    # latency, token, error metrics
-└── frontend/
-    └── ...                               # No architectural change required for first cutover
+│   ├── routers/agent.py                           # Keep endpoint set unchanged; add optional HITL fields
+│   ├── schemas/agent.py                           # Canonical API contract additions (hitl + sub_answers + prompts)
+│   └── agent_search/runtime/
+│       ├── jobs.py                                # pause/resume state machine and interrupt payload persistence
+│       ├── runner.py                              # checkpointed invoke + Command(resume=...)
+│       ├── resume.py                              # resume transition and payload validation helpers
+│       ├── lifecycle_events.py                    # SSE event typing for stage.interrupted/run.paused + review payloads
+│       └── hitl/
+│           ├── policy.py                          # where HITL is enabled: subquestions + query expansion
+│           ├── payloads.py                        # interrupt request/decision schema objects
+│           └── apply_decisions.py                 # approve/edit/reject logic per checkpoint
+├── frontend/src/
+│   ├── utils/api.ts                               # type guards + request payloads + resume request body
+│   └── App.tsx                                    # pause card, decision forms, resume trigger, no-HITL path
+└── sdk/
+    ├── core/src/schemas/agent.py                 # mirror backend schema changes exactly
+    └── python/openapi_client/                    # regenerated models/apis from OpenAPI
 ```
 
 ### Structure Rationale
 
-- **`orchestration/adapter.py`:** enforces a hard boundary so API contracts remain stable while execution engine changes underneath.
-- **`orchestration/langgraph/`:** keeps graph definitions, state schema, and node implementations together so flow is inspectable and testable.
-- **`orchestration/legacy/`:** allows controlled fallback and A/B comparison until parity confidence is high.
-- **`services/`:** prevents graph nodes from directly owning external I/O concerns; nodes orchestrate, services execute.
-- **`observability/`:** keeps tracing/metrics first-class; migration success depends on parity evidence, not just correctness-by-inspection.
+- **`runtime/hitl/` as a thin slice:** keeps HITL logic isolated from retrieval/synthesis business logic and avoids platform redesign.
+- **Router and endpoint stability:** existing clients continue to function when HITL is off.
+- **Schema-first mirror discipline:** backend schema is source of truth; frontend guards and SDK mirrors follow.
+- **Pause logic near runtime jobs:** aligns with current `run.paused` lifecycle and `resume_agent_run_job` flow.
 
 ## Architectural Patterns
 
-### Pattern 1: Typed State + Explicit Reducers
+### Pattern 1: Explicit HITL Checkpoint Objects (not ad-hoc dicts)
 
-**What:** Define graph state as a typed schema, with reducer behavior explicit per key.
-**When to use:** Always for production RAG graphs where message history, retrieved docs, and intermediate decisions must be deterministic.
-**Trade-offs:** More upfront schema design; significantly better debuggability and replay safety.
-
-**Example:**
-```python
-from typing import Annotated, TypedDict
-from langchain.messages import AnyMessage
-from langgraph.graph.message import add_messages
-
-class RAGState(TypedDict):
-    messages: Annotated[list[AnyMessage], add_messages]
-    query: str
-    retrieved_chunks: list[dict]
-    citations: list[dict]
-    answer: str
-    error: str | None
-```
-
-### Pattern 2: Subgraph-per-Capability with Contracted Interfaces
-
-**What:** Split ingestion, retrieval, synthesis, and guardrails into subgraphs with narrow input/output contracts.
-**When to use:** Migration from a monolithic/custom orchestrator where step boundaries are currently implicit.
-**Trade-offs:** More compile units and integration tests; enables independent team ownership and safer incremental replacement.
+**What:** Represent each review checkpoint as a typed object with checkpoint type, action requests, allowed decisions, and prompt text.
+**When to use:** Always for pause surfaces consumed by API + UI + SDK.
+**Trade-offs:** Slightly more schema work; major reduction in contract drift across backend/frontend/SDK.
 
 **Example:**
 ```python
-# Parent graph invokes retrieval subgraph and maps back to parent state.
-def run_retrieval(state: ParentState):
-    out = retrieval_subgraph.invoke(
-        {"query": state["query"], "k": state["k"], "filters": state["filters"]}
-    )
-    return {"retrieved_chunks": out["chunks"], "retrieval_debug": out.get("debug", {})}
+class HitlActionRequest(BaseModel):
+    action_id: str
+    checkpoint: Literal["subquestions", "query_expansion"]
+    lane_sub_question: str | None = None
+    payload: dict[str, Any]  # proposed subquestions or expanded queries
+    allowed_decisions: list[Literal["approve", "edit", "reject"]]
+    prompt: str
+
+class HitlInterruptPayload(BaseModel):
+    checkpoint_id: str
+    thread_id: str
+    requests: list[HitlActionRequest]
 ```
 
-### Pattern 3: Side Effects in Tasks + Durable Checkpointing
+### Pattern 2: Resume Decisions Are Ordered and Deterministic
 
-**What:** Isolate side effects (LLM/provider calls, writes) and persist checkpoints each step using a DB-backed checkpointer.
-**When to use:** Any production graph requiring resume/retry, interruptibility, and idempotent recovery.
-**Trade-offs:** Slight runtime overhead; major gains in reliability and operability.
+**What:** Require decisions in request order, mirroring LangChain HITL middleware and LangGraph interrupt semantics.
+**When to use:** Multiple pending actions in the same pause (especially query expansion fan-out).
+**Trade-offs:** More strict validation; avoids non-deterministic replay and wrong action-to-decision mapping.
 
 **Example:**
 ```python
-from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.func import task
+class HitlDecision(BaseModel):
+    type: Literal["approve", "edit", "reject"]
+    edited_payload: dict[str, Any] | None = None
+    message: str | None = None
 
-@task
-def call_llm(payload: dict) -> dict:
-    # side-effecting external call encapsulated in task
-    return llm_client.invoke(payload)
-
-with PostgresSaver.from_conn_string(DB_URI) as checkpointer:
-    graph = builder.compile(checkpointer=checkpointer)
+class RuntimeAgentRunResumeRequest(BaseModel):
+    resume: dict[str, Any] = {
+        "checkpoint_id": "...",
+        "decisions": [{"type": "approve"}],
+    }
 ```
+
+### Pattern 3: Preserve Legacy Fast Path (HITL Disabled)
+
+**What:** If HITL config is absent/disabled, runtime never emits interrupt payload and finishes exactly as before.
+**When to use:** Brownfield rollout and backwards compatibility.
+**Trade-offs:** Dual path to test; no behavior regression for existing consumers.
+
+**Example:**
+```python
+if not hitl_config.enabled_for("subquestions"):
+    return continue_without_pause()
+
+interrupt_payload = build_subquestion_review_payload(...)
+return pause_with_interrupt(interrupt_payload)
+```
+
+### Pattern 4: Side-Effect Discipline Around Interrupts
+
+**What:** Ensure all side effects before interrupt are idempotent or deferred until after approval.
+**When to use:** Any checkpoint node that may re-run on resume.
+**Trade-offs:** Requires careful node boundaries; prevents duplicate writes and replay divergence.
 
 ## Data Flow
 
-### Request Flow
+### Request Flow (HITL Off: unchanged)
 
 ```
-User Query (React)
+React/SDK start run
     ↓
-SDK client request
+POST /api/agents/run-async
     ↓
-FastAPI router
+jobs._run_agent_job(...)
     ↓
-Orchestrator Adapter (feature flag / version gate)
+execute_runtime_graph / run_checkpointed_agent
     ↓
-LangGraph Entry Graph (thread_id attached)
+decompose -> expand -> search -> rerank -> answer -> synthesize
     ↓
-[Query Normalize Node]
+SSE stage.completed ... run.completed
     ↓
-[Retrieval Subgraph] → pgvector / metadata store
-    ↓
-[Context Assembly Node]
-    ↓
-[Answer Subgraph] → LLM provider
-    ↓
-[Citation + Guardrail Node]
-    ↓
-Graph stream events (token/chunk/status)
-    ↓
-FastAPI stream mapper
-    ↓
-SDK
-    ↓
-React UI render
+UI renders final result + sub_answers
 ```
 
-### State Management
+### Pause/Resume Flow (HITL On)
 
 ```
-HTTP request metadata + user payload
+1) Runtime reaches checkpoint (subquestions or query expansion)
     ↓
-State initializer (input schema)
+2) Build interrupt payload:
+      - checkpoint_id
+      - requests[] with proposed output + allowed decisions + prompt
     ↓
-LangGraph state channels
-    ├── messages                (conversation/history channel)
-    ├── retrieval inputs/outputs
-    ├── synthesis outputs
-    ├── citations/confidence
-    └── run metadata/errors
+3) Runtime pauses (LangGraph interrupt/checkpoint persisted by thread_id)
     ↓
-Checkpointer write (thread_id scoped)
+4) Job status -> paused, message updated, interrupt_payload stored
     ↓
-Replay/Resume/Debug via checkpoint history
+5) SSE emits stage.interrupted then run.paused
+    ↓
+6) UI/SDK shows review form and sends POST /api/agents/run-resume/{job_id}
+      resume = { checkpoint_id, decisions:[approve|edit|reject ...] }
+    ↓
+7) Runtime validates transition + decisions, resumes with Command(resume=...)
+    ↓
+8) Runtime applies edited/approved/rejected result and continues graph
+    ↓
+9) SSE continues normal stage events and ends with run.completed or run.failed
 ```
 
-### Key Data Flows
+### API Contract Data Flow
 
-1. **Interactive answer flow:** request -> retrieve -> synthesize -> stream response tokens/citations to client.
-2. **Thread continuity flow:** follow-up requests with same `thread_id` reuse short-term memory and checkpointed state.
-3. **Recovery flow:** failure resumes from latest valid checkpoint rather than re-running full pipeline.
-4. **Migration parity flow:** adapter can dual-run legacy and LangGraph paths for shadow comparison before final cutover.
+1. **Start request (`/run-async`):**
+   - Add optional HITL config:
+     - enable/disable by checkpoint (`subquestions`, `query_expansion`)
+     - decision policy (`approve/edit/reject`)
+     - custom prompt text per checkpoint
+     - explicit `mode="off"` (skip/no-HITL).
+2. **Status response (`/run-status/{job_id}`):**
+   - Continue existing fields.
+   - Add optional `interrupt_payload` when paused.
+   - Keep `sub_qa` and add alias/read-model `sub_answers` for consumers.
+3. **SSE events (`/run-events/{job_id}`):**
+   - Keep existing events.
+   - Ensure interrupted payload is included in `stage.interrupted` / `run.paused`.
+4. **Resume request (`/run-resume/{job_id}`):**
+   - Replace untyped `Any` usage with typed decision envelope while still accepting legacy truthy resume for compatibility.
+
+### SDK + UI Workflow Flow
+
+- SDK accepts same optional HITL and prompt config on run start.
+- SDK exposes typed helper for decisions:
+  - `approve(action_id)`
+  - `edit(action_id, payload)`
+  - `reject(action_id, message)`
+- React UI reads `interrupt_payload` from status/SSE and renders:
+  - per-action prompt
+  - editable payload text areas/chips
+  - deny reason input
+  - skip/no-HITL toggle before start.
+- Existing timeline stays intact; pause is a new terminal-intermediate state, not a new endpoint model.
 
 ## Build Order and Dependency Chain
 
-1. **State contract first (blocking dependency)**
-   - Define canonical `RAGState`, input/output schemas, and reducer rules.
-   - Why first: all nodes/subgraphs and tests depend on state keys and merge semantics.
-
-2. **Infrastructure for durability + observability**
-   - Add Postgres checkpointer wiring, `thread_id` propagation, LangSmith tracing, and per-node metrics.
-   - Why second: required to validate replay behavior and migration parity safely.
-
-3. **Adapter boundary (legacy + LangGraph coexistence)**
-   - Introduce orchestrator adapter with feature flags and traffic slicing.
-   - Why third: enables incremental rollout without API breakage.
-
-4. **Retrieval subgraph migration**
-   - Port retrieval path from legacy orchestration first (most deterministic path).
-   - Why fourth: retrieval quality can be benchmarked separately from generation variance.
-
-5. **Answer/citation subgraph migration**
-   - Port synthesis and citation formatting with compatibility mapper to existing API response models.
-   - Why fifth: user-visible output parity can now be measured end-to-end.
-
-6. **Guardrails/evaluation nodes**
-   - Add confidence thresholds, fallback policies, and quality gates.
-   - Why sixth: enforce production safety before broad traffic exposure.
-
-7. **Streaming + UX parity**
-   - Ensure stream event mapping matches existing frontend/SDK expectations.
-   - Why seventh: prevents client-side regressions during cutover.
-
-8. **Legacy deprecation**
-   - Remove old orchestrator only after sustained parity/error SLO pass.
-   - Why last: preserves rollback path until operational confidence is proven.
-
-## Migration Cutover Strategy
-
-### Phase A: Shadow Mode (0% user-visible LangGraph)
-
-- Keep legacy path as source of truth.
-- Run LangGraph in parallel for sampled traffic using same inputs.
-- Compare: citations overlap, answer structure, latency, token/cost profile, failure classes.
-- Exit criteria: parity thresholds met for a predefined rolling window.
-
-### Phase B: Canary Routing (1-10% LangGraph by tenant/flag)
-
-- Route a controlled subset to LangGraph as user-visible responses.
-- Keep instant rollback in adapter (`legacy` flip) with no client change.
-- Monitor SLOs: p95 latency, error rate, timeout/retry behavior, user feedback.
-
-### Phase C: Progressive Ramp (25% -> 50% -> 100%)
-
-- Increase traffic in fixed steps only if each step stabilizes.
-- Enforce automatic abort conditions for regressions.
-- Continue shadow comparisons for a small mirrored slice to detect drift.
-
-### Phase D: Legacy Retirement
-
-- Freeze legacy orchestration for read-only diagnostics window.
-- Remove legacy execution path after soak period and postmortem review.
-- Keep checkpoint/trace history for auditability.
-
-## Scaling Considerations
-
-| Scale | Architecture Adjustments |
-|-------|--------------------------|
-| 0-1k users | Single FastAPI deployment with Postgres checkpointer and pgvector is sufficient; prioritize correctness and tracing. |
-| 1k-100k users | Separate worker pool for graph execution, tune connection pools, cache embeddings/query rewrites, optimize retrieval indexes. |
-| 100k+ users | Partition workloads (tenant/domain), isolate retrieval-heavy vs synthesis-heavy workers, consider async backpressure and queue-based execution control. |
-
-### Scaling Priorities
-
-1. **First bottleneck: retrieval latency + DB contention** - optimize pgvector indexes/filters and pool settings before introducing new infrastructure.
-2. **Second bottleneck: LLM provider throughput/cost** - implement adaptive model routing, request shaping, and strict timeout/circuit-breaker policies.
+1. **Contract primitives first (blocking):**
+   - Define `HitlInterruptPayload`, `HitlDecision`, optional run config, and `sub_answers` response alias in backend schemas.
+   - Mirror same shapes in `sdk/core` and frontend type guards.
+2. **Runtime pause points second:**
+   - Add checkpoint builders for `subquestions_ready` and `query_expansion_ready`.
+   - Integrate pause outcome into existing `jobs.py` status + lifecycle path.
+3. **Resume validator third:**
+   - Implement deterministic decision validation/order checks and allowed-decision enforcement.
+   - Keep fallback compatibility for legacy `resume=True`.
+4. **SSE/status projection fourth:**
+   - Emit structured interrupted payload in `stage.interrupted` and `run.paused`.
+   - Add `interrupt_payload` to status response.
+5. **UI workflow fifth:**
+   - Add pause cards and decision submission in React.
+   - Preserve current flow when no interrupt payload is present.
+6. **SDK ergonomics sixth:**
+   - Add typed resume helpers and OpenAPI regeneration.
+7. **Hardening/tests seventh:**
+   - Matrix tests for off/on, approve/edit/reject, invalid order, skipped HITL, and thread-id resume continuity.
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Rewriting API contracts during engine migration
+### Anti-Pattern 1: Global "pause everything" switch
 
-**What people do:** change SDK/frontend payload and response structures while replacing orchestration.
-**Why it's wrong:** multiplies migration risk and obscures root causes of regressions.
-**Do this instead:** keep contracts stable; isolate changes behind adapter and internal state schemas.
+**What people do:** pause every stage once HITL is enabled.
+**Why it's wrong:** high operator burden, poor latency, and scope creep.
+**Do this instead:** restrict to requested checkpoints only (`subquestions`, `query_expansion`) with per-checkpoint policy.
 
-### Anti-Pattern 2: Monolithic single-node "mega graph"
+### Anti-Pattern 2: Unstructured resume payloads
 
-**What people do:** map the old orchestrator into one giant node with hidden branching.
-**Why it's wrong:** eliminates observability and checkpoint value; hard to test and replay.
-**Do this instead:** model explicit nodes/subgraphs with typed transitions and measurable outputs.
+**What people do:** pass raw arbitrary objects to `resume`.
+**Why it's wrong:** impossible to validate safely, brittle SDK/UI parity.
+**Do this instead:** typed decision envelopes with explicit checkpoint ID and ordered decisions.
 
-### Anti-Pattern 3: Side effects outside task/checkpoint discipline
+### Anti-Pattern 3: Breaking default behavior
 
-**What people do:** perform provider calls and DB writes in uncontrolled utility code.
-**Why it's wrong:** retries/replays can duplicate writes or diverge behavior.
-**Do this instead:** wrap side effects in task boundaries, enforce idempotency keys, and checkpoint by thread.
+**What people do:** make HITL mandatory once implemented.
+**Why it's wrong:** regresses existing workloads and external SDK consumers.
+**Do this instead:** keep HITL opt-in and preserve old behavior when disabled.
+
+### Anti-Pattern 4: Mutating non-idempotent state before interrupt
+
+**What people do:** side effects before pause in a node that re-runs on resume.
+**Why it's wrong:** duplicate writes and replay drift.
+**Do this instead:** move side effects after review or guard with idempotency ledger.
 
 ## Integration Points
 
@@ -315,31 +294,33 @@ Replay/Resume/Debug via checkpoint history
 
 | Service | Integration Pattern | Notes |
 |---------|---------------------|-------|
-| OpenAI (via LangChain integrations) | Node/task-level model invocation through a service gateway | Centralize retries, timeout policy, and model routing; avoid direct provider calls in graph wiring code |
-| Postgres/pgvector | Retrieval repository + checkpointer backend | Use same DB platform with separate logical schemas/tables for checkpoints vs business data |
-| LangSmith | Automatic tracing via env config + instrumentation wrappers | Required for parity analysis and node-level regression isolation |
+| LangChain HITL middleware + LangGraph interrupts | Pause on configured actions, resume via `Command(resume=...)` | Align decision ordering and allowed decision types with official HITL behavior |
+| LangGraph checkpointer (PostgresSaver) | Persist pause state keyed by `thread_id` | Required for safe pause/resume in async jobs |
+| Postgres runtime metadata/idempotency tables | Persist checkpoint links and interrupt metadata | Already present in runtime job persistence flow |
 
 ### Internal Boundaries
 
 | Boundary | Communication | Notes |
 |----------|---------------|-------|
-| FastAPI router <-> Orchestrator adapter | Direct Python service call | Router remains thin; no graph-specific logic in handlers |
-| Adapter <-> Legacy orchestrator | Strategy interface | Enables rollback and shadow mode with identical request envelope |
-| Adapter <-> LangGraph runtime | Strategy interface + typed input/output mapper | Decouple API contract from graph-internal state evolution |
-| LangGraph nodes <-> Domain services | Function call via service layer | Keeps business I/O reusable and testable outside graph harness |
-| LangGraph runtime <-> Checkpointer | Compiled graph runtime config | `thread_id` is mandatory for continuity, replay, and interrupts |
+| `runtime/graph/*` -> `runtime/jobs.py` | callback events + outcome object | graph computes, jobs own lifecycle state and pause status |
+| `runtime/jobs.py` -> `routers/agent.py` | typed status/response schemas | router remains thin, no decision logic |
+| `routers/agent.py` -> frontend/sdk | existing endpoints + additive fields | no endpoint proliferation required |
+| backend schemas -> sdk core -> generated SDK -> frontend guards | schema mirroring pipeline | single-source contract discipline prevents drift |
 
 ## Sources
 
-- [LangGraph overview](https://docs.langchain.com/oss/python/langgraph/overview) (official)
-- [LangGraph Graph API overview](https://docs.langchain.com/oss/python/langgraph/graph-api) (official)
-- [LangGraph Persistence](https://docs.langchain.com/oss/python/langgraph/persistence) (official)
-- [LangGraph Durable execution](https://docs.langchain.com/oss/python/langgraph/durable-execution) (official)
-- [LangGraph Add memory](https://docs.langchain.com/oss/python/langgraph/add-memory) (official)
-- [LangGraph Subgraphs](https://docs.langchain.com/oss/python/langgraph/use-subgraphs) (official)
-- [LangGraph Streaming](https://docs.langchain.com/oss/python/langgraph/streaming) (official)
-- [LangSmith trace with LangGraph](https://docs.langchain.com/langsmith/trace-with-langgraph) (official)
+- [LangChain Human-in-the-Loop](https://docs.langchain.com/oss/python/langchain/human-in-the-loop) (required primary source, HIGH)
+- [LangGraph Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) (official, HIGH)
+- [LangGraph `interrupt` reference](https://reference.langchain.com/python/langgraph/types/interrupt) (official API behavior, HIGH)
+- Existing project architecture and contracts in:
+  - `src/backend/routers/agent.py`
+  - `src/backend/agent_search/runtime/jobs.py`
+  - `src/backend/agent_search/runtime/runner.py`
+  - `src/backend/agent_search/runtime/lifecycle_events.py`
+  - `src/frontend/src/utils/api.ts`
+  - `src/frontend/src/App.tsx`
+  - `sdk/core/src/schemas/agent.py`
 
 ---
-*Architecture research for: LangGraph-native RAG migration*
-*Researched: 2026-03-12*
+*Architecture research for: HITL checkpoints in brownfield advanced RAG*
+*Researched: 2026-03-13*

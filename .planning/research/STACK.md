@@ -1,7 +1,7 @@
 # Stack Research
 
-**Domain:** LangGraph-native state graph migration for an existing Python RAG orchestration backend
-**Researched:** 2026-03-12
+**Domain:** HITL-enabled advanced RAG checkpoints in a FastAPI + React app with Python SDK distribution
+**Researched:** 2026-03-13
 **Confidence:** HIGH
 
 ## Recommended Stack
@@ -10,113 +10,113 @@
 
 | Technology | Version | Purpose | Why Recommended |
 |------------|---------|---------|-----------------|
-| Python | `3.12.x` runtime (keep package support `>=3.11,<3.14`) | Production runtime for backend and SDK | Best balance of maturity/performance for current LangGraph/OpenAI ecosystem while staying aligned with your existing Python range. |
-| LangGraph | `~1.1` (currently `1.1.2`) | Primary orchestration runtime using `StateGraph` | Official low-level orchestration framework for durable, stateful workflows; explicitly designed for production execution semantics. |
-| langgraph-checkpoint-postgres | `~3.0` (currently `3.0.4`) | Durable checkpoint persistence in Postgres | Official LangGraph production-grade checkpointer for Postgres (`PostgresSaver` / `AsyncPostgresSaver`), best fit for your existing Postgres stack. |
-| langchain-openai | `~1.1` (currently `1.1.11`) | OpenAI model adapter for LangChain/LangGraph | Preserves OpenAI baseline while keeping orchestration graph-native; minimizes provider migration risk. |
-| openai | `~2.26` (currently `2.26.0`) | Provider SDK baseline and fallback direct client usage | Official SDK; current README positions Responses API as primary and Chat Completions as legacy-but-supported baseline. |
-| FastAPI | `~0.135` (currently `0.135.1`) | API surface and deployment integration | Keeps app contract stable while orchestration internals migrate; compatible with Pydantic v2 baseline. |
-| Pydantic | `~2.12` (currently `2.12.5`) | State/input/output schemas and validation | Current ecosystem standard for FastAPI/LangChain stack; strict schema control is critical for deterministic graph state. |
-| SQLAlchemy + psycopg + pgvector | `~2.0` / `~3.3` / `~0.4` | Existing persistence + vector retrieval | Avoids unnecessary datastore churn during orchestration migration; aligns with current architecture and Docker Compose deployment model. |
+| Python | Runtime `3.12.x` (package support `>=3.11,<3.14`) | Backend runtime + SDK build target | Matches your existing backend range while staying on a mature Python line for LangChain/LangGraph and packaging tooling. |
+| LangChain | `>=1.2,<2` | Agent runtime entrypoint + HITL middleware integration | Official HITL middleware (`HumanInTheLoopMiddleware`) is documented here and integrates directly with LangGraph interrupts/checkpointing. |
+| LangGraph | `>=1.0.10,<2` | Durable execution, interrupts, and pause/resume semantics | HITL depends on interrupt-driven pause/resume plus thread-based persistence; this is the standard production path in LangGraph-style runtimes. |
+| langgraph-checkpoint-postgres | `>=3.0.4,<4` | Persistent checkpoint store for approvals/rejections/resume | Official LangGraph persistence docs call Postgres saver the production-oriented checkpointer; needed so HITL survives restarts and async review cycles. |
+| FastAPI | **Upgrade to** `>=0.135,<0.136` | Backend API + typed SSE stream transport | FastAPI now ships native SSE (`fastapi.sse.EventSourceResponse`), making evented HITL updates first-class without third-party SSE plumbing. |
+| Pydantic | `>=2.10,<3` | Contract schema layer for backend, frontend DTO generation, and SDK models | Keeps API payloads strongly typed and stable while evolving contracts for optional HITL fields. |
+| React + TypeScript | React `18.x`, TypeScript `5.8+` | Human review UI and event-driven checkpoint controls | EventSource in browsers is stable; React + TS keeps reviewer controls explicit and safer to evolve than ad hoc JSON handling. |
 
 ### Supporting Libraries
 
 | Library | Version | Purpose | When to Use |
 |---------|---------|---------|-------------|
-| langchain-core | `~1.2` (currently `1.2.18`) | Core message/tool/runnable abstractions | Use for model/tool interfaces without pulling legacy orchestration behavior. |
-| langsmith | `~0.7` (currently `0.7.16`) | Tracing, eval, and runtime observability | Use in all pre-prod/prod environments for migration confidence and graph debugging. |
-| langchain-text-splitters | `~1.1` (currently `1.1.1`) | Document chunking consistency | Keep if your ingestion/search pipeline depends on existing chunking behavior. |
-| httpx | `~0.28` (currently `0.28.1`) | Async HTTP integrations in graph nodes/tasks | Use for deterministic, testable external calls wrapped in LangGraph tasks. |
-| orjson | `~3.11` (currently `3.11.7`) | High-throughput JSON serialization | Use if response/state payload volume is high and JSON becomes a CPU hot path. |
-| tenacity | `~9` | Retry/backoff around provider and network edges | Use at integration boundaries, not deep inside pure graph state transforms. |
+| `langchain-openai` | `>=0.3,<1` (or current repo baseline `>=0.3.0`) | Model provider adapter for existing RAG behavior | Keep provider wiring stable while adding HITL controls; reduce simultaneous migration risk. |
+| `httpx` | `>=0.28,<1` | Python SDK HTTP transport | Use in SDK for timeout/retry-ready calls and parity with async/sync client patterns. |
+| `@hey-api/openapi-ts` | `latest` (pin exact in lockfile) | Generate frontend TS client from FastAPI OpenAPI 3.1 schema | FastAPI docs explicitly recommend OpenAPI-based SDK generation; this prevents backend/frontend contract drift during HITL evolution. |
+| `build` | `>=1.2,<2` | Build wheel/sdist in CI | PyPA’s publishing workflow uses a dedicated build step before publish, enabling artifact promotion and safer releases. |
+| `pypa/gh-action-pypi-publish` | `@release/v1` (prefer pinned commit SHA) | Trusted Publishing for SDK releases | Official recommended flow for OIDC tokenless publishing; includes attestations by default in modern versions. |
 
 ### Development Tools
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| uv | Dependency + lock management | Keep single lock discipline and avoid mixed resolver workflows (`pip install` ad hoc in dev). |
-| pytest + pytest-asyncio | Graph behavior and async integration tests | Add replay/resume/idempotency tests specific to LangGraph durability semantics. |
-| Alembic | Schema migration control | Use for any checkpoint/store schema changes; keep migration ordering explicit. |
-| Docker Compose | Remote parity validation | Keep as production parity harness for milestone acceptance criteria. |
+| `uv` | Backend dependency + lock management | Keep one resolver path for backend and SDK package dependencies; avoid mixed ad hoc installs. |
+| `pytest` (+ async tests) | Resume/idempotency/contract regression tests | Add targeted tests for interrupt ordering, resume payload validation, and HITL-disabled backward compatibility. |
+| GitHub Environments (`pypi`, `testpypi`) | Release gating + manual approvals | PyPA guide recommends environment-based OIDC publishing; use manual approval on `pypi` for release safety. |
 
 ## Installation
 
 ```bash
-# Core graph migration dependencies (backend/sdk)
-uv add "langgraph~=1.1" "langgraph-checkpoint-postgres~=3.0" \
-  "langchain-openai~=1.1" "openai~=2.26" "langchain-core~=1.2"
+# Backend runtime (uv / src/backend)
+uv add "langchain>=1.2,<2" "langgraph>=1.0.10,<2" \
+  "langgraph-checkpoint-postgres>=3.0.4,<4" \
+  "fastapi>=0.135,<0.136" "pydantic>=2.10,<3" \
+  "httpx>=0.28,<1"
 
-# Supporting (as needed)
-uv add "langsmith~=0.7" "httpx~=0.28" "orjson~=3.11" "tenacity~=9.0"
+# Frontend contract tooling (src/frontend)
+npm install -D @hey-api/openapi-ts
 
-# Keep existing app stack current
-uv add "fastapi~=0.135" "pydantic~=2.12" "sqlalchemy~=2.0" \
-  "psycopg[binary,pool]~=3.3" "pgvector~=0.4" "alembic~=1.18"
-
-# Test/dev
-uv add --dev "pytest~=9.0" "pytest-asyncio~=1.3"
+# SDK/release build tooling (Python packaging workflow)
+python -m pip install --upgrade build
 ```
 
 ## Alternatives Considered
 
 | Recommended | Alternative | When to Use Alternative |
 |-------------|-------------|-------------------------|
-| `langgraph-checkpoint-postgres` | `langgraph-checkpoint-sqlite` | Local prototyping only; not for remote multi-instance production. |
-| LangGraph `StateGraph` orchestration | LangChain high-level agent loops only | Small/simple assistants with minimal control-flow needs; not suitable for your existing multi-stage RAG orchestration requirements. |
-| OpenAI via `langchain-openai` (+ `openai` SDK available) | Provider abstraction swap during same milestone | Only in later milestones after graph migration stabilizes and parity tests pass. |
+| `langgraph-checkpoint-postgres` | `langgraph-checkpoint-sqlite` | Local-only experiments, demos, or single-process dev workflows. |
+| FastAPI native SSE | WebSockets | Use WebSockets only if reviewers must send frequent bi-directional low-latency messages over one persistent channel. |
+| OpenAPI-generated TS client | Handwritten fetch client | Tiny prototypes; not recommended once backend+frontend+SDK contracts evolve in parallel. |
+| OIDC Trusted Publishing | API-token publishing | Only for registries that do not support trusted publishing. |
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `InMemorySaver` in production | No durable restart/recovery guarantees across process restarts | `langgraph-checkpoint-postgres` with thread IDs and Postgres-backed checkpointing |
-| `langgraph-checkpoint-sqlite` for remote prod | Good for local workflows, weak fit for concurrent distributed runtime | Postgres checkpointer already aligned with your infra |
-| `langchain-classic` as orchestration foundation | Legacy abstraction layer increases migration drag and behavior ambiguity | LangGraph `StateGraph` + explicit nodes/tasks and typed state |
-| Unbounded majors (`>=` only) for core orchestrator deps | Major-version drift can break graph/runtime semantics unexpectedly | Use compatible minor pins (`~=`) and controlled bump windows |
-| Direct Chat Completions as new primary integration path | OpenAI’s current SDK docs position Responses API as the primary API | Keep OpenAI baseline through `langchain-openai` and/or OpenAI Responses API |
+| `InMemorySaver` for production HITL | HITL pauses must survive process restarts and delayed human review | `langgraph-checkpoint-postgres` with thread IDs |
+| Polling-only checkpoint status for main UX loop | Adds latency, complexity, and race conditions for human review state | SSE stream with named events and resumable thread state |
+| `onmessage` as the only frontend SSE handler for named events | Named SSE events are dispatched by event name, not just generic message | `EventSource.addEventListener("event_name", ...)` handlers |
+| Long-lived `PYPI_API_TOKEN` secrets as primary release auth | Higher blast radius and rotation burden vs short-lived OIDC exchange | Trusted Publishing with `id-token: write` |
+| Trusted publishing inside reusable workflows | Officially unsupported flow today | Top-level release workflow job dedicated to publish step |
+| Breaking SDK payload shape in minor releases | Violates compatibility when HITL is disabled and clients expect old models | Add optional fields and versioned schema evolution with semantic versioning discipline |
 
 ## Stack Patterns by Variant
 
-**If migration must preserve exact behavior first (recommended first milestone):**
-- Keep retrieval/indexing/storage stack unchanged.
-- Replace only orchestration control flow with `StateGraph` nodes and typed state.
-- Enable Postgres checkpointer early to validate replay/resume semantics.
+**If HITL is disabled (backward-compatibility mode):**
+- Keep current RAG path default.
+- Do not require checkpoint decision fields in request/response payloads.
+- Emit no-op/default review metadata so old clients continue to function.
 
-**If optimizing for throughput after parity is proven:**
-- Introduce async nodes + `AsyncPostgresSaver`.
-- Add targeted retries (`tenacity`) and JSON perf tuning (`orjson`) where profiling proves benefit.
-- Keep model/provider behavior stable while scaling execution characteristics.
+**If HITL is enabled for subquestions/query-expansion controls:**
+- Gate tool actions with `HumanInTheLoopMiddleware(interrupt_on=...)`.
+- Persist checkpoints with Postgres saver and stable `thread_id`.
+- Stream typed checkpoint events to React via SSE; resume via explicit decision APIs.
 
 ## Version Compatibility
 
 | Package A | Compatible With | Notes |
 |-----------|-----------------|-------|
-| `langgraph~=1.1` | `langgraph-checkpoint-postgres~=3.0` | Officially aligned package family for state graph + Postgres checkpointing. |
-| `langchain-openai~=1.1` | `openai~=2.26` and `langchain-core~=1.2` | Keeps OpenAI provider baseline while using modern LangChain core interfaces. |
-| `fastapi~=0.135` | `pydantic~=2.12` | Current FastAPI generation built on Pydantic v2. |
-| `sqlalchemy~=2.0` | `psycopg[binary,pool]~=3.3` | Mature Postgres integration path with sync/async options. |
-| `pgvector~=0.4` | Postgres with pgvector extension | Keep existing semantic search storage unchanged during orchestration migration. |
+| `langchain>=1.2,<2` | `langgraph>=1.0.10,<2` | LangChain HITL middleware is built on LangGraph interrupt/persistence primitives. |
+| `langgraph>=1.0.10,<2` | `langgraph-checkpoint-postgres>=3.0.4,<4` | Package family alignment for production checkpointer usage. |
+| `fastapi>=0.135,<0.136` | `pydantic>=2,<3` | FastAPI SSE feature set and schema typing on current Pydantic generation. |
+| React `18.x` | Browser `EventSource` API | Stable native client for SSE with named event listeners. |
+| `pypa/gh-action-pypi-publish@release/v1` | PyPI Trusted Publisher config + `id-token: write` | Standard tokenless release flow with attestations support. |
 
-## Migration-Safe Upgrade Sequencing
+## Prescriptive Implementation Notes (for this repo)
 
-1. **Preflight lock discipline:** Convert core deps to compatible minor pins (`~=`) in backend and SDK manifests; regenerate lockfiles.
-2. **Foundation upgrade:** Upgrade `langgraph`, `langchain-core`, `langchain-openai`, `openai` together in one branch without graph rewrites yet; run smoke tests.
-3. **Durability layer:** Add `langgraph-checkpoint-postgres`; wire thread IDs and checkpoint setup; verify resume/replay behavior in Docker Compose.
-4. **Graph refactor:** Move orchestration stages (decompose, validate, semantic search, subanswers, synthesis) into explicit `StateGraph` nodes with typed state.
-5. **Provider stabilization:** Keep OpenAI baseline constant; only adjust model IDs/params after parity tests pass.
-6. **SDK/documentation release prep:** Update PyPI package metadata, API docs, and app HTML docs after functional parity and remote environment validation.
-7. **Hardening pass:** Add trace/eval coverage (LangSmith), idempotency checks for side-effect nodes, and failure recovery tests.
+1. **Keep architecture fixed:** FastAPI backend + React frontend + Python SDK remain first-class; add HITL as an additive capability, not a rewrite.
+2. **Upgrade FastAPI first:** current repo uses `0.115.12`; native SSE guidance relies on `0.135+`.
+3. **Model HITL as optional contracts:** add nullable/optional review metadata fields so old clients and SDK calls remain valid.
+4. **Use one canonical event stream path:** stream checkpoint lifecycle events (pending/approved/edited/rejected/resumed) over SSE.
+5. **Harden SDK release pipeline:** build once, publish artifacts via OIDC trusted publisher jobs (TestPyPI then PyPI).
 
 ## Sources
 
-- [LangGraph overview](https://docs.langchain.com/oss/python/langgraph/overview) — production positioning and install guidance (HIGH)
-- [LangGraph durable execution](https://docs.langchain.com/oss/python/langgraph/durable-execution) — determinism/idempotency requirements (HIGH)
-- [LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence) — checkpointer options; Postgres marked ideal for production (HIGH)
-- [LangGraph add-memory how-to](https://langchain-ai.github.io/langgraph/how-tos/memory/add-memory/) — practical Postgres checkpointer install patterns (MEDIUM; older docs domain)
-- [LangChain overview](https://docs.langchain.com/oss/python/langchain/overview) — LangChain-on-LangGraph relationship and abstraction boundaries (HIGH)
-- [openai-python README](https://raw.githubusercontent.com/openai/openai-python/main/README.md) — Responses API primary, Chat Completions legacy supported (HIGH)
-- [PyPI JSON: langgraph](https://pypi.org/pypi/langgraph/json), [langgraph-checkpoint-postgres](https://pypi.org/pypi/langgraph-checkpoint-postgres/json), [langchain-openai](https://pypi.org/pypi/langchain-openai/json), [openai](https://pypi.org/pypi/openai/json), [fastapi](https://pypi.org/pypi/fastapi/json), [pydantic](https://pypi.org/pypi/pydantic/json), [langchain-core](https://pypi.org/pypi/langchain-core/json), [langsmith](https://pypi.org/pypi/langsmith/json), [sqlalchemy](https://pypi.org/pypi/sqlalchemy/json), [psycopg](https://pypi.org/pypi/psycopg/json), [pgvector](https://pypi.org/pypi/pgvector/json), [alembic](https://pypi.org/pypi/alembic/json), [uvicorn](https://pypi.org/pypi/uvicorn/json) — current version baselines as of 2026-03-12 (HIGH)
+- [LangChain HITL docs (required source)](https://docs.langchain.com/oss/python/langchain/human-in-the-loop) — middleware behavior, decision types, thread/checkpointer requirements, streaming patterns (**HIGH**)
+- [LangChain built-in middleware docs](https://docs.langchain.com/oss/python/langchain/middleware/built-in#human-in-the-loop) — `HumanInTheLoopMiddleware` integration point and checkpointer requirement (**HIGH**)
+- [LangGraph interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) — `interrupt()`/`Command(resume=...)`, JSON payload rules, idempotency caveats (**HIGH**)
+- [LangGraph persistence](https://docs.langchain.com/oss/python/langgraph/persistence) — production checkpointer options and Postgres saver recommendation (**HIGH**)
+- [FastAPI SSE](https://fastapi.tiangolo.com/tutorial/server-sent-events/) — native SSE support (`EventSourceResponse`) and operational behavior (**HIGH**)
+- [MDN EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource) — named event handling (`addEventListener`) and SSE transport characteristics (**HIGH**)
+- [FastAPI generating SDKs](https://fastapi.tiangolo.com/advanced/generate-clients/) — OpenAPI 3.1 client generation path for TS consumers (**HIGH**)
+- [PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/) — OIDC tokenless publishing model and short-lived token behavior (**HIGH**)
+- [GitHub OIDC for PyPI](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-pypi) — required workflow permissions and trust configuration (**HIGH**)
+- [PyPA GitHub Actions publishing guide](https://packaging.python.org/en/latest/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/) — recommended build/publish job split, TestPyPI/PyPI flow, attestations note (**HIGH**)
+- [PyPI Publish GitHub Action marketplace docs](https://github.com/marketplace/actions/pypi-publish) — trusted publishing constraints (including reusable workflow limitation) and security recommendations (**HIGH**)
+- [Python Packaging versioning guidance](https://packaging.python.org/en/latest/discussions/versioning/) — semver/calver tradeoffs and compatibility communication for SDK evolution (**HIGH**)
 
 ---
-*Stack research for: LangGraph State Graph Migration for Agent Search*
-*Researched: 2026-03-12*
+*Stack research for: HITL-enabled advanced RAG controls (subquestions/query expansion)*
+*Researched: 2026-03-13*

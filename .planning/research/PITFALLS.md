@@ -1,240 +1,176 @@
 # Pitfalls Research
 
-**Domain:** LangGraph migration for a brownfield, production RAG pipeline (SDK-backed, OpenAI baseline retained)
-**Researched:** 2026-03-12
+**Domain:** Retrofitting human approval/edit/deny checkpoints and prompt customization into an existing RAG pipeline with synchronized backend/frontend/SDK/PyPI releases
+**Researched:** 2026-03-13
 **Confidence:** HIGH
 
 ## Critical Pitfalls
 
-### Pitfall 1: "Node lift-and-shift" that keeps old monolith steps
+### Pitfall 1: Checkpoint identity drift (`thread_id`/job ID mismatch across API, UI, and SDK)
 
 **What goes wrong:**
-Teams map the old orchestrator into a few oversized LangGraph nodes (for example, one node does decompose + validate + search + synthesis). Checkpoint boundaries become too coarse, so retries and resume replay too much work and duplicate side effects.
+An approval request is raised for one run, but resume is posted against a different thread or run identifier. Human decisions are applied to the wrong execution, or resume starts a new execution path.
 
 **Why it happens:**
-Migration pressure favors "minimal rewrites," and teams underestimate how much durable execution semantics depend on node boundaries.
+HITL retrofit is added at backend graph level, while frontend and SDK still treat runs as stateless polling jobs. IDs are transformed or regenerated in one layer.
 
 **How to avoid:**
-Split nodes by failure domain and side-effect boundary (decompose, validate, semantic search, subanswers, synthesis, guardrails/retry control). Keep each node single-purpose, with explicit retry policy and clear input/output state keys.
+Define one canonical resume identity contract (`thread_id`, `job_id`, `checkpoint_id`) and expose it unchanged in backend response payloads, SSE events, frontend state, and SDK types. Add contract tests that replay approve/edit/reject through all clients using the same IDs.
 
 **Warning signs:**
-- Single node has multiple provider calls and external writes.
-- Resume from interruption re-runs expensive upstream work.
-- One node has mixed retry needs (rate-limit retries + business validation + irreversible side effects).
+- Resume requests succeed with 200 but checkpoint remains pending.
+- Approval events appear for a run not currently open in UI.
+- Duplicate "new run started" logs immediately after resume.
 
 **Phase to address:**
-Phase 1 - Graph decomposition and state contract design
+Phase 1 - Cross-surface contract design (backend/frontend/SDK)
 
 ---
 
-### Pitfall 2: Non-deterministic or side-effectful code outside tasks
+### Pitfall 2: Interrupt decision ordering bug for multi-action checkpoints
 
 **What goes wrong:**
-On resume, nodes restart from the beginning and replay logic. If API calls, random/time-based branching, or writes are not encapsulated properly, retries/resumes trigger duplicate actions and divergent control flow.
+When multiple actions are paused together, decisions are sent out of order and approvals/edits/rejections are applied to the wrong action request.
 
 **Why it happens:**
-Teams treat LangGraph resume like "resume from line," not "replay from node/task boundary."
+LangChain HITL requires decision order to match action order, but UI sorting/filtering or SDK serialization changes ordering semantics.
 
 **How to avoid:**
-Wrap non-determinism and side effects in tasks/nodes with idempotency keys and dedupe checks; enforce a "no external side effects outside task wrappers" rule in code review.
+Carry explicit `action_id` + index from interrupt payload through UI and SDK, and verify backend enforces deterministic mapping before resume. Include tests with two or more simultaneous action requests and mixed decisions (`approve`, `edit`, `reject`).
 
 **Warning signs:**
-- Duplicate downstream writes during recovery tests.
-- Same run ID produces different branch paths after resume.
-- Time/random-dependent routing in node logic.
+- "Approve query expansion" ends up approving subquestion edits.
+- Edited arguments appear on the wrong tool call.
+- Intermittent failures only when multiple pending actions exist.
 
 **Phase to address:**
-Phase 2 - Durable execution hardening (determinism + idempotency)
+Phase 2 - HITL workflow implementation and resume correctness
 
 ---
 
-### Pitfall 3: Missing or unstable `thread_id` strategy
+### Pitfall 3: Non-idempotent side effects before interrupt/resume
 
 **What goes wrong:**
-State does not persist correctly across turns, interrupts, or retries; conversations appear to "forget" context, or wrong state is resumed.
+Query expansion writes cache rows, metrics, or audit records before interrupt; on resume, node replay re-executes those side effects and duplicates data or outbound calls.
 
 **Why it happens:**
-Teams rely on ephemeral IDs, reuse IDs across tenants/sessions, or fail to wire thread identity through all SDK entry points.
+Interrupts resume from node start, and teams assume "resume continues from exact line." They keep side effects before checkpoint without idempotency guards.
 
 **How to avoid:**
-Define a canonical thread identity contract early: `{tenant_id}:{conversation_id}:{environment}`. Enforce in API schema, test fixtures, logs, and migration docs. Add negative tests for missing/wrong `thread_id`.
+Move side effects after human decision when possible; otherwise enforce idempotency keys (`run_id + checkpoint_id + action_id`) and dedupe at write boundaries. Add forced crash/replay tests around each checkpointed node.
 
 **Warning signs:**
-- "Messages are overwritten/replaced" behavior across turns.
-- Resuming after interrupt starts a new flow unexpectedly.
-- Cross-user state bleed in lower environments.
+- Duplicate expansion rows or duplicate tool invocations after a single approval.
+- Audit trail has repeated entries with same logical action.
+- Retry/replay test shows non-deterministic counts.
 
 **Phase to address:**
-Phase 2 - Persistence and thread identity design
+Phase 2 - Durable execution and idempotency hardening
 
 ---
 
-### Pitfall 4: Reducer misuse causes state corruption (especially with subgraphs)
+### Pitfall 4: Contract drift while adding `sub_answers` and new toggles
 
 **What goes wrong:**
-List channels duplicate or nest unexpectedly (e.g., `operator.add` behavior in subgraph contexts), message history becomes noisy, and retrieval/synthesis consumes malformed context.
+Backend returns new fields (`sub_answers`) or changes toggle semantics (`rerank`, `query_expansion`), but frontend and SDK parse older contracts. Clients silently drop data, fail validation, or mis-render checkpoint details.
 
 **Why it happens:**
-Default/append reducers are applied without field-by-field semantics; teams assume "append" always means "merge correctly."
+Schema evolution is treated as "minor internal change" instead of public API/SDK surface change with compatibility policy.
 
 **How to avoid:**
-Define reducers per channel intentionally:
-- use `add_messages` for message channels,
-- custom dedupe/merge reducers for list/state aggregates,
-- explicit overwrite semantics for scalar fields.
-Add contract tests for parent/subgraph state transitions.
+Version response contracts, mark additive vs breaking changes explicitly, and run compatibility tests against previous SDK and UI builds. Ship default-safe behavior for unknown fields and documented toggle precedence.
 
 **Warning signs:**
-- Duplicated items after subgraph execution.
-- Unexpected nested list structures in persisted state.
-- Token usage spikes from repeated history fragments.
+- Frontend shows empty sub-answers despite backend logs containing them.
+- SDK deserialization errors only on new backend release.
+- Users report toggles behave opposite to API docs.
 
 **Phase to address:**
-Phase 3 - State schema and reducer verification
+Phase 1 - API schema versioning and compatibility policy
 
 ---
 
-### Pitfall 5: Interrupt flow implemented incorrectly
+### Pitfall 5: Toggle and prompt-customization precedence conflicts
 
 **What goes wrong:**
-Human-in-the-loop pauses fail silently, resume values bind to the wrong prompt, or pre-interrupt side effects re-run and duplicate actions.
+System prompt, user prompt customization, project defaults, and runtime toggles conflict. Query expansion may run when disabled, or custom prompts bypass intended retrieval/rerank behavior.
 
 **Why it happens:**
-Interrupt mechanics are exception-driven and index-based in multi-interrupt scenarios; teams place interrupt inside `try/except`, perform side effects before interrupt, or use wrong resume form.
+No deterministic precedence rules are defined, and each layer applies overrides independently.
 
 **How to avoid:**
-Adopt strict interrupt rules:
-- `interrupt()` before any non-idempotent work in that node,
-- never wrap `interrupt()` in `try/except`,
-- for parallel interrupts, resume with ID-to-value mapping,
-- use `Command(resume=...)` only for resumption.
+Publish a single precedence matrix (system > policy guardrails > user prompt customization > request toggles, or your chosen order) and enforce it in one backend resolver. Echo resolved config in responses for observability.
 
 **Warning signs:**
-- Interrupt payload never appears in stream output.
-- Resume applies answer to the wrong pending question.
-- Approval steps trigger action twice after resumption.
+- Same request payload yields different behavior by client.
+- Debugging requires checking multiple files to know "effective prompt."
+- Support tickets mention "toggle says off but behavior is on."
 
 **Phase to address:**
-Phase 4 - Guardrails and human-review flow migration
+Phase 1 - Configuration resolution design
 
 ---
 
-### Pitfall 6: Retry policy without idempotency boundaries
+### Pitfall 6: Unsafe prompt customization path (policy and data-leak regressions)
 
 **What goes wrong:**
-Transient failures recover, but repeated attempts duplicate tool/API effects (duplicate records, duplicate notifications, repeated writes).
+Editable prompts allow bypassing safety instructions, injecting hidden directives into tool arguments, or leaking internal retrieval context through user-visible outputs.
 
 **Why it happens:**
-Retry configuration is added at graph/node level, but external systems are not idempotent and no request keying strategy exists.
+Prompt customization is exposed as raw text replacement without policy-layer validation or redaction boundaries.
 
 **How to avoid:**
-For every side-effecting node, require:
-- deterministic idempotency key,
-- write-before-send or send-with-ledger pattern,
-- compensating action policy,
-- replay tests that force provider/network failures.
+Split customizable template variables from non-editable policy prompt sections, run server-side validation on allowed prompt fields, and redact sensitive retrieval/internal metadata before rendering approval payloads.
 
 **Warning signs:**
-- Retry metrics improve while downstream data quality degrades.
-- Duplicate transaction artifacts after controlled chaos tests.
-- "Exactly once" claims without dedupe key evidence.
+- Prompt edits contain policy terms that should be immutable.
+- Increased unsafe tool-call proposals after prompt customization launch.
+- Internal retrieval snippets appear in approval UI unexpectedly.
 
 **Phase to address:**
-Phase 4 - Retry and side-effect safety controls
+Phase 3 - Prompt customization guardrails and security review
 
 ---
 
-### Pitfall 7: Recursion and loop controls missing in decomposition/subanswer cycles
+### Pitfall 7: Frontend SSE listener mismatch for typed checkpoint events
 
 **What goes wrong:**
-Graphs spin in agent/tool/search loops until `GraphRecursionError` or token/cost blowups, especially in decompose -> search -> subanswer refinement cycles.
+UI listens only to default `message` events while backend emits typed events (e.g., `checkpoint.pending`, `checkpoint.resolved`). HITL appears frozen because state transitions are never consumed.
 
 **Why it happens:**
-Custom orchestrators had implicit guards; migration drops or weakens them and relies only on model behavior.
+Existing run-progress implementation uses generic `onmessage`; retrofit introduces named events without updating client listeners.
 
 **How to avoid:**
-Set explicit recursion limits, instrument step counters, and implement graceful degradation path (fallback synthesis and stop condition). Add bounded-iteration tests on adversarial prompts.
+Use `addEventListener(...)` for every emitted event type and maintain an event contract test suite shared by backend and frontend. Include fallback/error events and reconnection handling.
 
 **Warning signs:**
-- Step count rises near recursion limit frequently.
-- Long-tail latency spikes with repeated "thinking" steps.
-- Cost per request variance widens after migration.
+- Network tab shows SSE frames but no UI state change.
+- Only initial run status updates render; checkpoint transitions do not.
+- Behavior differs between local mocks and real browser.
 
 **Phase to address:**
-Phase 3 - Control-flow safety and bounded execution
+Phase 2 - Frontend stream integration for HITL events
 
 ---
 
-### Pitfall 8: Checkpointer setup and durability mode mismatched to SLOs
+### Pitfall 8: SDK/PyPI release desynchronization and dependency pin traps
 
 **What goes wrong:**
-Production loses recoverability guarantees (or suffers avoidable latency overhead) because durability mode and checkpointer provisioning are not aligned with failure tolerance goals.
+Backend ships new HITL payloads first, but SDK release lags or is pinned with strict `==` dependency constraints. Integrators cannot install compatible versions or unknowingly run incompatible pairs.
 
 **Why it happens:**
-Teams carry dev defaults into production (e.g., in-memory saver, uninitialized persistence), or choose durability mode without explicit RPO/RTO tradeoff analysis.
+Release process does not treat backend API contract + SDK package + docs + PyPI publish as one atomic compatibility unit.
 
 **How to avoid:**
-Treat checkpointing as release-critical infra:
-- use production checkpointer backend,
-- run initial setup/migrations explicitly,
-- document `sync` vs `async` vs `exit` durability policy by endpoint,
-- validate crash-recovery behavior in staging.
+Adopt explicit compatibility matrix and SemVer policy for API/SDK; avoid strict `==` in published dependency specs unless required for app lockfiles. Gate PyPI publish on contract tests against target backend version and publish migration notes with deprecation windows.
 
 **Warning signs:**
-- Memory saver or local defaults in deployment manifests.
-- Mid-run crash resumes from too early or cannot resume.
-- Latency regressions without matching durability gains.
+- "Works on main branch, fails from pip install."
+- Support issues spike immediately after package publish.
+- Users blocked by dependency resolver conflicts.
 
 **Phase to address:**
-Phase 2 - Persistence infrastructure and SLO policy
-
----
-
-### Pitfall 9: OpenAI baseline drift during orchestration migration
-
-**What goes wrong:**
-The migration unintentionally changes model behavior (tool-call formats, structured output handling, refusal handling), creating quality regressions that get misattributed to LangGraph.
-
-**Why it happens:**
-Migration mixes orchestration changes with provider/model/response-format changes in the same release.
-
-**How to avoid:**
-Lock provider/model baseline first:
-- freeze model snapshots and key OpenAI parameters,
-- keep output schema strategy stable (Structured Outputs vs JSON mode) during initial cutover,
-- run parity eval suite per pipeline node before and after graph migration.
-
-**Warning signs:**
-- Validation/synthesis pass rates drop without graph errors.
-- Refusal handling suddenly increases in strict schema paths.
-- Tool-call parsing failures appear only after model upgrade.
-
-**Phase to address:**
-Phase 1 - Baseline freeze and migration acceptance criteria
-
----
-
-### Pitfall 10: Missing migration guidance for active threads and topology changes
-
-**What goes wrong:**
-Major release breaks in-flight sessions/interrupted threads when node names/topology change without a transition plan, causing stuck or invalid resumptions.
-
-**Why it happens:**
-Teams treat schema/graph updates like stateless deploys and skip thread lifecycle policy in release docs.
-
-**How to avoid:**
-Ship explicit migration runbook:
-- classify compatible vs incompatible graph changes,
-- drain/complete interrupted threads before incompatible changes,
-- version graph definitions and route old threads to old graph until completion.
-
-**Warning signs:**
-- Resumption errors appear after deployment with no code exceptions pre-release.
-- Interrupted sessions fail only on upgraded environment.
-- Support tickets mention "resume no longer works."
-
-**Phase to address:**
-Phase 5 - Release migration docs and thread transition operations
+Phase 4 - SDK packaging, versioning, and release orchestration
 
 ---
 
@@ -244,10 +180,10 @@ Shortcuts that seem reasonable but create long-term problems.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Keep one giant "orchestrate" node | Fastest initial migration | Poor replay granularity, hard debugging, expensive retries | Only for throwaway spike/prototype |
-| Use default reducer behavior everywhere | Less schema work up front | Silent state corruption and duplicate accumulation | Never for production migration |
-| Delay idempotency until post-launch | Faster time-to-demo | Recovery bugs become data integrity incidents | Never for side-effecting nodes |
-| Mix provider/model upgrades with graph migration | One combined release | Impossible root-cause attribution on regressions | Only with separate parity gates per change |
+| Add HITL as `if needs_approval:` branches inside existing nodes | Minimal code churn | Replay/idempotency bugs and fragile control flow | Only in short-lived spike branches |
+| Keep checkpoints "backend-only" without SDK typings | Faster backend merge | Broken external integrations and unclear contracts | Never for public SDK surfaces |
+| Use strict `==` dependency pins in published SDK | Predictable local testing | Security-fix and compatibility deadlocks for consumers | Rarely; only internal app lockfiles, not library metadata |
+| Let prompt customization be free-form raw override | Quick feature demo | Safety regressions and irreproducible behavior | Never in production without guardrails |
 
 ## Integration Gotchas
 
@@ -255,10 +191,10 @@ Common mistakes when connecting to external services.
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| OpenAI Chat/Responses | Switching output mode/schema and orchestration in one step | Freeze provider settings first; migrate orchestration with parity tests, then optimize schema mode separately |
-| Vector/semantic search service | Returning formatted prompt strings from search node | Return raw retrieval artifacts in state; format at synthesis node |
-| External write APIs (ticketing/email/CRM) | Retrying non-idempotent writes without operation key | Enforce idempotency key contract and dedupe ledger per external action |
-| Human review UI/API | Using new thread ID on resume path | Persist and reuse original `thread_id` from interrupt through resume |
+| LangChain HITL middleware | Assuming resume can use reordered decision arrays | Preserve action order/IDs from interrupt payload and validate before `Command(resume=...)` |
+| LangGraph persistence/checkpointer | Using inconsistent thread identifiers across layers | Standardize `thread_id` lifecycle and persist it through UI + SDK |
+| Frontend SSE client | Listening only with `onmessage` | Use named `addEventListener` handlers for typed events and contract tests |
+| PyPI publishing pipeline | Publishing SDK without compatibility test against backend contract | Block publish until end-to-end compatibility matrix checks pass |
 
 ## Performance Traps
 
@@ -266,9 +202,9 @@ Patterns that work at small scale but fail as usage grows.
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| Unbounded message/state accumulation | Token growth, latency drift, rising model cost | Channel-level retention policy + summarization checkpoints + dedupe reducers | Commonly visible at longer sessions or high-turn workloads |
-| Overly synchronous durability on all paths | Elevated p95/p99 latency | Choose durability mode per endpoint criticality; reserve strictest mode for high-value transactions | Under concurrent production traffic |
-| Coarse nodes with many external calls | Large replay cost after transient fault | Split by side-effect/failure boundary; task-wrap external calls | During provider/network instability |
+| Human checkpoints with no timeout/escalation path | Long-running pending runs and queue buildup | Add checkpoint TTLs, escalation rules, and cancellation semantics | Moderate concurrency with limited reviewers |
+| Re-running retrieval/expansion after each edit without cache keying | Token/cost spikes during review loops | Cache by `(query, toggle set, prompt revision)` and invalidate intentionally | Frequent edit-based HITL workflows |
+| Streaming full state snapshots each event | High SSE payload volume and UI lag | Emit compact delta events with stable schema and version field | Multi-tab or high-frequency status updates |
 
 ## Security Mistakes
 
@@ -276,9 +212,9 @@ Domain-specific security issues beyond general web security.
 
 | Mistake | Risk | Prevention |
 |---------|------|------------|
-| Logging full persisted state including raw user and retrieval content | Sensitive data leakage via logs/telemetry | Redact state channels by policy; structured safe logging fields only |
-| Persisting human-review payloads without access controls | Cross-tenant exposure of sensitive draft/tool-call data | Tenant-scoped thread/store keys + strict auth on interrupt/resume APIs |
-| Trusting model output as validated policy decision | Guardrail bypass and unsafe actions | Separate deterministic validator nodes and enforce hard policy checks before side effects |
+| Unauthenticated approve/edit/reject endpoints | Unauthorized action execution | Require reviewer authz scoped to tenant/run/checkpoint and audit every decision |
+| Storing raw prompt edits and retrieval snippets in logs | Sensitive data leakage | Redact or hash sensitive prompt/context fields in logs and traces |
+| Allowing prompt customization to alter policy/system blocks | Safety and compliance bypass | Keep policy prompt immutable and expose only bounded user-customizable fields |
 
 ## UX Pitfalls
 
@@ -286,20 +222,20 @@ Common user experience mistakes in this domain.
 
 | Pitfall | User Impact | Better Approach |
 |---------|-------------|-----------------|
-| Interrupt pauses without clear pending action | Users think system is stuck | Surface interrupt intent, required input, and SLA timer in UI |
-| Retry storms hidden from user | Perceived randomness and duplicate outcomes | Show retried-step status and eventual consistency messaging |
-| Migration changes answer style with no explanation | Trust loss after major release | Publish migration notes with behavior deltas and known limitations |
+| No diff view for `edit` actions | Reviewers cannot tell what changed | Show structured before/after diffs for tool arguments and prompt revisions |
+| No explainability for deny path | Users see random refusal loops | Surface rejection reason and how agent used feedback on retry |
+| Hidden toggle effective state | Users mistrust results | Display resolved toggle state and prompt profile used for each run |
 
 ## "Looks Done But Isn't" Checklist
 
 Things that appear complete but are missing critical pieces.
 
-- [ ] **Durable execution:** Replay test proves no duplicate external writes after forced crash/restart.
-- [ ] **Interrupt workflows:** Resume path verified with same `thread_id`, including multi-interrupt mapping cases.
-- [ ] **State reducers:** Parent/subgraph reducer contract tests cover append, overwrite, dedupe, and nested structures.
-- [ ] **OpenAI baseline:** Node-level quality parity report (decompose, validate, search use, subanswers, synthesis, guardrails).
-- [ ] **Recursion control:** Bounded execution test confirms graceful fallback before recursion limit exhaustion.
-- [ ] **Release docs:** Runbook covers active-thread handling, rollback, and graph-version compatibility rules.
+- [ ] **Checkpoint correctness:** Mixed approve/edit/reject test passes for multi-action interrupts in deterministic order.
+- [ ] **Identity integrity:** Same `thread_id`/`job_id` is preserved from interrupt to resume across API, UI, and SDK.
+- [ ] **Contract compatibility:** `sub_answers` and toggle fields validated against current and previous SDK versions.
+- [ ] **Prompt safety:** Customization path cannot modify immutable policy blocks and passes security review tests.
+- [ ] **SSE behavior:** Typed checkpoint events are received via `addEventListener` in real browser tests.
+- [ ] **Release readiness:** PyPI package publish is gated by backend-frontend-SDK end-to-end compatibility checks.
 
 ## Recovery Strategies
 
@@ -307,9 +243,9 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Duplicate side effects due to retries/replay | HIGH | Freeze outbound actions, reconcile by idempotency key, backfill ledger, replay only read-only segments |
-| State corruption from reducer errors | MEDIUM-HIGH | Stop new runs on affected graph version, patch reducer, repair malformed checkpoints or fork from clean checkpoint |
-| Broken resume after topology change | HIGH | Route affected threads to prior graph version, drain interrupted runs, then reintroduce new topology with migration gate |
+| Wrong decision applied to wrong action | HIGH | Freeze approvals, reconcile from decision audit log, replay pending checkpoints with corrected mapping, patch ordering bug |
+| Contract drift breaks SDK clients | MEDIUM-HIGH | Ship patch release with backward-compatible serializer, add temporary compatibility shim, publish migration advisory |
+| Prompt customization causes unsafe outputs | HIGH | Disable customization feature flag, rotate to safe prompt profile, review logs for policy breach impact, relaunch behind stricter validation |
 
 ## Pitfall-to-Phase Mapping
 
@@ -317,32 +253,24 @@ How roadmap phases should address these pitfalls.
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Node lift-and-shift monoliths | Phase 1 - Graph decomposition and state contract | Review each node against single-purpose/failure-boundary checklist |
-| Non-deterministic side effects outside tasks | Phase 2 - Durable execution hardening | Crash/resume test shows no duplicate writes |
-| Missing or unstable `thread_id` | Phase 2 - Persistence and thread identity | Multi-turn + interrupt tests retain correct state per tenant/session |
-| Reducer misuse in subgraphs | Phase 3 - State schema and reducer verification | Contract tests assert no duplication/nesting regressions |
-| Interrupt misimplementation | Phase 4 - Guardrails and HITL migration | End-to-end approval/reject/edit flows pass with resume correctness |
-| Retry policy without idempotency | Phase 4 - Retry and side-effect safety | Chaos tests produce no duplicate external actions |
-| Recursion/loop runaway | Phase 3 - Control-flow safety | Recursion-limit/fallback tests pass on adversarial prompts |
-| Checkpointer/durability mismatch | Phase 2 - Persistence infrastructure | Failure injection validates chosen durability SLO tradeoff |
-| OpenAI baseline drift | Phase 1 - Baseline freeze and acceptance criteria | Pre/post migration parity suite remains within thresholds |
-| Active-thread migration breakage | Phase 5 - Release migration docs and ops | Staged deploy validates interrupted thread compatibility policy |
+| Checkpoint identity drift | Phase 1 - Cross-surface contract design | Integration test proves resume uses identical IDs end-to-end |
+| Multi-action decision ordering bug | Phase 2 - HITL workflow implementation | Test suite covers mixed decisions with deterministic mapping |
+| Non-idempotent side effects before interrupt | Phase 2 - Durable execution hardening | Replay/crash tests show no duplicate writes or calls |
+| `sub_answers` and toggle contract drift | Phase 1 - API schema/version policy | Backward-compat tests pass for N-1 SDK/client |
+| Toggle/prompt precedence conflicts | Phase 1 - Configuration resolution design | Snapshot tests assert resolved config determinism |
+| Unsafe prompt customization | Phase 3 - Prompt guardrails/security | Policy immutability and redaction tests pass |
+| SSE typed-event listener mismatch | Phase 2 - Frontend stream integration | Browser E2E confirms named events drive state changes |
+| SDK/PyPI release desync | Phase 4 - Packaging and release orchestration | Release gate enforces compatibility matrix and migration notes |
 
 ## Sources
 
-- LangGraph Overview (official): https://docs.langchain.com/oss/python/langgraph/overview
-- LangGraph Durable Execution (official): https://docs.langchain.com/oss/python/langgraph/durable-execution
-- LangGraph Persistence (official): https://docs.langchain.com/oss/python/langgraph/persistence
-- LangGraph Graph API (official): https://docs.langchain.com/oss/python/langgraph/graph-api
+- LangChain Human-in-the-Loop (required, official): https://docs.langchain.com/oss/python/langchain/human-in-the-loop
 - LangGraph Interrupts (official): https://docs.langchain.com/oss/python/langgraph/interrupts
-- Thinking in LangGraph (official): https://docs.langchain.com/oss/python/langgraph/thinking-in-langgraph
-- Functional API Common Pitfalls (official): https://docs.langchain.com/oss/python/langgraph/functional-api#common-pitfalls
-- LangGraph issue on `operator.add` duplicates with subgraph (community + maintainer response): https://github.com/langchain-ai/langgraph/issues/4007
-- LangGraph issue on reducer behavior in subgraph flows: https://github.com/langchain-ai/langgraph/issues/3587
-- LangGraph issue on `add_messages` expectations and thread/checkpointer usage: https://github.com/langchain-ai/langgraph/issues/1568
-- OpenAI Structured Outputs guide (official): https://platform.openai.com/docs/guides/structured-outputs
-- OpenAI Function Calling guide (official): https://platform.openai.com/docs/guides/function-calling
+- Python Packaging User Guide - Packaging Python Projects (official): https://packaging.python.org/en/latest/tutorials/packaging-projects/
+- Python Packaging - Version Specifiers (official): https://packaging.python.org/en/latest/specifications/version-specifiers/
+- Semantic Versioning 2.0.0 (official): https://www.semver.org/
+- MDN EventSource (official web platform reference): https://developer.mozilla.org/en-US/docs/Web/API/EventSource
 
 ---
-*Pitfalls research for: LangGraph brownfield migration (RAG orchestration)*
-*Researched: 2026-03-12*
+*Pitfalls research for: HITL retrofit + contract evolution + SDK/PyPI release synchronization*
+*Researched: 2026-03-13*
