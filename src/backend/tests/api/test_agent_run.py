@@ -342,6 +342,53 @@ def test_post_run_async_forwards_same_normalized_controls_as_sync_run(monkeypatc
     }
 
 
+def test_post_run_async_accepts_subquestion_hitl_controls(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run_async(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-hitl-001",
+            run_id="run-hitl-001",
+            thread_id="550e8400-e29b-41d4-a716-446655440099",
+            status="queued",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-async",
+        json={
+            "query": "Queue with subquestion hitl",
+            "controls": {
+                "hitl": {
+                    "subquestions": {"enabled": True},
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Queue with subquestion hitl",
+        "config": {
+            "hitl": {
+                "enabled": True,
+                "subquestions": {"enabled": True},
+            },
+        },
+    }
+
+
 def test_run_async_and_status_preserve_same_thread_id(monkeypatch) -> None:
     from routers import agent as agent_router_module
     from schemas import RuntimeAgentRunAsyncStartResponse, RuntimeAgentRunAsyncStatusResponse
@@ -791,6 +838,140 @@ def test_post_run_resume_returns_status_with_stable_thread_id(monkeypatch) -> No
     assert response.json()["result"]["thread_id"] == thread_id
     assert response.json()["result"]["output"] == "Recovered successfully."
     assert captured == {"job_id": "job-003", "resume": {"approved": True}}
+
+
+def test_post_run_resume_accepts_typed_subquestion_decision_envelope(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStatusResponse, RuntimeSubquestionResumeEnvelope
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_resume_run(job_id: str, *, resume):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id="run-typed-001",
+            thread_id="550e8400-e29b-41d4-a716-446655440098",
+            status="running",
+            message="Resume accepted.",
+            stage="subquestions_ready",
+        )
+
+    monkeypatch.setattr(agent_router_module, "sdk_resume_run", fake_sdk_resume_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-resume/job-typed-001",
+        json={
+            "resume": {
+                "checkpoint_id": "checkpoint-123",
+                "decisions": [
+                    {"subquestion_id": "sq-1", "action": "approve"},
+                    {"subquestion_id": "sq-2", "action": "edit", "edited_text": "Edited subquestion"},
+                    {"subquestion_id": "sq-3", "action": "deny"},
+                    {"subquestion_id": "sq-4", "action": "skip"},
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["job_id"] == "job-typed-001"
+    assert isinstance(captured["resume"], RuntimeSubquestionResumeEnvelope)
+    assert captured["resume"].model_dump() == {
+        "checkpoint_id": "checkpoint-123",
+        "decisions": [
+            {"subquestion_id": "sq-1", "action": "approve", "edited_text": None},
+            {"subquestion_id": "sq-2", "action": "edit", "edited_text": "Edited subquestion"},
+            {"subquestion_id": "sq-3", "action": "deny", "edited_text": None},
+            {"subquestion_id": "sq-4", "action": "skip", "edited_text": None},
+        ],
+    }
+
+
+def test_post_run_resume_accepts_legacy_boolean_payload(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStatusResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_resume_run(job_id: str, *, resume):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return RuntimeAgentRunAsyncStatusResponse(job_id=job_id, run_id="run-bool-001", thread_id="", status="running")
+
+    monkeypatch.setattr(agent_router_module, "sdk_resume_run", fake_sdk_resume_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-resume/job-bool-001", json={"resume": True})
+
+    assert response.status_code == 200
+    assert captured == {"job_id": "job-bool-001", "resume": True}
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_fragment"),
+    [
+        (
+            {
+                "resume": {
+                    "checkpoint_id": "checkpoint-123",
+                    "decisions": [
+                        {"subquestion_id": "sq-1", "action": "edit"},
+                    ],
+                }
+            },
+            "edited_text is required when action='edit'.",
+        ),
+        (
+            {
+                "resume": {
+                    "checkpoint_id": "",
+                    "decisions": [
+                        {"subquestion_id": "sq-1", "action": "approve"},
+                    ],
+                }
+            },
+            "String should have at least 1 character",
+        ),
+        (
+            {
+                "resume": {
+                    "checkpoint_id": "checkpoint-123",
+                    "decisions": [],
+                }
+            },
+            "List should have at least 1 item",
+        ),
+        (
+            {
+                "resume": {
+                    "checkpoint_id": "checkpoint-123",
+                    "decisions": [
+                        {"subquestion_id": "sq-1", "action": "rewrite"},
+                    ],
+                }
+            },
+            "Input should be 'approve', 'edit', 'deny' or 'skip'",
+        ),
+    ],
+)
+def test_post_run_resume_rejects_malformed_typed_decision_envelopes(payload: dict[str, object], expected_fragment: str) -> None:
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-resume/job-invalid-envelope", json=payload)
+
+    assert response.status_code == 422
+    assert any(expected_fragment in detail["msg"] for detail in response.json()["detail"])
 
 
 @pytest.mark.parametrize(
