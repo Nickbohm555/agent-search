@@ -3,16 +3,18 @@ set -euo pipefail
 
 PORT="${PORT:-9222}"
 APP_URL="${1:-${APP_URL:-http://localhost:5173}}"
-TARGET="${2:-${TARGET:-chrome}}"
-ENDPOINT="http://127.0.0.1:${PORT}/json/list"
-CHROME_PROFILE_DIR="${CHROME_PROFILE_DIR:-$HOME/.chrome-devtools-codex}"
+HOST="${HOST:-127.0.0.1}"
+PROFILE_DIR="${CHROME_PROFILE_DIR:-$HOME/.chrome-devtools-codex}"
+LIST_ENDPOINT="http://${HOST}:${PORT}/json/list"
+NEW_ENDPOINT="http://${HOST}:${PORT}/json/new"
+CHROME_BIN="${CHROME_BIN:-}"
 
 wait_for_endpoint() {
-  local attempts="${1:-15}"
+  local attempts="${1:-20}"
   local delay_s="${2:-1}"
   local index
   for index in $(seq 1 "${attempts}"); do
-    if curl -fsS "${ENDPOINT}" >/dev/null 2>&1; then
+    if curl -fsS "${LIST_ENDPOINT}" >/dev/null 2>&1; then
       return 0
     fi
     sleep "${delay_s}"
@@ -20,114 +22,175 @@ wait_for_endpoint() {
   return 1
 }
 
-if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-  if curl -fsS "${ENDPOINT}" >/dev/null 2>&1; then
-    echo "Reusing active DevTools session on port ${PORT}."
-    echo "App URL: ${APP_URL}"
-    echo "DevTools endpoint: ${ENDPOINT}"
-    echo
-    echo "Current targets:"
-    curl -fsS "${ENDPOINT}"
-    exit 0
-  fi
-  echo "Port ${PORT} is already in use, but ${ENDPOINT} is not responding."
-  echo "Stop the existing listener or choose a different PORT."
-  exit 1
-fi
+endpoint_is_live() {
+  curl -fsS "${LIST_ENDPOINT}" >/dev/null 2>&1
+}
 
-launch_chrome() {
-  mkdir -p "${CHROME_PROFILE_DIR}"
+port_is_busy() {
+  command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"${PORT}" -sTCP:LISTEN >/dev/null 2>&1
+}
 
-  if command -v open >/dev/null 2>&1 && [ -d "/Applications/Google Chrome Canary.app" ]; then
-    open -na "Google Chrome Canary" --args \
-      --remote-debugging-port="${PORT}" \
-      --user-data-dir="${CHROME_PROFILE_DIR}" \
-      --no-first-run \
-      --no-default-browser-check \
-      --new-window \
-      "${APP_URL}" >/dev/null 2>&1
-    return 0
-  fi
-
-  if command -v open >/dev/null 2>&1 && [ -d "/Applications/Google Chrome.app" ]; then
-    open -na "Google Chrome" --args \
-      --remote-debugging-port="${PORT}" \
-      --user-data-dir="${CHROME_PROFILE_DIR}" \
-      --no-first-run \
-      --no-default-browser-check \
-      --new-window \
-      "${APP_URL}" >/dev/null 2>&1
+resolve_chrome_bin() {
+  if [ -n "${CHROME_BIN}" ] && [ -x "${CHROME_BIN}" ]; then
+    printf '%s\n' "${CHROME_BIN}"
     return 0
   fi
 
   if [ -x "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" ]; then
-    "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" \
-      --remote-debugging-port="${PORT}" \
-      --user-data-dir="${CHROME_PROFILE_DIR}" \
-      --no-first-run \
-      --no-default-browser-check \
-      --new-window \
-      "${APP_URL}" >/dev/null 2>&1 &
+    printf '%s\n' "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"
     return 0
   fi
 
   if [ -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-      --remote-debugging-port="${PORT}" \
-      --user-data-dir="${CHROME_PROFILE_DIR}" \
-      --no-first-run \
-      --no-default-browser-check \
-      --new-window \
-      "${APP_URL}" >/dev/null 2>&1 &
+    printf '%s\n' "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     return 0
   fi
 
-  echo "Chrome binary not found. Install Chrome/Canary or set up Electron mode."
-  exit 1
-}
-
-launch_electron() {
-  local electron_bin="${ELECTRON_BIN:-}"
-  local electron_app="${ELECTRON_APP:-}"
-
-  if [ -z "$electron_bin" ] && command -v electron >/dev/null 2>&1; then
-    electron_bin="$(command -v electron)"
+  if command -v google-chrome >/dev/null 2>&1; then
+    command -v google-chrome
+    return 0
   fi
 
-  if [ -z "$electron_bin" ] || [ -z "$electron_app" ]; then
-    echo "Electron mode requires ELECTRON_APP and (optionally) ELECTRON_BIN."
-    echo "Example: ELECTRON_APP=./desktop ELECTRON_BIN=./node_modules/.bin/electron ./launch-devtools.sh http://localhost:5173 electron"
+  if command -v chromium >/dev/null 2>&1; then
+    command -v chromium
+    return 0
+  fi
+
+  return 1
+}
+
+pick_target() {
+  python3 - "${APP_URL}" <<'PY'
+import json
+import sys
+import urllib.request
+
+app_url = sys.argv[1]
+pages = json.load(urllib.request.urlopen("http://127.0.0.1:" + __import__("os").environ.get("PORT", "9222") + "/json/list"))
+
+preferred = None
+fallback = None
+for page in pages:
+    if fallback is None and page.get("type") == "page":
+        fallback = page
+    if page.get("type") == "page" and str(page.get("url", "")).startswith(app_url):
+        preferred = page
+        break
+
+chosen = preferred or fallback or {}
+print(json.dumps(chosen))
+PY
+}
+
+print_targets() {
+  python3 - <<'PY'
+import json
+import urllib.request
+
+pages = json.load(urllib.request.urlopen("http://127.0.0.1:" + __import__("os").environ.get("PORT", "9222") + "/json/list"))
+for page in pages:
+    title = page.get("title", "")
+    url = page.get("url", "")
+    target_id = page.get("id", "")
+    ws = page.get("webSocketDebuggerUrl", "")
+    print(f"- id={target_id} title={title!r} url={url} ws={ws}")
+PY
+}
+
+open_target_for_app() {
+  local encoded_url
+  encoded_url="$(python3 - "${APP_URL}" <<'PY'
+import sys
+import urllib.parse
+print(urllib.parse.quote(sys.argv[1], safe=":/?&=%"))
+PY
+)"
+  curl -fsS "${NEW_ENDPOINT}?${encoded_url}" >/dev/null 2>&1 || true
+}
+
+reuse_or_fail_for_busy_port() {
+  if ! port_is_busy; then
+    return 1
+  fi
+
+  if ! endpoint_is_live; then
+    echo "Port ${PORT} is already in use, but ${LIST_ENDPOINT} is not responding."
+    echo "Stop the stale listener on ${PORT} or rerun with a different PORT."
     exit 1
   fi
 
-  "$electron_bin" --remote-debugging-port="${PORT}" "$electron_app" "$APP_URL" >/dev/null 2>&1 &
+  open_target_for_app
+  echo "Reusing active local Chrome DevTools session on port ${PORT}."
+  echo "App URL: ${APP_URL}"
+  echo "DevTools endpoint: ${LIST_ENDPOINT}"
+  echo
+  echo "Targets:"
+  print_targets
+  echo
+  echo "Preferred target:"
+  pick_target
+  exit 0
 }
 
-case "$TARGET" in
-  chrome)
-    launch_chrome
-    ;;
-  electron)
-    launch_electron
-    ;;
-  *)
-    echo "Unknown target '$TARGET'. Use 'chrome' or 'electron'."
+launch_chrome() {
+  local chrome_bin
+  chrome_bin="$(resolve_chrome_bin)" || {
+    echo "Chrome binary not found. Install Chrome/Canary or set CHROME_BIN."
     exit 1
-    ;;
-esac
+  }
 
-sleep 1
+  mkdir -p "${PROFILE_DIR}"
 
-echo "App URL: ${APP_URL}"
-echo "DevTools endpoint: ${ENDPOINT}"
+  if command -v open >/dev/null 2>&1 && [ "${chrome_bin}" = "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary" ]; then
+    open -na "Google Chrome Canary" --args \
+      --remote-debugging-port="${PORT}" \
+      --remote-allow-origins='*' \
+      --user-data-dir="${PROFILE_DIR}" \
+      --no-first-run \
+      --no-default-browser-check \
+      --new-window \
+      "${APP_URL}" >/dev/null 2>&1
+    return 0
+  fi
+
+  if command -v open >/dev/null 2>&1 && [ "${chrome_bin}" = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ]; then
+    open -na "Google Chrome" --args \
+      --remote-debugging-port="${PORT}" \
+      --remote-allow-origins='*' \
+      --user-data-dir="${PROFILE_DIR}" \
+      --no-first-run \
+      --no-default-browser-check \
+      --new-window \
+      "${APP_URL}" >/dev/null 2>&1
+    return 0
+  fi
+
+  "${chrome_bin}" \
+    --remote-debugging-port="${PORT}" \
+    --remote-allow-origins='*' \
+    --user-data-dir="${PROFILE_DIR}" \
+    --no-first-run \
+    --no-default-browser-check \
+    --new-window \
+    "${APP_URL}" >/dev/null 2>&1 &
+}
+
+reuse_or_fail_for_busy_port || true
+launch_chrome
 
 if ! wait_for_endpoint 20 1; then
-  echo "Chrome launched, but the DevTools endpoint did not become ready."
+  echo "Chrome launched, but the DevTools endpoint did not become ready at ${LIST_ENDPOINT}."
   exit 1
 fi
 
-if command -v curl >/dev/null 2>&1; then
-  echo
-  echo "Current targets:"
-  curl -fsS "$ENDPOINT" || true
-fi
+open_target_for_app
+
+echo "Started local Chrome DevTools session."
+echo "App URL: ${APP_URL}"
+echo "DevTools endpoint: ${LIST_ENDPOINT}"
+echo
+echo "Targets:"
+print_targets
+echo
+echo "Preferred target:"
+pick_target

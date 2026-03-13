@@ -118,7 +118,7 @@
         <div>
           <span class="badge">UI: <code>App.tsx::handleRun</code></span>
           <span class="badge">Start: <code>POST /api/agents/run-async</code></span>
-          <span class="badge">Poll: <code>GET /api/agents/run-status/{job_id}</code></span>
+          <span class="badge">Stream: <code>GET /api/agents/run-events/{job_id}</code></span>
           <span class="badge">Backend: <code>run_runtime_agent()</code></span>
           <span class="badge">Runner: <code>run_parallel_graph_runner()</code></span>
           <span class="badge">Response: <code>{ main_question, sub_qa, output }</code></span>
@@ -130,7 +130,7 @@
         <div class="mono">Frontend
   App.tsx::handleRun
     -> startAgentRun(query)
-    -> poll getAgentRunStatus(job_id)
+    -> subscribeToAgentRunEvents(job_id)
     -> update stage rail + decompose/expand/search/rerank/subanswer/final panels
 
 Backend
@@ -170,12 +170,7 @@ Backend
           <li>LLM-heavy nodes: <code>decompose</code>, <code>expand</code>, <code>answer</code>, <code>synthesize</code>.</li>
           <li><code>rerank</code> adds another LLM hop per lane when <code>RERANK_PROVIDER=openai</code>.</li>
           <li>High decomposition count increases lane fanout and queueing under <code>_GRAPH_RUNNER_MAX_WORKERS</code>.</li>
-          <li>Timeout guardrails can force partial fallbacks:
-            <code>INITIAL_SEARCH_TIMEOUT_S</code>,
-            <code>DECOMPOSITION_LLM_TIMEOUT_S</code>,
-            <code>RERANK_TIMEOUT_S</code>,
-            <code>SUBANSWER_GENERATION_TIMEOUT_S</code>.
-          </li>
+          <li>Runtime timeout guardrails have been removed, so stage execution is no longer cut short by elapsed-time limits.</li>
         </ul>
       </div>
 

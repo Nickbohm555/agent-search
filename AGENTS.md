@@ -14,22 +14,24 @@ Only completely restart everything if there are dependency changes in uv
 After you refresh or restart, if it is backend changes then check the logs of specific containers such as:
 - Tail backend logs - also use for backend checks: `docker compose logs -f backend`.
 
-If frontend changes are made and you need to verify it is there / functionality as well, use a local Chrome DevTools session, not a Docker chrome service. here are the instructions:
-- `launch-devtools.sh` is not a one-time setup command; run it whenever you want to start or reuse a local Chrome DevTools session.
-- `launch-devtools.sh` should be the default entry point. It now reuses an existing `9222` session when possible and otherwise launches a dedicated local Chrome instance with its own profile.
-- Launch debug browser: `./launch-devtools.sh http://localhost:5173`.
+If frontend changes are made and you need to verify it is there / functionality as well, use the local Chrome DevTools flow only. Do not use any Docker-hosted Chrome/browser endpoint workflow. here are the instructions:
+- `launch-devtools.sh` is the default entry point. Run it whenever you want to start or reuse the local Chrome debugging session.
+- Launch or reuse local Chrome: `./launch-devtools.sh http://localhost:5173`.
+- The script reuses a healthy `9222` session when present, opens a fresh app tab when needed, and otherwise launches a dedicated local Chrome profile.
 - DevTools targets endpoint: `http://127.0.0.1:9222/json/list`.
-- Verify debug endpoint: `curl http://127.0.0.1:9222/json/list` (expect JSON with targets and `webSocketDebuggerUrl`).
-- Keep the Chrome app/process running; tab can be closed/reopened.
-- If port `9222` is already in use and `curl http://127.0.0.1:9222/json/list` returns targets, reuse that active session instead of relaunching.
-- If port `9222` is already in use but `json/list` does not respond, stop the stale listener first or choose a different `PORT`.
-- If the browser-control tool is unavailable in the session, use CDP programmatically against the DevTools endpoint:
+- Verify the endpoint: `curl http://127.0.0.1:9222/json/list` and confirm there is a target whose `url` starts with `http://localhost:5173` and includes a `webSocketDebuggerUrl`.
+- Keep the Chrome process running; tabs can be closed and recreated through `launch-devtools.sh`.
+- If port `9222` is already in use and `json/list` responds, reuse that session instead of launching another browser.
+- If port `9222` is already in use but `json/list` does not respond, stop the stale listener first or rerun with a different `PORT`.
+- If the browser-control tool is unavailable or broken in the session, fall back to CDP against the local DevTools endpoint:
   `python3 - <<'PY'`
   `import json, urllib.request`
   `pages = json.load(urllib.request.urlopen("http://127.0.0.1:9222/json/list"))`
   `print(json.dumps(pages, indent=2))`
   `PY`
-- When scripting CDP, prefer the target from `json/list` whose `url` starts with `http://localhost:5173`, then connect to its `webSocketDebuggerUrl`.
+- When scripting CDP, prefer the page target from `json/list` whose `url` starts with `http://localhost:5173`, then connect to its `webSocketDebuggerUrl`.
+- If direct CDP websocket attachment fails with `403 Forbidden`, the local Chrome session was likely started without the remote-origin flag. Restart that Chrome session through `launch-devtools.sh`, which now launches Chrome with `--remote-allow-origins='*'`.
+- The browser-control workaround is: `launch-devtools.sh` -> `json/list` -> pick the `localhost:5173` target -> drive it over CDP directly.
 - Do not rely on `localhost` from inside a Docker-hosted browser. Use the local Chrome session from `launch-devtools.sh` so `localhost:5173` and `localhost:8000` resolve correctly.
 11. Frontend URL: `http://localhost:5173`.
 12. Backend URL: `http://localhost:8000`.
@@ -54,5 +56,3 @@ To run specific tests, here are commands
 34. Frontend build check: `docker compose exec frontend npm run build`.
 35. Browser debug workflow for E2E feature testing:
 - Start app services: `docker compose up -d backend frontend`.
-
-
