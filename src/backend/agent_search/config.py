@@ -252,10 +252,44 @@ class RuntimeRerankConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeQueryExpansionConfig:
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeQueryExpansionConfig:
+        values = dict(data or {})
+        return cls(
+            enabled=_read_bool(
+                value=values.get("enabled"),
+                default=True,
+                field_name="query_expansion.enabled",
+            )
+        )
+
+
+@dataclass(frozen=True)
+class RuntimeHitlConfig:
+    enabled: bool = False
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeHitlConfig:
+        values = dict(data or {})
+        return cls(
+            enabled=_read_bool(
+                value=values.get("enabled"),
+                default=False,
+                field_name="hitl.enabled",
+            )
+        )
+
+
+@dataclass(frozen=True)
 class RuntimeConfig:
     timeout: RuntimeTimeoutConfig = RuntimeTimeoutConfig()
     retrieval: RuntimeRetrievalConfig = RuntimeRetrievalConfig()
     rerank: RuntimeRerankConfig = RuntimeRerankConfig()
+    query_expansion: RuntimeQueryExpansionConfig = RuntimeQueryExpansionConfig()
+    hitl: RuntimeHitlConfig = RuntimeHitlConfig()
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeConfig:
@@ -263,6 +297,8 @@ class RuntimeConfig:
         timeout_data = values.get("timeout")
         retrieval_data = values.get("retrieval")
         rerank_data = values.get("rerank")
+        query_expansion_data = values.get("query_expansion")
+        hitl_data = values.get("hitl")
 
         if timeout_data is not None and not isinstance(timeout_data, Mapping):
             logger.warning("RuntimeConfig timeout section must be a mapping; using defaults")
@@ -273,17 +309,27 @@ class RuntimeConfig:
         if rerank_data is not None and not isinstance(rerank_data, Mapping):
             logger.warning("RuntimeConfig rerank section must be a mapping; using defaults")
             rerank_data = None
+        if query_expansion_data is not None and not isinstance(query_expansion_data, Mapping):
+            logger.warning("RuntimeConfig query_expansion section must be a mapping; using defaults")
+            query_expansion_data = None
+        if hitl_data is not None and not isinstance(hitl_data, Mapping):
+            logger.warning("RuntimeConfig hitl section must be a mapping; using defaults")
+            hitl_data = None
 
         config = cls(
             timeout=RuntimeTimeoutConfig.from_dict(timeout_data),
             retrieval=RuntimeRetrievalConfig.from_dict(retrieval_data),
             rerank=RuntimeRerankConfig.from_dict(rerank_data),
+            query_expansion=RuntimeQueryExpansionConfig.from_dict(query_expansion_data),
+            hitl=RuntimeHitlConfig.from_dict(hitl_data),
         )
         logger.info(
-            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s",
+            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s query_expansion_enabled=%s hitl_enabled=%s",
             config.timeout.rerank_timeout_s,
             config.retrieval.search_node_k_fetch,
             config.rerank.enabled,
             config.rerank.provider,
+            config.query_expansion.enabled,
+            config.hitl.enabled,
         )
         return config

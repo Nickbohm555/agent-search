@@ -9,8 +9,8 @@
 ## Current Position
 
 - **Current phase:** 1
-- **Current plan:** 01-01
-- **Status:** Summary implemented
+- **Current plan:** 01-02
+- **Status:** Task 1 implemented
 - **Progress:** 0/6 phases complete
 - **Progress bar:** `░░░░░░` (0%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 1 Plan 01-02 Task 1.
-- Keep public API/runtime config changes compatibility-safe and default-off.
+- Start Phase 1 Plan 01-02 Task 2.
+- Preserve normalized request controls through async job persistence and resume.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 5 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 01-01 is summarized and the next dependency-ordered work item is public API/runtime config normalization for Plan 01-02 Task 1.
-- **Resume note:** State update: `phase=01`, `plan=01-01`, `task=summary`, `status=implemented`.
+- **Next command:** Implement Section 6 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 01-02 Task 1 is implemented, and the next dependency-ordered work item is async job payload persistence and resume reconstruction.
+- **Resume note:** State update: `phase=01`, `plan=01-02`, `task=1`, `status=implemented`.

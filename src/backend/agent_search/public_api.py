@@ -20,10 +20,14 @@ from config import LangfuseSettings
 from pydantic import ValidationError
 from utils.langfuse_tracing import build_langfuse_callback_handler as _build_langfuse_callback_handler
 from schemas import (
+    RuntimeAgentRunControls,
+    RuntimeHitlControl,
     RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
+    RuntimeQueryExpansionControl,
+    RuntimeRerankControl,
     RuntimeAgentRunResponse,
 )
 
@@ -37,6 +41,38 @@ def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str |
     if thread_id is None:
         return None
     return str(thread_id)
+
+
+def _has_mapping_key(config: Mapping[str, Any] | None, key: str) -> bool:
+    return isinstance(config, Mapping) and key in config
+
+
+def _build_request_controls(
+    config: Mapping[str, Any] | None,
+    *,
+    runtime_config: RuntimeConfig,
+) -> RuntimeAgentRunControls | None:
+    controls = RuntimeAgentRunControls()
+    if _has_mapping_key(config, "rerank"):
+        controls.rerank = RuntimeRerankControl(enabled=runtime_config.rerank.enabled)
+    if _has_mapping_key(config, "query_expansion"):
+        controls.query_expansion = RuntimeQueryExpansionControl(enabled=runtime_config.query_expansion.enabled)
+    if _has_mapping_key(config, "hitl"):
+        controls.hitl = RuntimeHitlControl(enabled=runtime_config.hitl.enabled)
+    return controls if controls.model_fields_set else None
+
+
+def _build_runtime_request_payload(
+    query: str,
+    *,
+    config: Mapping[str, Any] | None,
+    runtime_config: RuntimeConfig,
+) -> RuntimeAgentRunRequest:
+    return RuntimeAgentRunRequest(
+        query=query,
+        thread_id=_resolve_request_thread_id(config),
+        controls=_build_request_controls(config, runtime_config=runtime_config),
+    )
 
 
 def _resolve_langfuse_settings(settings: Mapping[str, Any] | None = None) -> LangfuseSettings:
@@ -149,7 +185,7 @@ def advanced_rag(
             langfuse_callback=langfuse_callback,
         )
         response = run_runtime_agent(
-            RuntimeAgentRunRequest(query=query, thread_id=_resolve_request_thread_id(config)),
+            _build_runtime_request_payload(query, config=config, runtime_config=runtime_config),
             model=model,
             vector_store=compatible_vector_store,
             callbacks=resolved_callbacks,
@@ -252,7 +288,7 @@ def run_async(
     try:
         # Async runtime currently resolves dependencies in service layer.
         job = start_agent_run_job(
-            RuntimeAgentRunRequest(query=query, thread_id=_resolve_request_thread_id(config)),
+            _build_runtime_request_payload(query, config=config, runtime_config=runtime_config),
             model=model,
             vector_store=compatible_vector_store,
         )
