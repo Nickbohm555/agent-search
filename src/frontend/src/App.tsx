@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgentStageName,
   AgentStageRuntimeStatus,
   RequestState,
+  RuntimeLifecycleEvent,
   RuntimeAgentRunResponse,
   SearchCandidateRow,
   SubQuestionAnswer,
@@ -14,6 +15,7 @@ import {
   listWikiSources,
   startAgentRun,
   startInternalDataLoad,
+  subscribeToAgentRunEvents,
   wipeInternalData,
 } from "./utils/api";
 import { DEFAULT_WIKI_SOURCES } from "./utils/constants";
@@ -59,6 +61,7 @@ export default function App() {
   const [runJobId, setRunJobId] = useState<string | null>(null);
   const [runStatusMessage, setRunStatusMessage] = useState("Not started.");
   const [runCurrentStage, setRunCurrentStage] = useState("");
+  const [runEvents, setRunEvents] = useState<RuntimeLifecycleEvent[]>([]);
   const [runSummary, setRunSummary] = useState<RunSummary>({
     searchRawHitsTotal: 0,
     searchDedupedHitsTotal: 0,
@@ -80,6 +83,7 @@ export default function App() {
     final: "pending",
   });
   const [lastSuccessfulSynthesis, setLastSuccessfulSynthesis] = useState<RuntimeAgentRunResponse | null>(null);
+  const runEventsUnsubscribeRef = useRef<(() => void) | null>(null);
 
   const selectedWikiSource = useMemo(
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
@@ -105,6 +109,13 @@ export default function App() {
     init();
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      runEventsUnsubscribeRef.current?.();
+      runEventsUnsubscribeRef.current = null;
     };
   }, []);
 
@@ -226,6 +237,7 @@ export default function App() {
     setRunJobId(null);
     setRunStatusMessage("Submitting run...");
     setRunCurrentStage("");
+    setRunEvents([]);
     setDecompositionSubQuestions([]);
     setSubQuestionArtifacts([]);
     setRunSubQa([]);
@@ -263,139 +275,89 @@ export default function App() {
     setRunJobId(jobId);
     setRunStatusMessage("Run started.");
     console.info("Async run started.", { submittedQuery: submitted, jobId, runId: startResult.data.run_id });
+    runEventsUnsubscribeRef.current?.();
 
-    const poll = async () => {
+    const refreshStatusSnapshot = async (lifecycleEvent: RuntimeLifecycleEvent) => {
       const statusResult = await getAgentRunStatus(jobId);
       if (!statusResult.ok) {
-        setRunState("error");
-        setRunStatusMessage(statusResult.error.message);
-        setRunJobId(null);
-        console.error("Async run status polling failed.", {
+        if (isTerminalLifecycleEvent(lifecycleEvent)) {
+          const failureMessage = lifecycleEvent.error || statusResult.error.message;
+          setRunState(lifecycleEvent.status === "success" ? "success" : "error");
+          setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
+          if (lifecycleEvent.status !== "success") {
+            setRunStatusMessage(failureMessage);
+          }
+          setRunJobId(null);
+        }
+        console.error("Async run status fetch after lifecycle event failed.", {
           submittedQuery: submitted,
           jobId,
+          eventType: lifecycleEvent.event_type,
           error: statusResult.error.message,
         });
         return;
       }
 
       const status = statusResult.data;
-      setRunCurrentStage(status.stage);
-      setDecompositionSubQuestions(status.decomposition_sub_questions);
-      setSubQuestionArtifacts(status.sub_question_artifacts);
-      setRunSubQa(status.sub_qa);
-      setRunStatusMessage(status.message || `Run status: ${status.status}`);
-      const nextStatuses = computeStageStatuses(orderedStages, status.stage, status.status);
-      setStageStatuses(nextStatuses);
-      const searchRawHitsTotal = status.sub_question_artifacts.reduce(
-        (sum, artifact) => sum + artifact.retrieval_provenance.length,
-        0,
-      );
-      const searchDedupedHitsTotal = status.sub_question_artifacts.reduce(
-        (sum, artifact) => sum + artifact.retrieved_docs.length,
-        0,
-      );
-      const rerankRowsTotal = status.sub_question_artifacts.reduce((sum, artifact) => sum + artifact.reranked_docs.length, 0);
-      const rerankBypassedCount = status.sub_question_artifacts.reduce((sum, artifact) => {
-        const matchingSubQa = status.sub_qa.find((item) => item.sub_question === artifact.sub_question);
-        return sum + (isRerankFallback({ artifact, subQa: matchingSubQa }) ? 1 : 0);
-      }, 0);
-      const subAnswerReadyCount = status.sub_qa.reduce((sum, item) => sum + (item.sub_answer.trim().length > 0 ? 1 : 0), 0);
-      const subAnswerCitationCount = status.sub_qa.reduce(
-        (sum, item) => sum + (item.sub_answer_citations?.length ?? extractCitationIndices(item.sub_answer).length),
-        0,
-      );
-      const subAnswerFallbackCount = status.sub_qa.reduce((sum, item) => {
-        const isFallback = item.sub_answer_is_fallback ?? isFallbackSubanswer(item.sub_answer);
-        return sum + (isFallback ? 1 : 0);
-      }, 0);
-      const totalLatencyMs =
-        typeof status.elapsed_ms === "number"
-          ? status.elapsed_ms
-          : typeof status.started_at === "number"
-            ? Math.max(0, Math.round(Date.now() - status.started_at * 1000))
-            : null;
-      setRunSummary({
-        searchRawHitsTotal,
-        searchDedupedHitsTotal,
-        rerankRowsTotal,
-        rerankBypassedCount,
-        citationCoverageCount: countSubanswersWithCitations(status.sub_qa),
-        citationCoverageTotal: status.sub_qa.length,
-        totalLatencyMs,
-      });
-      console.info("Async run stage update.", {
+      applyRunSnapshot({
+        status,
         submittedQuery: submitted,
         jobId,
-        backendStage: status.stage,
-        backendStatus: status.status,
-        decompositionSubQuestionCount: status.decomposition_sub_questions.length,
-        subQuestionArtifactCount: status.sub_question_artifacts.length,
-        searchRawHitsTotal,
-        searchDedupedHitsTotal,
-        rerankRowsTotal,
-        rerankBypassedCount,
-        subAnswerReadyCount,
-        subAnswerCitationCount,
-        subAnswerFallbackCount,
-        stageStatuses: nextStatuses,
+        setDecompositionSubQuestions,
+        setSubQuestionArtifacts,
+        setRunSubQa,
+        setRunSummary,
+        setLastSuccessfulSynthesis,
       });
 
+      if (!isTerminalLifecycleEvent(lifecycleEvent)) {
+        return;
+      }
+
       if (status.status === "success") {
-        const response = status.result ?? {
-          main_question: submitted,
-          sub_qa: status.sub_qa,
-          output: status.output,
-          final_citations: [],
-        };
-        const completedStage = mapBackendStageToCanonical(status.stage);
         setRunState("success");
-        if (completedStage === "final") {
-          setLastSuccessfulSynthesis(response);
-          console.info("Final synthesis panel updated from completed run.", {
-            submittedQuery: submitted,
-            jobId,
-            mainQuestion: response.main_question,
-            subQuestionCount: response.sub_qa.length,
-            citationCoverageCount: countSubanswersWithCitations(response.sub_qa),
-          });
-        } else {
-          console.warn("Run marked as success before synthesis stage completed; preserving previous final synthesis panel.", {
-            submittedQuery: submitted,
-            jobId,
-            backendStage: status.stage,
-          });
-        }
-        setRunSubQa(response.sub_qa);
-        setRunStatusMessage(status.message || "Completed.");
+        setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
         setRunJobId(null);
-        console.info("Async run completed.", {
-          submittedQuery: submitted,
-          jobId,
-          hasMainQuestion: Boolean(response.main_question.trim()),
-          subQuestionCount: response.sub_qa.length,
-          outputLength: response.output.length,
-        });
         return;
       }
 
-      if (status.status === "error" || status.status === "cancelled") {
-        setRunState("error");
-        const failureMessage = status.error || status.message || `Run ${status.status}.`;
-        setRunStatusMessage(failureMessage);
-        setRunJobId(null);
-        console.error("Async run finished with non-success status.", {
-          submittedQuery: submitted,
-          jobId,
-          backendStatus: status.status,
-          error: status.error,
-        });
-        return;
-      }
-
-      setTimeout(poll, 1000);
+      setRunState("error");
+      setRunStatusMessage(status.error || lifecycleEvent.error || status.message || `Run ${status.status}.`);
+      setRunJobId(null);
     };
 
-    poll();
+    runEventsUnsubscribeRef.current = subscribeToAgentRunEvents(jobId, {
+      onEvent: (lifecycleEvent) => {
+        setRunEvents((current) => current.concat(lifecycleEvent));
+        setRunCurrentStage(lifecycleEvent.stage);
+        setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
+        setStageStatuses((current) => computeStageStatusesFromEvents(orderedStages, current, lifecycleEvent));
+        console.info("Async run lifecycle event received.", {
+          submittedQuery: submitted,
+          jobId,
+          eventType: lifecycleEvent.event_type,
+          backendStage: lifecycleEvent.stage,
+          backendStatus: lifecycleEvent.status,
+        });
+
+        if (lifecycleEvent.event_type !== "run.started") {
+          void refreshStatusSnapshot(lifecycleEvent);
+        }
+
+        if (isTerminalLifecycleEvent(lifecycleEvent)) {
+          runEventsUnsubscribeRef.current?.();
+          runEventsUnsubscribeRef.current = null;
+        }
+      },
+      onError: () => {
+        setRunState("error");
+        setRunStatusMessage("Run event stream disconnected.");
+        setRunJobId(null);
+        runEventsUnsubscribeRef.current?.();
+        runEventsUnsubscribeRef.current = null;
+        console.error("Async run event stream failed.", { submittedQuery: submitted, jobId });
+      },
+    });
   }
 
   return (
@@ -519,6 +481,26 @@ export default function App() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="panel lifecycle-events-panel">
+        <h2>Streamed Events</h2>
+        {runEvents.length > 0 ? (
+          <ol className="lifecycle-event-list" aria-label="Streamed lifecycle events">
+            {runEvents.map((eventItem) => (
+              <li key={eventItem.event_id} className="lifecycle-event-item">
+                <strong>{eventItem.event_type}</strong>
+                {" · "}
+                {eventItem.stage}
+                {" · "}
+                {eventItem.status}
+                {eventItem.error ? ` · ${eventItem.error}` : ""}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>No streamed events yet.</p>
+        )}
       </section>
 
       <section className="panel decompose-panel">
@@ -885,38 +867,180 @@ function mapBackendStageToCanonical(stage: string): AgentStageName | null {
   return null;
 }
 
-function computeStageStatuses(
+function isTerminalLifecycleEvent(event: RuntimeLifecycleEvent): boolean {
+  return event.event_type === "run.completed" || event.event_type === "run.failed" || event.event_type === "run.paused";
+}
+
+function formatLifecycleEventLabel(event: RuntimeLifecycleEvent): string {
+  const parts = [event.event_type, event.stage, event.status];
+  if (event.error?.trim()) {
+    parts.push(event.error.trim());
+  }
+  return parts.join(" · ");
+}
+
+function computeStageStatusesFromEvents(
   orderedStages: AgentStageName[],
-  backendStage: string,
-  backendStatus: string,
+  current: Record<AgentStageName, AgentStageRuntimeStatus>,
+  event: RuntimeLifecycleEvent,
 ): Record<AgentStageName, AgentStageRuntimeStatus> {
-  const mappedStage = mapBackendStageToCanonical(backendStage);
-  const mappedIndex = mappedStage ? orderedStages.indexOf(mappedStage) : -1;
-  const result = orderedStages.reduce<Record<AgentStageName, AgentStageRuntimeStatus>>(
-    (acc, stage) => ({ ...acc, [stage]: "pending" }),
-    {} as Record<AgentStageName, AgentStageRuntimeStatus>,
+  const next = { ...current };
+  const mappedStage = mapBackendStageToCanonical(event.stage);
+  if (!mappedStage) {
+    return next;
+  }
+
+  if (event.event_type === "stage.started" || event.event_type === "stage.updated" || event.event_type === "stage.retrying") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "in_progress";
+    return next;
+  }
+
+  if (event.event_type === "stage.completed") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "completed";
+    return next;
+  }
+
+  if (event.event_type === "stage.failed") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "error";
+    return next;
+  }
+
+  if (event.event_type === "run.completed") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "completed";
+    return next;
+  }
+
+  if (event.event_type === "run.failed" || event.event_type === "run.paused") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "error";
+  }
+
+  for (let index = 0; index < orderedStages.length; index += 1) {
+    if (orderedStages[index] === mappedStage && next[mappedStage] === "pending" && event.status === "running") {
+      next[mappedStage] = "in_progress";
+      break;
+    }
+  }
+
+  return next;
+}
+
+function markPreviousStagesCompleted(
+  stageStatuses: Record<AgentStageName, AgentStageRuntimeStatus>,
+  orderedStages: AgentStageName[],
+  activeStage: AgentStageName,
+): void {
+  const activeIndex = orderedStages.indexOf(activeStage);
+  if (activeIndex <= 0) return;
+  for (let index = 0; index < activeIndex; index += 1) {
+    if (stageStatuses[orderedStages[index]] === "pending") {
+      stageStatuses[orderedStages[index]] = "completed";
+    }
+  }
+}
+
+function applyRunSnapshot(args: {
+  status: {
+    stage: string;
+    status: string;
+    decomposition_sub_questions: string[];
+    sub_question_artifacts: SubQuestionArtifact[];
+    sub_qa: SubQuestionAnswer[];
+    result?: RuntimeAgentRunResponse | null;
+    output: string;
+    elapsed_ms?: number | null;
+    started_at?: number | null;
+  };
+  submittedQuery: string;
+  jobId: string;
+  setDecompositionSubQuestions: (value: string[]) => void;
+  setSubQuestionArtifacts: (value: SubQuestionArtifact[]) => void;
+  setRunSubQa: (value: SubQuestionAnswer[]) => void;
+  setRunSummary: (value: RunSummary) => void;
+  setLastSuccessfulSynthesis: (value: RuntimeAgentRunResponse | null) => void;
+}): void {
+  const {
+    status,
+    submittedQuery,
+    jobId,
+    setDecompositionSubQuestions,
+    setSubQuestionArtifacts,
+    setRunSubQa,
+    setRunSummary,
+    setLastSuccessfulSynthesis,
+  } = args;
+
+  setDecompositionSubQuestions(status.decomposition_sub_questions);
+  setSubQuestionArtifacts(status.sub_question_artifacts);
+  setRunSubQa(status.sub_qa);
+
+  const searchRawHitsTotal = status.sub_question_artifacts.reduce(
+    (sum, artifact) => sum + artifact.retrieval_provenance.length,
+    0,
   );
+  const searchDedupedHitsTotal = status.sub_question_artifacts.reduce(
+    (sum, artifact) => sum + artifact.retrieved_docs.length,
+    0,
+  );
+  const rerankRowsTotal = status.sub_question_artifacts.reduce((sum, artifact) => sum + artifact.reranked_docs.length, 0);
+  const rerankBypassedCount = status.sub_question_artifacts.reduce((sum, artifact) => {
+    const matchingSubQa = status.sub_qa.find((item) => item.sub_question === artifact.sub_question);
+    return sum + (isRerankFallback({ artifact, subQa: matchingSubQa }) ? 1 : 0);
+  }, 0);
+  const totalLatencyMs =
+    typeof status.elapsed_ms === "number"
+      ? status.elapsed_ms
+      : typeof status.started_at === "number"
+        ? Math.max(0, Math.round(Date.now() - status.started_at * 1000))
+        : null;
 
-  if (mappedIndex < 0) {
-    return result;
+  setRunSummary({
+    searchRawHitsTotal,
+    searchDedupedHitsTotal,
+    rerankRowsTotal,
+    rerankBypassedCount,
+    citationCoverageCount: countSubanswersWithCitations(status.sub_qa),
+    citationCoverageTotal: status.sub_qa.length,
+    totalLatencyMs,
+  });
+
+  if (status.status === "success") {
+    const response = status.result ?? {
+      main_question: submittedQuery,
+      sub_qa: status.sub_qa,
+      output: status.output,
+      final_citations: [],
+    };
+    const completedStage = mapBackendStageToCanonical(status.stage);
+    if (completedStage === "final") {
+      setLastSuccessfulSynthesis(response);
+      console.info("Final synthesis panel updated from completed run.", {
+        submittedQuery,
+        jobId,
+        mainQuestion: response.main_question,
+        subQuestionCount: response.sub_qa.length,
+        citationCoverageCount: countSubanswersWithCitations(response.sub_qa),
+      });
+    } else {
+      console.warn("Run marked as success before synthesis stage completed; preserving previous final synthesis panel.", {
+        submittedQuery,
+        jobId,
+        backendStage: status.stage,
+      });
+    }
+    setRunSubQa(response.sub_qa);
+    console.info("Async run completed.", {
+      submittedQuery,
+      jobId,
+      hasMainQuestion: Boolean(response.main_question.trim()),
+      subQuestionCount: response.sub_qa.length,
+      outputLength: response.output.length,
+    });
   }
-
-  for (let index = 0; index < mappedIndex; index += 1) {
-    result[orderedStages[index]] = "completed";
-  }
-
-  if (backendStatus === "error" || backendStatus === "cancelled") {
-    result[orderedStages[mappedIndex]] = "error";
-    return result;
-  }
-
-  if (backendStatus === "success") {
-    result[orderedStages[mappedIndex]] = "completed";
-    return result;
-  }
-
-  result[orderedStages[mappedIndex]] = "in_progress";
-  return result;
 }
 
 function toDisplayStageName(stage: string): string {

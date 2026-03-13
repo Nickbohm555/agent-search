@@ -2,9 +2,60 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
+type LifecycleEventShape = {
+  event_type: string;
+  event_id: string;
+  run_id: string;
+  thread_id?: string;
+  trace_id?: string;
+  stage: string;
+  status: string;
+  emitted_at?: string;
+  error?: string | null;
+};
+
+class FakeEventSource {
+  static instances: FakeEventSource[] = [];
+
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+  closed = false;
+
+  constructor(public readonly url: string) {
+    FakeEventSource.instances.push(this);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  emit(event: LifecycleEventShape): void {
+    if (this.closed || this.onmessage === null) return;
+    this.onmessage(
+      new MessageEvent("message", {
+        data: JSON.stringify({
+          thread_id: "thread-1",
+          trace_id: "trace-1",
+          emitted_at: "2026-03-13T00:00:00Z",
+          error: null,
+          ...event,
+        }),
+      }),
+    );
+  }
+}
+
+function getLatestEventSource(): FakeEventSource {
+  const instance = FakeEventSource.instances.at(-1);
+  expect(instance).toBeTruthy();
+  return instance as FakeEventSource;
+}
+
 describe("App wiki source dropdown", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
   });
 
   it("shows the hardcoded wiki topic list even if wiki source API fails", async () => {
@@ -49,9 +100,11 @@ describe("App wiki source dropdown", () => {
 describe("App run query flow", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    FakeEventSource.instances = [];
+    vi.stubGlobal("EventSource", FakeEventSource);
   });
 
-  it("shows ordered stage rail and progressive status updates while polling", async () => {
+  it("shows ordered stage rail and progressive status updates from streamed events", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -178,11 +231,19 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "What is NATO?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const eventSource = getLatestEventSource();
+    eventSource.emit({
+      event_type: "stage.completed",
+      event_id: "run-1:000002",
+      run_id: "run-1",
+      stage: "search",
+      status: "completed",
+    });
 
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
-    expect(await screen.findByText("Run status: Stage completed: search")).toBeInTheDocument();
+    expect(await screen.findByText("Run status: stage.completed · search · completed")).toBeInTheDocument();
     expect(getStageStatusText("decompose")).toContain("completed");
-    expect(getStageStatusText("search")).toContain("in_progress");
+    expect(getStageStatusText("search")).toContain("completed");
     expect(getStageStatusText("rerank")).toContain("pending");
     expect(screen.getByRole("heading", { name: "Decompose" })).toBeInTheDocument();
     const decomposeList = screen.getByRole("list", { name: "Decomposed subquestions" });
@@ -202,9 +263,18 @@ describe("App run query flow", () => {
     expect(screen.getByText("Ends with ?: yes")).toBeInTheDocument();
     expect(screen.getByText("Dedupe: pass")).toBeInTheDocument();
     expect(screen.getByText("No synthesized answer yet.")).toBeInTheDocument();
+    expect(screen.getByText("stage.completed · search · completed")).toBeInTheDocument();
+
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-1:000003",
+      run_id: "run-1",
+      stage: "synthesize_final",
+      status: "success",
+    });
 
     await waitFor(() => {
-      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
     expect(getStageStatusText("decompose")).toContain("completed");
     expect(getStageStatusText("final")).toContain("completed");
@@ -388,8 +458,16 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "Test rerank view" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const eventSource = getLatestEventSource();
+    eventSource.emit({
+      event_type: "stage.completed",
+      event_id: "run-rerank:000002",
+      run_id: "run-rerank",
+      stage: "rerank",
+      status: "completed",
+    });
 
-    expect(await screen.findByText("Run status: Stage completed: rerank")).toBeInTheDocument();
+    expect(await screen.findByText("Run status: stage.completed · rerank · completed")).toBeInTheDocument();
     const rerankHeading = screen.getByRole("heading", { name: "Rerank" });
     expect(rerankHeading).toBeInTheDocument();
     const rerankSection = rerankHeading.closest("section");
@@ -400,8 +478,15 @@ describe("App run query flow", () => {
     const orderRows = Array.from((rerankSection as HTMLElement).querySelectorAll(".rerank-order-change"));
     expect(orderRows.some((item) => (item.textContent ?? "").includes("yes"))).toBe(true);
     expect(orderRows.some((item) => (item.textContent ?? "").includes("no"))).toBe(true);
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-rerank:000003",
+      run_id: "run-rerank",
+      stage: "synthesize_final",
+      status: "success",
+    });
     await waitFor(() => {
-      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
   });
 
@@ -542,8 +627,16 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "Test subanswer stage" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const eventSource = getLatestEventSource();
+    eventSource.emit({
+      event_type: "stage.completed",
+      event_id: "run-answer:000002",
+      run_id: "run-answer",
+      stage: "answer",
+      status: "completed",
+    });
 
-    expect(await screen.findByText("Run status: Stage completed: answer")).toBeInTheDocument();
+    expect(await screen.findByText("Run status: stage.completed · answer · completed")).toBeInTheDocument();
     const subanswerHeading = screen.getByRole("heading", { name: "Subanswer" });
     expect(subanswerHeading).toBeInTheDocument();
     const subanswerSection = subanswerHeading.closest("section");
@@ -556,8 +649,15 @@ describe("App run query flow", () => {
 
     const citationTwoLinks = screen.getAllByRole("link", { name: "[2]" });
     expect(citationTwoLinks.some((item) => item.getAttribute("href") === "#rerank-evidence-lane-1-citation-2")).toBe(true);
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-answer:000003",
+      run_id: "run-answer",
+      stage: "synthesize_final",
+      status: "success",
+    });
     await waitFor(() => {
-      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
   });
 
@@ -638,6 +738,14 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "When and why was NATO formed?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const eventSource = getLatestEventSource();
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-2:000002",
+      run_id: "run-2",
+      stage: "synthesize_final",
+      status: "success",
+    });
 
     expect(await screen.findByRole("heading", { name: "Main question" })).toBeInTheDocument();
     expect(screen.getAllByText("When and why was NATO formed?").length).toBeGreaterThan(0);
@@ -786,20 +894,43 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "First question?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const firstEventSource = getLatestEventSource();
+    firstEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-first:000002",
+      run_id: "run-first",
+      stage: "synthesize_final",
+      status: "success",
+    });
 
     await waitFor(() => {
-      expect(screen.getByText("Run status: Completed.")).toBeInTheDocument();
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
     expect(screen.getByText("First final answer.")).toBeInTheDocument();
     expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
 
     fireEvent.change(textarea, { target: { value: "Second question?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    const secondEventSource = getLatestEventSource();
+    secondEventSource.emit({
+      event_type: "stage.completed",
+      event_id: "run-second:000002",
+      run_id: "run-second",
+      stage: "answer",
+      status: "completed",
+    });
 
-    expect(await screen.findByText("Run status: Stage completed: answer")).toBeInTheDocument();
+    expect(await screen.findByText("Run status: stage.completed · answer · completed")).toBeInTheDocument();
     expect(screen.getByText("Showing previous successful synthesis while current run is in progress.")).toBeInTheDocument();
     expect(screen.getByText("First final answer.")).toBeInTheDocument();
     expect(screen.queryByText("Second draft output should not be shown.")).not.toBeInTheDocument();
+    secondEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-second:000003",
+      run_id: "run-second",
+      stage: "synthesize_final",
+      status: "success",
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Second final answer.")).toBeInTheDocument();

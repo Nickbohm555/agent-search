@@ -151,6 +151,18 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   elapsed_ms?: number | null;
 }
 
+export interface RuntimeLifecycleEvent {
+  event_type: string;
+  event_id: string;
+  run_id: string;
+  thread_id: string;
+  trace_id: string;
+  stage: string;
+  status: string;
+  emitted_at: string;
+  error?: string | null;
+}
+
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -297,6 +309,36 @@ export async function getAgentRunStatus(jobId: string): Promise<ApiResult<Runtim
   });
 }
 
+export function subscribeToAgentRunEvents(
+  jobId: string,
+  handlers: {
+    onEvent: (event: RuntimeLifecycleEvent) => void;
+    onError?: () => void;
+  },
+): () => void {
+  const eventSource = new EventSource(`${API_BASE_URL}/api/agents/run-events/${jobId}`);
+
+  const handleMessage = (message: MessageEvent<string>) => {
+    try {
+      const payload: unknown = JSON.parse(message.data);
+      if (isRuntimeLifecycleEvent(payload)) {
+        handlers.onEvent(payload);
+      }
+    } catch {
+      return;
+    }
+  };
+
+  eventSource.onmessage = handleMessage;
+  eventSource.onerror = () => {
+    handlers.onError?.();
+  };
+
+  return () => {
+    eventSource.close();
+  };
+}
+
 
 function parseTimeoutMs(value: unknown, fallbackMs: number): number {
   if (typeof value !== "string" || value.trim().length === 0) return fallbackMs;
@@ -357,6 +399,21 @@ function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata
     typeof value.lane_index === "number" &&
     typeof value.lane_total === "number" &&
     (value.emitted_at === undefined || value.emitted_at === null || typeof value.emitted_at === "number")
+  );
+}
+
+function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent {
+  return (
+    isObject(value) &&
+    typeof value.event_type === "string" &&
+    typeof value.event_id === "string" &&
+    typeof value.run_id === "string" &&
+    typeof value.thread_id === "string" &&
+    typeof value.trace_id === "string" &&
+    typeof value.stage === "string" &&
+    typeof value.status === "string" &&
+    typeof value.emitted_at === "string" &&
+    (value.error === undefined || value.error === null || typeof value.error === "string")
   );
 }
 
