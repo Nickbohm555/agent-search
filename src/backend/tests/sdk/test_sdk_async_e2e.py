@@ -61,8 +61,17 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
     monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-inline")
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
+    def fake_execute_runtime_graph(
+        *,
+        context,
+        run_metadata,
+        config=None,
+        lifecycle_callback=None,
+        snapshot_callback=None,
+        emit_success_terminal_event=True,
+    ):
         assert config is None
+        _ = snapshot_callback, emit_success_terminal_event
         captured["run_query"] = context.payload.query
         captured["payload_thread_id"] = context.payload.thread_id
         captured["run_vector_store"] = context.vector_store
@@ -70,6 +79,32 @@ def test_sdk_async_run_e2e_uses_runtime_job_manager_with_caller_dependencies(mon
         captured["run_thread_id"] = run_metadata.thread_id
         captured["initial_search_context"] = context.initial_search_context
         captured["lifecycle_callback"] = lifecycle_callback
+        if snapshot_callback is not None:
+            snapshot = GraphStageSnapshot(
+                stage="decompose",
+                status="completed",
+                decomposition_sub_questions=["What is the key fact?"],
+                output="Snapshot output",
+            )
+            snapshot_callback(
+                snapshot,
+                {
+                    "main_question": "How does SDK async wiring work?",
+                    "decomposition_sub_questions": ["What is the key fact?"],
+                    "sub_question_artifacts": [],
+                    "final_answer": "Final async answer with citation [1].",
+                    "citation_rows_by_index": {},
+                    "run_metadata": run_metadata,
+                    "sub_qa": [
+                        SubQuestionAnswer(
+                            sub_question="What is the key fact?",
+                            sub_answer="The key fact is captured with citation [1].",
+                        )
+                    ],
+                    "output": "Final async answer with citation [1].",
+                    "stage_snapshots": [snapshot],
+                },
+            )
         return {
             "main_question": "How does SDK async wiring work?",
             "decomposition_sub_questions": ["What is the key fact?"],

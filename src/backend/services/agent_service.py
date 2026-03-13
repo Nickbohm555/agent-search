@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -83,7 +83,7 @@ _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _VECTOR_STORE_TIMEOUT_FALLBACK_MESSAGE = (
     "Knowledge base retrieval is temporarily unavailable. Please try again in a moment."
 )
-_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX = "Answer generation timed out; partial context only."
+_INITIAL_ANSWER_FALLBACK_PREFIX = "Partial context only."
 _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT = "Answer not available in time."
 _SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON = "verification_timed_out"
 _SUBQUESTION_PIPELINE_TIMEOUT_FALLBACK_REASON = "subquestion_pipeline_timed_out"
@@ -365,23 +365,6 @@ def _format_retrieved_documents_for_pipeline(documents: list[Any]) -> str:
     return formatted
 
 
-def _run_with_timeout(*, timeout_s: int, operation_name: str, fn: Any) -> Any:
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(fn)
-    try:
-        return future.result(timeout=timeout_s)
-    except FuturesTimeoutError:
-        future.cancel()
-        logger.warning(
-            "Runtime guardrail timeout operation=%s timeout_s=%s",
-            operation_name,
-            timeout_s,
-        )
-        raise
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
-
-
 def _build_decomposition_only_input_message(query: str, initial_search_context: list[dict[str, Any]]) -> str:
     serialized_context = json.dumps(initial_search_context, ensure_ascii=True)
     return (
@@ -544,43 +527,9 @@ def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestion
         "Per-subquestion pipeline item start sub_question=%s",
         _truncate_query(working_item.sub_question),
     )
-    try:
-        working_item = _run_with_timeout(
-            timeout_s=_RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
-            operation_name="document_validation_subquestion",
-            fn=lambda: _apply_document_validation_to_sub_qa([working_item])[0],
-        )
-    except FuturesTimeoutError:
-        logger.warning(
-            "Per-subquestion document validation timeout; continuing without validation sub_question=%s timeout_s=%s",
-            _truncate_query(working_item.sub_question),
-            _RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
-        )
-    try:
-        working_item = _run_with_timeout(
-            timeout_s=_RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
-            operation_name="rerank_subquestion",
-            fn=lambda: _apply_reranking_to_sub_qa([working_item])[0],
-        )
-    except FuturesTimeoutError:
-        logger.warning(
-            "Per-subquestion reranking timeout; continuing with original document order sub_question=%s timeout_s=%s",
-            _truncate_query(working_item.sub_question),
-            _RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
-        )
-    try:
-        working_item = _run_with_timeout(
-            timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
-            operation_name="subanswer_generation_subquestion",
-            fn=lambda: _apply_subanswer_generation_to_sub_qa([working_item])[0],
-        )
-    except FuturesTimeoutError:
-        working_item.sub_answer = _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT
-        logger.warning(
-            "Per-subquestion subanswer generation timeout; continuing with fallback text sub_question=%s timeout_s=%s",
-            _truncate_query(working_item.sub_question),
-            _RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
-        )
+    working_item = _apply_document_validation_to_sub_qa([working_item])[0]
+    working_item = _apply_reranking_to_sub_qa([working_item])[0]
+    working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
     working_item.answerable = True
     working_item.verification_reason = "citation_supported"
     logger.info(
@@ -596,19 +545,12 @@ def run_pipeline_for_subquestions(sub_qa: list[SubQuestionAnswer]) -> list[SubQu
     return run_pipeline_for_subquestions_with_timeout(sub_qa=sub_qa, total_timeout_s=None)
 
 
-def _build_subquestion_pipeline_timeout_fallback(item: SubQuestionAnswer) -> SubQuestionAnswer:
-    fallback_item = item.model_copy(deep=True)
-    fallback_item.answerable = False
-    fallback_item.verification_reason = _SUBQUESTION_PIPELINE_TIMEOUT_FALLBACK_REASON
-    return fallback_item
-
-
 def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> str:
     partial_answers = [item.sub_answer.strip() for item in sub_qa if isinstance(item.sub_answer, str) and item.sub_answer.strip()]
     if not partial_answers:
-        return _INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX
+        return _INITIAL_ANSWER_FALLBACK_PREFIX
     joined = " ".join(partial_answers)
-    return f"{_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX} {joined}"
+    return f"{_INITIAL_ANSWER_FALLBACK_PREFIX} {joined}"
 
 
 def _build_callbacks(
@@ -1712,8 +1654,6 @@ def run_decomposition_node(
         model=model,
         timeout_s=timeout_s,
         callbacks=callbacks,
-        default_timeout_s=_RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
-        run_with_timeout_fn=_run_with_timeout,
         run_llm_call_fn=_run_decomposition_only_llm_call,
         parse_output_fn=_parse_decomposition_output,
         normalize_sub_question_fn=_normalize_sub_question,
@@ -1753,10 +1693,11 @@ def run_pipeline_for_subquestions_with_timeout(
     configured_workers = max(1, _SUBQUESTION_PIPELINE_MAX_WORKERS)
     max_workers = min(configured_workers, len(sub_qa))
     logger.info(
-        "Per-subquestion pipeline parallel start count=%s configured_max_workers=%s effective_workers=%s",
+        "Per-subquestion pipeline parallel start count=%s configured_max_workers=%s effective_workers=%s total_timeout_ignored=%s",
         len(sub_qa),
         configured_workers,
         max_workers,
+        total_timeout_s is not None,
     )
     output: list[SubQuestionAnswer | None] = [None] * len(sub_qa)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -1765,33 +1706,15 @@ def run_pipeline_for_subquestions_with_timeout(
             for index, item in enumerate(sub_qa)
         }
 
-        if total_timeout_s is None:
-            for future in as_completed(futures):
-                index = futures[future]
-                output[index] = future.result()
-        else:
-            done, pending = wait(set(futures.keys()), timeout=total_timeout_s)
-            for future in done:
-                index = futures[future]
-                output[index] = future.result()
-            if pending:
-                for future in pending:
-                    future.cancel()
-                for future in pending:
-                    index = futures[future]
-                    output[index] = _build_subquestion_pipeline_timeout_fallback(sub_qa[index])
-                logger.warning(
-                    "Per-subquestion pipeline total timeout; returning partial results completed=%s skipped=%s timeout_s=%s",
-                    len(done),
-                    len(pending),
-                    total_timeout_s,
-                )
+        for future in as_completed(futures):
+            index = futures[future]
+            output[index] = future.result()
 
     processed = [item for item in output if item is not None]
     logger.info(
-        "Per-subquestion pipeline parallel complete count=%s timeout_s=%s",
+        "Per-subquestion pipeline parallel complete count=%s total_timeout_ignored=%s",
         len(processed),
-        total_timeout_s,
+        total_timeout_s is not None,
     )
     return processed
 

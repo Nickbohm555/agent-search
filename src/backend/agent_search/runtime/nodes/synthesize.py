@@ -10,7 +10,7 @@ from services.initial_answer_service import generate_final_synthesis_answer
 logger = logging.getLogger(__name__)
 
 _QUERY_LOG_MAX = 200
-_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX = "Answer generation timed out; partial context only."
+_INITIAL_ANSWER_FALLBACK_PREFIX = "Partial context only."
 _CITATION_INDEX_PATTERN = re.compile(r"\[(\d+)\]")
 
 
@@ -38,9 +38,9 @@ def _extract_citation_indices(answer: str) -> list[int]:
 def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> str:
     partial_answers = [item.sub_answer.strip() for item in sub_qa if isinstance(item.sub_answer, str) and item.sub_answer.strip()]
     if not partial_answers:
-        return _INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX
+        return _INITIAL_ANSWER_FALLBACK_PREFIX
     joined = " ".join(partial_answers)
-    return f"{_INITIAL_ANSWER_TIMEOUT_FALLBACK_PREFIX} {joined}"
+    return f"{_INITIAL_ANSWER_FALLBACK_PREFIX} {joined}"
 
 
 def _collect_available_citation_indices(sub_question_artifacts: list[SubQuestionArtifacts]) -> set[int]:

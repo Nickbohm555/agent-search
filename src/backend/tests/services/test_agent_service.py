@@ -3,7 +3,6 @@ import json
 import sys
 import time
 import uuid
-from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -232,11 +231,12 @@ def test_route_post_decompose_fans_out_one_expand_send_per_subquestion() -> None
 
     routed = route_post_decompose(state)
 
-    assert [send.node for send in routed] == ["expand", "expand"]
+    assert [send.node for send in routed] == ["lane_pipeline", "lane_pipeline"]
     assert [send.arg["decomposition_sub_questions"] for send in routed] == [
-        ["Sub-question A?"],
-        ["Sub-question B?"],
+        ["Sub-question A?", "Sub-question B?"],
+        ["Sub-question A?", "Sub-question B?"],
     ]
+    assert [send.arg["lane_sub_question"] for send in routed] == ["Sub-question A?", "Sub-question B?"]
     assert all(send.arg["main_question"] == "Main question?" for send in routed)
     assert all(send.arg["run_metadata"].run_id == "run-route" for send in routed)
     assert all(send.arg["sub_question_artifacts"] == [] for send in routed)
@@ -450,26 +450,6 @@ def test_run_decomposition_node_emits_normalized_subquestions(monkeypatch) -> No
         "What changed in VAT policy?",
         "Why did it change?",
     ]
-
-
-def test_run_decomposition_node_uses_fallback_on_timeout(monkeypatch, caplog) -> None:
-    def _raise_timeout(*, timeout_s: int, operation_name: str, fn):
-        raise agent_service.FuturesTimeoutError()
-
-    monkeypatch.setattr(agent_service, "_run_with_timeout", _raise_timeout)
-
-    with caplog.at_level(logging.WARNING):
-        output = agent_service.run_decomposition_node(
-            node_input=DecomposeNodeInput(
-                main_question="Explain VAT changes",
-                run_metadata=agent_service.build_graph_run_metadata(),
-                initial_search_context=[],
-            ),
-            timeout_s=1,
-        )
-
-    assert output.decomposition_sub_questions == ["Explain VAT changes?"]
-    assert "Decomposition LLM timeout; continuing with fallback sub-question" in caplog.text
 
 
 def test_apply_decompose_node_output_to_graph_state_initializes_artifacts_and_compat_fields() -> None:

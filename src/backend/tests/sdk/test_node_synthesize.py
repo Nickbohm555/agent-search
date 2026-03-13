@@ -146,7 +146,7 @@ def test_run_synthesize_node_falls_back_on_invalid_citation_indices() -> None:
     assert output.final_answer == "VAT changed in 2025 [1] (source: wiki://vat-policy)."
 
 
-def test_run_synthesize_node_uses_timeout_prefix_when_no_citable_fallback_exists() -> None:
+def test_run_synthesize_node_uses_partial_context_prefix_when_no_citable_fallback_exists() -> None:
     output = synthesize.run_synthesize_node(
         node_input=_node_input(
             sub_qa=[
@@ -161,4 +161,4 @@ def test_run_synthesize_node_uses_timeout_prefix_when_no_citable_fallback_exists
         generate_final_synthesis_answer_fn=lambda **_kwargs: "",
     )
 
-    assert output.final_answer == "Answer generation timed out; partial context only. VAT changed in 2025."
+    assert output.final_answer == "Partial context only. VAT changed in 2025."

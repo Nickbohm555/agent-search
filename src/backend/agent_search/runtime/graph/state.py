@@ -28,6 +28,10 @@ def _merge_stable_optional_text(current: str, update: str) -> str:
     return update or current
 
 
+def _merge_lane_sub_question(current: str, update: str) -> str:
+    return update or current
+
+
 def _merge_stable_run_metadata(current: GraphRunMetadata, update: GraphRunMetadata) -> GraphRunMetadata:
     if current.model_dump(mode="json") != update.model_dump(mode="json"):
         raise ValueError("run_metadata must remain stable across graph lanes.")
@@ -63,6 +67,7 @@ def to_runtime_graph_state(
         {
             "main_question": payload.query,
             "decomposition_sub_questions": [],
+            "lane_sub_question": "",
             "sub_question_artifacts": [],
             "final_answer": "",
             "citation_rows_by_index": {},
@@ -81,6 +86,7 @@ def to_runtime_graph_state(
 class RuntimeGraphState(TypedDict):
     main_question: Annotated[str, _merge_stable_main_question]
     decomposition_sub_questions: DecompositionSubQuestionsChannel
+    lane_sub_question: Annotated[str, _merge_lane_sub_question]
     sub_question_artifacts: SubQuestionArtifactsChannel
     final_answer: Annotated[str, _merge_stable_optional_text]
     citation_rows_by_index: CitationRowsByIndexChannel

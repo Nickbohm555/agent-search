@@ -46,13 +46,20 @@ def _append_snapshot(
             )
         ],
     )
-    return RuntimeGraphState(**next_state, initial_search_context=list(state.get("initial_search_context", [])))
+    return RuntimeGraphState(
+        **next_state,
+        lane_sub_question=str(state.get("lane_sub_question", "")),
+        initial_search_context=list(state.get("initial_search_context", [])),
+    )
 
 
 def _resolve_lane_sub_question(state: RuntimeGraphState) -> str:
-    if not state["decomposition_sub_questions"]:
-        raise ValueError("Lane state must contain exactly one decomposition sub-question.")
-    return state["decomposition_sub_questions"][0]
+    lane_sub_question = str(state.get("lane_sub_question", "")).strip()
+    if lane_sub_question:
+        return lane_sub_question
+    if len(state["decomposition_sub_questions"]) == 1:
+        return state["decomposition_sub_questions"][0]
+    raise ValueError("Lane state must contain a lane_sub_question before lane execution.")
 
 
 def _build_decompose_node(context: RuntimeGraphContext):
@@ -64,11 +71,17 @@ def _build_decompose_node(context: RuntimeGraphContext):
                 initial_search_context=list(state.get("initial_search_context", [])),
             ),
             model=context.model,
-            timeout_s=legacy_service._RUNTIME_TIMEOUT_CONFIG.decomposition_llm_timeout_s,
             callbacks=context.callbacks,
         )
         next_state = legacy_service.apply_decompose_node_output_to_graph_state(state=state, node_output=node_output)
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="decompose")
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="decompose",
+        )
 
     return _decompose
 
@@ -90,7 +103,15 @@ def _build_expand_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="expand", sub_question=sub_question)
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="expand",
+            sub_question=sub_question,
+        )
 
     return _expand
 
@@ -116,7 +137,15 @@ def _build_search_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="search", sub_question=sub_question)
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="search",
+            sub_question=sub_question,
+        )
 
     return _search
 
@@ -146,7 +175,15 @@ def _build_rerank_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="rerank", sub_question=sub_question)
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="rerank",
+            sub_question=sub_question,
+        )
 
     return _rerank
 
@@ -176,7 +213,15 @@ def _build_answer_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="answer", sub_question=sub_question)
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="answer",
+            sub_question=sub_question,
+        )
 
     return _answer
 
@@ -196,9 +241,138 @@ def _build_synthesize_node(context: RuntimeGraphContext):
             state=state,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="synthesize_final")
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="synthesize_final",
+        )
 
     return _synthesize
+
+
+def _build_lane_pipeline_node(context: RuntimeGraphContext):
+    def _lane_pipeline(state: RuntimeGraphState) -> RuntimeGraphState:
+        sub_question = _resolve_lane_sub_question(state)
+
+        expand_output = legacy_service.run_expand_node(
+            node_input=ExpandNodeInput(
+                main_question=state["main_question"],
+                sub_question=sub_question,
+                run_metadata=state["run_metadata"],
+            ),
+            model=context.model,
+            callbacks=context.callbacks,
+        )
+        next_state = legacy_service.apply_expand_node_output_to_graph_state(
+            state=state,
+            sub_question=sub_question,
+            node_output=expand_output,
+        )
+        lane_state = _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="expand",
+            sub_question=sub_question,
+        )
+
+        artifact = next(
+            (item for item in lane_state["sub_question_artifacts"] if item.sub_question == sub_question),
+            SubQuestionArtifacts(sub_question=sub_question),
+        )
+        search_output = legacy_service.run_search_node(
+            node_input=SearchNodeInput(
+                sub_question=sub_question,
+                expanded_queries=list(artifact.expanded_queries),
+                run_metadata=lane_state["run_metadata"],
+            ),
+            vector_store=context.vector_store,
+            k_fetch=legacy_service._SEARCH_NODE_K_FETCH,
+        )
+        next_state = legacy_service.apply_search_node_output_to_graph_state(
+            state=lane_state,
+            sub_question=sub_question,
+            node_output=search_output,
+        )
+        lane_state = _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="search",
+            sub_question=sub_question,
+        )
+
+        artifact = next(
+            (item for item in lane_state["sub_question_artifacts"] if item.sub_question == sub_question),
+            SubQuestionArtifacts(sub_question=sub_question),
+        )
+        rerank_output = legacy_service.run_rerank_node(
+            node_input=RerankNodeInput(
+                sub_question=sub_question,
+                expanded_query=legacy_service._select_compat_expanded_query(
+                    sub_question=sub_question,
+                    expanded_queries=list(artifact.expanded_queries),
+                ),
+                retrieved_docs=[row.model_copy(deep=True) for row in artifact.retrieved_docs],
+                run_metadata=lane_state["run_metadata"],
+            ),
+            config=legacy_service._RERANKER_CONFIG,
+            callbacks=context.callbacks,
+        )
+        next_state = legacy_service.apply_rerank_node_output_to_graph_state(
+            state=lane_state,
+            sub_question=sub_question,
+            node_output=rerank_output,
+        )
+        lane_state = _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="rerank",
+            sub_question=sub_question,
+        )
+
+        artifact = next(
+            (item for item in lane_state["sub_question_artifacts"] if item.sub_question == sub_question),
+            SubQuestionArtifacts(sub_question=sub_question),
+        )
+        answer_rows = artifact.reranked_docs or artifact.retrieved_docs
+        answer_output = legacy_service.run_answer_subquestion_node(
+            node_input=AnswerSubquestionNodeInput(
+                sub_question=sub_question,
+                reranked_docs=[row.model_copy(deep=True) for row in answer_rows],
+                citation_rows_by_index={
+                    key: value.model_copy(deep=True) for key, value in artifact.citation_rows_by_index.items()
+                },
+                run_metadata=lane_state["run_metadata"],
+            ),
+            callbacks=context.callbacks,
+        )
+        next_state = legacy_service.apply_answer_subquestion_node_output_to_graph_state(
+            state=lane_state,
+            sub_question=sub_question,
+            node_output=answer_output,
+        )
+        return _append_snapshot(
+            RuntimeGraphState(
+                **to_rag_state(next_state),
+                lane_sub_question=str(state.get("lane_sub_question", "")),
+                initial_search_context=list(state.get("initial_search_context", [])),
+            ),
+            stage="answer",
+            sub_question=sub_question,
+        )
+
+    return _lane_pipeline
 
 
 def build_runtime_graph(
@@ -209,6 +383,7 @@ def build_runtime_graph(
     resolved_context = context or RuntimeGraphContext(payload=RuntimeAgentRunRequest(query="bootstrap"))
     builder = StateGraph(RuntimeGraphState)
     builder.add_node("decompose", _build_decompose_node(resolved_context))
+    builder.add_node("lane_pipeline", _build_lane_pipeline_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("expand", _build_expand_node(resolved_context))
     builder.add_node("search", _build_search_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("rerank", _build_rerank_node(resolved_context), retry_policy=_RETRY_POLICY)
@@ -216,6 +391,7 @@ def build_runtime_graph(
     builder.add_node("synthesize", _build_synthesize_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_edge(START, "decompose")
     builder.add_conditional_edges("decompose", route_post_decompose, {"synthesize": "synthesize"})
+    builder.add_edge("lane_pipeline", "synthesize")
     builder.add_edge("expand", "search")
     builder.add_edge("search", "rerank")
     builder.add_edge("rerank", "answer")

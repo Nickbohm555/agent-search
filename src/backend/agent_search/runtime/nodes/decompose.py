@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import json
 import logging
 import os
@@ -20,7 +19,6 @@ _QUERY_LOG_MAX = 200
 _DECOMPOSITION_ONLY_MODEL = os.getenv("DECOMPOSITION_ONLY_MODEL", os.getenv("RUNTIME_AGENT_MODEL", "gpt-4.1-mini"))
 _DECOMPOSITION_ONLY_TEMPERATURE = float(os.getenv("DECOMPOSITION_ONLY_TEMPERATURE", "0"))
 _DECOMPOSITION_ONLY_MAX_SUBQUESTIONS_RAW = os.getenv("DECOMPOSITION_ONLY_MAX_SUBQUESTIONS", "8")
-_DECOMPOSITION_LLM_TIMEOUT_S = int(os.getenv("DECOMPOSITION_LLM_TIMEOUT_S", "60"))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _DECOMPOSITION_ONLY_PROMPT = (
     "You are a decomposition planner for retrieval.\n"
@@ -214,66 +212,32 @@ def _run_decomposition_only_llm_call(
     return [fallback_question]
 
 
-def _run_with_timeout(*, timeout_s: int, operation_name: str, fn: Callable[[], Any]) -> Any:
-    executor = ThreadPoolExecutor(max_workers=1)
-    future = executor.submit(fn)
-    try:
-        return future.result(timeout=timeout_s)
-    except FuturesTimeoutError:
-        future.cancel()
-        logger.warning(
-            "Runtime guardrail timeout operation=%s timeout_s=%s",
-            operation_name,
-            timeout_s,
-        )
-        raise
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
-
-
 def run_decomposition_node(
     *,
     node_input: DecomposeNodeInput,
     model: BaseChatModel | None = None,
     timeout_s: int | None = None,
     callbacks: list[Any] | None = None,
-    default_timeout_s: int = _DECOMPOSITION_LLM_TIMEOUT_S,
-    run_with_timeout_fn: Callable[..., Any] = _run_with_timeout,
     run_llm_call_fn: Callable[..., list[str]] = _run_decomposition_only_llm_call,
     parse_output_fn: Callable[..., list[str]] = _parse_decomposition_output,
     normalize_sub_question_fn: Callable[[str], str] = _normalize_sub_question,
     truncate_query_fn: Callable[[str], str] = _truncate_query,
 ) -> DecomposeNodeOutput:
-    effective_timeout_s = timeout_s or default_timeout_s
+    _ = timeout_s
     logger.info(
-        "Decomposition node start query=%s context_docs=%s timeout_s=%s run_id=%s trace_id=%s correlation_id=%s",
+        "Decomposition node start query=%s context_docs=%s run_id=%s trace_id=%s correlation_id=%s",
         truncate_query_fn(node_input.main_question),
         len(node_input.initial_search_context),
-        effective_timeout_s,
         node_input.run_metadata.run_id,
         node_input.run_metadata.trace_id,
         node_input.run_metadata.correlation_id,
     )
-    try:
-        decomposition_raw_output = run_with_timeout_fn(
-            timeout_s=effective_timeout_s,
-            operation_name="decomposition_llm_call",
-            fn=lambda: run_llm_call_fn(
-                query=node_input.main_question,
-                initial_search_context=node_input.initial_search_context,
-                model=model,
-                callbacks=callbacks,
-            ),
-        )
-    except FuturesTimeoutError:
-        fallback_sub_question = normalize_sub_question_fn(node_input.main_question) or "What is the main question?"
-        decomposition_raw_output = [fallback_sub_question]
-        logger.warning(
-            "Decomposition LLM timeout; continuing with fallback sub-question query=%s timeout_s=%s fallback=%s",
-            truncate_query_fn(node_input.main_question),
-            effective_timeout_s,
-            truncate_query_fn(fallback_sub_question),
-        )
+    decomposition_raw_output = run_llm_call_fn(
+        query=node_input.main_question,
+        initial_search_context=node_input.initial_search_context,
+        model=model,
+        callbacks=callbacks,
+    )
 
     decomposition_raw_output_preview = json.dumps(decomposition_raw_output, ensure_ascii=True)
     logger.info(

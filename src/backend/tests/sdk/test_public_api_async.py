@@ -296,7 +296,16 @@ def test_run_async_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
     monkeypatch.setattr(runtime_jobs, "_persist_job_status", lambda _job: None)
     monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
 
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
+    def fake_execute_runtime_graph(
+        *,
+        context,
+        run_metadata,
+        config=None,
+        lifecycle_callback=None,
+        snapshot_callback=None,
+        emit_success_terminal_event=True,
+    ):
+        _ = snapshot_callback, emit_success_terminal_event
         captured["query"] = context.payload.query
         captured["payload_thread_id"] = context.payload.thread_id
         captured["vector_store"] = context.vector_store
