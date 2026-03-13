@@ -10,7 +10,7 @@
 
 - Current phase: 5 - Major Release and Migration Documentation
 - Current plan: 05-02
-- Current task: 1
+- Current task: 2
 - Current status: implemented
 - Progress: 80% (4/5 phases complete)
 
@@ -46,6 +46,6 @@ Progress bar: `[####-] 80%`
 
 ## Session Continuity
 
-- Last completed artifact: `docs/migration-guide.md` with legacy-to-LangGraph mapping, stepwise migration flow, and command-level verification for each step.
-- Last updated traceability: Phase 5 plan `05-02` task 1 implemented on 2026-03-12; next work is the deprecation status map and SDK migration callout.
+- Last completed artifact: `docs/deprecation-map.md` with deprecated flows, replacement paths, support status, and removal horizon semantics.
+- Last updated traceability: Phase 5 plan `05-02` task 2 implemented on 2026-03-13; next work is the SDK migration/deprecation callout update.
 - Next recommended command: `/gsd-implement-next`
