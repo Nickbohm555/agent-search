@@ -97,6 +97,13 @@ Plans:
 3. API/reference docs and application HTML docs under `docs/` accurately describe the new state-graph architecture and interfaces.
 4. Updated examples run successfully and demonstrate LangGraph-based usage patterns expected in v1.
 
+**Plans:** 3 plans
+
+Plans:
+- [x] 05-01-PLAN.md - Major release contract, release notes, and repository entrypoint links
+- [x] 05-02-PLAN.md - Migration guide surfacing and deprecation map
+- [x] 05-03-PLAN.md - OpenAPI, application docs, and runnable example synchronization
+
 ## Progress
 
 | Phase | Goal | Requirements | Status |
@@ -105,7 +112,7 @@ Plans:
 | 2 - Durable Execution and Identity Semantics | Replay-safe durability and thread identity | REL-01, REL-02, REL-03, REL-04 | Completed |
 | 3 - End-to-End LangGraph RAG Cutover | Full RAG flow runs via LangGraph | SGF-04 | Completed |
 | 4 - Observability and Remote Runtime Validation | Streaming/tracing and remote deployment proof | OBS-01, OBS-02, REL-05 | Completed |
-| 5 - Major Release and Migration Documentation | Release adoption and migration clarity | DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Pending |
+| 5 - Major Release and Migration Documentation | Release adoption and migration clarity | DOC-01, DOC-02, DOC-03, DOC-04, DOC-05, DOC-06 | Completed |
 
 ## Coverage Validation
 
