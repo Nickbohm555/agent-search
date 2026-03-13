@@ -5,6 +5,8 @@ import {
   RequestState,
   RuntimeLifecycleEvent,
   RuntimeAgentRunResponse,
+  RuntimeSubquestionDecision,
+  RuntimeSubquestionPausePayload,
   SearchCandidateRow,
   SubQuestionAnswer,
   SubQuestionArtifact,
@@ -12,6 +14,7 @@ import {
   cancelInternalDataLoad,
   getInternalDataLoadStatus,
   listWikiSources,
+  resumeAgentRun,
   startAgentRun,
   startInternalDataLoad,
   subscribeToAgentRunEvents,
@@ -40,6 +43,11 @@ type RunSummary = {
   citationCoverageCount: number;
   citationCoverageTotal: number;
   totalLatencyMs: number | null;
+};
+
+type SubquestionDecisionDraft = {
+  action: RuntimeSubquestionDecision["action"];
+  editedText: string;
 };
 
 export default function App() {
@@ -83,6 +91,10 @@ export default function App() {
     final: "pending",
   });
   const [lastSuccessfulSynthesis, setLastSuccessfulSynthesis] = useState<RuntimeAgentRunResponse | null>(null);
+  const [pausedPayload, setPausedPayload] = useState<RuntimeSubquestionPausePayload | null>(null);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, SubquestionDecisionDraft>>({});
+  const [resumeState, setResumeState] = useState<RequestState>("idle");
+  const [resumeMessage, setResumeMessage] = useState("");
   const runEventsUnsubscribeRef = useRef<(() => void) | null>(null);
   const runStreamRef = useRef<{ jobId: string | null; terminal: boolean }>({ jobId: null, terminal: false });
   const runStreamErrorTimeoutRef = useRef<number | null>(null);
@@ -248,6 +260,10 @@ export default function App() {
     setDecompositionSubQuestions([]);
     setSubQuestionArtifacts([]);
     setRunSubQa([]);
+    setPausedPayload(null);
+    setReviewDrafts({});
+    setResumeState("idle");
+    setResumeMessage("");
     setRunSummary({
       searchRawHitsTotal: 0,
       searchDedupedHitsTotal: 0,
@@ -287,8 +303,11 @@ export default function App() {
     }
     runStreamRef.current = { jobId, terminal: false };
     console.info("Async run started.", { submittedQuery: submitted, jobId, runId: startResult.data.run_id });
-    runEventsUnsubscribeRef.current?.();
+    openRunEventStream(jobId, submitted);
+  }
 
+  function openRunEventStream(jobId: string, submittedQueryValue: string): void {
+    runEventsUnsubscribeRef.current?.();
     runEventsUnsubscribeRef.current = subscribeToAgentRunEvents(jobId, {
       onEvent: (lifecycleEvent) => {
         if (runStreamErrorTimeoutRef.current !== null) {
@@ -301,7 +320,7 @@ export default function App() {
         setStageStatuses((current) => computeStageStatusesFromEvents(orderedStages, current, lifecycleEvent));
         applyRunEventData({
           lifecycleEvent,
-          submittedQuery: submitted,
+          submittedQuery: submittedQueryValue,
           jobId,
           setDecompositionSubQuestions,
           setSubQuestionArtifacts,
@@ -310,16 +329,32 @@ export default function App() {
           setLastSuccessfulSynthesis,
         });
         console.info("Async run lifecycle event received.", {
-          submittedQuery: submitted,
+          submittedQuery: submittedQueryValue,
           jobId,
           eventType: lifecycleEvent.event_type,
           backendStage: lifecycleEvent.stage,
           backendStatus: lifecycleEvent.status,
         });
 
+        if (lifecycleEvent.event_type === "run.paused" && lifecycleEvent.interrupt_payload) {
+          setRunState("loading");
+          setRunStatusMessage("Run paused for subquestion review.");
+          setPausedPayload(lifecycleEvent.interrupt_payload);
+          setReviewDrafts(buildInitialReviewDrafts(lifecycleEvent.interrupt_payload));
+          setResumeState("idle");
+          setResumeMessage("");
+          runEventsUnsubscribeRef.current?.();
+          runEventsUnsubscribeRef.current = null;
+          return;
+        }
+
         if (isTerminalLifecycleEvent(lifecycleEvent)) {
           runStreamRef.current = { jobId, terminal: true };
           setRunState(lifecycleEvent.status === "success" ? "success" : "error");
+          setPausedPayload(null);
+          setReviewDrafts({});
+          setResumeState("idle");
+          setResumeMessage("");
           if (lifecycleEvent.status !== "success") {
             setRunStatusMessage(lifecycleEvent.error || formatLifecycleEventLabel(lifecycleEvent));
           }
@@ -345,10 +380,67 @@ export default function App() {
           runStreamRef.current = { jobId, terminal: true };
           runEventsUnsubscribeRef.current?.();
           runEventsUnsubscribeRef.current = null;
-          console.error("Async run event stream failed.", { submittedQuery: submitted, jobId });
+          console.error("Async run event stream failed.", { submittedQuery: submittedQueryValue, jobId });
         }, streamErrorGracePeriodMs);
       },
     });
+  }
+
+  function handleDecisionActionChange(subquestionId: string, action: RuntimeSubquestionDecision["action"]): void {
+    setReviewDrafts((current) => ({
+      ...current,
+      [subquestionId]: {
+        ...(current[subquestionId] ?? { action: "approve", editedText: "" }),
+        action,
+      },
+    }));
+  }
+
+  function handleDecisionEditTextChange(subquestionId: string, editedText: string): void {
+    setReviewDrafts((current) => ({
+      ...current,
+      [subquestionId]: {
+        ...(current[subquestionId] ?? { action: "edit", editedText: "" }),
+        editedText,
+      },
+    }));
+  }
+
+  async function handleResumeRun(skipReview = false): Promise<void> {
+    if (!runJobId || !pausedPayload || resumeState === "loading") return;
+
+    const decisions = skipReview
+      ? pausedPayload.subquestions.map((item) => ({ subquestion_id: item.subquestion_id, action: "skip" as const }))
+      : buildResumeDecisions(pausedPayload, reviewDrafts);
+
+    if (decisions === null) {
+      setResumeState("error");
+      setResumeMessage("Each edited subquestion needs replacement text before resuming.");
+      return;
+    }
+
+    setResumeState("loading");
+    setResumeMessage(skipReview ? "Skipping review and resuming..." : "Submitting review decisions...");
+    const resumeResult = await resumeAgentRun(runJobId, {
+      checkpoint_id: pausedPayload.checkpoint_id,
+      decisions,
+    });
+
+    if (!resumeResult.ok) {
+      setResumeState("error");
+      setResumeMessage(resumeResult.error.message);
+      return;
+    }
+
+    setPausedPayload(null);
+    setReviewDrafts({});
+    setResumeState("success");
+    setResumeMessage("Resume accepted.");
+    setRunState("loading");
+    setRunStatusMessage(resumeResult.data.message);
+    setRunCurrentStage(resumeResult.data.stage);
+    runStreamRef.current = { jobId: runJobId, terminal: false };
+    openRunEventStream(runJobId, submittedQuery);
   }
 
   return (
@@ -428,6 +520,71 @@ export default function App() {
         <p>Run status: {runStatusMessage}</p>
         {runJobId ? <p>Run job id: {runJobId}</p> : null}
       </section>
+
+      {pausedPayload ? (
+        <section className="panel paused-review-panel" aria-labelledby="paused-review-title">
+          <h2 id="paused-review-title">Subquestion Review</h2>
+          <p>
+            Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> and choose how each proposed subquestion
+            should continue.
+          </p>
+          <ol className="paused-review-list" aria-label="Paused subquestion review list">
+            {pausedPayload.subquestions.map((subquestion, index) => {
+              const draft = reviewDrafts[subquestion.subquestion_id] ?? {
+                action: "approve" as const,
+                editedText: subquestion.sub_question,
+              };
+              const fieldId = `subquestion-review-${subquestion.subquestion_id}`;
+              return (
+                <li key={subquestion.subquestion_id} className="paused-review-item">
+                  <p className="paused-review-title">
+                    <strong>Subquestion {index + 1}:</strong> {subquestion.sub_question}
+                  </p>
+                  <label htmlFor={`${fieldId}-action`}>Decision</label>
+                  <select
+                    id={`${fieldId}-action`}
+                    value={draft.action}
+                    onChange={(event) =>
+                      handleDecisionActionChange(
+                        subquestion.subquestion_id,
+                        event.target.value as RuntimeSubquestionDecision["action"],
+                      )
+                    }
+                    disabled={resumeState === "loading"}
+                  >
+                    <option value="approve">Approve</option>
+                    <option value="edit">Edit</option>
+                    <option value="deny">Deny</option>
+                    <option value="skip">Skip</option>
+                  </select>
+                  {draft.action === "edit" ? (
+                    <>
+                      <label htmlFor={`${fieldId}-edited-text`}>Edited text</label>
+                      <input
+                        id={`${fieldId}-edited-text`}
+                        type="text"
+                        value={draft.editedText}
+                        onChange={(event) => handleDecisionEditTextChange(subquestion.subquestion_id, event.target.value)}
+                        placeholder="Rewrite this subquestion"
+                        disabled={resumeState === "loading"}
+                      />
+                    </>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+          <div className="row">
+            <button type="button" onClick={() => void handleResumeRun(false)} disabled={resumeState === "loading"}>
+              {resumeState === "loading" ? "Submitting..." : "Resume Run"}
+            </button>
+            <button type="button" onClick={() => void handleResumeRun(true)} disabled={resumeState === "loading"}>
+              Skip Review
+            </button>
+          </div>
+          {resumeMessage ? <p>Resume status: {resumeMessage}</p> : null}
+        </section>
+      ) : null}
 
       <section className="panel run-summary-panel">
         <h2>Run Summary</h2>
@@ -859,7 +1016,7 @@ function mapBackendStageToCanonical(stage: string): AgentStageName | null {
 }
 
 function isTerminalLifecycleEvent(event: RuntimeLifecycleEvent): boolean {
-  return event.event_type === "run.completed" || event.event_type === "run.failed" || event.event_type === "run.paused";
+  return event.event_type === "run.completed" || event.event_type === "run.failed";
 }
 
 function formatLifecycleEventLabel(event: RuntimeLifecycleEvent): string {
@@ -905,9 +1062,15 @@ function computeStageStatusesFromEvents(
     return next;
   }
 
-  if (event.event_type === "run.failed" || event.event_type === "run.paused") {
+  if (event.event_type === "run.failed") {
     markPreviousStagesCompleted(next, orderedStages, mappedStage);
     next[mappedStage] = "error";
+    return next;
+  }
+
+  if (event.event_type === "run.paused") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "completed";
   }
 
   for (let index = 0; index < orderedStages.length; index += 1) {
@@ -918,6 +1081,49 @@ function computeStageStatusesFromEvents(
   }
 
   return next;
+}
+
+function buildInitialReviewDrafts(
+  pausedPayload: RuntimeSubquestionPausePayload,
+): Record<string, SubquestionDecisionDraft> {
+  return Object.fromEntries(
+    pausedPayload.subquestions.map((item) => [
+      item.subquestion_id,
+      {
+        action: "approve",
+        editedText: item.sub_question,
+      },
+    ]),
+  );
+}
+
+function buildResumeDecisions(
+  pausedPayload: RuntimeSubquestionPausePayload,
+  reviewDrafts: Record<string, SubquestionDecisionDraft>,
+): RuntimeSubquestionDecision[] | null {
+  const decisions: RuntimeSubquestionDecision[] = [];
+  for (const item of pausedPayload.subquestions) {
+    const draft = reviewDrafts[item.subquestion_id] ?? { action: "approve", editedText: item.sub_question };
+    if (draft.action === "edit") {
+      const editedText = draft.editedText.trim();
+      if (!editedText) {
+        return null;
+      }
+      decisions.push({
+        subquestion_id: item.subquestion_id,
+        action: "edit",
+        edited_text: editedText,
+      });
+      continue;
+    }
+
+    decisions.push({
+      subquestion_id: item.subquestion_id,
+      action: draft.action,
+    });
+  }
+
+  return decisions;
 }
 
 function markPreviousStagesCompleted(

@@ -228,6 +228,25 @@ p {
   margin-top: 6px;
 }
 
+.paused-review-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.paused-review-item {
+  padding: 12px;
+  border: 1px solid rgba(29, 242, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(6, 9, 22, 0.7);
+}
+
+.paused-review-title {
+  margin-top: 0;
+  color: var(--text);
+}
+
 .tool-call-output-details {
   margin-top: 8px;
 }

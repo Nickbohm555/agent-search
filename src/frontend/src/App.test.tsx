@@ -18,6 +18,8 @@ type LifecycleEventShape = {
   output?: string | null;
   result?: unknown;
   elapsed_ms?: number | null;
+  interrupt_payload?: unknown;
+  checkpoint_id?: string | null;
 };
 
 class FakeEventSource {
@@ -514,6 +516,133 @@ describe("App run query flow", () => {
       expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
     expect(screen.queryByText("Run status: Run event stream disconnected.")).not.toBeInTheDocument();
+  });
+
+  it("shows paused subquestion review and resumes to completion with typed decisions", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-hitl", run_id: "run-hitl", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-hitl",
+            run_id: "run-hitl",
+            status: "running",
+            message: "Resume accepted.",
+            stage: "subquestions_ready",
+            stages: [],
+            decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
+            sub_question_artifacts: [],
+            sub_qa: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+            checkpoint_id: "checkpoint-42",
+            interrupt_payload: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Review my subquestions" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const pausedEventSource = await findLatestEventSource();
+    pausedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-hitl:000001",
+      run_id: "run-hitl",
+      stage: "subquestions_ready",
+      status: "paused",
+      checkpoint_id: "checkpoint-42",
+      decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
+      sub_qa: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-42",
+        kind: "subquestion_review",
+        stage: "subquestions_ready",
+        subquestions: [
+          { subquestion_id: "sq-1", sub_question: "Keep this?" },
+          { subquestion_id: "sq-2", sub_question: "Change this?" },
+          { subquestion_id: "sq-3", sub_question: "Remove this?" },
+        ],
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Subquestion Review" })).toBeInTheDocument();
+    expect(screen.getByText("Run status: Run paused for subquestion review.")).toBeInTheDocument();
+    expect(screen.queryByText(/run\.paused · subquestions_ready · paused/)).not.toBeInTheDocument();
+
+    const decisions = screen.getAllByLabelText("Decision");
+    fireEvent.change(decisions[1] as HTMLElement, { target: { value: "edit" } });
+    fireEvent.change(screen.getByLabelText("Edited text"), { target: { value: "Rewritten subquestion?" } });
+    fireEvent.change(decisions[2] as HTMLElement, { target: { value: "deny" } });
+    fireEvent.click(screen.getByRole("button", { name: "Resume Run" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8000/api/agents/run-resume/job-hitl",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resume: {
+              checkpoint_id: "checkpoint-42",
+              decisions: [
+                { subquestion_id: "sq-1", action: "approve" },
+                { subquestion_id: "sq-2", action: "edit", edited_text: "Rewritten subquestion?" },
+                { subquestion_id: "sq-3", action: "deny" },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText("Run status: Resume accepted.")).toBeInTheDocument();
+
+    const resumedEventSource = await findLatestEventSource();
+    expect(resumedEventSource).not.toBe(pausedEventSource);
+    resumedEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-hitl:000002",
+      run_id: "run-hitl",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Resumed answer.",
+      result: {
+        final_citations: [],
+        main_question: "Review my subquestions",
+        output: "Resumed answer.",
+        sub_qa: [],
+      },
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Resumed answer.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
   });
 
   it("renders reranked evidence order and fallback indicator", async () => {
