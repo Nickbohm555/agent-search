@@ -78,36 +78,36 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SQH-01 | TBD | Pending |
-| SQH-02 | TBD | Pending |
-| SQH-03 | TBD | Pending |
-| SQH-04 | TBD | Pending |
-| SQH-05 | TBD | Pending |
-| QEH-01 | TBD | Pending |
-| QEH-02 | TBD | Pending |
-| QEH-03 | TBD | Pending |
-| QEH-04 | TBD | Pending |
-| QEH-05 | TBD | Pending |
-| CTRL-01 | TBD | Pending |
-| CTRL-02 | TBD | Pending |
-| CTRL-03 | TBD | Pending |
-| CTRL-04 | TBD | Pending |
-| CTRL-05 | TBD | Pending |
-| PRM-01 | TBD | Pending |
-| PRM-02 | TBD | Pending |
-| PRM-03 | TBD | Pending |
-| PRM-04 | TBD | Pending |
-| REL-01 | TBD | Pending |
-| REL-02 | TBD | Pending |
-| REL-03 | TBD | Pending |
-| REL-04 | TBD | Pending |
-| REL-05 | TBD | Pending |
+| SQH-01 | Phase 2 | Pending |
+| SQH-02 | Phase 2 | Pending |
+| SQH-03 | Phase 2 | Pending |
+| SQH-04 | Phase 2 | Pending |
+| SQH-05 | Phase 2 | Pending |
+| QEH-01 | Phase 3 | Pending |
+| QEH-02 | Phase 3 | Pending |
+| QEH-03 | Phase 3 | Pending |
+| QEH-04 | Phase 3 | Pending |
+| QEH-05 | Phase 3 | Pending |
+| CTRL-01 | Phase 4 | Pending |
+| CTRL-02 | Phase 1 | Pending |
+| CTRL-03 | Phase 4 | Pending |
+| CTRL-04 | Phase 1 | Pending |
+| CTRL-05 | Phase 1 | Pending |
+| PRM-01 | Phase 5 | Pending |
+| PRM-02 | Phase 5 | Pending |
+| PRM-03 | Phase 5 | Pending |
+| PRM-04 | Phase 5 | Pending |
+| REL-01 | Phase 1 | Pending |
+| REL-02 | Phase 4 | Pending |
+| REL-03 | Phase 6 | Pending |
+| REL-04 | Phase 6 | Pending |
+| REL-05 | Phase 6 | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
-- Mapped to phases: 0
-- Unmapped: 24
+- Mapped to phases: 24
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-13*
-*Last updated: 2026-03-13 after initial definition*
+*Last updated: 2026-03-13 after roadmap mapping*
