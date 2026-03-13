@@ -33,6 +33,7 @@ def test_post_run_returns_server_generated_thread_id_when_request_omits_it(monke
             main_question=query,
             thread_id=generated_thread_id,
             sub_qa=[],
+            sub_answers=[],
             output=f"Echo: {query}",
         )
 
@@ -85,6 +86,16 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
                     verification_reason="grounded_in_reranked_documents",
                 )
             ],
+            sub_answers=[
+                SubQuestionAnswer(
+                    sub_question="What changed in policy X?",
+                    sub_answer="Policy X was revised in January 2026.",
+                    tool_call_input='{"query":"What changed in policy X?"}',
+                    sub_agent_response="I reviewed the latest policy notes and summarized the change.",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
             output=f"Echo: {query}",
         )
 
@@ -113,6 +124,17 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "main_question": "Find Hormuz risks",
         "thread_id": "550e8400-e29b-41d4-a716-446655440000",
         "sub_qa": [
+            {
+                "sub_question": "What changed in policy X?",
+                "sub_answer": "Policy X was revised in January 2026.",
+                "tool_call_input": '{"query":"What changed in policy X?"}',
+                "expanded_query": "",
+                "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
+                "answerable": True,
+                "verification_reason": "grounded_in_reranked_documents",
+            }
+        ],
+        "sub_answers": [
             {
                 "sub_question": "What changed in policy X?",
                 "sub_answer": "Policy X was revised in January 2026.",
@@ -177,6 +199,50 @@ def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
         "config": {"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
+    }
+
+
+def test_post_run_accepts_additive_controls_payload_without_breaking_legacy_forwarding(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunResponse(
+            main_question=query,
+            thread_id="550e8400-e29b-41d4-a716-446655440010",
+            sub_qa=[],
+            sub_answers=[],
+            output=f"Echo: {query}",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_advanced_rag", fake_sdk_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": "Run with additive controls",
+            "controls": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+                "hitl": {"enabled": True},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sub_answers"] == []
+    assert captured == {
+        "query": "Run with additive controls",
+        "config": None,
     }
 
 
@@ -263,6 +329,12 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
                     sub_answer="",
                 )
             ],
+            sub_answers=[
+                SubQuestionAnswer(
+                    sub_question="First question?",
+                    sub_answer="",
+                )
+            ],
             output="",
             result=None,
             error=None,
@@ -300,6 +372,17 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
         "decomposition_sub_questions": ["First question?", "Second question?"],
         "sub_question_artifacts": [],
         "sub_qa": [
+            {
+                "sub_question": "First question?",
+                "sub_answer": "",
+                "tool_call_input": "",
+                "expanded_query": "",
+                "sub_agent_response": "",
+                "answerable": False,
+                "verification_reason": "",
+            }
+        ],
+        "sub_answers": [
             {
                 "sub_question": "First question?",
                 "sub_answer": "",
@@ -362,11 +445,29 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
                     verification_reason="grounded_in_reranked_documents",
                 )
             ],
+            sub_answers=[
+                SubQuestionAnswer(
+                    sub_question="What is NATO?",
+                    sub_answer="A political and military alliance.",
+                    expanded_query="What is NATO and how is it structured?",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
             output="NATO is a political and military alliance. [1]",
             result=RuntimeAgentRunResponse(
                 main_question="What is NATO?",
                 thread_id="550e8400-e29b-41d4-a716-446655440001",
                 sub_qa=[
+                    SubQuestionAnswer(
+                        sub_question="What is NATO?",
+                        sub_answer="A political and military alliance.",
+                        expanded_query="What is NATO and how is it structured?",
+                        answerable=True,
+                        verification_reason="grounded_in_reranked_documents",
+                    )
+                ],
+                sub_answers=[
                     SubQuestionAnswer(
                         sub_question="What is NATO?",
                         sub_answer="A political and military alliance.",
@@ -441,11 +542,33 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
                 "verification_reason": "grounded_in_reranked_documents",
             }
         ],
+        "sub_answers": [
+            {
+                "sub_question": "What is NATO?",
+                "sub_answer": "A political and military alliance.",
+                "tool_call_input": "",
+                "expanded_query": "What is NATO and how is it structured?",
+                "sub_agent_response": "",
+                "answerable": True,
+                "verification_reason": "grounded_in_reranked_documents",
+            }
+        ],
         "output": "NATO is a political and military alliance. [1]",
         "result": {
             "main_question": "What is NATO?",
             "thread_id": "550e8400-e29b-41d4-a716-446655440001",
             "sub_qa": [
+                {
+                    "sub_question": "What is NATO?",
+                    "sub_answer": "A political and military alliance.",
+                    "tool_call_input": "",
+                    "expanded_query": "What is NATO and how is it structured?",
+                    "sub_agent_response": "",
+                    "answerable": True,
+                    "verification_reason": "grounded_in_reranked_documents",
+                }
+            ],
+            "sub_answers": [
                 {
                     "sub_question": "What is NATO?",
                     "sub_answer": "A political and military alliance.",
@@ -553,6 +676,7 @@ def test_post_run_resume_returns_status_with_stable_thread_id(monkeypatch) -> No
                 main_question="Approve run?",
                 thread_id=thread_id,
                 sub_qa=[],
+                sub_answers=[],
                 output="Recovered successfully.",
             ),
         )

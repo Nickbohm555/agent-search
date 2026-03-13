@@ -7,9 +7,28 @@ from pydantic import BaseModel, Field
 from pydantic import field_validator
 
 
+class RuntimeRerankControl(BaseModel):
+    enabled: bool | None = None
+
+
+class RuntimeQueryExpansionControl(BaseModel):
+    enabled: bool | None = None
+
+
+class RuntimeHitlControl(BaseModel):
+    enabled: bool = False
+
+
+class RuntimeAgentRunControls(BaseModel):
+    rerank: RuntimeRerankControl | None = None
+    query_expansion: RuntimeQueryExpansionControl | None = None
+    hitl: RuntimeHitlControl | None = None
+
+
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
     thread_id: str | None = None
+    controls: RuntimeAgentRunControls | None = None
 
     @field_validator("thread_id")
     @classmethod
@@ -39,6 +58,7 @@ class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
     thread_id: str = ""
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
 
@@ -70,6 +90,7 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     decomposition_sub_questions: list[str] = Field(default_factory=list)
     sub_question_artifacts: list["SubQuestionArtifacts"] = Field(default_factory=list)
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str = ""
     result: RuntimeAgentRunResponse | None = None
     error: str | None = None
