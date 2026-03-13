@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 import threading
@@ -67,6 +68,18 @@ _JOBS: dict[str, AgentRunJobStatus] = {}
 _TERMINAL_LIFECYCLE_EVENT_TYPES = frozenset({"run.completed", "run.failed", "run.paused"})
 
 
+def _call_with_supported_kwargs(func: Any, /, **kwargs: Any) -> Any:
+    signature = inspect.signature(func)
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()):
+        return func(**kwargs)
+    supported_kwargs = {
+        key: value
+        for key, value in kwargs.items()
+        if key in signature.parameters
+    }
+    return func(**supported_kwargs)
+
+
 def _event_sequence(event_id: str | None) -> int:
     if event_id is None:
         return 0
@@ -108,12 +121,20 @@ def iter_agent_run_events(
             yield event
             if event.event_type in _TERMINAL_LIFECYCLE_EVENT_TYPES:
                 return
+        terminal_status_reached = False
         with _JOB_LOCK:
             job = _JOBS.get(job_id)
             if job is None:
                 return
-            if job.status in {"success", "error", "cancelled", "paused"}:
-                return
+            terminal_status_reached = job.status in {"success", "error", "cancelled", "paused"}
+        if terminal_status_reached:
+            trailing_events = list_agent_run_events(job_id, after_event_id=last_event_id)
+            for event in trailing_events:
+                last_event_id = event.event_id
+                yield event
+                if event.event_type in _TERMINAL_LIFECYCLE_EVENT_TYPES:
+                    return
+            return
         time.sleep(poll_interval)
 
 
@@ -336,7 +357,8 @@ def _run_agent_job(
 
         run_metadata = build_graph_run_metadata(run_id=run_id, thread_id=thread_id)
         if resume is None:
-            state = execute_runtime_graph(
+            state = _call_with_supported_kwargs(
+                execute_runtime_graph,
                 context=RuntimeGraphContext(
                     payload=payload,
                     model=model,
@@ -345,9 +367,8 @@ def _run_agent_job(
                 ),
                 run_metadata=run_metadata,
                 lifecycle_callback=lambda event: append_agent_run_event(job_id, event),
+                snapshot_callback=on_snapshot,
             )
-            for snapshot in state["stage_snapshots"]:
-                on_snapshot(snapshot, state)
             outcome = type(
                 "GraphExecutionOutcome",
                 (),
@@ -360,7 +381,8 @@ def _run_agent_job(
                 },
             )()
         else:
-            outcome = run_checkpointed_agent(
+            outcome = _call_with_supported_kwargs(
+                run_checkpointed_agent,
                 payload=payload,
                 vector_store=resolved_vector_store,
                 model=model,

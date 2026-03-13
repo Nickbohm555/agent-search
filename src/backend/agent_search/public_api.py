@@ -171,6 +171,34 @@ def advanced_rag(
     return response
 
 
+def _run_sync_operation(
+    operation: str,
+    query: str,
+    *,
+    vector_store: Any,
+    model: Any,
+    config: dict[str, Any] | None = None,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
+    langfuse_settings: Mapping[str, Any] | None = None,
+) -> RuntimeAgentRunResponse:
+    try:
+        return advanced_rag(
+            query,
+            vector_store=vector_store,
+            model=model,
+            config=config,
+            callbacks=callbacks,
+            langfuse_callback=langfuse_callback,
+            langfuse_settings=langfuse_settings,
+        )
+    except SDKError as exc:
+        if operation == "advanced_rag":
+            raise
+        root_cause = exc.__cause__ if isinstance(exc.__cause__, Exception) else exc
+        raise _map_sdk_error(operation=operation, exc=root_cause) from exc
+
+
 def run(
     query: str,
     *,
@@ -179,7 +207,8 @@ def run(
     config: dict[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.warning("SDK run() is deprecated; use advanced_rag()")
-    return advanced_rag(
+    return _run_sync_operation(
+        "run",
         query,
         vector_store=vector_store,
         model=model,

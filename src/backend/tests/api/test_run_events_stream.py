@@ -139,3 +139,43 @@ def test_run_events_stream_returns_404_for_unknown_job() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Job not found."}
+
+
+def test_iter_agent_run_events_drains_terminal_event_after_status_flip(monkeypatch) -> None:
+    from agent_search.runtime import jobs as jobs_module
+
+    job = AgentRunJobStatus(
+        job_id="job-123",
+        run_id="run-123",
+        thread_id="550e8400-e29b-41d4-a716-446655440000",
+        status="running",
+    )
+    started_event = _event(sequence=1, event_type="stage.completed", stage="final", status="completed")
+    terminal_event = _event(sequence=2, event_type="run.completed", stage="final", status="success")
+    job.lifecycle_events = [started_event]
+
+    with jobs_module._JOB_LOCK:
+        jobs_module._JOBS[job.job_id] = job
+
+    original_list_agent_run_events = jobs_module.list_agent_run_events
+    call_count = 0
+
+    def fake_list_agent_run_events(job_id: str, *, after_event_id: str | None = None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            with jobs_module._JOB_LOCK:
+                tracked_job = jobs_module._JOBS[job_id]
+                tracked_job.status = "success"
+                tracked_job.lifecycle_events.append(terminal_event)
+            return []
+        return original_list_agent_run_events(job_id, after_event_id=after_event_id)
+
+    monkeypatch.setattr(jobs_module, "list_agent_run_events", fake_list_agent_run_events)
+
+    streamed_events = list(jobs_module.iter_agent_run_events(job.job_id, poll_interval=0))
+
+    assert [event.event_type for event in streamed_events] == [
+        "stage.completed",
+        "run.completed",
+    ]

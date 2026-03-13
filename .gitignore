@@ -10,6 +10,7 @@ src/backend/.mypy_cache/
 src/backend/.venv/
 .loop-commit-msg
 .loop-commit-msg.full
+*.tsbuildinfo
 
 # Generated SDK policy: sdk/python is committed and intentionally not ignored.
 

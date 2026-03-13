@@ -19,8 +19,15 @@ class RerankerConfig:
     enabled: bool = True
     top_n: int | None = None
     provider: str = "auto"
+    model_name: str | None = None
     openai_model_name: str = "gpt-4.1-mini"
     openai_temperature: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.model_name is None:
+            object.__setattr__(self, "model_name", self.openai_model_name)
+        elif self.openai_model_name == "gpt-4.1-mini":
+            object.__setattr__(self, "openai_model_name", self.model_name)
 
 
 @dataclass(frozen=True)
@@ -55,6 +62,7 @@ def build_reranker_config_from_env() -> RerankerConfig:
         enabled=enabled,
         top_n=top_n,
         provider=provider,
+        model_name=openai_model_name,
         openai_model_name=openai_model_name,
         openai_temperature=openai_temperature,
     )
