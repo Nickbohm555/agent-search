@@ -17,19 +17,17 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictStr
+from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List, Optional
-from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class RuntimeAgentRunRequest(BaseModel):
+class RuntimeAgentRunResumeRequest(BaseModel):
     """
-    RuntimeAgentRunRequest
+    RuntimeAgentRunResumeRequest
     """ # noqa: E501
-    query: Annotated[str, Field(min_length=1, strict=True)]
-    thread_id: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["query", "thread_id"]
+    resume: Optional[Any] = None
+    __properties: ClassVar[List[str]] = ["resume"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -50,7 +48,7 @@ class RuntimeAgentRunRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunRequest from a JSON string"""
+        """Create an instance of RuntimeAgentRunResumeRequest from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -71,16 +69,16 @@ class RuntimeAgentRunRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # set to None if thread_id (nullable) is None
+        # set to None if resume (nullable) is None
         # and model_fields_set contains the field
-        if self.thread_id is None and "thread_id" in self.model_fields_set:
-            _dict['thread_id'] = None
+        if self.resume is None and "resume" in self.model_fields_set:
+            _dict['resume'] = None
 
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunRequest from a dict"""
+        """Create an instance of RuntimeAgentRunResumeRequest from a dict"""
         if obj is None:
             return None
 
@@ -88,8 +86,7 @@ class RuntimeAgentRunRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "query": obj.get("query"),
-            "thread_id": obj.get("thread_id")
+            "resume": obj.get("resume")
         })
         return _obj
 

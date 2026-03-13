@@ -88,6 +88,8 @@ Class | Method | HTTP request | Description
 *AgentsApi* | [**runtime_agent_run_api_agents_run_post**](docs/AgentsApi.md#runtime_agent_run_api_agents_run_post) | **POST** /api/agents/run | Runtime Agent Run
 *AgentsApi* | [**runtime_agent_run_async_api_agents_run_async_post**](docs/AgentsApi.md#runtime_agent_run_async_api_agents_run_async_post) | **POST** /api/agents/run-async | Runtime Agent Run Async
 *AgentsApi* | [**runtime_agent_run_cancel_api_agents_run_cancel_job_id_post**](docs/AgentsApi.md#runtime_agent_run_cancel_api_agents_run_cancel_job_id_post) | **POST** /api/agents/run-cancel/{job_id} | Runtime Agent Run Cancel
+*AgentsApi* | [**runtime_agent_run_events_api_agents_run_events_job_id_get**](docs/AgentsApi.md#runtime_agent_run_events_api_agents_run_events_job_id_get) | **GET** /api/agents/run-events/{job_id} | Runtime Agent Run Events
+*AgentsApi* | [**runtime_agent_run_resume_api_agents_run_resume_job_id_post**](docs/AgentsApi.md#runtime_agent_run_resume_api_agents_run_resume_job_id_post) | **POST** /api/agents/run-resume/{job_id} | Runtime Agent Run Resume
 *AgentsApi* | [**runtime_agent_run_status_api_agents_run_status_job_id_get**](docs/AgentsApi.md#runtime_agent_run_status_api_agents_run_status_job_id_get) | **GET** /api/agents/run-status/{job_id} | Runtime Agent Run Status
 *DefaultApi* | [**health_api_health_get**](docs/DefaultApi.md#health_api_health_get) | **GET** /api/health | Health
 *InternalDataApi* | [**list_wiki_sources_api_internal_data_wiki_sources_get**](docs/InternalDataApi.md#list_wiki_sources_api_internal_data_wiki_sources_get) | **GET** /api/internal-data/wiki-sources | List Wiki Sources
@@ -115,6 +117,7 @@ Class | Method | HTTP request | Description
  - [RuntimeAgentRunAsyncStatusResponse](docs/RuntimeAgentRunAsyncStatusResponse.md)
  - [RuntimeAgentRunRequest](docs/RuntimeAgentRunRequest.md)
  - [RuntimeAgentRunResponse](docs/RuntimeAgentRunResponse.md)
+ - [RuntimeAgentRunResumeRequest](docs/RuntimeAgentRunResumeRequest.md)
  - [SubQuestionAnswer](docs/SubQuestionAnswer.md)
  - [SubQuestionArtifacts](docs/SubQuestionArtifacts.md)
  - [ValidationError](docs/ValidationError.md)
@@ -131,6 +134,7 @@ Endpoints do not require authorization.
 
 
 ## Author
+
 
 
 

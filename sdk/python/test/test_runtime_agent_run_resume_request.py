@@ -14,10 +14,10 @@
 
 import unittest
 
-from openapi_client.models.runtime_agent_run_request import RuntimeAgentRunRequest
+from openapi_client.models.runtime_agent_run_resume_request import RuntimeAgentRunResumeRequest
 
-class TestRuntimeAgentRunRequest(unittest.TestCase):
-    """RuntimeAgentRunRequest unit test stubs"""
+class TestRuntimeAgentRunResumeRequest(unittest.TestCase):
+    """RuntimeAgentRunResumeRequest unit test stubs"""
 
     def setUp(self):
         pass
@@ -25,27 +25,25 @@ class TestRuntimeAgentRunRequest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def make_instance(self, include_optional) -> RuntimeAgentRunRequest:
-        """Test RuntimeAgentRunRequest
+    def make_instance(self, include_optional) -> RuntimeAgentRunResumeRequest:
+        """Test RuntimeAgentRunResumeRequest
             include_optional is a boolean, when False only required
             params are included, when True both required and
             optional params are included """
-        # uncomment below to create an instance of `RuntimeAgentRunRequest`
+        # uncomment below to create an instance of `RuntimeAgentRunResumeRequest`
         """
-        model = RuntimeAgentRunRequest()
+        model = RuntimeAgentRunResumeRequest()
         if include_optional:
-            return RuntimeAgentRunRequest(
-                query = '0',
-                thread_id = ''
+            return RuntimeAgentRunResumeRequest(
+                resume = None
             )
         else:
-            return RuntimeAgentRunRequest(
-                query = '0',
+            return RuntimeAgentRunResumeRequest(
         )
         """
 
-    def testRuntimeAgentRunRequest(self):
-        """Test RuntimeAgentRunRequest"""
+    def testRuntimeAgentRunResumeRequest(self):
+        """Test RuntimeAgentRunResumeRequest"""
         # inst_req_only = self.make_instance(include_optional=False)
         # inst_req_and_optional = self.make_instance(include_optional=True)
 

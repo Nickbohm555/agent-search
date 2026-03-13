@@ -37,7 +37,8 @@ class TestRuntimeAgentRunAsyncStartResponse(unittest.TestCase):
             return RuntimeAgentRunAsyncStartResponse(
                 job_id = '',
                 run_id = '',
-                status = ''
+                status = '',
+                thread_id = ''
             )
         else:
             return RuntimeAgentRunAsyncStartResponse(

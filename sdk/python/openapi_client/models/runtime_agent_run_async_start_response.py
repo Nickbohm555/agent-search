@@ -18,7 +18,7 @@ import re  # noqa: F401
 import json
 
 from pydantic import BaseModel, ConfigDict, StrictStr
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -29,7 +29,8 @@ class RuntimeAgentRunAsyncStartResponse(BaseModel):
     job_id: StrictStr
     run_id: StrictStr
     status: StrictStr
-    __properties: ClassVar[List[str]] = ["job_id", "run_id", "status"]
+    thread_id: Optional[StrictStr] = ''
+    __properties: ClassVar[List[str]] = ["job_id", "run_id", "status", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -85,7 +86,8 @@ class RuntimeAgentRunAsyncStartResponse(BaseModel):
         _obj = cls.model_validate({
             "job_id": obj.get("job_id"),
             "run_id": obj.get("run_id"),
-            "status": obj.get("status")
+            "status": obj.get("status"),
+            "thread_id": obj.get("thread_id") if obj.get("thread_id") is not None else ''
         })
         return _obj
 

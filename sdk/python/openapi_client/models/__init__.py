@@ -28,6 +28,7 @@ from openapi_client.models.runtime_agent_run_async_start_response import Runtime
 from openapi_client.models.runtime_agent_run_async_status_response import RuntimeAgentRunAsyncStatusResponse
 from openapi_client.models.runtime_agent_run_request import RuntimeAgentRunRequest
 from openapi_client.models.runtime_agent_run_response import RuntimeAgentRunResponse
+from openapi_client.models.runtime_agent_run_resume_request import RuntimeAgentRunResumeRequest
 from openapi_client.models.sub_question_answer import SubQuestionAnswer
 from openapi_client.models.sub_question_artifacts import SubQuestionArtifacts
 from openapi_client.models.validation_error import ValidationError
@@ -35,3 +36,4 @@ from openapi_client.models.wiki_load_input import WikiLoadInput
 from openapi_client.models.wiki_source_option import WikiSourceOption
 from openapi_client.models.wiki_sources_response import WikiSourcesResponse
 from openapi_client.models.wipe_response import WipeResponse
+

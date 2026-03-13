@@ -46,7 +46,8 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     status: StrictStr
     sub_qa: Optional[List[SubQuestionAnswer]] = None
     sub_question_artifacts: Optional[List[SubQuestionArtifacts]] = None
-    __properties: ClassVar[List[str]] = ["cancel_requested", "decomposition_sub_questions", "elapsed_ms", "error", "finished_at", "job_id", "message", "output", "result", "run_id", "stage", "stages", "started_at", "status", "sub_qa", "sub_question_artifacts"]
+    thread_id: Optional[StrictStr] = ''
+    __properties: ClassVar[List[str]] = ["cancel_requested", "decomposition_sub_questions", "elapsed_ms", "error", "finished_at", "job_id", "message", "output", "result", "run_id", "stage", "stages", "started_at", "status", "sub_qa", "sub_question_artifacts", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -164,7 +165,8 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
             "started_at": obj.get("started_at"),
             "status": obj.get("status"),
             "sub_qa": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_qa"]] if obj.get("sub_qa") is not None else None,
-            "sub_question_artifacts": [SubQuestionArtifacts.from_dict(_item) for _item in obj["sub_question_artifacts"]] if obj.get("sub_question_artifacts") is not None else None
+            "sub_question_artifacts": [SubQuestionArtifacts.from_dict(_item) for _item in obj["sub_question_artifacts"]] if obj.get("sub_question_artifacts") is not None else None,
+            "thread_id": obj.get("thread_id") if obj.get("thread_id") is not None else ''
         })
         return _obj
 

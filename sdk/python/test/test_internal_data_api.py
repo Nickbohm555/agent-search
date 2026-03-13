@@ -33,10 +33,31 @@ class TestInternalDataApi(unittest.TestCase):
         """
         pass
 
+    def test_load_cancel_api_internal_data_load_cancel_job_id_post(self) -> None:
+        """Test case for load_cancel_api_internal_data_load_cancel_job_id_post
+
+        Load Cancel
+        """
+        pass
+
     def test_load_data_api_internal_data_load_post(self) -> None:
         """Test case for load_data_api_internal_data_load_post
 
         Load Data
+        """
+        pass
+
+    def test_load_data_async_api_internal_data_load_async_post(self) -> None:
+        """Test case for load_data_async_api_internal_data_load_async_post
+
+        Load Data Async
+        """
+        pass
+
+    def test_load_status_api_internal_data_load_status_job_id_get(self) -> None:
+        """Test case for load_status_api_internal_data_load_status_job_id_get
+
+        Load Status
         """
         pass
 

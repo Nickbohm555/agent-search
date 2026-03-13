@@ -32,7 +32,8 @@ class RuntimeAgentRunResponse(BaseModel):
     main_question: Optional[StrictStr] = ''
     output: StrictStr
     sub_qa: Optional[List[SubQuestionAnswer]] = None
-    __properties: ClassVar[List[str]] = ["final_citations", "main_question", "output", "sub_qa"]
+    thread_id: Optional[StrictStr] = ''
+    __properties: ClassVar[List[str]] = ["final_citations", "main_question", "output", "sub_qa", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -103,7 +104,8 @@ class RuntimeAgentRunResponse(BaseModel):
             "final_citations": [CitationSourceRow.from_dict(_item) for _item in obj["final_citations"]] if obj.get("final_citations") is not None else None,
             "main_question": obj.get("main_question") if obj.get("main_question") is not None else '',
             "output": obj.get("output"),
-            "sub_qa": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_qa"]] if obj.get("sub_qa") is not None else None
+            "sub_qa": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_qa"]] if obj.get("sub_qa") is not None else None,
+            "thread_id": obj.get("thread_id") if obj.get("thread_id") is not None else ''
         })
         return _obj
 

@@ -33,6 +33,41 @@ class TestAgentsApi(unittest.TestCase):
         """
         pass
 
+    def test_runtime_agent_run_async_api_agents_run_async_post(self) -> None:
+        """Test case for runtime_agent_run_async_api_agents_run_async_post
+
+        Runtime Agent Run Async
+        """
+        pass
+
+    def test_runtime_agent_run_cancel_api_agents_run_cancel_job_id_post(self) -> None:
+        """Test case for runtime_agent_run_cancel_api_agents_run_cancel_job_id_post
+
+        Runtime Agent Run Cancel
+        """
+        pass
+
+    def test_runtime_agent_run_events_api_agents_run_events_job_id_get(self) -> None:
+        """Test case for runtime_agent_run_events_api_agents_run_events_job_id_get
+
+        Runtime Agent Run Events
+        """
+        pass
+
+    def test_runtime_agent_run_resume_api_agents_run_resume_job_id_post(self) -> None:
+        """Test case for runtime_agent_run_resume_api_agents_run_resume_job_id_post
+
+        Runtime Agent Run Resume
+        """
+        pass
+
+    def test_runtime_agent_run_status_api_agents_run_status_job_id_get(self) -> None:
+        """Test case for runtime_agent_run_status_api_agents_run_status_job_id_get
+
+        Runtime Agent Run Status
+        """
+        pass
+
 
 if __name__ == '__main__':
     unittest.main()

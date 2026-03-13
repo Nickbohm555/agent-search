@@ -35,6 +35,16 @@ class TestRuntimeAgentRunResponse(unittest.TestCase):
         model = RuntimeAgentRunResponse()
         if include_optional:
             return RuntimeAgentRunResponse(
+                final_citations = [
+                    openapi_client.models.citation_source_row.CitationSourceRow(
+                        citation_index = 1.0, 
+                        content = '', 
+                        document_id = '', 
+                        rank = 1.0, 
+                        score = 1.337, 
+                        source = '', 
+                        title = '', )
+                    ],
                 main_question = '',
                 output = '',
                 sub_qa = [
@@ -46,7 +56,8 @@ class TestRuntimeAgentRunResponse(unittest.TestCase):
                         sub_question = '', 
                         tool_call_input = '', 
                         verification_reason = '', )
-                    ]
+                    ],
+                thread_id = ''
             )
         else:
             return RuntimeAgentRunResponse(

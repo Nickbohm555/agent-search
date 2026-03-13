@@ -67,7 +67,8 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
                             sub_question = '', 
                             tool_call_input = '', 
                             verification_reason = '', )
-                        ], ),
+                        ], 
+                    thread_id = '', ),
                 run_id = '',
                 stage = '',
                 stages = [
@@ -124,7 +125,8 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
                             ], 
                         sub_answer = '', 
                         sub_question = '', )
-                    ]
+                    ],
+                thread_id = ''
             )
         else:
             return RuntimeAgentRunAsyncStatusResponse(

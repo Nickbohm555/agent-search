@@ -45,6 +45,7 @@ __all__ = [
     "RuntimeAgentRunAsyncStatusResponse",
     "RuntimeAgentRunRequest",
     "RuntimeAgentRunResponse",
+    "RuntimeAgentRunResumeRequest",
     "SubQuestionAnswer",
     "SubQuestionArtifacts",
     "ValidationError",
@@ -86,6 +87,7 @@ from openapi_client.models.runtime_agent_run_async_start_response import Runtime
 from openapi_client.models.runtime_agent_run_async_status_response import RuntimeAgentRunAsyncStatusResponse as RuntimeAgentRunAsyncStatusResponse
 from openapi_client.models.runtime_agent_run_request import RuntimeAgentRunRequest as RuntimeAgentRunRequest
 from openapi_client.models.runtime_agent_run_response import RuntimeAgentRunResponse as RuntimeAgentRunResponse
+from openapi_client.models.runtime_agent_run_resume_request import RuntimeAgentRunResumeRequest as RuntimeAgentRunResumeRequest
 from openapi_client.models.sub_question_answer import SubQuestionAnswer as SubQuestionAnswer
 from openapi_client.models.sub_question_artifacts import SubQuestionArtifacts as SubQuestionArtifacts
 from openapi_client.models.validation_error import ValidationError as ValidationError
@@ -93,3 +95,4 @@ from openapi_client.models.wiki_load_input import WikiLoadInput as WikiLoadInput
 from openapi_client.models.wiki_source_option import WikiSourceOption as WikiSourceOption
 from openapi_client.models.wiki_sources_response import WikiSourcesResponse as WikiSourcesResponse
 from openapi_client.models.wipe_response import WipeResponse as WipeResponse
+

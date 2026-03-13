@@ -342,6 +342,11 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "thread_id": {
+            "default": "",
+            "title": "Thread Id",
+            "type": "string"
           }
         },
         "required": [
@@ -468,6 +473,11 @@
             },
             "title": "Sub Question Artifacts",
             "type": "array"
+          },
+          "thread_id": {
+            "default": "",
+            "title": "Thread Id",
+            "type": "string"
           }
         },
         "required": [
@@ -483,6 +493,17 @@
             "minLength": 1,
             "title": "Query",
             "type": "string"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
           }
         },
         "required": [
@@ -515,12 +536,27 @@
             },
             "title": "Sub Qa",
             "type": "array"
+          },
+          "thread_id": {
+            "default": "",
+            "title": "Thread Id",
+            "type": "string"
           }
         },
         "required": [
           "output"
         ],
         "title": "RuntimeAgentRunResponse",
+        "type": "object"
+      },
+      "RuntimeAgentRunResumeRequest": {
+        "properties": {
+          "resume": {
+            "default": true,
+            "title": "Resume"
+          }
+        },
+        "title": "RuntimeAgentRunResumeRequest",
         "type": "object"
       },
       "SubQuestionAnswer": {
@@ -856,6 +892,114 @@
           }
         },
         "summary": "Runtime Agent Run Cancel",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/run-events/{job_id}": {
+      "get": {
+        "operationId": "runtime_agent_run_events_api_agents_run_events__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runtime Agent Run Events",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/agents/run-resume/{job_id}": {
+      "post": {
+        "operationId": "runtime_agent_run_resume_api_agents_run_resume__job_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeAgentRunResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeAgentRunAsyncStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Runtime Agent Run Resume",
         "tags": [
           "agents"
         ]
