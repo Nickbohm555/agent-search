@@ -684,6 +684,7 @@ def map_graph_state_to_runtime_response(state: AgentGraphState | RAGState) -> Ru
     response = RuntimeAgentRunResponse(
         main_question=rag_state["main_question"],
         sub_qa=[item.model_copy(deep=True) for item in rag_state["sub_qa"]],
+        sub_answers=[item.model_copy(deep=True) for item in rag_state["sub_qa"]],
         output=output,
         final_citations=final_citations,
     )

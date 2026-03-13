@@ -9,8 +9,8 @@
 ## Current Position
 
 - **Current phase:** 1
-- **Current plan:** 01-02
-- **Status:** Summary implemented
+- **Current plan:** 01-03
+- **Status:** Task 1 implemented
 - **Progress:** 0/6 phases complete
 - **Progress bar:** `░░░░░░` (0%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 1 Plan 01-03 Task 1.
-- Implement additive `sub_answers` runtime response mapping in the service layer.
+- Start Phase 1 Plan 01-03 Task 2.
+- Extend frontend validators/types to accept additive `sub_answers`.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 9 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 01-02 summary is complete, and the next dependency-ordered work item is Plan 01-03 Task 1.
-- **Resume note:** State update: `phase=01`, `plan=01-02`, `task=summary`, `status=implemented`.
+- **Next command:** Implement Section 10 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 01-03 Task 1 is complete, and the next dependency-ordered work item is Plan 01-03 Task 2.
+- **Resume note:** State update: `phase=01`, `plan=01-03`, `task=1`, `status=implemented`.
