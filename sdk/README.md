@@ -5,6 +5,19 @@ This directory holds both SDK surfaces used by `agent-search`:
 - Primary: in-process runtime SDK (`agent_search`) under `src/backend/agent_search`
 - Secondary: generated HTTP client SDK under `sdk/python`
 
+## Migration And Deprecation Guidance
+
+If you are adopting the LangGraph-native `1.0.0` release, start here before wiring new SDK usage:
+
+- [Migration Guide](../docs/migration-guide.md)
+- [Deprecation Map](../docs/deprecation-map.md)
+
+Recommended action:
+
+- Use `advanced_rag(...)` as the primary sync entrypoint for new integrations.
+- Treat `run(...)` as a deprecated compatibility alias only.
+- Move tracing setup to `build_langfuse_callback(...)` plus `langfuse_callback=...` instead of relying on `langfuse_settings` alone.
+
 ## Primary SDK: `agent_search` (in-process)
 
 Public functions:

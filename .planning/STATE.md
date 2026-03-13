@@ -10,7 +10,7 @@
 
 - Current phase: 5 - Major Release and Migration Documentation
 - Current plan: 05-02
-- Current task: 2
+- Current task: 3
 - Current status: implemented
 - Progress: 80% (4/5 phases complete)
 
@@ -37,7 +37,7 @@ Progress bar: `[####-] 80%`
 
 ### TODOs
 
-- Finalize migration and deprecation documentation for external adopters.
+- Create the Phase 5 Plan 05-02 execution summary.
 - Keep release documentation aligned with the completed LangGraph runtime and observability contracts.
 
 ### Blockers
@@ -46,6 +46,6 @@ Progress bar: `[####-] 80%`
 
 ## Session Continuity
 
-- Last completed artifact: `docs/deprecation-map.md` with deprecated flows, replacement paths, support status, and removal horizon semantics.
-- Last updated traceability: Phase 5 plan `05-02` task 2 implemented on 2026-03-13; next work is the SDK migration/deprecation callout update.
+- Last completed artifact: `sdk/README.md` with a top-level migration and deprecation callout linking the Phase 5 migration docs.
+- Last updated traceability: Phase 5 plan `05-02` task 3 implemented on 2026-03-13; next work is the plan summary section.
 - Next recommended command: `/gsd-implement-next`
