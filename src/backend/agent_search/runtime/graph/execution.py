@@ -5,7 +5,9 @@ from typing import Any, Mapping
 
 from agent_search.runtime.graph.builder import build_runtime_graph
 from agent_search.runtime.graph.state import RuntimeGraphContext, to_runtime_graph_state
+from agent_search.runtime.state import to_rag_state
 from agent_search.runtime.lifecycle_events import LifecycleEventBuilder, RuntimeLifecycleEvent
+from schemas import GraphStageSnapshot
 
 
 def _iter_graph_stream(
@@ -27,7 +29,6 @@ def _iter_graph_stream(
             mode, payload = "values", item
         if mode == "values":
             terminal_state = payload
-            continue
         signals.append((str(mode), payload))
     return terminal_state, signals
 
@@ -50,7 +51,9 @@ def execute_runtime_graph(
     run_metadata: Any,
     config: Mapping[str, Any] | None = None,
     lifecycle_callback: Callable[[RuntimeLifecycleEvent], None] | None = None,
+    snapshot_callback: Callable[[GraphStageSnapshot, Any], None] | None = None,
     resumed: bool = False,
+    emit_success_terminal_event: bool = True,
 ) -> Any:
     graph = build_runtime_graph(context=context)
     graph_input = to_runtime_graph_state(
@@ -60,6 +63,7 @@ def execute_runtime_graph(
     )
     execution_config = _build_execution_config(run_metadata=run_metadata, config=config)
     lifecycle_builder = LifecycleEventBuilder(run_metadata=run_metadata) if lifecycle_callback is not None else None
+    last_snapshot_count = 0
     try:
         if lifecycle_builder is not None:
             start_event = (
@@ -69,10 +73,18 @@ def execute_runtime_graph(
             )
             lifecycle_callback(start_event)
         terminal_state, signals = _iter_graph_stream(graph=graph, graph_input=graph_input, config=execution_config)
-        if lifecycle_builder is not None:
-            for mode, payload in signals:
+        for mode, payload in signals:
+            if lifecycle_builder is not None:
                 for event in lifecycle_builder.consume_stream_signal(mode, payload):
                     lifecycle_callback(event)
+            if mode != "values" or snapshot_callback is None:
+                continue
+            rag_state = to_rag_state(payload)
+            snapshots = rag_state["stage_snapshots"]
+            while last_snapshot_count < len(snapshots):
+                snapshot_callback(snapshots[last_snapshot_count], rag_state)
+                last_snapshot_count += 1
+        if lifecycle_builder is not None and emit_success_terminal_event:
             lifecycle_callback(lifecycle_builder.emit_terminal(status="success"))
         if terminal_state is None:
             return graph.invoke(graph_input, config=execution_config)

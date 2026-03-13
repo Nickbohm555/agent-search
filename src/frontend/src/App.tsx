@@ -10,7 +10,6 @@ import {
   SubQuestionArtifact,
   WikiSourceOption,
   cancelInternalDataLoad,
-  getAgentRunStatus,
   getInternalDataLoadStatus,
   listWikiSources,
   startAgentRun,
@@ -277,61 +276,22 @@ export default function App() {
     console.info("Async run started.", { submittedQuery: submitted, jobId, runId: startResult.data.run_id });
     runEventsUnsubscribeRef.current?.();
 
-    const refreshStatusSnapshot = async (lifecycleEvent: RuntimeLifecycleEvent) => {
-      const statusResult = await getAgentRunStatus(jobId);
-      if (!statusResult.ok) {
-        if (isTerminalLifecycleEvent(lifecycleEvent)) {
-          const failureMessage = lifecycleEvent.error || statusResult.error.message;
-          setRunState(lifecycleEvent.status === "success" ? "success" : "error");
-          setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
-          if (lifecycleEvent.status !== "success") {
-            setRunStatusMessage(failureMessage);
-          }
-          setRunJobId(null);
-        }
-        console.error("Async run status fetch after lifecycle event failed.", {
-          submittedQuery: submitted,
-          jobId,
-          eventType: lifecycleEvent.event_type,
-          error: statusResult.error.message,
-        });
-        return;
-      }
-
-      const status = statusResult.data;
-      applyRunSnapshot({
-        status,
-        submittedQuery: submitted,
-        jobId,
-        setDecompositionSubQuestions,
-        setSubQuestionArtifacts,
-        setRunSubQa,
-        setRunSummary,
-        setLastSuccessfulSynthesis,
-      });
-
-      if (!isTerminalLifecycleEvent(lifecycleEvent)) {
-        return;
-      }
-
-      if (status.status === "success") {
-        setRunState("success");
-        setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
-        setRunJobId(null);
-        return;
-      }
-
-      setRunState("error");
-      setRunStatusMessage(status.error || lifecycleEvent.error || status.message || `Run ${status.status}.`);
-      setRunJobId(null);
-    };
-
     runEventsUnsubscribeRef.current = subscribeToAgentRunEvents(jobId, {
       onEvent: (lifecycleEvent) => {
         setRunEvents((current) => current.concat(lifecycleEvent));
         setRunCurrentStage(lifecycleEvent.stage);
         setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
         setStageStatuses((current) => computeStageStatusesFromEvents(orderedStages, current, lifecycleEvent));
+        applyRunEventData({
+          lifecycleEvent,
+          submittedQuery: submitted,
+          jobId,
+          setDecompositionSubQuestions,
+          setSubQuestionArtifacts,
+          setRunSubQa,
+          setRunSummary,
+          setLastSuccessfulSynthesis,
+        });
         console.info("Async run lifecycle event received.", {
           submittedQuery: submitted,
           jobId,
@@ -340,11 +300,12 @@ export default function App() {
           backendStatus: lifecycleEvent.status,
         });
 
-        if (lifecycleEvent.event_type !== "run.started") {
-          void refreshStatusSnapshot(lifecycleEvent);
-        }
-
         if (isTerminalLifecycleEvent(lifecycleEvent)) {
+          setRunState(lifecycleEvent.status === "success" ? "success" : "error");
+          if (lifecycleEvent.status !== "success") {
+            setRunStatusMessage(lifecycleEvent.error || formatLifecycleEventLabel(lifecycleEvent));
+          }
+          setRunJobId(null);
           runEventsUnsubscribeRef.current?.();
           runEventsUnsubscribeRef.current = null;
         }
@@ -943,18 +904,8 @@ function markPreviousStagesCompleted(
   }
 }
 
-function applyRunSnapshot(args: {
-  status: {
-    stage: string;
-    status: string;
-    decomposition_sub_questions: string[];
-    sub_question_artifacts: SubQuestionArtifact[];
-    sub_qa: SubQuestionAnswer[];
-    result?: RuntimeAgentRunResponse | null;
-    output: string;
-    elapsed_ms?: number | null;
-    started_at?: number | null;
-  };
+function applyRunEventData(args: {
+  lifecycleEvent: RuntimeLifecycleEvent;
   submittedQuery: string;
   jobId: string;
   setDecompositionSubQuestions: (value: string[]) => void;
@@ -964,7 +915,7 @@ function applyRunSnapshot(args: {
   setLastSuccessfulSynthesis: (value: RuntimeAgentRunResponse | null) => void;
 }): void {
   const {
-    status,
+    lifecycleEvent,
     submittedQuery,
     jobId,
     setDecompositionSubQuestions,
@@ -974,48 +925,59 @@ function applyRunSnapshot(args: {
     setLastSuccessfulSynthesis,
   } = args;
 
-  setDecompositionSubQuestions(status.decomposition_sub_questions);
-  setSubQuestionArtifacts(status.sub_question_artifacts);
-  setRunSubQa(status.sub_qa);
+  if (lifecycleEvent.decomposition_sub_questions) {
+    setDecompositionSubQuestions(lifecycleEvent.decomposition_sub_questions);
+  }
+  if (lifecycleEvent.sub_question_artifacts) {
+    setSubQuestionArtifacts(lifecycleEvent.sub_question_artifacts);
+  }
+  if (lifecycleEvent.sub_qa) {
+    setRunSubQa(lifecycleEvent.sub_qa);
+  }
 
-  const searchRawHitsTotal = status.sub_question_artifacts.reduce(
+  if (!lifecycleEvent.sub_question_artifacts || !lifecycleEvent.sub_qa) {
+    if (lifecycleEvent.result && mapBackendStageToCanonical(lifecycleEvent.stage) === "final") {
+      setLastSuccessfulSynthesis(lifecycleEvent.result);
+      setRunSubQa(lifecycleEvent.result.sub_qa);
+    }
+    return;
+  }
+
+  const searchRawHitsTotal = lifecycleEvent.sub_question_artifacts.reduce(
     (sum, artifact) => sum + artifact.retrieval_provenance.length,
     0,
   );
-  const searchDedupedHitsTotal = status.sub_question_artifacts.reduce(
+  const searchDedupedHitsTotal = lifecycleEvent.sub_question_artifacts.reduce(
     (sum, artifact) => sum + artifact.retrieved_docs.length,
     0,
   );
-  const rerankRowsTotal = status.sub_question_artifacts.reduce((sum, artifact) => sum + artifact.reranked_docs.length, 0);
-  const rerankBypassedCount = status.sub_question_artifacts.reduce((sum, artifact) => {
-    const matchingSubQa = status.sub_qa.find((item) => item.sub_question === artifact.sub_question);
+  const rerankRowsTotal = lifecycleEvent.sub_question_artifacts.reduce(
+    (sum, artifact) => sum + artifact.reranked_docs.length,
+    0,
+  );
+  const rerankBypassedCount = lifecycleEvent.sub_question_artifacts.reduce((sum, artifact) => {
+    const matchingSubQa = lifecycleEvent.sub_qa?.find((item) => item.sub_question === artifact.sub_question);
     return sum + (isRerankFallback({ artifact, subQa: matchingSubQa }) ? 1 : 0);
   }, 0);
-  const totalLatencyMs =
-    typeof status.elapsed_ms === "number"
-      ? status.elapsed_ms
-      : typeof status.started_at === "number"
-        ? Math.max(0, Math.round(Date.now() - status.started_at * 1000))
-        : null;
 
   setRunSummary({
     searchRawHitsTotal,
     searchDedupedHitsTotal,
     rerankRowsTotal,
     rerankBypassedCount,
-    citationCoverageCount: countSubanswersWithCitations(status.sub_qa),
-    citationCoverageTotal: status.sub_qa.length,
-    totalLatencyMs,
+    citationCoverageCount: countSubanswersWithCitations(lifecycleEvent.sub_qa),
+    citationCoverageTotal: lifecycleEvent.sub_qa.length,
+    totalLatencyMs: lifecycleEvent.elapsed_ms ?? null,
   });
 
-  if (status.status === "success") {
-    const response = status.result ?? {
+  if (lifecycleEvent.event_type === "run.completed") {
+    const response = lifecycleEvent.result ?? {
       main_question: submittedQuery,
-      sub_qa: status.sub_qa,
-      output: status.output,
+      sub_qa: lifecycleEvent.sub_qa,
+      output: lifecycleEvent.output ?? "",
       final_citations: [],
     };
-    const completedStage = mapBackendStageToCanonical(status.stage);
+    const completedStage = mapBackendStageToCanonical(lifecycleEvent.stage);
     if (completedStage === "final") {
       setLastSuccessfulSynthesis(response);
       console.info("Final synthesis panel updated from completed run.", {
@@ -1029,7 +991,7 @@ function applyRunSnapshot(args: {
       console.warn("Run marked as success before synthesis stage completed; preserving previous final synthesis panel.", {
         submittedQuery,
         jobId,
-        backendStage: status.stage,
+        backendStage: lifecycleEvent.stage,
       });
     }
     setRunSubQa(response.sub_qa);

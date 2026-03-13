@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from schemas import GraphRunMetadata
+from schemas import GraphRunMetadata, RuntimeAgentRunResponse, SubQuestionAnswer, SubQuestionArtifacts
 from utils.langfuse_tracing import build_trace_metadata
 
 
@@ -20,6 +20,12 @@ class RuntimeLifecycleEvent(BaseModel):
     status: str
     emitted_at: str
     error: str | None = None
+    decomposition_sub_questions: list[str] | None = None
+    sub_question_artifacts: list[SubQuestionArtifacts] | None = None
+    sub_qa: list[SubQuestionAnswer] | None = None
+    output: str | None = None
+    result: RuntimeAgentRunResponse | None = None
+    elapsed_ms: int | None = None
 
 
 def _utcnow() -> datetime:
@@ -145,6 +151,12 @@ class LifecycleEventBuilder:
         stage: str,
         status: str,
         error: str | None = None,
+        decomposition_sub_questions: list[str] | None = None,
+        sub_question_artifacts: list[SubQuestionArtifacts] | None = None,
+        sub_qa: list[SubQuestionAnswer] | None = None,
+        output: str | None = None,
+        result: RuntimeAgentRunResponse | None = None,
+        elapsed_ms: int | None = None,
     ) -> RuntimeLifecycleEvent:
         self._sequence += 1
         emitted_at = self._clock().isoformat()
@@ -163,6 +175,12 @@ class LifecycleEventBuilder:
             status=str(metadata["status"]),
             emitted_at=emitted_at,
             error=error,
+            decomposition_sub_questions=decomposition_sub_questions,
+            sub_question_artifacts=sub_question_artifacts,
+            sub_qa=sub_qa,
+            output=output,
+            result=result,
+            elapsed_ms=elapsed_ms,
         )
 
 

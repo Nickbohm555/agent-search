@@ -191,6 +191,8 @@ def run_checkpointed_agent(
     initial_search_context: list[dict[str, Any]] | None = None,
     snapshot_callback: Any | None = None,
     resume: Any | None = None,
+    emit_success_terminal_event: bool = True,
+    emit_paused_terminal_event: bool = True,
 ) -> DurableExecutionOutcome:
     compiled_graph = _LegacyCompiledGraph(
         payload=payload,
@@ -216,7 +218,12 @@ def run_checkpointed_agent(
             outcome = _coerce_durable_outcome(result, thread_id=run_metadata.thread_id)
             if lifecycle_builder is not None:
                 terminal_status = "paused" if outcome.status == "paused" else "success"
-                lifecycle_callback(lifecycle_builder.emit_terminal(status=terminal_status))
+                should_emit_terminal = (
+                    (terminal_status == "success" and emit_success_terminal_event)
+                    or (terminal_status == "paused" and emit_paused_terminal_event)
+                )
+                if should_emit_terminal:
+                    lifecycle_callback(lifecycle_builder.emit_terminal(status=terminal_status))
             return outcome
         except Exception as exc:
             if lifecycle_builder is not None:

@@ -43,6 +43,7 @@ class AgentRunJobStatus:
     run_id: str
     thread_id: str
     status: str
+    trace_id: str = ""
     query: str = ""
     message: str = ""
     stage: str = "queued"
@@ -83,6 +84,46 @@ def append_agent_run_event(job_id: str, event: RuntimeLifecycleEvent) -> None:
         if job is None:
             return
         job.lifecycle_events.append(event.model_copy(deep=True))
+
+
+def _build_job_lifecycle_event(
+    job: AgentRunJobStatus,
+    *,
+    event_type: str,
+    stage: str,
+    status: str,
+    error: str | None = None,
+    decomposition_sub_questions: list[str] | None = None,
+    sub_question_artifacts: list[SubQuestionArtifacts] | None = None,
+    sub_qa: list[SubQuestionAnswer] | None = None,
+    output: str | None = None,
+    result: RuntimeAgentRunResponse | None = None,
+    elapsed_ms: int | None = None,
+) -> RuntimeLifecycleEvent:
+    previous_event_id = job.lifecycle_events[-1].event_id if job.lifecycle_events else None
+    next_sequence = _event_sequence(previous_event_id) + 1
+    return RuntimeLifecycleEvent(
+        event_type=event_type,
+        event_id=f"{job.run_id}:{next_sequence:06d}",
+        run_id=job.run_id,
+        thread_id=job.thread_id,
+        trace_id=job.trace_id,
+        stage=stage,
+        status=status,
+        emitted_at=datetime.now(timezone.utc).isoformat(),
+        error=error,
+        decomposition_sub_questions=decomposition_sub_questions,
+        sub_question_artifacts=sub_question_artifacts,
+        sub_qa=sub_qa,
+        output=output,
+        result=result,
+        elapsed_ms=elapsed_ms,
+    )
+
+
+def _elapsed_ms(job: AgentRunJobStatus) -> int:
+    finished_at = job.finished_at if job.finished_at is not None else time.time()
+    return max(0, int(round((finished_at - job.started_at) * 1000)))
 
 
 def list_agent_run_events(job_id: str, *, after_event_id: str | None = None) -> list[RuntimeLifecycleEvent]:
@@ -187,6 +228,7 @@ def start_agent_run_job(
         run_id=run_metadata.run_id,
         thread_id=run_metadata.thread_id,
         status="running",
+        trace_id=run_metadata.trace_id,
         query=payload.query,
         message="Run queued.",
         stage="queued",
@@ -305,18 +347,19 @@ def _run_agent_job(
 
         def on_snapshot(snapshot: GraphStageSnapshot, _state: Any) -> None:
             mapped_stage = _stage_from_snapshot(snapshot)
-            stage_metadata = AgentRunStageMetadata(
-                stage=mapped_stage,
-                status=snapshot.status,
-                sub_question=snapshot.sub_question,
-                lane_index=snapshot.lane_index,
-                lane_total=snapshot.lane_total,
-                emitted_at=time.time(),
-            )
+            snapshot_event: RuntimeLifecycleEvent | None = None
             with _JOB_LOCK:
                 current_job = _JOBS.get(job_id)
                 if current_job is None:
                     return
+                stage_metadata = AgentRunStageMetadata(
+                    stage=mapped_stage,
+                    status=snapshot.status,
+                    sub_question=snapshot.sub_question,
+                    lane_index=snapshot.lane_index,
+                    lane_total=snapshot.lane_total,
+                    emitted_at=time.time(),
+                )
                 current_job.stage = mapped_stage
                 current_job.message = f"Stage completed: {mapped_stage}"
                 current_job.stages.append(stage_metadata)
@@ -324,6 +367,18 @@ def _run_agent_job(
                 current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in snapshot.sub_question_artifacts]
                 current_job.sub_qa = [item.model_copy(deep=True) for item in snapshot.sub_qa]
                 current_job.output = snapshot.output
+                snapshot_event = _build_job_lifecycle_event(
+                    current_job,
+                    event_type="stage.snapshot",
+                    stage=mapped_stage,
+                    status=snapshot.status,
+                    decomposition_sub_questions=list(snapshot.decomposition_sub_questions),
+                    sub_question_artifacts=[item.model_copy(deep=True) for item in snapshot.sub_question_artifacts],
+                    sub_qa=[item.model_copy(deep=True) for item in snapshot.sub_qa],
+                    output=snapshot.output,
+                    elapsed_ms=_elapsed_ms(current_job),
+                )
+                current_job.lifecycle_events.append(snapshot_event)
             logger.info(
                 "Runtime async job snapshot job_id=%s run_id=%s stage=%s lane_index=%s lane_total=%s subquestions=%s",
                 job_id,
@@ -345,9 +400,9 @@ def _run_agent_job(
                 ),
                 run_metadata=run_metadata,
                 lifecycle_callback=lambda event: append_agent_run_event(job_id, event),
+                snapshot_callback=on_snapshot,
+                emit_success_terminal_event=False,
             )
-            for snapshot in state["stage_snapshots"]:
-                on_snapshot(snapshot, state)
             outcome = type(
                 "GraphExecutionOutcome",
                 (),
@@ -369,6 +424,8 @@ def _run_agent_job(
                 lifecycle_callback=lambda event: append_agent_run_event(job_id, event),
                 snapshot_callback=on_snapshot,
                 resume=resume,
+                emit_success_terminal_event=False,
+                emit_paused_terminal_event=False,
             )
         if outcome.status == "paused":
             with _JOB_LOCK:
@@ -380,6 +437,19 @@ def _run_agent_job(
                 current_job.stage = "paused"
                 current_job.interrupt_payload = outcome.interrupt_payload
                 current_job.checkpoint_id = outcome.checkpoint_id
+                current_job.lifecycle_events.append(
+                    _build_job_lifecycle_event(
+                        current_job,
+                        event_type="run.paused",
+                        stage="paused",
+                        status="paused",
+                        decomposition_sub_questions=list(current_job.decomposition_sub_questions),
+                        sub_question_artifacts=[item.model_copy(deep=True) for item in current_job.sub_question_artifacts],
+                        sub_qa=[item.model_copy(deep=True) for item in current_job.sub_qa],
+                        output=current_job.output,
+                        elapsed_ms=_elapsed_ms(current_job),
+                    )
+                )
             _persist_job_status(current_job)
             logger.info(
                 "Runtime async job paused job_id=%s run_id=%s checkpoint_id=%s",
@@ -411,6 +481,20 @@ def _run_agent_job(
             current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in rag_state["sub_question_artifacts"]]
             current_job.output = response.output
             current_job.finished_at = time.time()
+            current_job.lifecycle_events.append(
+                _build_job_lifecycle_event(
+                    current_job,
+                    event_type="run.completed",
+                    stage=current_job.stage,
+                    status=current_job.status,
+                    decomposition_sub_questions=list(current_job.decomposition_sub_questions),
+                    sub_question_artifacts=[item.model_copy(deep=True) for item in current_job.sub_question_artifacts],
+                    sub_qa=[item.model_copy(deep=True) for item in current_job.sub_qa],
+                    output=current_job.output,
+                    result=current_job.result.model_copy(deep=True) if current_job.result is not None else None,
+                    elapsed_ms=_elapsed_ms(current_job),
+                )
+            )
         _persist_job_status(current_job)
         logger.info(
             "Runtime async job finished job_id=%s run_id=%s status=%s sub_qa_count=%s output_len=%s",

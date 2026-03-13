@@ -12,6 +12,12 @@ type LifecycleEventShape = {
   status: string;
   emitted_at?: string;
   error?: string | null;
+  decomposition_sub_questions?: string[] | null;
+  sub_question_artifacts?: unknown[] | null;
+  sub_qa?: unknown[] | null;
+  output?: string | null;
+  result?: unknown;
+  elapsed_ms?: number | null;
 };
 
 class FakeEventSource {
@@ -236,11 +242,70 @@ describe("App run query flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     const eventSource = await findLatestEventSource();
     eventSource.emit({
+      decomposition_sub_questions: ["First subquestion?"],
       event_type: "stage.completed",
       event_id: "run-1:000002",
+      elapsed_ms: 1200,
       run_id: "run-1",
       stage: "search",
       status: "completed",
+      sub_qa: [],
+      sub_question_artifacts: [
+        {
+          sub_question: "First subquestion?",
+          expanded_queries: ["First subquestion?"],
+          retrieved_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "NATO Charter",
+              source: "wikipedia",
+              content: "The North Atlantic Treaty was signed in Washington, D.C. in April 1949.",
+              document_id: "doc-1",
+              score: null,
+            },
+            {
+              citation_index: 2,
+              rank: 2,
+              title: "NATO Timeline",
+              source: "wikipedia",
+              content: "NATO was formed as a collective defense alliance.",
+              document_id: "doc-2",
+              score: null,
+            },
+          ],
+          retrieval_provenance: [
+            {
+              query: "First subquestion?",
+              query_index: 1,
+              query_rank: 1,
+              document_identity: "doc-1",
+              document_id: "doc-1",
+              source: "wikipedia",
+              deduped: false,
+            },
+            {
+              query: "First subquestion?",
+              query_index: 1,
+              query_rank: 2,
+              document_identity: "doc-1",
+              document_id: "doc-1",
+              source: "wikipedia",
+              deduped: true,
+            },
+            {
+              query: "First subquestion?",
+              query_index: 1,
+              query_rank: 3,
+              document_identity: "doc-2",
+              document_id: "doc-2",
+              source: "wikipedia",
+              deduped: false,
+            },
+          ],
+          reranked_docs: [],
+        },
+      ],
     });
 
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
@@ -275,9 +340,27 @@ describe("App run query flow", () => {
     eventSource.emit({
       event_type: "run.completed",
       event_id: "run-1:000003",
+      elapsed_ms: 2400,
+      output: "NATO is a military alliance.",
+      result: {
+        final_citations: [],
+        main_question: "What is NATO?",
+        output: "NATO is a military alliance.",
+        sub_qa: [],
+      },
       run_id: "run-1",
       stage: "synthesize_final",
       status: "success",
+      sub_qa: [],
+      sub_question_artifacts: [
+        {
+          sub_question: "First subquestion?",
+          expanded_queries: ["First subquestion?", "First subquestion? alt phrasing"],
+          retrieved_docs: [],
+          retrieval_provenance: [],
+          reranked_docs: [],
+        },
+      ],
     });
 
     await waitFor(() => {
@@ -469,9 +552,100 @@ describe("App run query flow", () => {
     eventSource.emit({
       event_type: "stage.completed",
       event_id: "run-rerank:000002",
+      elapsed_ms: 1300,
       run_id: "run-rerank",
       stage: "rerank",
       status: "completed",
+      decomposition_sub_questions: ["Primary subquestion?", "Fallback subquestion?"],
+      output: "",
+      sub_qa: [
+        {
+          sub_question: "Primary subquestion?",
+          sub_answer: "",
+          tool_call_input:
+            '{"rerank_top_n":2,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":0.98,"document_id":"doc-b","source":"wiki://b"},{"reranked_rank":2,"citation_index":2,"score":0.65,"document_id":"doc-a","source":"wiki://a"}]}',
+        },
+        {
+          sub_question: "Fallback subquestion?",
+          sub_answer: "",
+          tool_call_input:
+            '{"rerank_top_n":1,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":null,"document_id":"doc-c","source":"wiki://c"}]}',
+        },
+      ],
+      sub_question_artifacts: [
+        {
+          sub_question: "Primary subquestion?",
+          expanded_queries: ["Primary subquestion?"],
+          retrieved_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "Doc A",
+              source: "wiki://a",
+              content: "Doc A body",
+              document_id: "doc-a",
+              score: null,
+            },
+            {
+              citation_index: 2,
+              rank: 2,
+              title: "Doc B",
+              source: "wiki://b",
+              content: "Doc B body",
+              document_id: "doc-b",
+              score: null,
+            },
+          ],
+          retrieval_provenance: [],
+          reranked_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "Doc B",
+              source: "wiki://b",
+              content: "Doc B body",
+              document_id: "doc-b",
+              score: 0.98,
+            },
+            {
+              citation_index: 2,
+              rank: 2,
+              title: "Doc A",
+              source: "wiki://a",
+              content: "Doc A body",
+              document_id: "doc-a",
+              score: 0.65,
+            },
+          ],
+        },
+        {
+          sub_question: "Fallback subquestion?",
+          expanded_queries: ["Fallback subquestion?"],
+          retrieved_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "Doc C",
+              source: "wiki://c",
+              content: "Doc C body",
+              document_id: "doc-c",
+              score: null,
+            },
+          ],
+          retrieval_provenance: [],
+          reranked_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "Doc C",
+              source: "wiki://c",
+              content: "Doc C body",
+              document_id: "doc-c",
+              score: null,
+            },
+          ],
+        },
+      ],
     });
 
     expect(await screen.findByText("Run status: stage.completed · rerank · completed")).toBeInTheDocument();
@@ -488,9 +662,19 @@ describe("App run query flow", () => {
     eventSource.emit({
       event_type: "run.completed",
       event_id: "run-rerank:000003",
+      elapsed_ms: 2600,
+      output: "Rerank run done.",
+      result: {
+        final_citations: [],
+        main_question: "Test rerank view",
+        output: "Rerank run done.",
+        sub_qa: [],
+      },
       run_id: "run-rerank",
       stage: "synthesize_final",
       status: "success",
+      sub_qa: [],
+      sub_question_artifacts: [],
     });
     await waitFor(() => {
       expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
@@ -638,9 +822,59 @@ describe("App run query flow", () => {
     eventSource.emit({
       event_type: "stage.completed",
       event_id: "run-answer:000002",
+      elapsed_ms: 1500,
       run_id: "run-answer",
       stage: "answer",
       status: "completed",
+      decomposition_sub_questions: ["Supported subquestion?", "Unsupported subquestion?"],
+      output: "",
+      sub_qa: [
+        {
+          sub_question: "Supported subquestion?",
+          sub_answer: "Supported answer [1] with more detail [2].",
+          tool_call_input: "{}",
+        },
+        {
+          sub_question: "Unsupported subquestion?",
+          sub_answer: "nothing relevant found",
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [
+        {
+          sub_question: "Supported subquestion?",
+          expanded_queries: ["Supported subquestion?"],
+          retrieved_docs: [],
+          retrieval_provenance: [],
+          reranked_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "Doc Support A",
+              source: "wiki://support-a",
+              content: "Support A body",
+              document_id: "doc-support-a",
+              score: 0.9,
+            },
+            {
+              citation_index: 2,
+              rank: 2,
+              title: "Doc Support B",
+              source: "wiki://support-b",
+              content: "Support B body",
+              document_id: "doc-support-b",
+              score: 0.8,
+            },
+          ],
+        },
+        {
+          sub_question: "Unsupported subquestion?",
+          expanded_queries: ["Unsupported subquestion?"],
+          retrieved_docs: [],
+          retrieval_provenance: [],
+          reranked_docs: [],
+        },
+      ],
     });
 
     expect(await screen.findByText("Run status: stage.completed · answer · completed")).toBeInTheDocument();
@@ -659,9 +893,45 @@ describe("App run query flow", () => {
     eventSource.emit({
       event_type: "run.completed",
       event_id: "run-answer:000003",
+      elapsed_ms: 2800,
+      output: "Answer run done.",
+      result: {
+        final_citations: [],
+        main_question: "Test subanswer stage",
+        output: "Answer run done.",
+        sub_qa: [
+          {
+            sub_question: "Supported subquestion?",
+            sub_answer: "Supported answer [1] with more detail [2].",
+            sub_answer_citations: [1, 2],
+            tool_call_input: "{}",
+          },
+          {
+            sub_question: "Unsupported subquestion?",
+            sub_answer: "nothing relevant found",
+            sub_answer_is_fallback: true,
+            tool_call_input: "{}",
+          },
+        ],
+      },
       run_id: "run-answer",
       stage: "synthesize_final",
       status: "success",
+      sub_qa: [
+        {
+          sub_question: "Supported subquestion?",
+          sub_answer: "Supported answer [1] with more detail [2].",
+          sub_answer_citations: [1, 2],
+          tool_call_input: "{}",
+        },
+        {
+          sub_question: "Unsupported subquestion?",
+          sub_answer: "nothing relevant found",
+          sub_answer_is_fallback: true,
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [],
     });
     await waitFor(() => {
       expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
@@ -749,9 +1019,40 @@ describe("App run query flow", () => {
     eventSource.emit({
       event_type: "run.completed",
       event_id: "run-2:000002",
+      elapsed_ms: 1900,
+      output: "NATO was formed in 1949.",
+      result: {
+        main_question: "When and why was NATO formed?",
+        output: "NATO was formed in 1949.",
+        sub_qa: [
+          {
+            sub_question: "Which treaty created NATO?",
+            sub_answer: "The North Atlantic Treaty created NATO.",
+            sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
+            tool_call_input: "{\"query\":\"NATO founding treaty\"}",
+          },
+        ],
+      },
       run_id: "run-2",
       stage: "synthesize_final",
       status: "success",
+      sub_qa: [
+        {
+          sub_question: "Which treaty created NATO?",
+          sub_answer: "The North Atlantic Treaty created NATO.",
+          sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
+          tool_call_input: "{\"query\":\"NATO founding treaty\"}",
+        },
+      ],
+      sub_question_artifacts: [
+        {
+          sub_question: "Which treaty created NATO?",
+          expanded_queries: ["Which treaty created NATO?", "NATO founding treaty"],
+          retrieved_docs: [],
+          retrieval_provenance: [],
+          reranked_docs: [],
+        },
+      ],
     });
 
     expect(await screen.findByRole("heading", { name: "Main question" })).toBeInTheDocument();
@@ -905,9 +1206,33 @@ describe("App run query flow", () => {
     firstEventSource.emit({
       event_type: "run.completed",
       event_id: "run-first:000002",
+      elapsed_ms: 2100,
+      output: "First final answer.",
+      result: {
+        final_citations: [],
+        main_question: "First question?",
+        output: "First final answer.",
+        sub_qa: [
+          {
+            sub_question: "First subquestion?",
+            sub_answer: "First answer [1].",
+            sub_answer_citations: [1],
+            tool_call_input: "{}",
+          },
+        ],
+      },
       run_id: "run-first",
       stage: "synthesize_final",
       status: "success",
+      sub_qa: [
+        {
+          sub_question: "First subquestion?",
+          sub_answer: "First answer [1].",
+          sub_answer_citations: [1],
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [],
     });
 
     await waitFor(() => {
@@ -922,9 +1247,21 @@ describe("App run query flow", () => {
     secondEventSource.emit({
       event_type: "stage.completed",
       event_id: "run-second:000002",
+      elapsed_ms: 1200,
       run_id: "run-second",
       stage: "answer",
       status: "completed",
+      decomposition_sub_questions: ["Second subquestion?"],
+      output: "Second draft output should not be shown.",
+      sub_qa: [
+        {
+          sub_question: "Second subquestion?",
+          sub_answer: "Second draft answer [2].",
+          sub_answer_citations: [2],
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [],
     });
 
     expect(await screen.findByText("Run status: stage.completed · answer · completed")).toBeInTheDocument();
@@ -934,9 +1271,33 @@ describe("App run query flow", () => {
     secondEventSource.emit({
       event_type: "run.completed",
       event_id: "run-second:000003",
+      elapsed_ms: 2600,
+      output: "Second final answer.",
+      result: {
+        final_citations: [],
+        main_question: "Second question?",
+        output: "Second final answer.",
+        sub_qa: [
+          {
+            sub_question: "Second subquestion?",
+            sub_answer: "Second final answer [2].",
+            sub_answer_citations: [2],
+            tool_call_input: "{}",
+          },
+        ],
+      },
       run_id: "run-second",
       stage: "synthesize_final",
       status: "success",
+      sub_qa: [
+        {
+          sub_question: "Second subquestion?",
+          sub_answer: "Second final answer [2].",
+          sub_answer_citations: [2],
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [],
     });
 
     await waitFor(() => {

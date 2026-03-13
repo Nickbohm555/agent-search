@@ -161,6 +161,12 @@ export interface RuntimeLifecycleEvent {
   status: string;
   emitted_at: string;
   error?: string | null;
+  decomposition_sub_questions?: string[] | null;
+  sub_question_artifacts?: SubQuestionArtifact[] | null;
+  sub_qa?: SubQuestionAnswer[] | null;
+  output?: string | null;
+  result?: RuntimeAgentRunResponse | null;
+  elapsed_ms?: number | null;
 }
 
 
@@ -413,7 +419,18 @@ function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent
     typeof value.stage === "string" &&
     typeof value.status === "string" &&
     typeof value.emitted_at === "string" &&
-    (value.error === undefined || value.error === null || typeof value.error === "string")
+    (value.error === undefined || value.error === null || typeof value.error === "string") &&
+    (value.decomposition_sub_questions === undefined ||
+      value.decomposition_sub_questions === null ||
+      (Array.isArray(value.decomposition_sub_questions) &&
+        value.decomposition_sub_questions.every((item) => typeof item === "string"))) &&
+    (value.sub_question_artifacts === undefined ||
+      value.sub_question_artifacts === null ||
+      (Array.isArray(value.sub_question_artifacts) && value.sub_question_artifacts.every(isSubQuestionArtifact))) &&
+    (value.sub_qa === undefined || value.sub_qa === null || (Array.isArray(value.sub_qa) && value.sub_qa.every(isSubQuestionAnswer))) &&
+    (value.output === undefined || value.output === null || typeof value.output === "string") &&
+    (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
+    (value.elapsed_ms === undefined || value.elapsed_ms === null || typeof value.elapsed_ms === "number")
   );
 }
 
