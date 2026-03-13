@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
@@ -31,24 +31,27 @@ class FakeEventSource {
 
   emit(event: LifecycleEventShape): void {
     if (this.closed || this.onmessage === null) return;
-    this.onmessage(
-      new MessageEvent("message", {
-        data: JSON.stringify({
-          thread_id: "thread-1",
-          trace_id: "trace-1",
-          emitted_at: "2026-03-13T00:00:00Z",
-          error: null,
-          ...event,
+    act(() => {
+      this.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            thread_id: "thread-1",
+            trace_id: "trace-1",
+            emitted_at: "2026-03-13T00:00:00Z",
+            error: null,
+            ...event,
+          }),
         }),
-      }),
-    );
+      );
+    });
   }
 }
 
-function getLatestEventSource(): FakeEventSource {
-  const instance = FakeEventSource.instances.at(-1);
-  expect(instance).toBeTruthy();
-  return instance as FakeEventSource;
+async function findLatestEventSource(): Promise<FakeEventSource> {
+  await waitFor(() => {
+    expect(FakeEventSource.instances.length).toBeGreaterThan(0);
+  });
+  return FakeEventSource.instances[FakeEventSource.instances.length - 1] as FakeEventSource;
 }
 
 describe("App wiki source dropdown", () => {
@@ -231,7 +234,7 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "What is NATO?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    const eventSource = getLatestEventSource();
+    const eventSource = await findLatestEventSource();
     eventSource.emit({
       event_type: "stage.completed",
       event_id: "run-1:000002",
@@ -263,7 +266,11 @@ describe("App run query flow", () => {
     expect(screen.getByText("Ends with ?: yes")).toBeInTheDocument();
     expect(screen.getByText("Dedupe: pass")).toBeInTheDocument();
     expect(screen.getByText("No synthesized answer yet.")).toBeInTheDocument();
-    expect(screen.getByText("stage.completed · search · completed")).toBeInTheDocument();
+    const streamedEventsList = screen.getByRole("list", { name: "Streamed lifecycle events" });
+    expect(
+      within(streamedEventsList).getAllByText((_, element) => element?.textContent === "stage.completed · search · completed")
+        .length,
+    ).toBeGreaterThan(0);
 
     eventSource.emit({
       event_type: "run.completed",
@@ -458,7 +465,7 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "Test rerank view" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    const eventSource = getLatestEventSource();
+    const eventSource = await findLatestEventSource();
     eventSource.emit({
       event_type: "stage.completed",
       event_id: "run-rerank:000002",
@@ -627,7 +634,7 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "Test subanswer stage" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    const eventSource = getLatestEventSource();
+    const eventSource = await findLatestEventSource();
     eventSource.emit({
       event_type: "stage.completed",
       event_id: "run-answer:000002",
@@ -738,7 +745,7 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "When and why was NATO formed?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    const eventSource = getLatestEventSource();
+    const eventSource = await findLatestEventSource();
     eventSource.emit({
       event_type: "run.completed",
       event_id: "run-2:000002",
@@ -894,7 +901,7 @@ describe("App run query flow", () => {
     const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
     fireEvent.change(textarea, { target: { value: "First question?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    const firstEventSource = getLatestEventSource();
+    const firstEventSource = await findLatestEventSource();
     firstEventSource.emit({
       event_type: "run.completed",
       event_id: "run-first:000002",
@@ -911,7 +918,7 @@ describe("App run query flow", () => {
 
     fireEvent.change(textarea, { target: { value: "Second question?" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
-    const secondEventSource = getLatestEventSource();
+    const secondEventSource = await findLatestEventSource();
     secondEventSource.emit({
       event_type: "stage.completed",
       event_id: "run-second:000002",
