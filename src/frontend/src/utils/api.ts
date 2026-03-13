@@ -68,6 +68,7 @@ export interface RuntimeAgentRunResponse {
   output: string;
   main_question: string;
   sub_qa: SubQuestionAnswer[];
+  sub_answers?: SubQuestionAnswer[];
   final_citations: SearchCandidateRow[];
 }
 
@@ -142,6 +143,7 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   decomposition_sub_questions: string[];
   sub_question_artifacts: SubQuestionArtifact[];
   sub_qa: SubQuestionAnswer[];
+  sub_answers?: SubQuestionAnswer[];
   output: string;
   result?: RuntimeAgentRunResponse | null;
   error?: string | null;
@@ -164,6 +166,7 @@ export interface RuntimeLifecycleEvent {
   decomposition_sub_questions?: string[] | null;
   sub_question_artifacts?: SubQuestionArtifact[] | null;
   sub_qa?: SubQuestionAnswer[] | null;
+  sub_answers?: SubQuestionAnswer[] | null;
   output?: string | null;
   result?: RuntimeAgentRunResponse | null;
   elapsed_ms?: number | null;
@@ -304,6 +307,8 @@ export async function getAgentRunStatus(jobId: string): Promise<ApiResult<Runtim
       v.sub_question_artifacts.every(isSubQuestionArtifact) &&
       Array.isArray(v.sub_qa) &&
       v.sub_qa.every(isSubQuestionAnswer) &&
+      (v.sub_answers === undefined ||
+        (Array.isArray(v.sub_answers) && v.sub_answers.every(isSubQuestionAnswer))) &&
       typeof v.output === "string" &&
       (v.result === undefined || v.result === null || validateRuntimeAgentRunResponse(v.result)) &&
       (v.error === undefined || v.error === null || typeof v.error === "string") &&
@@ -444,6 +449,9 @@ function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent
       value.sub_question_artifacts === null ||
       (Array.isArray(value.sub_question_artifacts) && value.sub_question_artifacts.every(isSubQuestionArtifact))) &&
     (value.sub_qa === undefined || value.sub_qa === null || (Array.isArray(value.sub_qa) && value.sub_qa.every(isSubQuestionAnswer))) &&
+    (value.sub_answers === undefined ||
+      value.sub_answers === null ||
+      (Array.isArray(value.sub_answers) && value.sub_answers.every(isSubQuestionAnswer))) &&
     (value.output === undefined || value.output === null || typeof value.output === "string") &&
     (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
     (value.elapsed_ms === undefined || value.elapsed_ms === null || typeof value.elapsed_ms === "number")
@@ -563,6 +571,13 @@ function validateRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentR
   } else if (!Array.isArray(value.sub_qa) || !value.sub_qa.every(isSubQuestionAnswer)) {
     console.warn("runAgent response validation failed: sub_qa must be an array of sub-question objects.");
     return false;
+  }
+
+  if (value.sub_answers !== undefined) {
+    if (!Array.isArray(value.sub_answers) || !value.sub_answers.every(isSubQuestionAnswer)) {
+      console.warn("runAgent response validation failed: sub_answers must be an array of sub-question objects.");
+      return false;
+    }
   }
 
   if (value.final_citations === undefined) {
