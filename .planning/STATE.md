@@ -10,7 +10,7 @@
 
 - **Current phase:** 1
 - **Current plan:** 01-01
-- **Status:** Task 2 implemented
+- **Status:** Task 3 implemented
 - **Progress:** 0/6 phases complete
 - **Progress bar:** `░░░░░░` (0%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Execute Phase 1 Plan 01-01 Task 3.
-- Confirm phase-level test strategy and acceptance checks during execution.
+- Create Phase 1 Plan 01-01 summary.
+- Confirm phase-level test strategy and acceptance checks during summary creation.
 - Continue phases in dependency order.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 3 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Task 3 adds router-level compatibility regressions for legacy validity, additive control forwarding, and additive `sub_answers`.
-- **Resume note:** State update: `phase=01`, `plan=01-01`, `task=2`, `status=implemented`.
+- **Next command:** Implement Section 4 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Summary work should capture the completed 01-01 contract, router mapping, and compatibility test evidence.
+- **Resume note:** State update: `phase=01`, `plan=01-01`, `task=3`, `status=implemented`.
