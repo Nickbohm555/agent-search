@@ -46,6 +46,7 @@ class AgentRunJobStatus:
     status: str
     trace_id: str = ""
     query: str = ""
+    request_payload: dict[str, Any] = field(default_factory=dict)
     message: str = ""
     stage: str = "queued"
     stages: list[AgentRunStageMetadata] = field(default_factory=list)
@@ -197,6 +198,7 @@ def _persist_job_status(job: AgentRunJobStatus) -> None:
                 "stage": job.stage,
                 "message": job.message,
                 "query": job.query,
+                "request_payload": dict(job.request_payload),
             }
         )
         if job.interrupt_payload is not None:
@@ -244,6 +246,7 @@ def start_agent_run_job(
         raise SDKConfigurationError("vector_store is required and cannot be None")
     job_id = str(uuid.uuid4())
     run_metadata = build_graph_run_metadata(run_id=job_id, thread_id=payload.thread_id)
+    normalized_request_payload = payload.model_dump(mode="json", exclude_none=True)
     status = AgentRunJobStatus(
         job_id=job_id,
         run_id=run_metadata.run_id,
@@ -251,6 +254,7 @@ def start_agent_run_job(
         status="running",
         trace_id=run_metadata.trace_id,
         query=payload.query,
+        request_payload=normalized_request_payload,
         message="Run queued.",
         stage="queued",
         runtime_model=model,
@@ -306,7 +310,10 @@ def resume_agent_run_job(job_id: str, *, resume: Any = True) -> AgentRunJobStatu
         job.stage = "resuming"
         job.interrupt_payload = None
         job.finished_at = None
-        payload = RuntimeAgentRunRequest(query=job.query, thread_id=job.thread_id)
+        request_payload = dict(job.request_payload)
+        if not request_payload:
+            request_payload = {"query": job.query, "thread_id": job.thread_id}
+        payload = RuntimeAgentRunRequest.model_validate(request_payload)
         model = job.runtime_model
         vector_store = job.runtime_vector_store
     _persist_job_status(job)
@@ -345,6 +352,8 @@ def _run_agent_job(
     with _JOB_LOCK:
         job.stage = "initializing"
         job.message = "Initializing vector store."
+        if not job.request_payload:
+            job.request_payload = payload.model_dump(mode="json", exclude_none=True)
     _persist_job_status(job)
 
     try:

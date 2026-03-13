@@ -33,6 +33,17 @@ class _InlineExecutor:
         return _CompletedFuture()
 
 
+class _NoopExecutor:
+    def submit(self, fn, *args, **kwargs):
+        _ = fn, args, kwargs
+
+        class _PendingFuture:
+            def result(self):
+                return None
+
+        return _PendingFuture()
+
+
 def test_run_async_signature_requires_query_vector_store_and_model() -> None:
     signature = inspect.signature(public_api.run_async)
     assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None) -> 'RuntimeAgentRunAsyncStartResponse'"
@@ -147,6 +158,40 @@ def test_run_async_and_status_share_same_thread_id_for_one_run_lineage(monkeypat
 
     assert start_response.thread_id == thread_id
     assert status_response.thread_id == thread_id
+
+
+def test_run_async_persists_normalized_request_payload(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440091"
+
+    monkeypatch.setattr(runtime_jobs.uuid, "uuid4", lambda: "job-persisted-request")
+    monkeypatch.setattr(runtime_jobs, "_persist_job_status", lambda _job: None)
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _NoopExecutor())
+
+    response = public_api.run_async(
+        "Persist the normalized request",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={
+            "thread_id": thread_id,
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    )
+
+    with runtime_jobs._JOB_LOCK:
+        job = runtime_jobs._JOBS["job-persisted-request"]
+
+    assert response.job_id == "job-persisted-request"
+    assert job.request_payload == {
+        "query": "Persist the normalized request",
+        "thread_id": thread_id,
+        "controls": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True},
+        },
+    }
 
 
 def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) -> None:
@@ -378,4 +423,82 @@ def test_run_async_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
         "run_thread_id": thread_id,
         "config": None,
         "lifecycle_callback": captured["lifecycle_callback"],
+    }
+
+
+def test_resume_run_reconstructs_full_request_payload(monkeypatch) -> None:
+    thread_id = "550e8400-e29b-41d4-a716-446655440092"
+    sentinel_model = object()
+    sentinel_vector_store = _CompatibleVectorStore()
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(runtime_jobs, "_persist_job_status", lambda _job: None)
+    monkeypatch.setattr(runtime_jobs, "_EXECUTOR", _InlineExecutor())
+
+    def fake_run_checkpointed_agent(*, payload, run_metadata, resume=None, **_kwargs):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["resume"] = resume
+        return SimpleNamespace(
+            status="completed",
+            state={
+                "main_question": payload.query,
+                "decomposition_sub_questions": [],
+                "sub_question_artifacts": [],
+                "final_answer": "Resumed with controls intact.",
+                "citation_rows_by_index": {},
+                "run_metadata": run_metadata,
+                "sub_qa": [],
+                "output": "Resumed with controls intact.",
+                "stage_snapshots": [],
+            },
+            response=RuntimeAgentRunResponse(
+                main_question=payload.query,
+                thread_id=thread_id,
+                sub_qa=[],
+                output="Resumed with controls intact.",
+            ),
+            interrupt_payload=None,
+            checkpoint_id="checkpoint-2",
+        )
+
+    monkeypatch.setattr(runtime_jobs, "run_checkpointed_agent", fake_run_checkpointed_agent)
+
+    with runtime_jobs._JOB_LOCK:
+        runtime_jobs._JOBS["job-resume-controls"] = runtime_jobs.AgentRunJobStatus(
+            job_id="job-resume-controls",
+            run_id="job-resume-controls",
+            thread_id=thread_id,
+            status="paused",
+            query="Resume with controls",
+            request_payload={
+                "query": "Resume with controls",
+                "thread_id": thread_id,
+                "controls": {
+                    "rerank": {"enabled": False},
+                    "query_expansion": {"enabled": True},
+                    "hitl": {"enabled": True},
+                },
+            },
+            message="Paused and awaiting resume input.",
+            stage="paused",
+            interrupt_payload={"kind": "approval", "question": "Approve resume?"},
+            checkpoint_id="checkpoint-1",
+            runtime_model=sentinel_model,
+            runtime_vector_store=sentinel_vector_store,
+        )
+
+    resumed_status = public_api.resume_run("job-resume-controls", resume={"approved": True})
+
+    assert resumed_status.status == "success"
+    assert captured == {
+        "payload": {
+            "query": "Resume with controls",
+            "thread_id": thread_id,
+            "controls": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+                "hitl": {"enabled": True},
+            },
+        },
+        "resume": {"approved": True},
     }
