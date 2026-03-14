@@ -38,6 +38,20 @@ response = advanced_rag(
 print(response.output)
 ```
 
+## Contract notes for 1.0.3
+
+Use these canonical names in new `config` payloads:
+
+- `thread_id`
+- `custom_prompts`
+- `runtime_config`
+
+Compatibility notes:
+
+- `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
+- `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
+- If you need REST-shaped `controls`, `/run-async`, or typed HITL resume envelopes, use the generated HTTP SDK in [`sdk/python`](../python/README.md).
+
 ## Prompt customization
 
 Keep reusable prompt defaults in the existing `config` map, then override only the keys you need per run.
@@ -94,6 +108,30 @@ Merge and fallback behavior:
 - Use `custom_prompts` in Python code; the supported keys are `subanswer` and `synthesis`.
 - Prompt overrides change generation instructions only. Citation validation and fallback behavior remain enforced in runtime code.
 
+You can keep reusable prompt defaults at the top level and place per-run overrides in `runtime_config.custom_prompts`:
+
+```python
+response = advanced_rag(
+    "Which runtime controls stay default-off?",
+    vector_store=vector_store,
+    model=model,
+    config={
+        "thread_id": "550e8400-e29b-41d4-a716-446655440310",
+        "custom_prompts": {
+            "subanswer": "Answer each sub-question with concise cited evidence only.",
+            "synthesis": "Write a short synthesis with citations.",
+        },
+        "runtime_config": {
+            "custom_prompts": {
+                "synthesis": "Return a two-paragraph answer and keep every citation marker."
+            }
+        },
+    },
+)
+```
+
+`runtime_config` is additive. Omit it to preserve the prior prompt behavior.
+
 ## Requirements
 
 - Python `>=3.11,<3.14`
@@ -125,11 +163,22 @@ Notes about `advanced_rag(...)`:
 RuntimeAgentRunResponse(
   main_question: str,
   thread_id: str,
+  sub_answers: list[SubQuestionAnswer],
   sub_qa: list[SubQuestionAnswer],
   output: str,
   final_citations: list[CitationSourceRow],
 )
 ```
+
+Read additive sub-answer fields with a compatibility fallback:
+
+```python
+sub_answers = response.sub_answers or response.sub_qa
+for item in sub_answers:
+    print(item.sub_question, item.sub_answer)
+```
+
+`sub_answers` is the canonical additive field for new reads. `sub_qa` remains available for compatibility.
 
 ## Vector store compatibility
 

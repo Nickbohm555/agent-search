@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-03
-- **Status:** Phase 6 Plan 06-03 Task 1 implemented; Plan 06-03 Task 2 is next
+- **Status:** Phase 6 Plan 06-03 Task 2 implemented; Plan 06-03 Task 3 is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Execute Phase 6 Plan 06-03 Task 2.
+- Execute Phase 6 Plan 06-03 Task 3.
 - Decide whether Phase 6 can be marked complete after Plans 06-02 and 06-03 finish.
 
 ### Blockers
@@ -38,6 +38,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 76 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 6 Plan 06-03 Task 1 is complete, so the dependency-ordered follow-up is Task 2.
-- **Resume note:** State update: `phase=06`, `plan=06-03`, `task=1`, `status=implemented`; `docs/migration-guide.md` now captures canonical request/response fields, accepted aliases, HITL resume guidance, and additive `sub_answers` compatibility with `sub_qa`.
+- **Next command:** Implement Section 77 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 6 Plan 06-03 Task 2 is complete, so the dependency-ordered follow-up is Task 3.
+- **Resume note:** State update: `phase=06`, `plan=06-03`, `task=2`, `status=implemented`; `docs/releases/1.0.3-sdk-contract-parity.md`, `sdk/core/README.md`, and `sdk/python/README.md` now align release guidance, canonical request names, HITL/control examples, and additive `sub_answers` fallback handling.
