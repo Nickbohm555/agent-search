@@ -5,6 +5,8 @@ import {
   RequestState,
   RuntimeLifecycleEvent,
   RuntimeAgentRunResponse,
+  RuntimeQueryExpansionDecision,
+  RuntimeQueryExpansionPausePayload,
   RuntimeSubquestionDecision,
   RuntimeSubquestionPausePayload,
   SearchCandidateRow,
@@ -45,8 +47,8 @@ type RunSummary = {
   totalLatencyMs: number | null;
 };
 
-type SubquestionDecisionDraft = {
-  action: RuntimeSubquestionDecision["action"];
+type ReviewDecisionDraft = {
+  action: RuntimeSubquestionDecision["action"] | RuntimeQueryExpansionDecision["action"];
   editedText: string;
 };
 
@@ -91,8 +93,10 @@ export default function App() {
     final: "pending",
   });
   const [lastSuccessfulSynthesis, setLastSuccessfulSynthesis] = useState<RuntimeAgentRunResponse | null>(null);
-  const [pausedPayload, setPausedPayload] = useState<RuntimeSubquestionPausePayload | null>(null);
-  const [reviewDrafts, setReviewDrafts] = useState<Record<string, SubquestionDecisionDraft>>({});
+  const [pausedPayload, setPausedPayload] = useState<
+    RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload | null
+  >(null);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDecisionDraft>>({});
   const [resumeState, setResumeState] = useState<RequestState>("idle");
   const [resumeMessage, setResumeMessage] = useState("");
   const runEventsUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -338,7 +342,7 @@ export default function App() {
 
         if (lifecycleEvent.event_type === "run.paused" && lifecycleEvent.interrupt_payload) {
           setRunState("loading");
-          setRunStatusMessage("Run paused for subquestion review.");
+          setRunStatusMessage(getPausedRunStatusMessage(lifecycleEvent.interrupt_payload));
           setPausedPayload(lifecycleEvent.interrupt_payload);
           setReviewDrafts(buildInitialReviewDrafts(lifecycleEvent.interrupt_payload));
           setResumeState("idle");
@@ -386,21 +390,21 @@ export default function App() {
     });
   }
 
-  function handleDecisionActionChange(subquestionId: string, action: RuntimeSubquestionDecision["action"]): void {
+  function handleDecisionActionChange(itemId: string, action: ReviewDecisionDraft["action"]): void {
     setReviewDrafts((current) => ({
       ...current,
-      [subquestionId]: {
-        ...(current[subquestionId] ?? { action: "approve", editedText: "" }),
+      [itemId]: {
+        ...(current[itemId] ?? { action: "approve", editedText: "" }),
         action,
       },
     }));
   }
 
-  function handleDecisionEditTextChange(subquestionId: string, editedText: string): void {
+  function handleDecisionEditTextChange(itemId: string, editedText: string): void {
     setReviewDrafts((current) => ({
       ...current,
-      [subquestionId]: {
-        ...(current[subquestionId] ?? { action: "edit", editedText: "" }),
+      [itemId]: {
+        ...(current[itemId] ?? { action: "edit", editedText: "" }),
         editedText,
       },
     }));
@@ -409,13 +413,11 @@ export default function App() {
   async function handleResumeRun(skipReview = false): Promise<void> {
     if (!runJobId || !pausedPayload || resumeState === "loading") return;
 
-    const decisions = skipReview
-      ? pausedPayload.subquestions.map((item) => ({ subquestion_id: item.subquestion_id, action: "skip" as const }))
-      : buildResumeDecisions(pausedPayload, reviewDrafts);
+    const decisions = skipReview ? buildSkipResumeDecisions(pausedPayload) : buildResumeDecisions(pausedPayload, reviewDrafts);
 
     if (decisions === null) {
       setResumeState("error");
-      setResumeMessage("Each edited subquestion needs replacement text before resuming.");
+      setResumeMessage(getResumeValidationMessage(pausedPayload));
       return;
     }
 
@@ -523,33 +525,35 @@ export default function App() {
 
       {pausedPayload ? (
         <section className="panel paused-review-panel" aria-labelledby="paused-review-title">
-          <h2 id="paused-review-title">Subquestion Review</h2>
-          <p>
-            Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> and choose how each proposed subquestion
-            should continue.
-          </p>
-          <ol className="paused-review-list" aria-label="Paused subquestion review list">
-            {pausedPayload.subquestions.map((subquestion, index) => {
-              const draft = reviewDrafts[subquestion.subquestion_id] ?? {
+          <h2 id="paused-review-title">{getPausedReviewTitle(pausedPayload)}</h2>
+          {isQueryExpansionPausePayload(pausedPayload) ? (
+            <p>
+              Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> for subquestion{" "}
+              <strong>{pausedPayload.sub_question}</strong> and choose how each proposed expansion should continue.
+            </p>
+          ) : (
+            <p>
+              Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> and choose how each proposed
+              subquestion should continue.
+            </p>
+          )}
+          <ol className="paused-review-list" aria-label={getPausedReviewListLabel(pausedPayload)}>
+            {getPausedReviewItems(pausedPayload).map((item, index) => {
+              const draft = reviewDrafts[item.id] ?? {
                 action: "approve" as const,
-                editedText: subquestion.sub_question,
+                editedText: item.text,
               };
-              const fieldId = `subquestion-review-${subquestion.subquestion_id}`;
+              const fieldId = `${item.kind}-review-${item.id}`;
               return (
-                <li key={subquestion.subquestion_id} className="paused-review-item">
+                <li key={item.id} className="paused-review-item">
                   <p className="paused-review-title">
-                    <strong>Subquestion {index + 1}:</strong> {subquestion.sub_question}
+                    <strong>{item.label} {index + 1}:</strong> {item.text}
                   </p>
                   <label htmlFor={`${fieldId}-action`}>Decision</label>
                   <select
                     id={`${fieldId}-action`}
                     value={draft.action}
-                    onChange={(event) =>
-                      handleDecisionActionChange(
-                        subquestion.subquestion_id,
-                        event.target.value as RuntimeSubquestionDecision["action"],
-                      )
-                    }
+                    onChange={(event) => handleDecisionActionChange(item.id, event.target.value as ReviewDecisionDraft["action"])}
                     disabled={resumeState === "loading"}
                   >
                     <option value="approve">Approve</option>
@@ -559,13 +563,13 @@ export default function App() {
                   </select>
                   {draft.action === "edit" ? (
                     <>
-                      <label htmlFor={`${fieldId}-edited-text`}>Edited text</label>
+                      <label htmlFor={`${fieldId}-edited-text`}>{item.editLabel}</label>
                       <input
                         id={`${fieldId}-edited-text`}
                         type="text"
                         value={draft.editedText}
-                        onChange={(event) => handleDecisionEditTextChange(subquestion.subquestion_id, event.target.value)}
-                        placeholder="Rewrite this subquestion"
+                        onChange={(event) => handleDecisionEditTextChange(item.id, event.target.value)}
+                        placeholder={item.editPlaceholder}
                         disabled={resumeState === "loading"}
                       />
                     </>
@@ -1027,6 +1031,73 @@ function formatLifecycleEventLabel(event: RuntimeLifecycleEvent): string {
   return parts.join(" · ");
 }
 
+function isQueryExpansionPausePayload(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): pausedPayload is RuntimeQueryExpansionPausePayload {
+  return Array.isArray((pausedPayload as RuntimeQueryExpansionPausePayload).expansions);
+}
+
+function getPausedRunStatusMessage(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): string {
+  return isQueryExpansionPausePayload(pausedPayload)
+    ? "Run paused for query expansion review."
+    : "Run paused for subquestion review.";
+}
+
+function getPausedReviewTitle(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): string {
+  return isQueryExpansionPausePayload(pausedPayload) ? "Query Expansion Review" : "Subquestion Review";
+}
+
+function getPausedReviewListLabel(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): string {
+  return isQueryExpansionPausePayload(pausedPayload)
+    ? "Paused query expansion review list"
+    : "Paused subquestion review list";
+}
+
+function getResumeValidationMessage(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): string {
+  return isQueryExpansionPausePayload(pausedPayload)
+    ? "Each edited expansion needs replacement text before resuming."
+    : "Each edited subquestion needs replacement text before resuming.";
+}
+
+function getPausedReviewItems(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): Array<{
+  id: string;
+  text: string;
+  label: "Subquestion" | "Expansion";
+  editLabel: "Edited text" | "Edited query";
+  editPlaceholder: string;
+  kind: "subquestion" | "expansion";
+}> {
+  if (isQueryExpansionPausePayload(pausedPayload)) {
+    return pausedPayload.expansions.map((item) => ({
+      id: item.expansion_id,
+      text: item.query,
+      label: "Expansion",
+      editLabel: "Edited query",
+      editPlaceholder: "Rewrite this expansion",
+      kind: "expansion",
+    }));
+  }
+
+  return pausedPayload.subquestions.map((item) => ({
+    id: item.subquestion_id,
+    text: item.sub_question,
+    label: "Subquestion",
+    editLabel: "Edited text",
+    editPlaceholder: "Rewrite this subquestion",
+    kind: "subquestion",
+  }));
+}
+
 function computeStageStatusesFromEvents(
   orderedStages: AgentStageName[],
   current: Record<AgentStageName, AgentStageRuntimeStatus>,
@@ -1084,23 +1155,49 @@ function computeStageStatusesFromEvents(
 }
 
 function buildInitialReviewDrafts(
-  pausedPayload: RuntimeSubquestionPausePayload,
-): Record<string, SubquestionDecisionDraft> {
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): Record<string, ReviewDecisionDraft> {
   return Object.fromEntries(
-    pausedPayload.subquestions.map((item) => [
-      item.subquestion_id,
+    getPausedReviewItems(pausedPayload).map((item) => [
+      item.id,
       {
         action: "approve",
-        editedText: item.sub_question,
+        editedText: item.text,
       },
     ]),
   );
 }
 
 function buildResumeDecisions(
-  pausedPayload: RuntimeSubquestionPausePayload,
-  reviewDrafts: Record<string, SubquestionDecisionDraft>,
-): RuntimeSubquestionDecision[] | null {
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+  reviewDrafts: Record<string, ReviewDecisionDraft>,
+): RuntimeSubquestionDecision[] | RuntimeQueryExpansionDecision[] | null {
+  if (isQueryExpansionPausePayload(pausedPayload)) {
+    const decisions: RuntimeQueryExpansionDecision[] = [];
+    for (const item of pausedPayload.expansions) {
+      const draft = reviewDrafts[item.expansion_id] ?? { action: "approve", editedText: item.query };
+      if (draft.action === "edit") {
+        const editedText = draft.editedText.trim();
+        if (!editedText) {
+          return null;
+        }
+        decisions.push({
+          expansion_id: item.expansion_id,
+          action: "edit",
+          edited_query: editedText,
+        });
+        continue;
+      }
+
+      decisions.push({
+        expansion_id: item.expansion_id,
+        action: draft.action,
+      });
+    }
+
+    return decisions;
+  }
+
   const decisions: RuntimeSubquestionDecision[] = [];
   for (const item of pausedPayload.subquestions) {
     const draft = reviewDrafts[item.subquestion_id] ?? { action: "approve", editedText: item.sub_question };
@@ -1124,6 +1221,22 @@ function buildResumeDecisions(
   }
 
   return decisions;
+}
+
+function buildSkipResumeDecisions(
+  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+): RuntimeSubquestionDecision[] | RuntimeQueryExpansionDecision[] {
+  if (isQueryExpansionPausePayload(pausedPayload)) {
+    return pausedPayload.expansions.map((item) => ({
+      expansion_id: item.expansion_id,
+      action: "skip" as const,
+    }));
+  }
+
+  return pausedPayload.subquestions.map((item) => ({
+    subquestion_id: item.subquestion_id,
+    action: "skip" as const,
+  }));
 }
 
 function markPreviousStagesCompleted(
