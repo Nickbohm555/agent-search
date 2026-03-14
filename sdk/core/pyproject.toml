@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-search-core"
-version = "1.0.3"
+version = "1.0.4"
 description = "In-process SDK runtime for agent-search with optional callback-driven Langfuse tracing"
 readme = "README.md"
 authors = [{ name = "agent-search maintainers" }]

@@ -52,6 +52,12 @@ Compatibility notes:
 - `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
 - If you need REST-shaped `controls`, `/run-async`, or typed HITL resume envelopes, use the generated HTTP SDK in [`sdk/python`](../python/README.md).
 
+## Human-in-the-loop (HITL)
+
+`agent-search-core` is a synchronous, in-process SDK. It does not expose HITL review or resume flows.
+
+For subquestion HITL (pause, review, resume with typed decisions), use the generated HTTP SDK and the `/api/agents/run-async` + `/api/agents/run-resume` endpoints documented in [`sdk/python`](../python/README.md).
+
 ## Prompt customization
 
 Keep reusable prompt defaults in the existing `config` map, then override only the keys you need per run.
