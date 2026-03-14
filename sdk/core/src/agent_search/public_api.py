@@ -19,7 +19,14 @@ from agent_search.runtime.resume import build_resume_command
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from pydantic import ValidationError
-from schemas import RuntimeAgentRunControls, RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from schemas import (
+    RuntimeAgentRunControls,
+    RuntimeAgentRunHitlInput,
+    RuntimeAgentRunRequest,
+    RuntimeAgentRunResponse,
+    RuntimeHitlControl,
+    RuntimeSubquestionHitlControl,
+)
 from schemas.agent import RuntimeAgentRunResult
 from services import agent_service as legacy_service
 
@@ -94,6 +101,7 @@ def _build_runtime_request_payload(
     *,
     config: Mapping[str, Any] | None,
     runtime_config: RuntimeConfig,
+    hitl: RuntimeAgentRunHitlInput | None = None,
     resume: Any | None = None,
 ) -> RuntimeAgentRunRequest:
     custom_prompts_payload = {
@@ -101,14 +109,17 @@ def _build_runtime_request_payload(
         for key in _CUSTOM_PROMPT_KEYS
         if (value := getattr(runtime_config.custom_prompts, key)) is not None
     }
+    controls = (
+        RuntimeAgentRunControls.model_validate(config.get("controls"))
+        if isinstance(config, Mapping) and isinstance(config.get("controls"), Mapping)
+        else None
+    )
+    if hitl is not None:
+        controls = _apply_public_hitl_input(hitl=hitl, controls=controls)
     return RuntimeAgentRunRequest(
         query=query,
         thread_id=_resolve_request_thread_id(config) or _resolve_resume_checkpoint_id(resume),
-        controls=(
-            RuntimeAgentRunControls.model_validate(config.get("controls"))
-            if isinstance(config, Mapping) and isinstance(config.get("controls"), Mapping)
-            else None
-        ),
+        controls=controls,
         custom_prompts=(
             custom_prompts_payload
             if custom_prompts_payload
@@ -121,6 +132,32 @@ def _hitl_requested(payload: RuntimeAgentRunRequest, *, resume: Any | None = Non
     if resume is not None:
         return True
     return bool(payload.controls and payload.controls.hitl and payload.controls.hitl.enabled)
+
+
+def _normalize_public_hitl_input(hitl: RuntimeAgentRunHitlInput) -> RuntimeHitlControl:
+    if isinstance(hitl, RuntimeHitlControl):
+        return hitl
+    if isinstance(hitl, bool):
+        return (
+            RuntimeHitlControl(subquestions=RuntimeSubquestionHitlControl(enabled=True))
+            if hitl
+            else RuntimeHitlControl(enabled=False)
+        )
+    normalized_mode = hitl.strip().lower()
+    if normalized_mode == "strategic":
+        return RuntimeHitlControl(subquestions=RuntimeSubquestionHitlControl(enabled=True))
+    raise SDKConfigurationError("hitl must be True, False, \"strategic\", or a RuntimeHitlControl.")
+
+
+def _apply_public_hitl_input(
+    *,
+    hitl: RuntimeAgentRunHitlInput,
+    controls: RuntimeAgentRunControls | None,
+) -> RuntimeAgentRunControls:
+    resolved_hitl = _normalize_public_hitl_input(hitl)
+    if controls is None:
+        return RuntimeAgentRunControls(hitl=resolved_hitl)
+    return controls.model_copy(update={"hitl": resolved_hitl})
 
 
 def _extract_checkpoint_id(payload: Any) -> str | None:
@@ -250,6 +287,7 @@ def advanced_rag(
     *,
     vector_store: Any,
     model: Any,
+    hitl: RuntimeAgentRunHitlInput | None = None,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
@@ -257,10 +295,11 @@ def advanced_rag(
     resume: Any | None = None,
 ) -> RuntimeAgentRunResponse | RuntimeAgentRunResult:
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_hitl=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
+        hitl is not None,
         config is not None,
         bool(callbacks),
         langfuse_callback is not None,
@@ -294,7 +333,13 @@ def advanced_rag(
         resolved_callbacks = list(callbacks or [])
         if langfuse_callback is not None:
             resolved_callbacks.append(langfuse_callback)
-        request_payload = _build_runtime_request_payload(query, config=config, runtime_config=runtime_config, resume=resume)
+        request_payload = _build_runtime_request_payload(
+            query,
+            config=config,
+            runtime_config=runtime_config,
+            hitl=hitl,
+            resume=resume,
+        )
         if _hitl_requested(request_payload, resume=resume):
             response = _run_hitl_runtime_agent(
                 request_payload,
