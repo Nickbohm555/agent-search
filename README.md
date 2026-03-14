@@ -18,26 +18,26 @@ The consolidated project reference is available at `docs/application-documentati
 flowchart TD
     A["SDK caller"] --> B["advanced_rag(...)"]
     B --> C["Validate inputs<br/>model + vector_store required"]
-    C --> D["Build runtime config<br/>rerank/query_expansion/HITL/checkpointer"]
+    C --> D["Build runtime config<br/>optional toggles: rerank/query_expansion<br/>optional checkpointing for subquestion HITL"]
     D --> E["run_runtime_agent(query, deps)"]
     E --> F["Decompose Node"]
     F -->|LLM call #1| G["sub-questions list"]
 
-    G --> HITL{"HITL subquestion review?"}
+    G --> HITL{"Subquestion HITL review enabled?"}
     HITL -->|Enabled| H["Human review + edits"]
     H --> GOK["Approved sub-questions"]
     HITL -->|Disabled| GOK
 
     GOK --> SQ["Sub-questions (parallel lanes)"]
 
-    SQ --> QE{"Query expansion enabled?"}
-    QE -->|Yes| EX["Expand Node<br/>LLM call #2 per lane"]
-    QE -->|No| SR["Search Node"]
+    SQ --> QE{"Query expansion toggle on?"}
+    QE -->|On| EX["Expand Node<br/>optional LLM call #2 per lane"]
+    QE -->|Off| SR["Search Node"]
     EX --> SR
 
-    SR --> RERANK{"Rerank enabled?"}
-    RERANK -->|Yes| RR["Rerank Node<br/>LLM call #3 per lane"]
-    RERANK -->|No| AN["Answer Node"]
+    SR --> RERANK{"Rerank toggle on?"}
+    RERANK -->|On| RR["Rerank Node<br/>optional LLM call #3 per lane"]
+    RERANK -->|Off| AN["Answer Node"]
     RR --> AN
 
     CP1["Custom prompts<br/>subanswer"] -.-> AN
@@ -46,7 +46,7 @@ flowchart TD
     CP2["Custom prompts<br/>synthesis"] -.-> SYN
     SYN -->|LLM call #5| OUT["final output"]
 
-    DB["HITL checkpoint storage<br/>checkpoint_db_url or checkpointer"] -.-> HITL
+    DB["Checkpoint storage used only for subquestion HITL<br/>checkpoint_db_url or checkpointer"] -.-> HITL
 ```
 
 ## SDK Quick Reference (PyPI)
