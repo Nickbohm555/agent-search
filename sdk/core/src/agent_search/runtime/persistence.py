@@ -8,10 +8,31 @@ from typing import Any
 from agent_search.errors import SDKConfigurationError
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from psycopg import Connection
+from psycopg.rows import dict_row
 from sqlalchemy.engine import make_url
 
 _BOOTSTRAP_LOCK = threading.Lock()
 _BOOTSTRAPPED_CONNECTIONS: set[str] = set()
+_CHECKPOINT_MSGPACK_ALLOWLIST = (
+    ("schemas.agent", "CitationSourceRow"),
+    ("schemas.agent", "GraphRunMetadata"),
+    ("schemas.agent", "GraphStageSnapshot"),
+    ("schemas.agent", "SubQuestionAnswer"),
+    ("schemas.agent", "SubQuestionArtifacts"),
+)
+
+
+def _configure_checkpointer_serde(checkpointer: BaseCheckpointSaver) -> BaseCheckpointSaver:
+    serde = getattr(checkpointer, "serde", None)
+    if not isinstance(serde, JsonPlusSerializer):
+        return checkpointer
+    checkpointer.serde = JsonPlusSerializer(
+        pickle_fallback=serde.pickle_fallback,
+        allowed_msgpack_modules=_CHECKPOINT_MSGPACK_ALLOWLIST,
+    )
+    return checkpointer
 
 
 def get_checkpointer_connection_string(database_url: str | None = None) -> str:
@@ -59,9 +80,25 @@ def ready_checkpointer(
     pipeline: bool = False,
 ) -> Iterator[PostgresSaver]:
     connection_string = get_checkpointer_connection_string(database_url)
-    with PostgresSaver.from_conn_string(connection_string, pipeline=pipeline) as checkpointer:
-        _bootstrap_checkpointer(checkpointer, connection_string=connection_string)
-        yield checkpointer
+    serde = JsonPlusSerializer(
+        pickle_fallback=False,
+        allowed_msgpack_modules=_CHECKPOINT_MSGPACK_ALLOWLIST,
+    )
+    with Connection.connect(
+        connection_string,
+        autocommit=True,
+        prepare_threshold=0,
+        row_factory=dict_row,
+    ) as conn:
+        if pipeline:
+            with conn.pipeline() as pipe:
+                checkpointer = _configure_checkpointer_serde(PostgresSaver(conn, pipe, serde=serde))
+                _bootstrap_checkpointer(checkpointer, connection_string=connection_string)
+                yield checkpointer
+        else:
+            checkpointer = _configure_checkpointer_serde(PostgresSaver(conn, serde=serde))
+            _bootstrap_checkpointer(checkpointer, connection_string=connection_string)
+            yield checkpointer
 
 
 def ensure_checkpointer_bootstrap(*, database_url: str | None = None, pipeline: bool = False) -> None:
@@ -79,7 +116,7 @@ def compile_graph_with_checkpointer(
     **compile_kwargs: Any,
 ) -> Iterator[Any]:
     if checkpointer is not None:
-        yield graph_builder.compile(checkpointer=checkpointer, **compile_kwargs)
+        yield graph_builder.compile(checkpointer=_configure_checkpointer_serde(checkpointer), **compile_kwargs)
         return
     with ready_checkpointer(database_url=database_url, pipeline=pipeline) as owned_checkpointer:
         yield graph_builder.compile(checkpointer=owned_checkpointer, **compile_kwargs)
