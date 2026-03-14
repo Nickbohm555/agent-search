@@ -68,6 +68,7 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [rerankEnabled, setRerankEnabled] = useState(true);
   const [queryExpansionEnabled, setQueryExpansionEnabled] = useState(true);
+  const [subquestionHitlEnabled, setSubquestionHitlEnabled] = useState(false);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
   const [runJobId, setRunJobId] = useState<string | null>(null);
@@ -289,7 +290,15 @@ export default function App() {
     });
     console.info("Async run query requested.", { submittedQuery: submitted });
 
+    const controls = subquestionHitlEnabled
+      ? {
+          hitl: {
+            subquestions: { enabled: true },
+          },
+        }
+      : undefined;
     const startResult = await startAgentRun(submitted, {
+      controls,
       runtime_config: {
         rerank: { enabled: rerankEnabled },
         query_expansion: { enabled: queryExpansionEnabled },
@@ -535,6 +544,15 @@ export default function App() {
                 disabled={runState === "loading"}
               />
               Expand queries
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={subquestionHitlEnabled}
+                onChange={(event) => setSubquestionHitlEnabled(event.target.checked)}
+                disabled={runState === "loading"}
+              />
+              Enable subquestion HITL
             </label>
           </div>
           <div className="row">
