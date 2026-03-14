@@ -18,10 +18,11 @@ def route_post_decompose(state: RuntimeGraphState) -> str | Sequence[Send]:
 def route_subquestion_lanes(state: RuntimeGraphState) -> Sequence[Send]:
     return [
         Send(
-            "expand",
+            "lane_pipeline",
             {
                 "main_question": state["main_question"],
-                "decomposition_sub_questions": [sub_question],
+                "decomposition_sub_questions": list(state["decomposition_sub_questions"]),
+                "lane_sub_question": sub_question,
                 "sub_question_artifacts": [],
                 "final_answer": "",
                 "citation_rows_by_index": {},
@@ -30,7 +31,6 @@ def route_subquestion_lanes(state: RuntimeGraphState) -> Sequence[Send]:
                 "output": "",
                 "stage_snapshots": [],
                 "subquestion_hitl_enabled": state["subquestion_hitl_enabled"],
-                "query_expansion_hitl_enabled": state["query_expansion_hitl_enabled"],
             },
         )
         for sub_question in state["decomposition_sub_questions"]

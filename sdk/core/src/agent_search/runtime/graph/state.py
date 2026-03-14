@@ -28,6 +28,10 @@ def _merge_stable_optional_text(current: str, update: str) -> str:
     return update or current
 
 
+def _merge_lane_sub_question(current: str, update: str) -> str:
+    return update or current
+
+
 def _merge_stable_run_metadata(current: GraphRunMetadata, update: GraphRunMetadata) -> GraphRunMetadata:
     if current.model_dump(mode="json") != update.model_dump(mode="json"):
         raise ValueError("run_metadata must remain stable across graph lanes.")
@@ -46,6 +50,7 @@ def _merge_stable_initial_search_context(
 def _merge_stable_bool(current: bool, update: bool) -> bool:
     if current == update:
         return update
+    # Prefer truthy to keep HITL toggles stable across parallel lanes.
     return current or update
 
 
@@ -55,7 +60,6 @@ class RuntimeGraphContext:
     model: Any | None = None
     vector_store: Any | None = None
     callbacks: list[Any] = field(default_factory=list)
-    langfuse_callback: Any | None = None
     initial_search_context: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -69,6 +73,7 @@ def to_runtime_graph_state(
         {
             "main_question": payload.query,
             "decomposition_sub_questions": [],
+            "lane_sub_question": "",
             "sub_question_artifacts": [],
             "final_answer": "",
             "citation_rows_by_index": {},
@@ -87,18 +92,13 @@ def to_runtime_graph_state(
             and payload.controls.hitl.subquestions
             and payload.controls.hitl.subquestions.enabled
         ),
-        query_expansion_hitl_enabled=bool(
-            payload.controls
-            and payload.controls.hitl
-            and payload.controls.hitl.query_expansion
-            and payload.controls.hitl.query_expansion.enabled
-        ),
     )
 
 
 class RuntimeGraphState(TypedDict):
     main_question: Annotated[str, _merge_stable_main_question]
     decomposition_sub_questions: DecompositionSubQuestionsChannel
+    lane_sub_question: Annotated[str, _merge_lane_sub_question]
     sub_question_artifacts: SubQuestionArtifactsChannel
     final_answer: Annotated[str, _merge_stable_optional_text]
     citation_rows_by_index: CitationRowsByIndexChannel
@@ -108,7 +108,6 @@ class RuntimeGraphState(TypedDict):
     stage_snapshots: StageSnapshotsChannel
     initial_search_context: Annotated[list[dict[str, Any]], _merge_stable_initial_search_context]
     subquestion_hitl_enabled: Annotated[bool, _merge_stable_bool]
-    query_expansion_hitl_enabled: Annotated[bool, _merge_stable_bool]
 
 
 RuntimeGraphStateMapping = Mapping[str, Any]

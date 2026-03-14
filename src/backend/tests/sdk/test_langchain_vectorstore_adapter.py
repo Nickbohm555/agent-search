@@ -104,3 +104,22 @@ def test_relevance_search_falls_back_to_similarity_when_scores_unavailable(caplo
     assert docs_with_scores == [(expected_doc, 1.0)]
     assert "mode=similarity_search" in caplog.text
 
+
+def test_relevance_search_falls_back_when_score_method_is_unimplemented(caplog) -> None:
+    expected_doc = Document(page_content="fallback from not implemented", metadata={})
+
+    class _Store:
+        def similarity_search(self, query: str, k: int, filter=None):
+            _ = query, filter
+            return [expected_doc][:k]
+
+        def similarity_search_with_relevance_scores(self, query: str, k: int, score_threshold=None, filter=None):
+            _ = query, k, score_threshold, filter
+            raise NotImplementedError
+
+    adapter = LangChainVectorStoreAdapter(_Store())
+    with caplog.at_level(logging.INFO):
+        docs_with_scores = adapter.similarity_search_with_relevance_scores("fallback score query", k=2)
+
+    assert docs_with_scores == [(expected_doc, 1.0)]
+    assert "mode=not_implemented" in caplog.text

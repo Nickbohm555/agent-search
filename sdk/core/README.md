@@ -120,7 +120,7 @@ from agent_search import advanced_rag
 from langgraph.checkpoint.postgres import PostgresSaver
 
 with PostgresSaver.from_conn_string(
-    "postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search"
+    "postgresql://agent_user:agent_pass@localhost:5432/agent_search"
 ) as checkpointer:
     outcome = advanced_rag(
         "Summarize the customer feedback themes.",

@@ -128,6 +128,11 @@ def _build_runtime_request_payload(
     resume: Any | None = None,
     checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunRequest:
+    resolved_thread_id = None
+    if isinstance(config, Mapping) and config.get("thread_id") is not None:
+        resolved_thread_id = str(config.get("thread_id")).strip() or None
+    if resolved_thread_id is None:
+        resolved_thread_id = _resolve_resume_checkpoint_id(resume)
     custom_prompts_payload = {
         key: value
         for key in _CUSTOM_PROMPT_KEYS
@@ -145,7 +150,7 @@ def _build_runtime_request_payload(
         )
     return RuntimeAgentRunRequest(
         query=query,
-        thread_id=(str(config.get("thread_id")).strip() if isinstance(config, Mapping) and config.get("thread_id") is not None else None),
+        thread_id=resolved_thread_id,
         checkpoint_db_url=checkpoint_db_url,
         controls=controls,
         runtime_config=(
@@ -288,7 +293,7 @@ def _run_hitl_runtime_agent(
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> RuntimeAgentRunResult:
     translated_resume = _translate_sdk_resume(resume)
-    run_metadata = legacy_service.build_graph_run_metadata()
+    run_metadata = legacy_service.build_graph_run_metadata(thread_id=payload.thread_id)
     context = RuntimeGraphContext(
         payload=payload,
         model=model,
@@ -302,7 +307,12 @@ def _run_hitl_runtime_agent(
         if translated_resume is None
         else build_resume_command(translated_resume)
     )
-    execution_config = {"configurable": {"thread_id": run_metadata.thread_id}}
+    execution_config = {
+        "configurable": {
+            "thread_id": run_metadata.thread_id,
+            "checkpoint_id": run_metadata.thread_id,
+        }
+    }
     terminal_state: Any = None
     latest_checkpoint_id: str | None = None
     interrupt_payload: Any | None = None

@@ -69,16 +69,25 @@ class LangChainVectorStoreAdapter:
                 if signature is None or "filter" in signature.parameters:
                     kwargs["filter"] = filter
 
-            docs_with_scores = method(query, **kwargs)
-            logger.info(
-                "LangChain adapter relevance_search query_len=%s k=%s score_threshold=%s has_filter=%s results=%s mode=with_scores",
-                len(query),
-                safe_k,
-                score_threshold,
-                filter is not None,
-                len(docs_with_scores),
-            )
-            return docs_with_scores
+            try:
+                docs_with_scores = method(query, **kwargs)
+                logger.info(
+                    "LangChain adapter relevance_search query_len=%s k=%s score_threshold=%s has_filter=%s results=%s mode=with_scores",
+                    len(query),
+                    safe_k,
+                    score_threshold,
+                    filter is not None,
+                    len(docs_with_scores),
+                )
+                return docs_with_scores
+            except NotImplementedError:
+                logger.info(
+                    "LangChain adapter relevance_search fallback query_len=%s k=%s score_threshold=%s has_filter=%s mode=not_implemented",
+                    len(query),
+                    safe_k,
+                    score_threshold,
+                    filter is not None,
+                )
 
         documents = self.similarity_search(query, k=safe_k, filter=filter)
         logger.info(
@@ -90,4 +99,3 @@ class LangChainVectorStoreAdapter:
             len(documents),
         )
         return [(document, 1.0) for document in documents]
-

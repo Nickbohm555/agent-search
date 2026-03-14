@@ -33,11 +33,6 @@ class DemoGraph:
             "What billing complaints appear repeatedly?",
             "Which comments are too vague to action?",
         ]
-        self._expansions = [
-            "billing complaints",
-            "invoice confusion duplicate charges",
-            "refund delay complaints",
-        ]
 
     def stream(self, graph_input: Any, *, config: dict[str, Any], stream_mode: list[str]):
         _ = stream_mode
@@ -93,51 +88,15 @@ class DemoGraph:
                 if decision.action == "deny":
                     continue
             self._subquestions = updated_subquestions
+
+        if resume_payload is not None and not hasattr(resume_payload, "decisions"):
+            raise RuntimeError("DemoGraph expected a subquestion decision payload for resume.")
+
+        if resume_payload is not None:
             yield (
                 "checkpoints",
                 {"config": {"configurable": {"checkpoint_id": thread_id}}},
             )
-            yield (
-                "updates",
-                {
-                    "__interrupt__": [
-                        type(
-                            "Interrupt",
-                            (),
-                            {
-                                "value": {
-                                    "kind": "query_expansion_review",
-                                    "stage": "query_expansions_ready",
-                                    "checkpoint_id": thread_id,
-                                    "expansions": [
-                                        {
-                                            "expansion_id": f"qe-{index + 1}",
-                                            "query": text,
-                                            "index": index,
-                                        }
-                                        for index, text in enumerate(self._expansions)
-                                    ],
-                                }
-                            },
-                        )()
-                    ]
-                },
-            )
-            return
-
-        updated_expansions: list[str] = []
-        decisions_by_id = {decision.expansion_id: decision for decision in resume_payload.decisions}
-        for index, text in enumerate(self._expansions):
-            decision = decisions_by_id.get(f"qe-{index + 1}")
-            if decision is None or decision.action == "approve":
-                updated_expansions.append(text)
-                continue
-            if decision.action == "edit" and decision.edited_query:
-                updated_expansions.append(decision.edited_query)
-                continue
-            if decision.action == "deny":
-                continue
-        self._expansions = updated_expansions
 
         yield (
             "values",
@@ -147,7 +106,7 @@ class DemoGraph:
                 "sub_qa": [
                     SubQuestionAnswer(
                         sub_question=subquestion,
-                        sub_answer=f"Resolved using reviewed queries: {', '.join(self._expansions)}.",
+                        sub_answer="Resolved using the reviewed subquestion set.",
                     )
                     for subquestion in self._subquestions
                 ],
@@ -176,7 +135,7 @@ def fake_map_graph_state_to_runtime_response(state: dict[str, Any]) -> RuntimeAg
     return RuntimeAgentRunResponse(
         main_question=state["main_question"],
         thread_id=state["run_metadata"].thread_id,
-        sub_qa=state["sub_qa"],
+        sub_items=[(item.sub_question, item.sub_answer) for item in state["sub_qa"]],
         output=state["output"],
     )
 
@@ -197,8 +156,8 @@ def main() -> None:
         vector_store=vector_store,
         model=model,
         hitl_subquestions=True,
-        hitl_query_expansion=True,
         config={"thread_id": thread_id},
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
     )
     assert first.status == "paused"
     assert first.review is not None
@@ -216,30 +175,14 @@ def main() -> None:
             first.review.items[1].edit("What billing and invoice complaints appear repeatedly?"),
             first.review.items[2].reject(),
         ),
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
     )
-    assert second.status == "paused"
-    assert second.review is not None
-    assert second.review.kind == "query_expansion_review"
-    print("Second pause:", second.review.kind)
-    for item in second.review.items:
-        print(f"  {item.item_id}: {item.text}")
-
-    final = advanced_rag(
-        question,
-        vector_store=vector_store,
-        model=model,
-        resume=second.review.with_decisions(
-            second.review.items[0].approve(),
-            second.review.items[1].edit("invoice confusion duplicate charges refund timing"),
-            second.review.items[2].reject(),
-        ),
-    )
-    assert final.status == "completed"
-    assert final.response is not None
-    print("Final status:", final.status)
-    print("Final output:", final.response.output)
-    for item in final.response.sub_qa:
-        print(f"  {item.sub_question} -> {item.sub_answer}")
+    assert second.status == "completed"
+    assert second.response is not None
+    print("Final status:", second.status)
+    print("Final output:", second.response.output)
+    for sub_question, sub_answer in second.response.sub_items:
+        print(f"  {sub_question} -> {sub_answer}")
 
 
 if __name__ == "__main__":
