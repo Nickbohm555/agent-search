@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal, Union
 
+from pydantic import AliasChoices
 from pydantic import BaseModel, Field
+from pydantic import ConfigDict
 from pydantic import field_validator
 from pydantic import model_validator
 
@@ -50,11 +52,22 @@ class RuntimeAgentRunRuntimeConfig(BaseModel):
     query_expansion: RuntimeQueryExpansionControl | None = None
 
 
+class RuntimeCustomPrompts(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    subanswer: str | None = None
+    synthesis: str | None = None
+
+
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
     thread_id: str | None = None
     controls: RuntimeAgentRunControls | None = None
     runtime_config: RuntimeAgentRunRuntimeConfig | None = None
+    custom_prompts: RuntimeCustomPrompts | None = Field(
+        default=None,
+        validation_alias=AliasChoices("custom_prompts", "custom-prompts"),
+    )
 
     @field_validator("thread_id")
     @classmethod

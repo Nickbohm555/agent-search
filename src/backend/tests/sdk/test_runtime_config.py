@@ -86,3 +86,25 @@ def test_runtime_config_falls_back_to_query_expansion_defaults_for_invalid_secti
     config = RuntimeConfig.from_dict({"query_expansion": "disabled"})
 
     assert config.query_expansion.enabled is True
+
+
+def test_runtime_config_parses_custom_prompts_with_alias_and_ignores_unknown_keys() -> None:
+    config = RuntimeConfig.from_dict(
+        {
+            "custom-prompts": {
+                "subanswer": "Answer subquestions with concise grounded steps.",
+                "synthesis": "Synthesize a final answer with citations.",
+                "unexpected": "ignore me",
+            }
+        }
+    )
+
+    assert config.custom_prompts.subanswer == "Answer subquestions with concise grounded steps."
+    assert config.custom_prompts.synthesis == "Synthesize a final answer with citations."
+
+
+def test_runtime_config_ignores_invalid_custom_prompt_section_type() -> None:
+    config = RuntimeConfig.from_dict({"custom_prompts": "not-a-map"})
+
+    assert config.custom_prompts.subanswer is None
+    assert config.custom_prompts.synthesis is None

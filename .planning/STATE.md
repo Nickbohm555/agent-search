@@ -10,7 +10,7 @@
 
 - **Current phase:** 5
 - **Current plan:** 05-01
-- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-01 Task 1 queued
+- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-01 Task 1 implemented
 - **Progress:** 4/6 phases complete
 - **Progress bar:** `████░░` (67%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 5 Plan 05-01 Task 1.
+- Start Phase 5 Plan 05-01 Task 2.
 - Keep prompt customization contract work additive so existing advanced RAG callers preserve default behavior.
 - Keep using git-evidenced summaries before advancing plans.
 
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 50 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 is now complete, and the next dependency-ordered work item is Phase 5 Plan 05-01 Task 1 for additive custom prompt contract parsing.
-- **Resume note:** State update: `phase=04`, `plan=04-03`, `task=summary`, `status=implemented`; `docker compose exec frontend npm run test -- App.test.tsx` passed with `19 passed`, and Phase 4 is complete across API, runtime, SDK, and frontend control/result visibility work.
+- **Next command:** Implement Section 51 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 5 Plan 05-01 Task 1 is complete, and the next dependency-ordered work item is router forwarding for accepted prompt maps.
+- **Resume note:** State update: `phase=05`, `plan=05-01`, `task=1`, `status=implemented`; `docker compose exec backend uv run pytest tests/sdk/test_runtime_config.py -k "runtime_config or run"` passed with `6 passed`, and `docker compose exec backend uv run pytest tests/api/test_agent_run.py -k "runtime_config or run"` passed with `35 passed`.

@@ -15,6 +15,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from agent_search.errors import SDKConfigurationError
 from db import get_db
 from routers.agent import router as agent_router
+from schemas import RuntimeAgentRunRequest
 
 
 def test_post_run_returns_server_generated_thread_id_when_request_omits_it(monkeypatch) -> None:
@@ -50,6 +51,27 @@ def test_post_run_returns_server_generated_thread_id_when_request_omits_it(monke
     assert response.json()["thread_id"] == generated_thread_id
     assert captured["query"] == "Generate a thread id"
     assert captured["config"] is None
+
+
+def test_runtime_agent_run_request_accepts_custom_prompts_alias_and_ignores_unknown_keys() -> None:
+    payload = RuntimeAgentRunRequest.model_validate(
+        {
+            "query": "Use a custom prompt",
+            "custom-prompts": {
+                "subanswer": "Ground each subanswer in retrieved evidence.",
+                "synthesis": "Write a concise synthesis with citations.",
+                "ignored": "ignore this",
+            },
+        }
+    )
+
+    assert payload.custom_prompts is not None
+    assert payload.custom_prompts.subanswer == "Ground each subanswer in retrieved evidence."
+    assert payload.custom_prompts.synthesis == "Write a concise synthesis with citations."
+    assert payload.model_dump(exclude_none=True)["custom_prompts"] == {
+        "subanswer": "Ground each subanswer in retrieved evidence.",
+        "synthesis": "Write a concise synthesis with citations.",
+    }
 
 
 def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None:

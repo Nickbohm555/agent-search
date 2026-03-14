@@ -7,6 +7,7 @@ from typing import Any, Mapping
 logger = logging.getLogger(__name__)
 
 _RERANK_PROVIDERS = {"auto", "openai"}
+_CUSTOM_PROMPT_KEYS = ("subanswer", "synthesis")
 
 
 def _read_positive_int(*, value: Any, default: int, field_name: str) -> int:
@@ -65,6 +66,20 @@ def _read_bool(*, value: Any, default: bool, field_name: str) -> bool:
         default,
     )
     return default
+
+
+def _read_optional_prompt(*, value: Any, field_name: str) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    logger.warning(
+        "RuntimeConfig invalid prompt override; ignoring field=%s value=%s",
+        field_name,
+        value,
+    )
+    return None
 
 
 @dataclass(frozen=True)
@@ -252,10 +267,31 @@ class RuntimeRerankConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeCustomPromptsConfig:
+    subanswer: str | None = None
+    synthesis: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeCustomPromptsConfig:
+        values = dict(data or {})
+        return cls(
+            subanswer=_read_optional_prompt(
+                value=values.get("subanswer"),
+                field_name="custom_prompts.subanswer",
+            ),
+            synthesis=_read_optional_prompt(
+                value=values.get("synthesis"),
+                field_name="custom_prompts.synthesis",
+            ),
+        )
+
+
+@dataclass(frozen=True)
 class RuntimeConfig:
     timeout: RuntimeTimeoutConfig = RuntimeTimeoutConfig()
     retrieval: RuntimeRetrievalConfig = RuntimeRetrievalConfig()
     rerank: RuntimeRerankConfig = RuntimeRerankConfig()
+    custom_prompts: RuntimeCustomPromptsConfig = RuntimeCustomPromptsConfig()
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeConfig:
@@ -263,6 +299,7 @@ class RuntimeConfig:
         timeout_data = values.get("timeout")
         retrieval_data = values.get("retrieval")
         rerank_data = values.get("rerank")
+        custom_prompts_data = values.get("custom_prompts", values.get("custom-prompts"))
 
         if timeout_data is not None and not isinstance(timeout_data, Mapping):
             logger.warning("RuntimeConfig timeout section must be a mapping; using defaults")
@@ -273,17 +310,22 @@ class RuntimeConfig:
         if rerank_data is not None and not isinstance(rerank_data, Mapping):
             logger.warning("RuntimeConfig rerank section must be a mapping; using defaults")
             rerank_data = None
+        if custom_prompts_data is not None and not isinstance(custom_prompts_data, Mapping):
+            logger.warning("RuntimeConfig custom_prompts section must be a mapping; using defaults")
+            custom_prompts_data = None
 
         config = cls(
             timeout=RuntimeTimeoutConfig.from_dict(timeout_data),
             retrieval=RuntimeRetrievalConfig.from_dict(retrieval_data),
             rerank=RuntimeRerankConfig.from_dict(rerank_data),
+            custom_prompts=RuntimeCustomPromptsConfig.from_dict(custom_prompts_data),
         )
         logger.info(
-            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s",
+            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s custom_prompt_keys=%s",
             config.timeout.rerank_timeout_s,
             config.retrieval.search_node_k_fetch,
             config.rerank.enabled,
             config.rerank.provider,
+            [key for key in _CUSTOM_PROMPT_KEYS if getattr(config.custom_prompts, key) is not None],
         )
         return config
