@@ -119,6 +119,7 @@ Compatibility notes:
 `agent-search-core` supports one opt-in review stage on `advanced_rag(...)`:
 
 - `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
+- Subquestion review is the only HITL checkpoint in the SDK.
 - Subquestion review is the only HITL entrypoint; query expansion no longer has a separate review checkpoint.
 
 The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
