@@ -6,12 +6,12 @@ source:
   - 06-02-SUMMARY.md
   - 06-03-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Generate UAT coverage for Phase 6 outcomes spanning SDK/backend contract parity, release hardening, and adoption documentation for `agent-search-core==1.0.3`.
+Test 2: OpenAPI and generated SDK artifacts stay in backend-contract parity.
 
 ## Information Needed from the Summary
 
@@ -53,6 +53,10 @@ Generate UAT coverage for Phase 6 outcomes spanning SDK/backend contract parity,
 
 ### Test 1: Runtime API accepts canonical controls and preserves compatibility response fields
 - Type: UAT API behavior
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_runtime_agent_run_request_normalizes_release_blocking_controls_to_canonical_shape tests/api/test_agent_run.py::test_post_run_returns_response_shape_from_runtime_agent tests/api/test_agent_run.py::test_runtime_agent_run_response_serializes_additive_sub_answers_alongside_legacy_sub_qa` passed on 2026-03-14.
+- reported: canonical additive controls were accepted and normalized, and the runtime response exposed additive `sub_answers` alongside legacy-compatible `sub_qa` with matching payload contents.
+- severity: none
+- reason: observed behavior matches the Phase 6 compatibility contract for request acceptance and response serialization.
 - Preconditions:
   - Services running with Phase 6 backend changes.
 - Steps:
@@ -117,7 +121,7 @@ Generate UAT coverage for Phase 6 outcomes spanning SDK/backend contract parity,
 
 ## Summary
 
-Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`.
+Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization.
 
 ## Gaps
 

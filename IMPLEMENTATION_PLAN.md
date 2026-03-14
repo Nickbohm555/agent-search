@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 29. (move +1 after each turn)
+Current section to work on: section 30. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -664,7 +664,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_runtime_agent_run_request_normalizes_release_blocking_controls_to_canonical_shape tests/api/test_agent_run.py::test_post_run_returns_response_shape_from_runtime_agent tests/api/test_agent_run.py::test_runtime_agent_run_response_serializes_additive_sub_answers_alongside_legacy_sub_qa` passed, confirming the runtime API accepts canonical additive controls (`controls`, `runtime_config`, `custom_prompts`, nested HITL settings) without schema errors and serializes additive `sub_answers` alongside legacy-compatible `sub_qa` with matching response content.
 
 ## Section 30 — 06-sdk-contract-parity-and-pypi-release — tests-6 — Test 2 (Validation)
 - Source test markdown: `.planning/phases/06-sdk-contract-parity-and-pypi-release/tests-6.md`
