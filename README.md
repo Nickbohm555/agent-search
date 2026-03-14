@@ -149,3 +149,7 @@ The SDK currently exposes two prompt override keys:
 - `custom_prompts.synthesis`
 
 If you do not override them, the runtime uses built-in defaults. Overrides replace the instruction block only. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs. For more detail, see `docs/prompt-customization.md`.
+
+**Example Flow**
+
+![Example flow](screenshot.png)
