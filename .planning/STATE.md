@@ -10,7 +10,7 @@
 
 - **Current phase:** 5
 - **Current plan:** 05-02
-- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-02 Task 1 implemented
+- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-02 Task 2 implemented
 - **Progress:** 4/6 phases complete
 - **Progress bar:** `████░░` (67%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 5 Plan 05-02 Task 2.
+- Start Phase 5 Plan 05-02 summary.
 - Keep prompt customization precedence work additive so existing advanced RAG callers preserve default behavior.
 - Keep using git-evidenced summaries before advancing plans.
 
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 55 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 5 Plan 05-02 Task 1 is complete, and the next dependency-ordered work item is Task 2 for prompt-parameter regression coverage.
-- **Resume note:** State update: `phase=05`, `plan=05-02`, `task=1`, `status=implemented`; prompt-template parameters now exist at the subanswer and synthesis service boundaries with default/fallback behavior preserved.
+- **Next command:** Implement Section 56 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 5 Plan 05-02 Task 2 is complete, and the next dependency-ordered work item is the plan summary.
+- **Resume note:** State update: `phase=05`, `plan=05-02`, `task=2`, `status=implemented`; service-level regressions now lock prompt default parity and fallback stability when overrides are provided.

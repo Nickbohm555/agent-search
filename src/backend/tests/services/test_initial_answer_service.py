@@ -179,6 +179,101 @@ def test_generate_initial_answer_fallback_ignores_prompt_override_without_api_ke
     assert output == "NATO updated force posture [1] (source: wiki://nato)."
 
 
+def test_generate_initial_answer_unset_prompt_matches_explicit_default_template(monkeypatch) -> None:
+    captured_prompts: list[str] = []
+
+    class _FakeResponse:
+        content = "Final answer [1] (source: wiki://nato)."
+
+    class _FakeChatOpenAI:
+        def __init__(self, model: str, temperature: float) -> None:
+            assert model
+            assert temperature == initial_answer_service._INITIAL_ANSWER_TEMPERATURE
+
+        def invoke(self, prompt: str, config=None) -> _FakeResponse:
+            captured_prompts.append(prompt)
+            return _FakeResponse()
+
+    monkeypatch.setattr(initial_answer_service, "_OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(initial_answer_service, "ChatOpenAI", _FakeChatOpenAI)
+
+    initial_search_context = [
+        {
+            "title": "NATO communique",
+            "source": "wiki://nato-communique",
+            "snippet": "Communique summary.",
+        }
+    ]
+    sub_qa = [
+        SubQuestionAnswer(
+            sub_question="What changed in NATO policy?",
+            sub_answer="NATO updated force posture [1] (source: wiki://nato).",
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+        )
+    ]
+
+    unset_output = initial_answer_service.generate_initial_answer(
+        main_question="What changed in NATO policy?",
+        initial_search_context=initial_search_context,
+        sub_qa=sub_qa,
+    )
+    default_output = initial_answer_service.generate_initial_answer(
+        main_question="What changed in NATO policy?",
+        initial_search_context=initial_search_context,
+        sub_qa=sub_qa,
+        prompt_template=initial_answer_service.DEFAULT_INITIAL_ANSWER_PROMPT_TEMPLATE,
+    )
+
+    expected_prompt = initial_answer_service.DEFAULT_INITIAL_ANSWER_PROMPT_TEMPLATE.format(
+        main_question="What changed in NATO policy?",
+        initial_context="[1] title=NATO communique source=wiki://nato-communique snippet=Communique summary.",
+        sub_qa_context=(
+            "[1] sub_question=What changed in NATO policy?\n"
+            "answerable=True\n"
+            "verification_reason=grounded_in_reranked_documents\n"
+            "sub_answer=NATO updated force posture [1] (source: wiki://nato)."
+        ),
+    )
+
+    assert unset_output == "Final answer [1] (source: wiki://nato)."
+    assert default_output == "Final answer [1] (source: wiki://nato)."
+    assert captured_prompts == [expected_prompt, expected_prompt]
+
+
+def test_generate_initial_answer_fallback_stays_stable_when_prompt_override_llm_fails(monkeypatch) -> None:
+    class _FakeChatOpenAI:
+        def __init__(self, model: str, temperature: float) -> None:
+            assert model
+            assert temperature == initial_answer_service._INITIAL_ANSWER_TEMPERATURE
+
+        def invoke(self, prompt: str, config=None) -> str:
+            raise RuntimeError("llm unavailable")
+
+    monkeypatch.setattr(initial_answer_service, "_OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(initial_answer_service, "ChatOpenAI", _FakeChatOpenAI)
+
+    output = initial_answer_service.generate_initial_answer(
+        main_question="What changed in NATO policy?",
+        initial_search_context=[],
+        sub_qa=[
+            SubQuestionAnswer(
+                sub_question="What changed in NATO policy?",
+                sub_answer="NATO updated force posture [1] (source: wiki://nato).",
+                answerable=True,
+                verification_reason="grounded_in_reranked_documents",
+            )
+        ],
+        prompt_template=(
+            "MAIN={main_question}\n"
+            "CTX={initial_context}\n"
+            "SUBS={sub_qa_context}"
+        ),
+    )
+
+    assert output == "NATO updated force posture [1] (source: wiki://nato)."
+
+
 def test_generate_final_synthesis_answer_preserves_grounded_subanswer_citations(monkeypatch) -> None:
     monkeypatch.setattr(initial_answer_service, "_OPENAI_API_KEY", "")
 
