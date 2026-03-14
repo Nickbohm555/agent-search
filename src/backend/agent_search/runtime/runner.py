@@ -271,7 +271,7 @@ def _run_subquestion_checkpointed_graph(
     interrupt_payload: Any | None = None
     terminal_state: Any | None = None
 
-    with compile_graph_with_checkpointer(builder, checkpoint_db_url=payload.checkpoint_db_url) as graph:
+    with compile_graph_with_checkpointer(builder, database_url=payload.checkpoint_db_url) as graph:
         try:
             if lifecycle_builder is not None:
                 if resume is None:
@@ -376,7 +376,7 @@ def run_checkpointed_agent(
     if resume is not None:
         graph_input = build_resume_command(resume)
     lifecycle_builder = LifecycleEventBuilder(run_metadata=run_metadata) if lifecycle_callback is not None else None
-    with compile_graph_with_checkpointer(builder, checkpoint_db_url=payload.checkpoint_db_url) as graph:
+    with compile_graph_with_checkpointer(builder, database_url=payload.checkpoint_db_url) as graph:
         try:
             if lifecycle_builder is not None:
                 lifecycle_callback(lifecycle_builder.emit_recovery_started())

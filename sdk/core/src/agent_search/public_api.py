@@ -99,6 +99,7 @@ def _build_runtime_request_payload(
     runtime_config: RuntimeConfig,
     hitl_subquestions: bool = False,
     resume: Any | None = None,
+    checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunRequest:
     custom_prompts_payload = {
         key: value
@@ -117,6 +118,7 @@ def _build_runtime_request_payload(
         )
     return RuntimeAgentRunRequest(
         query=query,
+        checkpoint_db_url=checkpoint_db_url,
         controls=controls,
         custom_prompts=(
             custom_prompts_payload
@@ -245,7 +247,7 @@ def _run_hitl_runtime_agent(
     terminal_state: Any = None
     latest_checkpoint_id: str | None = None
     interrupt_payload: Any | None = None
-    with compile_graph_with_checkpointer(builder) as graph:
+    with compile_graph_with_checkpointer(builder, database_url=payload.checkpoint_db_url) as graph:
         for item in graph.stream(
             graph_input,
             config=execution_config,
@@ -303,6 +305,7 @@ def advanced_rag(
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     resume: Any | None = None,
+    checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunResponse | RuntimeAgentRunResult:
     logger.info(
         "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s has_config=%s has_callbacks=%s",
@@ -339,6 +342,7 @@ def advanced_rag(
             runtime_config=runtime_config,
             hitl_subquestions=hitl_subquestions,
             resume=resume,
+            checkpoint_db_url=checkpoint_db_url,
         )
         if _hitl_requested(request_payload, resume=resume):
             response = _run_hitl_runtime_agent(

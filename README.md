@@ -33,6 +33,7 @@ Compatibility checklist:
 - Keep `controls`, `runtime_config`, and HITL fields omitted unless you explicitly want those behaviors; new controls stay default-off.
 - Send `custom_prompts` in new payloads. The `custom-prompts` alias remains compatibility-only.
 - Read `sub_answers` in new code, but keep `sub_qa` fallback handling during the compatibility window.
+- Langfuse tracing is no longer supported in the SDK/runtime.
 
 <p align="center">
   <img src="assets/readme-supercharge-banner.svg" alt="Supercharge your RAG flow banner" width="100%" data-darkreader-ignore />
@@ -127,6 +128,7 @@ HITL does require checkpoint persistence. `advanced_rag(...)` creates a LangGrap
 - A reachable Postgres database must be configured.
 - The SDK uses `DATABASE_URL` and defaults to `postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search`.
 - If you run outside Docker, set `DATABASE_URL` explicitly so the SDK can persist and resume paused runs.
+- You can override the checkpoint database per call with `checkpoint_db_url="postgresql+psycopg://..."` on `advanced_rag(...)`.
 
 Response schema from `advanced_rag(...)` when HITL is disabled:
 

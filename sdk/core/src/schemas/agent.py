@@ -53,6 +53,7 @@ class RuntimeCustomPrompts(BaseModel):
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
+    checkpoint_db_url: str | None = None
     controls: RuntimeAgentRunControls | None = None
     runtime_config: RuntimeAgentRunRuntimeConfig | None = None
     custom_prompts: RuntimeCustomPrompts | None = Field(

@@ -50,6 +50,7 @@ Compatibility notes:
 - `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
 - `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
 - For HITL flows, use the checkpointed runtime runner described below.
+- Langfuse tracing is no longer supported in the SDK/runtime.
 
 ## Human-in-the-loop (HITL)
 
@@ -65,6 +66,7 @@ HITL does still require checkpoint persistence. The public API does not ask you 
 - A reachable Postgres database must be configured.
 - The SDK uses `DATABASE_URL` and defaults to `postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search`.
 - If you run outside Docker, set `DATABASE_URL` explicitly so the SDK can persist and resume paused runs.
+- You can override the checkpoint database per call with `checkpoint_db_url="postgresql+psycopg://..."` on `advanced_rag(...)`.
 
 Example paused result for subquestion review:
 
