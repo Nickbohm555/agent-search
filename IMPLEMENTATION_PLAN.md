@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 25. (move +1 after each turn)
+Current section to work on: section 26. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -574,7 +574,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/services/test_agent_service.py::test_run_sequential_graph_runner_prompt_overrides_influence_orchestrated_outputs tests/services/test_subanswer_service.py::test_generate_subanswer_uses_custom_prompt_template tests/services/test_initial_answer_service.py::test_generate_initial_answer_uses_custom_prompt_template` passed, confirming explicit `subanswer` and `synthesis` overrides deterministically change both the intermediate subanswer text and the final synthesized answer compared with the default-prompt control path.
 
 ## Section 26 — 05-prompt-customization-and-guidance — tests-5 — Test 4 (Validation)
 - Source test markdown: `.planning/phases/05-prompt-customization-and-guidance/tests-5.md`

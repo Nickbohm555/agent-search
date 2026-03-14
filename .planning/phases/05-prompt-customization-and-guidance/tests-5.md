@@ -8,12 +8,12 @@ source:
   - 05-04-SUMMARY.md
   - 05-05-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-15"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Test 3 pending. Tests 1-2 passed on 2026-03-14 and 2026-03-15 for alias compatibility, safe prompt key handling, and default-behavior preservation when overrides are omitted.
+Test 4 pending. Tests 1-3 passed on 2026-03-14 and confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, and deterministic prompt-influenced output changes.
 
 ## Information Needed from the Summary
 
@@ -68,6 +68,7 @@ Test 3 pending. Tests 1-2 passed on 2026-03-14 and 2026-03-15 for alias compatib
    - Given a run with explicit `subanswer` and `synthesis` override text designed to alter deterministic wording.
    - When the run completes.
    - Then resulting intermediate/final generated text reflects override influence compared with a default-prompt control run.
+   - result: Pass on 2026-03-14. `docker compose exec backend uv run pytest tests/services/test_agent_service.py::test_run_sequential_graph_runner_prompt_overrides_influence_orchestrated_outputs tests/services/test_subanswer_service.py::test_generate_subanswer_uses_custom_prompt_template tests/services/test_initial_answer_service.py::test_generate_initial_answer_uses_custom_prompt_template` passed; the orchestrated graph runner changed the intermediate subanswer from `Default subanswer [1].` to `Concise subanswer [1].` and the final output from `Default synthesis: Default subanswer [1].` to `Executive synthesis: Concise subanswer [1].`, while the service-level tests confirmed custom prompt templates directly alter the rendered subanswer and synthesis prompt bodies.
 
 4. **Guardrails Still Enforced Under Custom Prompts**
    - Given a custom prompt that omits citation-oriented instructions.
@@ -86,8 +87,8 @@ Test 3 pending. Tests 1-2 passed on 2026-03-14 and 2026-03-15 for alias compatib
 
 ## Summary
 
-Tests 1-2 passed on 2026-03-14 and 2026-03-15. Remaining coverage is still pending for runtime prompt influence, guardrails, precedence, and documentation.
+Tests 1-3 passed on 2026-03-14. Remaining coverage is still pending for guardrails, precedence, and documentation.
 
 ## Gaps
 
-- Tests 3-6 not yet executed.
+- Tests 4-6 not yet executed.
