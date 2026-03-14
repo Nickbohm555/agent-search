@@ -6,12 +6,12 @@ source:
   - 04-02-SUMMARY.md
   - 04-03-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Phase 4 UAT coverage for operator controls and result visibility, derived from delivered outcomes in the phase summaries.
+Phase 4 UAT coverage for operator controls and result visibility, derived from delivered outcomes in the phase summaries. Test 1 is now recorded as passing.
 
 ## Information Needed from the Summary
 
@@ -51,6 +51,7 @@ Phase 4 UAT coverage for operator controls and result visibility, derived from d
    - Given a user starts a run without providing `runtime_config`
    - When the run request is submitted through the API
    - Then the run is accepted and behaves like legacy/default runs (no required new fields, no contract break).
+   - result: Pass on 2026-03-14. `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_accepts_additive_runtime_config_payload_without_breaking_legacy_forwarding tests/api/test_agent_run.py::test_post_run_async_accepts_additive_runtime_config_payload_without_breaking_legacy_forwarding tests/sdk/test_public_api.py::test_advanced_rag_preserves_omitted_controls_and_hitl_default_off tests/sdk/test_public_api_async.py::test_run_async_preserves_omitted_controls_and_hitl_default_off` passed, confirming `runtime_config` remains additive on sync and async API paths while omitted config still preserves legacy/default payload behavior in sync and async SDK flows.
 
 2. **UAT-4.2 Per-run query expansion control affects only that run**
    - Given two consecutive runs with the same query
@@ -74,8 +75,10 @@ Phase 4 UAT coverage for operator controls and result visibility, derived from d
 
 ## Summary
 
-Phase 4 delivered run-scoped retrieval controls (query expansion and rerank) that are configurable through API, SDK, and frontend surfaces, while maintaining backward compatibility and preserving sub-answer visibility in streamed and final outputs. The tests above validate observable user-facing outcomes rather than internal implementation details.
+Phase 4 delivered run-scoped retrieval controls (query expansion and rerank) that are configurable through API, SDK, and frontend surfaces, while maintaining backward compatibility and preserving sub-answer visibility in streamed and final outputs. UAT-4.1 passed on 2026-03-14. The tests above validate observable user-facing outcomes rather than internal implementation details.
 
 ## Gaps
 
-[]
+[
+  "UAT-4.1 recorded as passing on 2026-03-14; UAT-4.2 through UAT-4.5 remain to be executed."
+]
