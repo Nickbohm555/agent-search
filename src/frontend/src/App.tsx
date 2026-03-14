@@ -5,8 +5,6 @@ import {
   RequestState,
   RuntimeLifecycleEvent,
   RuntimeAgentRunResponse,
-  RuntimeQueryExpansionDecision,
-  RuntimeQueryExpansionPausePayload,
   RuntimeSubquestionDecision,
   RuntimeSubquestionPausePayload,
   SearchCandidateRow,
@@ -48,7 +46,7 @@ type RunSummary = {
 };
 
 type ReviewDecisionDraft = {
-  action: RuntimeSubquestionDecision["action"] | RuntimeQueryExpansionDecision["action"];
+  action: RuntimeSubquestionDecision["action"];
   editedText: string;
 };
 
@@ -96,9 +94,7 @@ export default function App() {
     final: "pending",
   });
   const [lastSuccessfulSynthesis, setLastSuccessfulSynthesis] = useState<RuntimeAgentRunResponse | null>(null);
-  const [pausedPayload, setPausedPayload] = useState<
-    RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload | null
-  >(null);
+  const [pausedPayload, setPausedPayload] = useState<RuntimeSubquestionPausePayload | null>(null);
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDecisionDraft>>({});
   const [resumeState, setResumeState] = useState<RequestState>("idle");
   const [resumeMessage, setResumeMessage] = useState("");
@@ -293,6 +289,7 @@ export default function App() {
     const controls = subquestionHitlEnabled
       ? {
           hitl: {
+            enabled: true,
             subquestions: { enabled: true },
           },
         }
@@ -571,17 +568,10 @@ export default function App() {
       {pausedPayload ? (
         <section className="panel paused-review-panel" aria-labelledby="paused-review-title">
           <h2 id="paused-review-title">{getPausedReviewTitle(pausedPayload)}</h2>
-          {isQueryExpansionPausePayload(pausedPayload) ? (
-            <p>
-              Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> for subquestion{" "}
-              <strong>{pausedPayload.sub_question}</strong> and choose how each proposed expansion should continue.
-            </p>
-          ) : (
-            <p>
-              Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> and choose how each proposed
-              subquestion should continue.
-            </p>
-          )}
+          <p>
+            Review checkpoint <strong>{pausedPayload.checkpoint_id}</strong> and choose how each proposed
+            subquestion should continue.
+          </p>
           <ol className="paused-review-list" aria-label={getPausedReviewListLabel(pausedPayload)}>
             {getPausedReviewItems(pausedPayload).map((item, index) => {
               const draft = reviewDrafts[item.id] ?? {
@@ -1076,63 +1066,32 @@ function formatLifecycleEventLabel(event: RuntimeLifecycleEvent): string {
   return parts.join(" · ");
 }
 
-function isQueryExpansionPausePayload(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
-): pausedPayload is RuntimeQueryExpansionPausePayload {
-  return Array.isArray((pausedPayload as RuntimeQueryExpansionPausePayload).expansions);
+function getPausedRunStatusMessage(_pausedPayload: RuntimeSubquestionPausePayload): string {
+  return "Run paused for subquestion review.";
 }
 
-function getPausedRunStatusMessage(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
-): string {
-  return isQueryExpansionPausePayload(pausedPayload)
-    ? "Run paused for query expansion review."
-    : "Run paused for subquestion review.";
+function getPausedReviewTitle(_pausedPayload: RuntimeSubquestionPausePayload): string {
+  return "Subquestion Review";
 }
 
-function getPausedReviewTitle(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
-): string {
-  return isQueryExpansionPausePayload(pausedPayload) ? "Query Expansion Review" : "Subquestion Review";
+function getPausedReviewListLabel(_pausedPayload: RuntimeSubquestionPausePayload): string {
+  return "Paused subquestion review list";
 }
 
-function getPausedReviewListLabel(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
-): string {
-  return isQueryExpansionPausePayload(pausedPayload)
-    ? "Paused query expansion review list"
-    : "Paused subquestion review list";
-}
-
-function getResumeValidationMessage(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
-): string {
-  return isQueryExpansionPausePayload(pausedPayload)
-    ? "Each edited expansion needs replacement text before resuming."
-    : "Each edited subquestion needs replacement text before resuming.";
+function getResumeValidationMessage(_pausedPayload: RuntimeSubquestionPausePayload): string {
+  return "Each edited subquestion needs replacement text before resuming.";
 }
 
 function getPausedReviewItems(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+  pausedPayload: RuntimeSubquestionPausePayload,
 ): Array<{
   id: string;
   text: string;
-  label: "Subquestion" | "Expansion";
-  editLabel: "Edited text" | "Edited query";
+  label: "Subquestion";
+  editLabel: "Edited text";
   editPlaceholder: string;
-  kind: "subquestion" | "expansion";
+  kind: "subquestion";
 }> {
-  if (isQueryExpansionPausePayload(pausedPayload)) {
-    return pausedPayload.expansions.map((item) => ({
-      id: item.expansion_id,
-      text: item.query,
-      label: "Expansion",
-      editLabel: "Edited query",
-      editPlaceholder: "Rewrite this expansion",
-      kind: "expansion",
-    }));
-  }
-
   return pausedPayload.subquestions.map((item) => ({
     id: item.subquestion_id,
     text: item.sub_question,
@@ -1200,7 +1159,7 @@ function computeStageStatusesFromEvents(
 }
 
 function buildInitialReviewDrafts(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+  pausedPayload: RuntimeSubquestionPausePayload,
 ): Record<string, ReviewDecisionDraft> {
   return Object.fromEntries(
     getPausedReviewItems(pausedPayload).map((item) => [
@@ -1214,35 +1173,9 @@ function buildInitialReviewDrafts(
 }
 
 function buildResumeDecisions(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
+  pausedPayload: RuntimeSubquestionPausePayload,
   reviewDrafts: Record<string, ReviewDecisionDraft>,
-): RuntimeSubquestionDecision[] | RuntimeQueryExpansionDecision[] | null {
-  if (isQueryExpansionPausePayload(pausedPayload)) {
-    const decisions: RuntimeQueryExpansionDecision[] = [];
-    for (const item of pausedPayload.expansions) {
-      const draft = reviewDrafts[item.expansion_id] ?? { action: "approve", editedText: item.query };
-      if (draft.action === "edit") {
-        const editedText = draft.editedText.trim();
-        if (!editedText) {
-          return null;
-        }
-        decisions.push({
-          expansion_id: item.expansion_id,
-          action: "edit",
-          edited_query: editedText,
-        });
-        continue;
-      }
-
-      decisions.push({
-        expansion_id: item.expansion_id,
-        action: draft.action,
-      });
-    }
-
-    return decisions;
-  }
-
+): RuntimeSubquestionDecision[] | null {
   const decisions: RuntimeSubquestionDecision[] = [];
   for (const item of pausedPayload.subquestions) {
     const draft = reviewDrafts[item.subquestion_id] ?? { action: "approve", editedText: item.sub_question };
@@ -1269,15 +1202,8 @@ function buildResumeDecisions(
 }
 
 function buildSkipResumeDecisions(
-  pausedPayload: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload,
-): RuntimeSubquestionDecision[] | RuntimeQueryExpansionDecision[] {
-  if (isQueryExpansionPausePayload(pausedPayload)) {
-    return pausedPayload.expansions.map((item) => ({
-      expansion_id: item.expansion_id,
-      action: "skip" as const,
-    }));
-  }
-
+  pausedPayload: RuntimeSubquestionPausePayload,
+): RuntimeSubquestionDecision[] {
   return pausedPayload.subquestions.map((item) => ({
     subquestion_id: item.subquestion_id,
     action: "skip" as const,

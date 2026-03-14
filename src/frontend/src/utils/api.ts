@@ -145,14 +145,9 @@ export interface RuntimeSubquestionHitlControl {
   enabled: boolean;
 }
 
-export interface RuntimeQueryExpansionHitlControl {
-  enabled: boolean;
-}
-
 export interface RuntimeHitlControl {
   enabled: boolean;
   subquestions?: RuntimeSubquestionHitlControl;
-  query_expansion?: RuntimeQueryExpansionHitlControl;
 }
 
 export interface RuntimeAgentRunControls {
@@ -199,36 +194,8 @@ export interface RuntimeSubquestionResumeEnvelope {
   decisions: RuntimeSubquestionDecision[];
 }
 
-export interface RuntimeQueryExpansionReviewItem {
-  expansion_id: string;
-  query: string;
-  index?: number | null;
-}
-
-export interface RuntimeQueryExpansionPausePayload extends RuntimeSubquestionPausePayload {
-  sub_question: string;
-  expansions: RuntimeQueryExpansionReviewItem[];
-}
-
-export type RuntimeQueryExpansionDecisionAction = "approve" | "edit" | "deny" | "skip";
-
-export interface RuntimeQueryExpansionDecision {
-  expansion_id: string;
-  action: RuntimeQueryExpansionDecisionAction;
-  edited_query?: string | null;
-}
-
-export interface RuntimeQueryExpansionResumeEnvelope {
-  checkpoint_id: string;
-  decisions: RuntimeQueryExpansionDecision[];
-}
-
 export interface RuntimeAgentRunResumeRequest {
-  resume:
-    | boolean
-    | Record<string, unknown>
-    | RuntimeSubquestionResumeEnvelope
-    | RuntimeQueryExpansionResumeEnvelope;
+  resume: boolean | Record<string, unknown> | RuntimeSubquestionResumeEnvelope;
 }
 
 export interface RuntimeAgentRunAsyncStatusResponse {
@@ -247,7 +214,7 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   result?: RuntimeAgentRunResponse | null;
   error?: string | null;
   cancel_requested: boolean;
-  interrupt_payload?: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload | null;
+  interrupt_payload?: RuntimeSubquestionPausePayload | null;
   checkpoint_id?: string | null;
   started_at?: number | null;
   finished_at?: number | null;
@@ -270,7 +237,7 @@ export interface RuntimeLifecycleEvent {
   sub_answers?: SubQuestionAnswer[] | null;
   output?: string | null;
   result?: RuntimeAgentRunResponse | null;
-  interrupt_payload?: RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload | null;
+  interrupt_payload?: RuntimeSubquestionPausePayload | null;
   checkpoint_id?: string | null;
   elapsed_ms?: number | null;
 }
@@ -665,11 +632,8 @@ function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent
 function isRuntimePausePayload(
   value: unknown,
   parentCheckpointId?: unknown,
-): value is RuntimeSubquestionPausePayload | RuntimeQueryExpansionPausePayload {
-  return (
-    isRuntimeSubquestionPausePayload(value, parentCheckpointId) ||
-    isRuntimeQueryExpansionPausePayload(value, parentCheckpointId)
-  );
+): value is RuntimeSubquestionPausePayload {
+  return isRuntimeSubquestionPausePayload(value, parentCheckpointId);
 }
 
 function isRuntimeSubquestionPausePayload(
@@ -691,45 +655,6 @@ function isRuntimeSubquestionPausePayload(
 
   value.checkpoint_id = rawCheckpointId;
   value.subquestions = normalizedSubquestions;
-  return (
-    (value.stage === undefined || typeof value.stage === "string") &&
-    (value.kind === undefined || typeof value.kind === "string")
-  );
-}
-
-function isRuntimeQueryExpansionPausePayload(
-  value: unknown,
-  parentCheckpointId?: unknown,
-): value is RuntimeQueryExpansionPausePayload {
-  if (!isObject(value)) return false;
-
-  const rawCheckpointId =
-    typeof value.checkpoint_id === "string" && value.checkpoint_id.trim()
-      ? value.checkpoint_id
-      : typeof parentCheckpointId === "string" && parentCheckpointId.trim()
-        ? parentCheckpointId
-        : null;
-  if (rawCheckpointId === null) return false;
-
-  const subQuestion =
-    typeof value.sub_question === "string" && value.sub_question.trim()
-      ? value.sub_question
-      : typeof value.question === "string" && value.question.trim()
-        ? value.question
-        : null;
-  if (subQuestion === null) return false;
-
-  const normalizedExpansions = normalizeRuntimeQueryExpansionReviewItems(value);
-  if (normalizedExpansions === null) return false;
-
-  value.checkpoint_id = rawCheckpointId;
-  value.sub_question = subQuestion;
-  value.expansions = normalizedExpansions;
-  value.subquestions = normalizedExpansions.map((item) => ({
-    subquestion_id: item.expansion_id,
-    sub_question: item.query,
-    index: item.index ?? null,
-  }));
   return (
     (value.stage === undefined || typeof value.stage === "string") &&
     (value.kind === undefined || typeof value.kind === "string")
@@ -777,51 +702,6 @@ function normalizeRuntimeSubquestionReviewItem(
   return {
     subquestion_id: subquestionId,
     sub_question: subQuestion,
-    index: typeof value.index === "number" ? value.index : fallbackIndex,
-  };
-}
-
-function normalizeRuntimeQueryExpansionReviewItems(
-  value: Record<string, unknown>,
-): RuntimeQueryExpansionReviewItem[] | null {
-  const rawItems = value.expansions;
-  if (!Array.isArray(rawItems)) return null;
-
-  const normalizedItems: RuntimeQueryExpansionReviewItem[] = [];
-  for (let index = 0; index < rawItems.length; index += 1) {
-    const normalizedItem = normalizeRuntimeQueryExpansionReviewItem(rawItems[index], index);
-    if (normalizedItem === null) return null;
-    normalizedItems.push(normalizedItem);
-  }
-  return normalizedItems;
-}
-
-function normalizeRuntimeQueryExpansionReviewItem(
-  value: unknown,
-  fallbackIndex: number,
-): RuntimeQueryExpansionReviewItem | null {
-  if (!isObject(value)) return null;
-
-  const expansionId =
-    typeof value.expansion_id === "string" && value.expansion_id.trim()
-      ? value.expansion_id
-      : typeof value.id === "string" && value.id.trim()
-        ? value.id
-        : typeof value.index === "number"
-          ? `expansion:${value.index}`
-          : `expansion:${fallbackIndex}`;
-
-  const query =
-    typeof value.query === "string" && value.query.trim()
-      ? value.query
-      : typeof value.text === "string" && value.text.trim()
-        ? value.text
-        : null;
-  if (query === null) return null;
-
-  return {
-    expansion_id: expansionId,
-    query,
     index: typeof value.index === "number" ? value.index : fallbackIndex,
   };
 }

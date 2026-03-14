@@ -8,7 +8,6 @@ from langgraph.types import RetryPolicy, interrupt
 from agent_search.runtime.graph.routes import route_post_decompose, route_subquestion_lanes
 from agent_search.runtime.graph.state import RuntimeGraphContext, RuntimeGraphState
 from agent_search.runtime.resume import (
-    apply_query_expansion_resume_decisions,
     apply_subquestion_resume_decisions,
     attach_checkpoint_metadata,
 )
@@ -56,7 +55,6 @@ def _append_snapshot(
         lane_sub_question=str(state.get("lane_sub_question", "")),
         initial_search_context=list(state.get("initial_search_context", [])),
         subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-        query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
     )
 
 
@@ -87,7 +85,6 @@ def _build_decompose_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="decompose",
         )
@@ -118,7 +115,6 @@ def _build_expand_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="expand",
             sub_question=sub_question,
@@ -159,7 +155,6 @@ def _build_subquestion_checkpoint_node():
             lane_sub_question=str(state.get("lane_sub_question", "")),
             initial_search_context=list(state.get("initial_search_context", [])),
             subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-            query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
         )
 
     return _subquestion_checkpoint
@@ -192,7 +187,6 @@ def _build_search_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="search",
             sub_question=sub_question,
@@ -232,7 +226,6 @@ def _build_rerank_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="rerank",
             sub_question=sub_question,
@@ -272,7 +265,6 @@ def _build_answer_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="answer",
             sub_question=sub_question,
@@ -302,7 +294,6 @@ def _build_synthesize_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="synthesize_final",
         )
@@ -334,54 +325,10 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="expand",
             sub_question=sub_question,
         )
-
-        artifact = next(
-            (item for item in lane_state["sub_question_artifacts"] if item.sub_question == sub_question),
-            SubQuestionArtifacts(sub_question=sub_question),
-        )
-        if state.get("query_expansion_hitl_enabled", False) and artifact.expanded_queries:
-            interrupt_payload = attach_checkpoint_metadata(
-                {
-                    "checkpoint_id": state["run_metadata"].thread_id,
-                    "kind": "query_expansion_review",
-                    "stage": "query_expansions_ready",
-                    "sub_question": sub_question,
-                    "expansions": [
-                        {
-                            "expansion_id": f"qe-{index + 1}",
-                            "query": expanded_query,
-                            "sub_question": sub_question,
-                            "index": index,
-                        }
-                        for index, expanded_query in enumerate(artifact.expanded_queries)
-                    ],
-                },
-                checkpoint_id=state["run_metadata"].thread_id,
-            )
-            resume_value = interrupt(interrupt_payload)
-            resolved_queries = apply_query_expansion_resume_decisions(
-                artifact.expanded_queries,
-                resume=resume_value,
-                interrupt_payload=interrupt_payload,
-            )
-            lane_state = RuntimeGraphState(
-                **to_rag_state(
-                    legacy_service.apply_expand_node_output_to_graph_state(
-                        state=lane_state,
-                        sub_question=sub_question,
-                        node_output=expand_output.model_copy(update={"expanded_queries": resolved_queries}),
-                    )
-                ),
-                lane_sub_question=str(state.get("lane_sub_question", "")),
-                initial_search_context=list(state.get("initial_search_context", [])),
-                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
-            )
 
         artifact = next(
             (item for item in lane_state["sub_question_artifacts"] if item.sub_question == sub_question),
@@ -407,7 +354,6 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="search",
             sub_question=sub_question,
@@ -441,7 +387,6 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="rerank",
             sub_question=sub_question,
@@ -474,7 +419,6 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
                 subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
-                query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
             ),
             stage="answer",
             sub_question=sub_question,
