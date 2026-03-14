@@ -61,6 +61,12 @@ Compatibility notes:
 
 You can enable either stage or both. The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
+HITL does still require checkpoint persistence. The public API does not ask you to pass a checkpointer because `advanced_rag(...)` creates one internally with LangGraph's `PostgresSaver` and resumes from the stored checkpoint ID on the next call. In practice that means:
+
+- A reachable Postgres database must be configured.
+- The SDK uses `DATABASE_URL` and defaults to `postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search`.
+- If you run outside Docker, set `DATABASE_URL` explicitly so the SDK can persist and resume paused runs.
+
 Example paused result for subquestion review:
 
 ```python
@@ -125,6 +131,73 @@ For simple approval flows:
 ```python
 resume = outcome.review.approve_all()
 ```
+
+Detailed end-to-end example with both pause stages:
+
+```python
+from langchain_openai import ChatOpenAI
+from agent_search import advanced_rag
+from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
+
+vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
+model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
+question = "Summarize the customer feedback themes from the support archive."
+thread_id = "550e8400-e29b-41d4-a716-446655440230"
+
+first = advanced_rag(
+    question,
+    vector_store=vector_store,
+    model=model,
+    hitl_subquestions=True,
+    hitl_query_expansion=True,
+    config={"thread_id": thread_id},
+)
+assert first.status == "paused"
+assert first.review.kind == "subquestion_review"
+
+for item in first.review.items:
+    print(item.item_id, item.text)
+
+subquestion_resume = first.review.with_decisions(
+    first.review.items[0].approve(),
+    first.review.items[1].edit("What billing and invoice complaints show up most often?"),
+    first.review.items[2].reject(),
+)
+
+second = advanced_rag(
+    question,
+    vector_store=vector_store,
+    model=model,
+    resume=subquestion_resume,
+)
+assert second.status == "paused"
+assert second.review.kind == "query_expansion_review"
+
+for item in second.review.items:
+    print(item.item_id, item.text)
+
+query_resume = second.review.with_decisions(
+    second.review.items[0].approve(),
+    second.review.items[1].edit("invoice confusion refunds duplicate charge complaints"),
+)
+
+final = advanced_rag(
+    question,
+    vector_store=vector_store,
+    model=model,
+    resume=query_resume,
+)
+assert final.status == "completed"
+print(final.response.output)
+```
+
+Decision semantics:
+
+- `approve()` keeps the item unchanged.
+- `edit("...")` replaces the item text before the run continues.
+- `reject()` removes the item from the next stage entirely.
+- `approve_all()` is the shortcut when you want to resume without per-item changes.
+- If you set `config["thread_id"]`, use a valid UUID string.
 
 Advanced callers can still pass raw `config["controls"]["hitl"]`, but the top-level HITL review toggles are now the preferred public API.
 
@@ -218,6 +291,17 @@ response = advanced_rag(
 ```bash
 cd sdk/core
 python -m build
+```
+
+## Example script
+
+A self-contained HITL walkthrough that imports the SDK and simulates pause/resume decisions lives at `examples/hitl_walkthrough.py`.
+
+Run it from the package root:
+
+```bash
+cd sdk/core
+python examples/hitl_walkthrough.py
 ```
 
 ## Supported API
