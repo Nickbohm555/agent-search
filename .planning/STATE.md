@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-01
-- **Status:** Phase 6 Plan 06-01 Task 3 implemented; Summary is next
+- **Status:** Phase 6 Plan 06-01 Summary implemented; Plan 06-02 Task 1 is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,14 +30,14 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create Phase 6 Plan 06-01 summary.
-- Decide whether Phase 6 can be marked complete after summary generation.
+- Start Phase 6 Plan 06-02 Task 1.
+- Decide whether Phase 6 can be marked complete after Plans 06-02 and 06-03 finish.
 
 ### Blockers
 - None currently.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 70 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 06-01 Task 3 added release-blocking parity regressions and validated OpenAPI/sdk drift, so the remaining dependency-ordered step is writing the execution summary for this plan.
-- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=3`, `status=implemented`; release-blocking API/runtime-config regressions now cover additive request defaults and response serialization, and `./scripts/validate_openapi.sh` passed against committed artifacts.
+- **Next command:** Implement Section 71 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 06-01 summary is complete, so the dependency-ordered follow-up is Phase 6 Plan 06-02 Task 1 for release versioning and tag/version gating.
+- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=summary`, `status=implemented`; REL-03 parity is summarized in `06-01-SUMMARY.md`, and Phase 6 remains open for release workflow hardening and publish verification.
