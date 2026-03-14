@@ -214,22 +214,30 @@
 
     <h2>Advanced RAG Techniques</h2>
     <p>
-      Query expansion works by taking a subquestion and generating alternative phrasings or nearby search
-      formulations before retrieval runs. The point is not to make the model sound smarter. The point is to
-      widen the retrieval net just enough that the system can catch relevant evidence that would be missed by
-      one brittle query string.
+      The decomposition step is just an LLM transformation: give the model one large question and ask it to
+      rewrite that question as a small set of answerable subquestions. There is no mystery math hiding there.
+      It is sequence prediction constrained by instructions. In practice, the model learns that a broad prompt
+      like “compare X and Y over time” is easier to answer if it emits pieces like “what happened to X,”
+      “what happened to Y,” and “what changed between them.”
     </p>
     <p>
-      Reranking happens after retrieval. Once the system has a larger pool of candidate chunks, reranking helps
-      sort that pool so the strongest and most relevant evidence rises to the top before answer generation. That
-      matters because answer quality is often constrained less by the model itself and more by whether the right
-      evidence was surfaced in the right order.
+      Query expansion uses the same basic idea on a smaller scale. Instead of trusting one literal wording,
+      the model generates nearby phrasings and search variants for a subquestion. Logically, this improves the
+      chance that at least one query lands near the right documents in embedding space or keyword space. If one
+      query misses because the wording is too narrow, a neighboring query can still retrieve the evidence.
     </p>
     <p>
-      Used together, these techniques improve both recall and focus. Query expansion helps the system find more
-      of the right material, while reranking helps it stay disciplined about which material should actually drive
-      the response. That combination is effective because it attacks two different failure modes: missing evidence
-      entirely and drowning the answer step in noisy evidence.
+      Reranking is simpler than it sounds: start with a candidate set of retrieved chunks, then score each chunk
+      against the subquestion and sort by that score. Conceptually it is just a function like
+      <code>score(chunk, question)</code>, where higher means “more useful for answering this exact question.”
+      The top-ranked chunks are then passed forward. This is effective because retrieval is usually optimized for
+      broad recall, while reranking is optimized for local precision.
+    </p>
+    <p>
+      So the flow is: one big question becomes several smaller questions, each smaller question can generate a
+      few search variants, retrieval brings back a noisy pool, reranking sorts that pool, and answer generation
+      uses the best evidence. The benefit is not magic. It is just breaking one hard problem into smaller scoring
+      and selection steps that are easier to get right.
     </p>
 
     <h2>Why The SDK Stays Narrow</h2>
