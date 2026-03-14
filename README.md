@@ -28,21 +28,42 @@ flowchart TD
     SQ --> S2["Subquestion 2"]
     SQ --> S3["Subquestion N"]
 
-    S1 --> QE{"Subquery expansion?"}
-    S2 --> QE
-    S3 --> QE
-    QE -->|On| EXP["Expand query"]
-    QE -->|Off| RET["Retrieve evidence"]
-    EXP --> RET
+    S1 --> QE1{"Subquery expansion?"}
+    QE1 -->|On| EXP1["Expand query"]
+    QE1 -->|Off| RET1["Retrieve evidence"]
+    EXP1 --> RET1
+    RET1 --> RR1{"Rerank?"}
+    RR1 -->|On| RERANK1["Rerank results"]
+    RR1 -->|Off| ANS1["Answer subquestion"]
+    RERANK1 --> ANS1
+    CP1["Custom prompt: subquestion answers"] -.-> ANS1
+    ANS1 --> SA1["Sub-answer + citations"]
 
-    RET --> RR{"Rerank?"}
-    RR -->|On| RERANK["Rerank results"]
-    RR -->|Off| ANS["Answer subquestion"]
-    RERANK --> ANS
-    CP1["Custom prompt: subquestion answers"] -.-> ANS
-    ANS --> SA["Sub-answer + citations"]
+    S2 --> QE2{"Subquery expansion?"}
+    QE2 -->|On| EXP2["Expand query"]
+    QE2 -->|Off| RET2["Retrieve evidence"]
+    EXP2 --> RET2
+    RET2 --> RR2{"Rerank?"}
+    RR2 -->|On| RERANK2["Rerank results"]
+    RR2 -->|Off| ANS2["Answer subquestion"]
+    RERANK2 --> ANS2
+    CP1 -.-> ANS2
+    ANS2 --> SA2["Sub-answer + citations"]
 
-    SA --> SYN["Final synthesis"]
+    S3 --> QE3{"Subquery expansion?"}
+    QE3 -->|On| EXP3["Expand query"]
+    QE3 -->|Off| RET3["Retrieve evidence"]
+    EXP3 --> RET3
+    RET3 --> RR3{"Rerank?"}
+    RR3 -->|On| RERANK3["Rerank results"]
+    RR3 -->|Off| ANS3["Answer subquestion"]
+    RERANK3 --> ANS3
+    CP1 -.-> ANS3
+    ANS3 --> SA3["Sub-answer + citations"]
+
+    SA1 --> SYN["Final synthesis"]
+    SA2 --> SYN
+    SA3 --> SYN
     CP2["Custom prompt: synthesis"] -.-> SYN
     SYN --> OUT["Final answer"]
 ```
