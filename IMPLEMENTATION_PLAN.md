@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 8. (move +1 after each turn)
+Current section to work on: section 9. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -194,7 +194,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_subquestion_checkpoint_resume_applies_typed_decisions_deterministically tests/api/test_run_events_stream.py::test_resume_agent_run_job_records_decision_driven_completion_events` passed, confirming the checkpoint node and resume job flow deterministically apply mixed approve/edit/deny/skip decisions so edited text is preserved, denied items are removed, skipped entries keep their original text, and approved entries continue unchanged; `docker compose exec backend uv run pytest tests/sdk/test_sdk_async_e2e.py::test_sdk_async_resume_e2e_supports_typed_subquestion_decision_matrix` also passed, confirming the SDK async resume path completes successfully for each typed decision mode.
 
 ## Section 9 — 02-subquestion-hitl-end-to-end — tests-2 — Test 4 (Validation)
 - Source test markdown: `.planning/phases/02-subquestion-hitl-end-to-end/tests-2.md`

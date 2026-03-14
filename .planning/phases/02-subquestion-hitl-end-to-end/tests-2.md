@@ -12,7 +12,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 3 - Resume with approve/edit/deny/skip decisions completes run deterministically.
+Test 4 - Malformed typed resume envelope fails at API boundary.
 
 ## Information Needed from the Summary
 
@@ -85,6 +85,10 @@ Test 3 - Resume with approve/edit/deny/skip decisions completes run deterministi
 **When** I resume with typed decisions that include a mix of `approve`, `edit`, `deny`, and `skip`  
 **Then** the run transitions from paused to completion  
 **And** resulting downstream behavior reflects the submitted decisions (edited text used, denied/skipped entries excluded, approved entries preserved)
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_subquestion_checkpoint_resume_applies_typed_decisions_deterministically tests/api/test_run_events_stream.py::test_resume_agent_run_job_records_decision_driven_completion_events` and `docker compose exec backend uv run pytest tests/sdk/test_sdk_async_e2e.py::test_sdk_async_resume_e2e_supports_typed_subquestion_decision_matrix` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The runtime checkpoint node applied mixed approve/edit/deny/skip decisions deterministically, resume jobs completed with the expected filtered or edited subquestion sets, and the SDK async E2E resume matrix completed successfully for each typed decision mode.
 
 ### Test 4: Malformed typed resume envelope fails at API boundary
 
@@ -109,7 +113,7 @@ Test 3 - Resume with approve/edit/deny/skip decisions completes run deterministi
 
 ## Summary
 
-Tests 1-2 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, and HITL-enabled runs now emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata that the frontend can consume and resume from.
+Tests 1-3 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, and typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows.
 
 ## Gaps
 
