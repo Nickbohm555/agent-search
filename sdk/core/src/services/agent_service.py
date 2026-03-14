@@ -683,13 +683,13 @@ def map_graph_state_to_runtime_response(state: AgentGraphState | RAGState) -> Ru
     ]
     response = RuntimeAgentRunResponse(
         main_question=rag_state["main_question"],
-        sub_qa=[item.model_copy(deep=True) for item in rag_state["sub_qa"]],
+        sub_items=[(item.sub_question, item.sub_answer) for item in rag_state["sub_qa"]],
         output=output,
         final_citations=final_citations,
     )
     logger.info(
         "Agent graph state mapped to runtime response sub_qa_count=%s output_len=%s run_id=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
         rag_state["run_metadata"].run_id,
     )
@@ -1803,7 +1803,7 @@ def run_runtime_agent(
     )
     logger.info(
         "Runtime agent service wrapper completed delegation sub_qa_count=%s output_length=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
     )
     return response

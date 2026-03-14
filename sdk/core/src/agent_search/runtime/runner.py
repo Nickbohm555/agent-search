@@ -271,7 +271,7 @@ def run_runtime_agent(
     response = legacy_service.map_graph_state_to_runtime_response(state)
     logger.info(
         "Runtime core run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
         len(rag_state["stage_snapshots"]),
         run_metadata.run_id,

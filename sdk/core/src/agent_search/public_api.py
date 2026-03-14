@@ -405,10 +405,10 @@ def advanced_rag(
         "SDK advanced_rag completed status=%s sub_qa_count=%s output_len=%s",
         getattr(response, "status", "completed"),
         (
-            len(response.response.sub_qa)
+            len(response.response.sub_items)
             if isinstance(response, RuntimeAgentRunResult) and response.response is not None
             else 0 if isinstance(response, RuntimeAgentRunResult)
-            else len(response.sub_qa)
+            else len(response.sub_items)
         ),
         (
             len(response.response.output)

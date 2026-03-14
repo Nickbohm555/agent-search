@@ -428,7 +428,7 @@ def _run_agent_job(
                 current_job.result = response
             current_job.interrupt_payload = None
             current_job.checkpoint_id = outcome.checkpoint_id
-            current_job.sub_qa = [item.model_copy(deep=True) for item in response.sub_qa]
+            current_job.sub_qa = [item.model_copy(deep=True) for item in rag_state["sub_qa"]]
             current_job.decomposition_sub_questions = list(rag_state["decomposition_sub_questions"])
             current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in rag_state["sub_question_artifacts"]]
             current_job.output = response.output
@@ -439,7 +439,7 @@ def _run_agent_job(
             job_id,
             run_id,
             current_job.status,
-            len(response.sub_qa),
+            len(response.sub_items),
             len(response.output),
         )
     except Exception as exc:  # noqa: BLE001
