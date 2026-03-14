@@ -49,11 +49,12 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
     sentinel_vector_store = object()
     sentinel_model = object()
 
-    def fake_sdk_run(query, *, vector_store, model, config=None):
+    def fake_sdk_run(query, *, vector_store, model, config=None, checkpoint_db_url=None):
         captured["query"] = query
         captured["vector_store"] = vector_store
         captured["model"] = model
         captured["config"] = config
+        captured["checkpoint_db_url"] = checkpoint_db_url
         return RuntimeAgentRunResponse(
             main_question=query,
             sub_qa=[
@@ -80,6 +81,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "/api/agents/run",
         json={
             "query": "Find Hormuz risks",
+            "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
             "controls": {"query_expansion": {"enabled": True}},
             "runtime_config": {"rerank": {"enabled": False}},
             "custom-prompts": {"subanswer": "Ground each answer."},
@@ -119,6 +121,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "query": "Find Hormuz risks",
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
+        "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
         "config": {
             "custom_prompts": {"subanswer": "Ground each answer."},
             "runtime_config": {"rerank": {"enabled": False}},
@@ -132,15 +135,15 @@ def test_post_run_async_returns_start_response(monkeypatch) -> None:
 
     captured: dict[str, object] = {}
 
-    def fake_run_async(query, *, vector_store, model, config=None):
+    def fake_run_async(query, *, vector_store, model, config=None, checkpoint_db_url=None):
         captured["query"] = query
         captured["vector_store"] = vector_store
         captured["model"] = model
         captured["config"] = config
+        captured["checkpoint_db_url"] = checkpoint_db_url
         return RuntimeAgentRunAsyncStartResponse(
             job_id="job-123",
             run_id="run-123",
-            thread_id="550e8400-e29b-41d4-a716-446655440016",
             status="running",
         )
 
@@ -153,18 +156,22 @@ def test_post_run_async_returns_start_response(monkeypatch) -> None:
 
     response = client.post(
         "/api/agents/run-async",
-        json={"query": "Show me async flow", "controls": {"hitl": {"subquestions": {"enabled": True}}}},
+        json={
+            "query": "Show me async flow",
+            "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
+            "controls": {"hitl": {"subquestions": {"enabled": True}}},
+        },
     )
 
     assert response.status_code == 200
     assert response.json() == {
         "job_id": "job-123",
         "run_id": "run-123",
-        "thread_id": "550e8400-e29b-41d4-a716-446655440016",
         "status": "running",
     }
     assert captured["query"] == "Show me async flow"
     assert captured["config"] == {"hitl": {"enabled": True, "subquestions": {"enabled": True}}}
+    assert captured["checkpoint_db_url"] == "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search"
 
 
 def test_status_and_resume_routes_map_sdk_configuration_errors(monkeypatch) -> None:

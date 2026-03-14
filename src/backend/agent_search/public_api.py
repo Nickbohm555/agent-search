@@ -153,6 +153,27 @@ def _normalize_resume_payload(resume: Any) -> Any:
     return RuntimeAgentRunResumeRequest.model_validate({"resume": resume}).resume
 
 
+def _checkpointed_run_requested(payload: RuntimeAgentRunRequest, *, resume: Any | None = None) -> bool:
+    if resume is not None:
+        return True
+    controls = payload.controls
+    return bool(
+        controls is not None
+        and controls.hitl is not None
+        and controls.hitl.enabled
+    )
+
+
+def _ensure_checkpoint_db_url(payload: RuntimeAgentRunRequest, *, resume: Any | None = None) -> None:
+    if not _checkpointed_run_requested(payload, resume=resume):
+        return
+    if payload.checkpoint_db_url is not None and payload.checkpoint_db_url.strip():
+        return
+    raise SDKConfigurationError(
+        "checkpoint_db_url is required for HITL or resume flows and must point to a Postgres database."
+    )
+
+
 def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
     if isinstance(exc, SDKError):
         return exc
@@ -179,6 +200,7 @@ def advanced_rag(
     model: Any,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
+    checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.info(
         "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s",
@@ -207,8 +229,14 @@ def advanced_rag(
         type(compatible_vector_store).__name__,
     )
     try:
+        payload = _build_runtime_request_payload(
+            query,
+            config=config,
+            runtime_config=runtime_config,
+        ).model_copy(update={"checkpoint_db_url": checkpoint_db_url})
+        _ensure_checkpoint_db_url(payload)
         response = run_runtime_agent(
-            _build_runtime_request_payload(query, config=config, runtime_config=runtime_config),
+            payload,
             model=model,
             vector_store=compatible_vector_store,
             callbacks=list(callbacks or []) or None,
@@ -276,6 +304,7 @@ def run_async(
     vector_store: Any,
     model: Any,
     config: dict[str, Any] | None = None,
+    checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunAsyncStartResponse:
     logger.info(
         "SDK async run requested query_len=%s vector_store_type=%s model_type=%s has_config=%s",
@@ -304,9 +333,15 @@ def run_async(
     )
 
     try:
+        payload = _build_runtime_request_payload(
+            query,
+            config=config,
+            runtime_config=runtime_config,
+        ).model_copy(update={"checkpoint_db_url": checkpoint_db_url})
+        _ensure_checkpoint_db_url(payload)
         # Async runtime currently resolves dependencies in service layer.
         job = start_agent_run_job(
-            _build_runtime_request_payload(query, config=config, runtime_config=runtime_config),
+            payload,
             model=model,
             vector_store=compatible_vector_store,
         )

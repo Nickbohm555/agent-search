@@ -5,20 +5,39 @@ from contextlib import contextmanager
 import threading
 from typing import Any
 
+from agent_search.errors import SDKConfigurationError
 from langgraph.checkpoint.postgres import PostgresSaver
 from sqlalchemy.engine import make_url
-
-from db import DATABASE_URL
 
 _BOOTSTRAP_LOCK = threading.Lock()
 _BOOTSTRAPPED_CONNECTIONS: set[str] = set()
 
 
 def get_checkpointer_connection_string(database_url: str | None = None) -> str:
-    raw_url = (database_url or DATABASE_URL).strip()
+    raw_url = str(database_url or "").strip()
+    if not raw_url:
+        raise SDKConfigurationError(
+            "checkpoint_db_url is required for checkpointed runs and must point to a Postgres database."
+        )
     normalized_url = make_url(raw_url)
     drivername = normalized_url.drivername.split("+", 1)[0]
     return normalized_url.set(drivername=drivername).render_as_string(hide_password=False)
+
+
+def _checkpoint_schema_exists(checkpointer: PostgresSaver) -> bool:
+    with checkpointer._cursor() as cur:  # noqa: SLF001
+        result = cur.execute(
+            """
+            SELECT
+                to_regclass('public.checkpoint_migrations') IS NOT NULL
+                AND to_regclass('public.checkpoints') IS NOT NULL
+                AND to_regclass('public.checkpoint_blobs') IS NOT NULL
+                AND to_regclass('public.checkpoint_writes') IS NOT NULL
+                AS schema_ready
+            """
+        )
+        row = result.fetchone()
+    return bool(row and row["schema_ready"])
 
 
 def _bootstrap_checkpointer(checkpointer: PostgresSaver, *, connection_string: str) -> None:
@@ -27,7 +46,8 @@ def _bootstrap_checkpointer(checkpointer: PostgresSaver, *, connection_string: s
     with _BOOTSTRAP_LOCK:
         if connection_string in _BOOTSTRAPPED_CONNECTIONS:
             return
-        checkpointer.setup()
+        if not _checkpoint_schema_exists(checkpointer):
+            checkpointer.setup()
         _BOOTSTRAPPED_CONNECTIONS.add(connection_string)
 
 

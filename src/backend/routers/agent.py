@@ -94,6 +94,7 @@ def runtime_agent_run(
         vector_store=vector_store,
         model=model,
         config=_build_run_config(payload),
+        checkpoint_db_url=payload.checkpoint_db_url,
     )
 
 
@@ -106,6 +107,7 @@ def runtime_agent_run_async(payload: RuntimeAgentRunRequest) -> RuntimeAgentRunA
         vector_store=vector_store,
         model=model,
         config=_build_run_config(payload),
+        checkpoint_db_url=payload.checkpoint_db_url,
     )
 
 

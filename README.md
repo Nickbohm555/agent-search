@@ -29,7 +29,7 @@ Integrators adopting the current SDK contract should start with:
 
 Compatibility checklist:
 
-- Install `agent-search-core==1.0.11` for the current documented SDK surface.
+- Install `agent-search-core==1.0.12` for the current documented SDK surface.
 - Keep `controls`, `runtime_config`, and HITL fields omitted unless you explicitly want those behaviors; new controls stay default-off.
 - Send `custom_prompts` in new payloads. The `custom-prompts` alias remains compatibility-only.
 - Read `sub_answers` in new code, but keep `sub_qa` fallback handling during the compatibility window.
@@ -124,12 +124,12 @@ Compatibility notes:
 
 The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
-HITL does require checkpoint persistence. `advanced_rag(...)` creates a LangGraph `PostgresSaver` internally and resumes from stored checkpoint IDs, which means:
+HITL does require checkpoint persistence, and checkpointed runs must now supply the checkpoint Postgres DB explicitly:
 
-- A reachable Postgres database must be configured.
-- The SDK uses `DATABASE_URL` and defaults to `postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search`.
-- If you run outside Docker, set `DATABASE_URL` explicitly so the SDK can persist and resume paused runs.
-- You can override the checkpoint database per call with `checkpoint_db_url="postgresql+psycopg://..."` on `advanced_rag(...)`.
+- Provision a reachable Postgres database before enabling HITL.
+- Pass `checkpoint_db_url="postgresql+psycopg://..."` to `advanced_rag(...)` for the initial HITL call and every resume call.
+- The runtime uses that caller-provided Postgres DB for checkpoint persistence only.
+- On first use, the runtime checks whether that DB already has LangGraph checkpoint tables (`checkpoint_migrations`, `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) and bootstraps them only when missing.
 
 Response schema from `advanced_rag(...)` when HITL is disabled:
 

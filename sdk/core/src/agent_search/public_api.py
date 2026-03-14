@@ -134,6 +134,16 @@ def _hitl_requested(payload: RuntimeAgentRunRequest, *, resume: Any | None = Non
     return bool(payload.controls and payload.controls.hitl and payload.controls.hitl.enabled)
 
 
+def _ensure_checkpoint_db_url(payload: RuntimeAgentRunRequest, *, resume: Any | None = None) -> None:
+    if not _hitl_requested(payload, resume=resume):
+        return
+    if payload.checkpoint_db_url is not None and payload.checkpoint_db_url.strip():
+        return
+    raise SDKConfigurationError(
+        "checkpoint_db_url is required for HITL or resume flows and must point to a Postgres database."
+    )
+
+
 def _apply_public_hitl_input(
     *,
     hitl_subquestions: bool,
@@ -344,6 +354,7 @@ def advanced_rag(
             resume=resume,
             checkpoint_db_url=checkpoint_db_url,
         )
+        _ensure_checkpoint_db_url(request_payload, resume=resume)
         if _hitl_requested(request_payload, resume=resume):
             response = _run_hitl_runtime_agent(
                 request_payload,

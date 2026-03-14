@@ -54,7 +54,7 @@ class _NoopExecutor:
 
 def test_run_async_signature_requires_query_vector_store_and_model() -> None:
     signature = inspect.signature(public_api.run_async)
-    assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None) -> 'RuntimeAgentRunAsyncStartResponse'"
+    assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, checkpoint_db_url: 'str | None' = None) -> 'RuntimeAgentRunAsyncStartResponse'"
     assert signature.parameters["query"].default is inspect._empty
     assert signature.parameters["vector_store"].default is inspect._empty
     assert signature.parameters["model"].default is inspect._empty
@@ -318,6 +318,47 @@ def test_run_async_merges_prompt_defaults_and_per_run_overrides_with_override_pr
             "synthesis": "per-run async synthesis prompt",
         },
     }
+
+
+def test_run_async_passes_checkpoint_db_url_into_job_payload(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            job_id="job-checkpoint-db",
+            run_id="run-checkpoint-db",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "async checkpoint payload query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
+    )
+
+    assert response.job_id == "job-checkpoint-db"
+    assert captured["payload"] == {
+        "query": "async checkpoint payload query",
+        "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
+    }
+
+
+def test_run_async_rejects_hitl_without_checkpoint_db_url() -> None:
+    try:
+        public_api.run_async(
+            "async missing checkpoint db",
+            vector_store=_CompatibleVectorStore(),
+            model=object(),
+            config={"hitl": {"subquestions": {"enabled": True}}},
+        )
+        raise AssertionError("Expected SDKConfigurationError for missing checkpoint_db_url")
+    except SDKConfigurationError as exc:
+        assert str(exc) == "checkpoint_db_url is required for HITL or resume flows and must point to a Postgres database."
 
 
 def test_run_async_isolates_mutable_prompt_defaults_across_runs(monkeypatch) -> None:

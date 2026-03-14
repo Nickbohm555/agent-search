@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.11
+## Contract notes for 1.0.12
 
 Use these canonical names in new `config` payloads:
 
@@ -62,12 +62,12 @@ Compatibility notes:
 
 The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
-HITL does still require checkpoint persistence. The public API does not ask you to pass a checkpointer because `advanced_rag(...)` creates one internally with LangGraph's `PostgresSaver` and resumes from the stored checkpoint ID on the next call. In practice that means:
+HITL does still require checkpoint persistence, but the SDK no longer falls back to `DATABASE_URL` for that. The caller must provide the checkpoint Postgres database explicitly on every checkpointed call:
 
-- A reachable Postgres database must be configured.
-- The SDK uses `DATABASE_URL` and defaults to `postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search`.
-- If you run outside Docker, set `DATABASE_URL` explicitly so the SDK can persist and resume paused runs.
-- You can override the checkpoint database per call with `checkpoint_db_url="postgresql+psycopg://..."` on `advanced_rag(...)`.
+- Provision a reachable Postgres database for LangGraph checkpoints before enabling HITL.
+- Pass `checkpoint_db_url="postgresql+psycopg://..."` to `advanced_rag(...)` for the initial HITL call and every resume call.
+- The runtime uses that caller-provided Postgres DB for checkpoint persistence only.
+- On first use, the runtime checks whether that DB already has LangGraph checkpoint tables (`checkpoint_migrations`, `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) and bootstraps them only when missing.
 
 Example paused result for subquestion review:
 
@@ -79,6 +79,7 @@ outcome = advanced_rag(
     vector_store=vector_store,
     model=model,
     hitl_subquestions=True,
+    checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
 )
 print(outcome.status)  # "paused"
 print(outcome.review.kind)  # "subquestion_review"
@@ -98,6 +99,7 @@ resumed = advanced_rag(
     model=model,
     vector_store=vector_store,
     resume=resume,
+    checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
 )
 print(resumed.response.output)
 ```
@@ -124,6 +126,7 @@ first = advanced_rag(
     vector_store=vector_store,
     model=model,
     hitl_subquestions=True,
+    checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
 )
 assert first.status == "paused"
 assert first.review.kind == "subquestion_review"
@@ -142,6 +145,7 @@ final = advanced_rag(
     vector_store=vector_store,
     model=model,
     resume=resume,
+    checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
 )
 assert final.status == "completed"
 print(final.response.output)
@@ -267,6 +271,7 @@ Notes about `advanced_rag(...)`:
 - It is a synchronous call that runs the full retrieval-and-answer workflow and returns a `RuntimeAgentRunResponse`.
 - You supply the model and vector store; the SDK orchestrates the LangGraph-based runtime around them.
 - Optional `hitl_subquestions=True` opts into subquestion review checkpoints.
+- Checkpointed runs must also pass `checkpoint_db_url` so the SDK can use that Postgres DB for LangGraph checkpoints.
 - Optional `config={"custom_prompts": {...}}` lets you override prompt instructions per run.
 
 `advanced_rag(...)` output schema:

@@ -22,7 +22,7 @@ def test_advanced_rag_signature_matches_clean_public_contract() -> None:
     signature = inspect.signature(public_api.advanced_rag)
     assert (
         str(signature)
-        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None) -> 'RuntimeAgentRunResponse'"
+        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None, checkpoint_db_url: 'str | None' = None) -> 'RuntimeAgentRunResponse'"
     )
     assert signature.parameters["query"].default is inspect._empty
     assert signature.parameters["vector_store"].default is inspect._empty
@@ -136,6 +136,43 @@ def test_advanced_rag_builds_clean_runtime_payload(monkeypatch) -> None:
             "synthesis": "default synthesis prompt",
         },
     }
+
+
+def test_advanced_rag_passes_checkpoint_db_url_into_runtime_payload(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
+        _ = model, vector_store, callbacks
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    response = public_api.advanced_rag(
+        "sdk checkpoint payload query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
+    )
+
+    assert response.output == "ok"
+    assert captured["payload"] == {
+        "query": "sdk checkpoint payload query",
+        "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
+    }
+
+
+def test_advanced_rag_rejects_hitl_without_checkpoint_db_url() -> None:
+    try:
+        public_api.advanced_rag(
+            "missing checkpoint db",
+            model=object(),
+            vector_store=_CompatibleVectorStore(),
+            config={"hitl": {"subquestions": {"enabled": True}}},
+        )
+        raise AssertionError("Expected SDKConfigurationError for missing checkpoint_db_url")
+    except SDKConfigurationError as exc:
+        assert str(exc) == "checkpoint_db_url is required for HITL or resume flows and must point to a Postgres database."
 
 
 def test_advanced_rag_rejects_missing_runtime_dependencies() -> None:
