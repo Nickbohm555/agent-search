@@ -17,7 +17,7 @@ Live architecture blog (GitHub Pages): `https://nickbohm.github.io/agent-search/
 ## Data Flow Diagram
 
 ```mermaid
-flowchart TD
+flowchart LR
     A["SDK caller"] --> B["advanced_rag(...)"]
     B --> C["Validate inputs<br/>model + vector_store required"]
     C --> D["Build runtime config<br/>optional toggles: rerank/query_expansion<br/>optional checkpointing for subquestion HITL"]
@@ -30,12 +30,7 @@ flowchart TD
     H --> GOK["Approved sub-questions"]
     HITL -->|Disabled| GOK
 
-    GOK --> L1_START
-    GOK --> L2_START
-    GOK --> L3_START
-
     subgraph L1["Subquestion Lane 1"]
-        direction TD
         L1_START["Sub-question 1"] --> L1_QE{"Query expansion on?"}
         L1_QE -->|On| L1_EX["Expand Node<br/>optional LLM call #2"]
         L1_QE -->|Off| L1_SR["Search Node"]
@@ -48,7 +43,6 @@ flowchart TD
     end
 
     subgraph L2["Subquestion Lane 2"]
-        direction TD
         L2_START["Sub-question 2"] --> L2_QE{"Query expansion on?"}
         L2_QE -->|On| L2_EX["Expand Node<br/>optional LLM call #2"]
         L2_QE -->|Off| L2_SR["Search Node"]
@@ -61,7 +55,6 @@ flowchart TD
     end
 
     subgraph L3["Subquestion Lane 3"]
-        direction TD
         L3_START["Sub-question N"] --> L3_QE{"Query expansion on?"}
         L3_QE -->|On| L3_EX["Expand Node<br/>optional LLM call #2"]
         L3_QE -->|Off| L3_SR["Search Node"]
@@ -72,6 +65,10 @@ flowchart TD
         L3_RERANK --> L3_AN
         L3_AN -->|LLM call #4| L3_SA["sub-answer + citations"]
     end
+
+    GOK --> L1_START
+    GOK --> L2_START
+    GOK --> L3_START
 
     CP1["Custom prompts<br/>subanswer"] -.-> L1_AN
     CP1 -.-> L2_AN
@@ -186,7 +183,3 @@ The SDK currently exposes two prompt override keys:
 - `custom_prompts.synthesis`
 
 If you do not override them, the runtime uses built-in defaults. Overrides replace the instruction block only. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs. For more detail, see `docs/prompt-customization.md`.
-
-**Example Flow**
-
-![Example flow](screenshot.png)
