@@ -144,6 +144,79 @@ def test_run_events_stream_honors_last_event_id_header() -> None:
     ]
 
 
+def test_run_events_stream_includes_query_expansion_paused_event_payload() -> None:
+    from agent_search.runtime import jobs as jobs_module
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    paused_event = RuntimeLifecycleEvent(
+        event_type="run.paused",
+        event_id="run-qe:000002",
+        run_id="run-qe",
+        thread_id="550e8400-e29b-41d4-a716-446655440091",
+        trace_id="trace-qe",
+        stage="query_expansions_ready",
+        status="paused",
+        emitted_at="2026-03-13T00:00:02+00:00",
+        interrupt_payload={
+            "checkpoint_id": "checkpoint-qe-77",
+            "kind": "query_expansion_review",
+            "stage": "query_expansions_ready",
+            "sub_question": "Expansion review lane?",
+            "expansions": [
+                {"expansion_id": "qe-1", "query": "Expansion review lane?", "index": 0},
+                {"expansion_id": "qe-2", "query": "Edited candidate?", "index": 1},
+            ],
+        },
+        checkpoint_id="checkpoint-qe-77",
+    )
+    job = AgentRunJobStatus(
+        job_id="job-qe-stream",
+        run_id="run-qe",
+        thread_id="550e8400-e29b-41d4-a716-446655440091",
+        status="paused",
+        stage="query_expansions_ready",
+        interrupt_payload=paused_event.interrupt_payload,
+        checkpoint_id="checkpoint-qe-77",
+    )
+    stage_event = RuntimeLifecycleEvent(
+        event_type="stage.completed",
+        event_id="run-qe:000001",
+        run_id="run-qe",
+        thread_id="550e8400-e29b-41d4-a716-446655440091",
+        trace_id="trace-qe",
+        stage="expand",
+        status="completed",
+        emitted_at="2026-03-13T00:00:01+00:00",
+    )
+    job.lifecycle_events = [stage_event, paused_event]
+
+    with jobs_module._JOB_LOCK:
+        jobs_module._JOBS[job.job_id] = job
+
+    response = client.get("/api/agents/run-events/job-qe-stream")
+
+    assert response.status_code == 200
+    messages = _parse_sse_messages(response.text)
+    assert messages == [
+        {
+            "id": "run-qe:000001",
+            "event": "stage.completed",
+            "data": job.lifecycle_events[0].model_dump(mode="json"),
+        },
+        {
+            "id": "run-qe:000002",
+            "event": "run.paused",
+            "data": paused_event.model_dump(mode="json"),
+        },
+    ]
+    assert messages[-1]["data"]["interrupt_payload"]["kind"] == "query_expansion_review"
+    assert messages[-1]["data"]["interrupt_payload"]["expansions"][1]["query"] == "Edited candidate?"
+    assert messages[-1]["data"]["checkpoint_id"] == "checkpoint-qe-77"
+
+
 def test_run_events_stream_returns_404_for_unknown_job() -> None:
     app = FastAPI()
     app.include_router(agent_router)
@@ -840,3 +913,37 @@ def test_non_checkpoint_initial_run_bypasses_pause_path_when_hitl_disabled(monke
         "run.completed",
     ]
     assert tracked_job.lifecycle_events[-1].event_type == "run.completed"
+
+
+def test_run_events_stream_non_hitl_completed_run_has_no_pause_event() -> None:
+    from agent_search.runtime import jobs as jobs_module
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    job = AgentRunJobStatus(
+        job_id="job-no-hitl-stream",
+        run_id="run-no-hitl-stream",
+        thread_id="550e8400-e29b-41d4-a716-446655440092",
+        status="success",
+    )
+    job.lifecycle_events = [
+        _event(sequence=1, event_type="run.started", stage="runtime", status="running"),
+        _event(sequence=2, event_type="stage.completed", stage="expand", status="completed"),
+        _event(sequence=3, event_type="run.completed", stage="synthesize", status="success"),
+    ]
+
+    with jobs_module._JOB_LOCK:
+        jobs_module._JOBS[job.job_id] = job
+
+    response = client.get("/api/agents/run-events/job-no-hitl-stream")
+
+    assert response.status_code == 200
+    messages = _parse_sse_messages(response.text)
+    assert [message["event"] for message in messages] == [
+        "run.started",
+        "stage.completed",
+        "run.completed",
+    ]
+    assert all(message["event"] != "run.paused" for message in messages)

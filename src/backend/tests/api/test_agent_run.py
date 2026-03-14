@@ -640,6 +640,8 @@ def test_get_run_status_returns_subquestions_before_final_completion(monkeypatch
         "result": None,
         "error": None,
         "cancel_requested": False,
+        "interrupt_payload": None,
+        "checkpoint_id": None,
         "started_at": None,
         "finished_at": None,
         "elapsed_ms": None,
@@ -837,9 +839,109 @@ def test_get_run_status_returns_completed_shape_with_result_and_timing(monkeypat
         },
         "error": None,
         "cancel_requested": False,
+        "interrupt_payload": None,
+        "checkpoint_id": None,
         "started_at": 100.0,
         "finished_at": 101.5,
         "elapsed_ms": 1500,
+    }
+
+
+def test_get_run_status_returns_paused_query_expansion_review_payload(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import AgentRunStageMetadata, RuntimeAgentRunAsyncStatusResponse
+
+    def fake_sdk_get_run_status(job_id):
+        assert job_id == "job-qe-paused"
+        return RuntimeAgentRunAsyncStatusResponse(
+            job_id="job-qe-paused",
+            run_id="run-qe-paused",
+            thread_id="550e8400-e29b-41d4-a716-446655440094",
+            status="paused",
+            message="Awaiting query-expansion review.",
+            stage="query_expansions_ready",
+            stages=[
+                AgentRunStageMetadata(
+                    stage="query_expansions_ready",
+                    status="paused",
+                    sub_question="Expansion review lane?",
+                    lane_index=1,
+                    lane_total=1,
+                    emitted_at=321.0,
+                )
+            ],
+            decomposition_sub_questions=["Expansion review lane?"],
+            sub_question_artifacts=[],
+            sub_qa=[],
+            sub_answers=[],
+            output="",
+            result=None,
+            error=None,
+            cancel_requested=False,
+            interrupt_payload={
+                "checkpoint_id": "checkpoint-qe-123",
+                "kind": "query_expansion_review",
+                "stage": "query_expansions_ready",
+                "sub_question": "Expansion review lane?",
+                "expansions": [
+                    {"expansion_id": "qe-1", "query": "Expansion review lane?", "index": 0},
+                    {"expansion_id": "qe-2", "query": "Expansion review variant?", "index": 1},
+                ],
+            },
+            checkpoint_id="checkpoint-qe-123",
+            started_at=300.0,
+            finished_at=None,
+            elapsed_ms=21000,
+        )
+
+    monkeypatch.setattr(agent_router_module, "sdk_get_run_status", fake_sdk_get_run_status)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.get("/api/agents/run-status/job-qe-paused")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-qe-paused",
+        "run_id": "run-qe-paused",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440094",
+        "status": "paused",
+        "message": "Awaiting query-expansion review.",
+        "stage": "query_expansions_ready",
+        "stages": [
+            {
+                "stage": "query_expansions_ready",
+                "status": "paused",
+                "sub_question": "Expansion review lane?",
+                "lane_index": 1,
+                "lane_total": 1,
+                "emitted_at": 321.0,
+            }
+        ],
+        "decomposition_sub_questions": ["Expansion review lane?"],
+        "sub_question_artifacts": [],
+        "sub_qa": [],
+        "sub_answers": [],
+        "output": "",
+        "result": None,
+        "error": None,
+        "cancel_requested": False,
+        "interrupt_payload": {
+            "checkpoint_id": "checkpoint-qe-123",
+            "kind": "query_expansion_review",
+            "stage": "query_expansions_ready",
+            "sub_question": "Expansion review lane?",
+            "expansions": [
+                {"expansion_id": "qe-1", "query": "Expansion review lane?", "index": 0},
+                {"expansion_id": "qe-2", "query": "Expansion review variant?", "index": 1},
+            ],
+        },
+        "checkpoint_id": "checkpoint-qe-123",
+        "started_at": 300.0,
+        "finished_at": None,
+        "elapsed_ms": 21000,
     }
 
 
