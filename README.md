@@ -12,41 +12,53 @@ Onyx builds AI search and knowledge experiences for teams that need dependable, 
 
 The consolidated project reference is available at `docs/application-documentation.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
 
-## Prompt Customization
+## Data Flow Diagram
 
-Prompt override guidance lives in [docs/prompt-customization.md](/Users/nickbohm/Desktop/Tinkering/agent-search/docs/prompt-customization.md). Start there for the supported `custom-prompts` / `custom_prompts` shapes, the two supported keys (`subanswer`, `synthesis`), and the precedence rules for reusable defaults versus per-run overrides.
+```mermaid
+flowchart TD
+    A["SDK caller"] --> B["advanced_rag(...)"]
+    B --> C["Validate inputs<br/>model + vector_store required"]
+    C --> D["Build runtime config<br/>rerank/query_expansion/HITL/checkpointer"]
+    D --> E["run_runtime_agent(query, deps)"]
+    E --> F["Decompose Node"]
+    F -->|LLM call #1| G["sub-questions list"]
 
-Prompt edits change generation instructions only. Citation validation and fallback behavior remain enforced in runtime code, so custom prompts are not a supported way to bypass those safeguards.
+    G --> HITL{"HITL subquestion review?"}
+    HITL -->|Enabled| H["Human review + edits"]
+    H --> GOK["Approved sub-questions"]
+    HITL -->|Disabled| GOK
 
-## Current Release Guidance
+    GOK --> SQ["Sub-questions (parallel lanes)"]
 
-Integrators adopting the current SDK contract should start with:
+    SQ --> QE{"Query expansion enabled?"}
+    QE -->|Yes| EX["Expand Node<br/>LLM call #2 per lane"]
+    QE -->|No| SR["Search Node"]
+    EX --> SR
 
-- [SDK contract-parity release notes](docs/releases/1.0.3-sdk-contract-parity.md)
-- [Migration guide](docs/migration-guide.md)
-- [1.0.0 release notes](docs/releases/1.0.0-langgraph-migration.md)
-- [Deprecation map](docs/deprecation-map.md)
+    SR --> RERANK{"Rerank enabled?"}
+    RERANK -->|Yes| RR["Rerank Node<br/>LLM call #3 per lane"]
+    RERANK -->|No| AN["Answer Node"]
+    RR --> AN
 
-Compatibility checklist:
+    CP1["Custom prompts<br/>subanswer"] -.-> AN
+    AN -->|LLM call #4 per lane| SA["sub-answer + citations"]
+    SA --> SYN["Synthesize Final Node"]
+    CP2["Custom prompts<br/>synthesis"] -.-> SYN
+    SYN -->|LLM call #5| OUT["final output"]
 
-- Install `agent-search-core==1.0.12` for the current documented SDK surface.
-- Keep `controls`, `runtime_config`, and HITL fields omitted unless you explicitly want those behaviors; new controls stay default-off.
-- Send `custom_prompts` in new payloads. The `custom-prompts` alias remains compatibility-only.
-- Read `sub_answers` in new code, but keep `sub_qa` fallback handling during the compatibility window.
-- Langfuse tracing is no longer supported in the SDK/runtime.
+    DB["HITL checkpoint storage<br/>checkpoint_db_url or checkpointer"] -.-> HITL
+```
 
-<p align="center">
-  <img src="assets/readme-supercharge-banner.svg" alt="Supercharge your RAG flow banner" width="100%" data-darkreader-ignore />
-</p>
+## SDK Quick Reference (PyPI)
 
-## How The SDK Is Used
+For the full, canonical SDK docs, see `https://pypi.org/project/agent-search-core/`.
 
-The SDK is intentionally narrow: call `advanced_rag(...)` and treat it as the supported entrypoint. You always provide both:
+The PyPI package is an in-process Python SDK for `agent-search`. It is intentionally narrow: consumers should call `advanced_rag(...)` and treat that as the supported entrypoint. The SDK always requires both:
 
 - A chat model (for example `langchain_openai.ChatOpenAI`)
 - A vector store that implements `similarity_search(query, k, filter=None)`
 
-The SDK does not auto-build these dependencies for you.
+It does not auto-build these dependencies for you.
 
 **Install (PyPI)**
 
@@ -58,27 +70,7 @@ pip install agent-search-core
 python -c "import agent_search; print(agent_search.__file__)"
 ```
 
-Or with `uv`:
-
-```bash
-uv venv --python 3.11
-source .venv/bin/activate
-uv pip install agent-search-core
-```
-
-Set your model provider key:
-
-```bash
-export OPENAI_API_KEY="your_openai_api_key"
-```
-
 **Quick Start**
-
-The example below uses `langchain-openai`. Install it separately with `pip install langchain-openai` or `uv pip install langchain-openai` before running the snippet.
-
-Then call `advanced_rag(...)` with:
-- a chat model instance
-- a vector store adapter (`LangChainVectorStoreAdapter`)
 
 ```python
 from langchain_openai import ChatOpenAI
@@ -96,12 +88,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-Optional add-ons:
-
-- `config={"custom_prompts": {"subanswer": "...", "synthesis": "..."}}` for prompt overrides.
-- `config={"runtime_config": {"custom_prompts": {"synthesis": "..."}}}` for per-run prompt overrides.
-
-**Contract Notes For 1.0.10**
+**Contract Notes For 1.0.17**
 
 Use these canonical names in new `config` payloads:
 
@@ -113,6 +100,7 @@ Compatibility notes:
 - `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
 - `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
 - For HITL flows, use the checkpointed runtime runner described below.
+- Langfuse tracing is no longer supported in the SDK/runtime.
 
 **Human-In-The-Loop (HITL)**
 
@@ -120,134 +108,44 @@ Compatibility notes:
 
 - `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
 - Subquestion review is the only HITL checkpoint in the SDK.
-- Subquestion review is the only HITL entrypoint; query expansion no longer has a separate review checkpoint.
+- Query expansion no longer has a separate review checkpoint.
 
 The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
-HITL does require checkpoint persistence, and checkpointed runs must now supply the checkpoint Postgres DB explicitly:
+HITL checkpoint persistence is optional overall because non-HITL runs do not need it. For HITL or resume flows, provide one of these options and do not pass both at once:
 
-- Provision a reachable Postgres database before enabling HITL.
-- Pass `checkpoint_db_url="postgresql+psycopg://..."` to `advanced_rag(...)` for the initial HITL call and every resume call.
-- The runtime uses that caller-provided Postgres DB for checkpoint persistence only.
-- On first use, the runtime checks whether that DB already has LangGraph checkpoint tables (`checkpoint_migrations`, `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) and bootstraps them only when missing.
+- `checkpoint_db_url="postgresql+psycopg://..."` when you want the SDK to create and own the LangGraph Postgres checkpointer for the call.
+- `checkpointer=existing_checkpointer` when you already manage a ready-to-use LangGraph checkpoint saver instance.
 
-Response schema from `advanced_rag(...)` when HITL is disabled:
+Do not pass both at once.
 
-```python
-RuntimeAgentRunResponse(
-  main_question: str,
-  sub_answers: list[SubQuestionAnswer],
-  sub_qa: list[SubQuestionAnswer],
-  output: str,
-  final_citations: list[CitationSourceRow],
-)
-```
+When you use `checkpoint_db_url`, the caller must provide the checkpoint Postgres database explicitly on every checkpointed call:
 
-When HITL is enabled, `advanced_rag(...)` returns a pause-aware result:
+- Provision a reachable Postgres database for LangGraph checkpoints before enabling HITL.
+- Pass `checkpoint_db_url="postgresql+psycopg://..."` to every HITL or resume call; the runtime uses that DB for checkpoint persistence and bootstraps tables on first use if missing.
 
-```python
-RuntimeAgentRunResult(
-  status: Literal["completed", "paused"],
-  checkpoint_id: str | None,
-  review: HitlReview | None,
-  response: RuntimeAgentRunResponse | None,
-)
-```
+If you inject `checkpointer`, that saver is used as-is and the SDK does not create or bootstrap a new one for you.
 
-When reading sub-answers, prefer `sub_answers` but fall back to `sub_qa` for compatibility:
+**Optional Parameters**
 
-```python
-sub_answers = response.sub_answers or response.sub_qa
-```
+`advanced_rag(...)` supports these optional keyword parameters:
 
-### Citation Requirements For `final_citations`
+- `rerank_enabled`: explicit per-call override for whether the rerank node runs.
+- `query_expansion_enabled`: explicit per-call override for whether the query-expansion node runs.
+- `config`: runtime controls and prompt overrides for `rerank`, `query_expansion`, `hitl`, `runtime_config`, and `custom_prompts`.
+- `callbacks`: LangChain-compatible callbacks that should observe the run.
+- `hitl_subquestions`: enable the SDK HITL pause after decomposition.
+- `resume`: resume payload for a paused HITL run.
+- `checkpoint_db_url`: optional for normal runs, required only for HITL/resume flows if you are not passing `checkpointer`.
+- `checkpointer`: injected LangGraph checkpoint saver; use this instead of `checkpoint_db_url` when you already manage a ready-to-use saver instance.
 
-For `final_citations` to be populated, both must be true:
-- The generated final answer must include citation markers like `[1]`, `[2]`.
-- Those indices must map to retrieved/reranked rows from the search pipeline.
+Normal non-HITL runs can omit both `checkpoint_db_url` and `checkpointer`.
 
-Citation rows are now built from explicit PGVector metadata keys only. The runtime does not read citation fields from multiple fallback keys anymore.
+**Prompt Customization**
 
-Required metadata contract per stored chunk:
-- `citation_source`: canonical citation source. This is the only metadata key used to populate citation `source`.
+The SDK currently exposes two prompt override keys:
 
-Recommended metadata contract per stored chunk:
-- `citation_title`: canonical citation title. This is the only metadata key used to populate citation `title`.
-- `document_id`: stable identity used for dedupe. If missing, retrieval falls back to `citation_source + chunk content`.
+- `custom_prompts.subanswer`
+- `custom_prompts.synthesis`
 
-Indexing normalizes incoming wiki/internal data so legacy `title`/`source` values are copied into `citation_title`/`citation_source` before storage. Older vectors already stored without these explicit keys should be reindexed if you want robust `final_citations`.
-
-Example chunk shape before indexing:
-
-```python
-Document(
-    page_content=\"pgvector adds vector similarity search to Postgres ...\",
-    metadata={
-        \"citation_title\": \"pgvector\",
-        \"citation_source\": \"https://github.com/pgvector/pgvector\",
-        \"document_id\": \"pgvector-intro-001\",
-    },
-    id=\"pgvector-intro-001\",
-)
-```
-
-## Runtime State Graph (Data Flow + LM Calls)
-
-```mermaid
-flowchart TD
-    A["SDK caller"] --> B["advanced_rag / run / run_async"]
-    B --> C["Validate inputs<br/>model + vector_store required"]
-    C --> D["Build runtime config<br/>callbacks"]
-    D --> E["run_runtime_agent(query, deps)"]
-    E --> F["Decompose Node"]
-    F -->|LLM call #1<br/>Structured decomposition plan| G["sub-questions list"]
-
-    G --> HITL1{"HITL Subquestion Review?"}
-    HITL1 -->|Enabled| H1["Human review + edits"]
-    H1 --> GOK["Approved sub-questions"]
-    HITL1 -->|Disabled| GOK
-
-    GOK --> SQ1["Sub-question 1"]
-    GOK --> SQ2["Sub-question 2"]
-    GOK --> SQ3["Sub-question 3"]
-    GOK --> SQN["Sub-question N"]
-
-    SQ1 --> EX1["Expand Node"]
-    SQ2 --> EX2["Expand Node"]
-    SQ3 --> EX3["Expand Node"]
-    SQN --> EXN["Expand Node"]
-
-    EX1 -->|LLM call #2 per lane<br/>query expansion| SR1["Search Node"]
-    EX2 -->|LLM call #2 per lane<br/>query expansion| SR2["Search Node"]
-    EX3 -->|LLM call #2 per lane<br/>query expansion| SR3["Search Node"]
-    EXN -->|LLM call #2 per lane<br/>query expansion| SRN["Search Node"]
-
-    SR1 --> RR1["Rerank Node"]
-    SR2 --> RR2["Rerank Node"]
-    SR3 --> RR3["Rerank Node"]
-    SRN --> RRN["Rerank Node"]
-
-    RR1 -->|LLM call #3 per lane<br/>OpenAI rerank provider| AN1["Answer Node"]
-    RR2 -->|LLM call #3 per lane<br/>OpenAI rerank provider| AN2["Answer Node"]
-    RR3 -->|LLM call #3 per lane<br/>OpenAI rerank provider| AN3["Answer Node"]
-    RRN -->|LLM call #3 per lane<br/>OpenAI rerank provider| ANN["Answer Node"]
-
-    CP1["Custom prompts<br/>subanswer"] -.-> AN1
-    CP1 -.-> AN2
-    CP1 -.-> AN3
-    CP1 -.-> ANN
-
-    AN1 -->|LLM call #4 per lane<br/>sub-answer generation| SA1["sub-answer + citations"]
-    AN2 -->|LLM call #4 per lane<br/>sub-answer generation| SA2["sub-answer + citations"]
-    AN3 -->|LLM call #4 per lane<br/>sub-answer generation| SA3["sub-answer + citations"]
-    ANN -->|LLM call #4 per lane<br/>sub-answer generation| SAN["sub-answer + citations"]
-
-    SA1 --> R["Synthesize Final Node"]
-    SA2 --> R
-    SA3 --> R
-    SAN --> R
-
-    CP2["Custom prompts<br/>synthesis"] -.-> R
-    R -->|LLM call #5<br/>final synthesis answer| S["final output"]
-    S --> T["RuntimeAgentRunResponse<br/>main_question + sub_answers + sub_qa + output + final_citations"]
-```
+If you do not override them, the runtime uses built-in defaults. Overrides replace the instruction block only. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs. For more detail, see `docs/prompt-customization.md`.
