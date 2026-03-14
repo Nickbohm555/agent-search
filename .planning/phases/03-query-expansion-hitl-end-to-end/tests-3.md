@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 4 - Edit decision uses operator-modified expansions.
+Test 5 - Deny and skip paths are supported and deterministic.
 
 ## Information Needed from the Summary
 
@@ -133,6 +133,10 @@ testing_notes:
 - Resume accepts edited payload and continues same job.
 - Resumed execution reflects operator-edited expansion terms (not original generated set).
 - Run still reaches terminal completion.
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_resume_applies_typed_decisions_before_search tests/api/test_agent_run.py::test_post_run_resume_accepts_typed_query_expansion_decision_envelope` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The backend resume contract accepted typed edit decisions bound to the paused `checkpoint_id`, the runtime replaced the generated expansion set with the operator-edited query before `search` executed, and the frontend sent the edited query in the typed resume payload then completed the same paused run successfully.
 
 ### Test 5 - Deny and skip paths are supported and deterministic
 **Goal:** Confirm both deny and skip resume decisions are handled as first-class outcomes.
@@ -169,7 +173,7 @@ testing_notes:
 
 ## Summary
 
-Tests 1-3 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
+Tests 1-4 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
 
 ## Gaps
 
