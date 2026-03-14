@@ -11,6 +11,9 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from db import DATABASE_URL
 from services.vector_store_service import (
+    CITATION_DOCUMENT_ID_METADATA_KEY,
+    CITATION_SOURCE_METADATA_KEY,
+    CITATION_TITLE_METADATA_KEY,
     add_documents_to_store,
     build_initial_search_context,
     get_vector_store,
@@ -75,6 +78,8 @@ def test_add_documents_to_store_returns_ids_and_persists_wiki_metadata() -> None
 
     results = vector_store.similarity_search("Hormuz shipping route", k=2)
     assert results
+    assert any(result.metadata.get(CITATION_TITLE_METADATA_KEY) for result in results)
+    assert any(result.metadata.get(CITATION_SOURCE_METADATA_KEY) for result in results)
     assert any(result.metadata.get("wiki_page") for result in results)
     assert any(result.metadata.get("wiki_url") for result in results)
     assert any("Hormuz" in result.page_content for result in results)
@@ -117,7 +122,11 @@ def test_build_initial_search_context_shapes_metadata_and_snippet() -> None:
         Document(
             id="abc123",
             page_content="Line 1\nLine 2",
-            metadata={"title": "NATO", "source": "https://example.com/nato"},
+            metadata={
+                CITATION_DOCUMENT_ID_METADATA_KEY: "abc123",
+                CITATION_TITLE_METADATA_KEY: "NATO",
+                CITATION_SOURCE_METADATA_KEY: "https://example.com/nato",
+            },
         )
     ]
 

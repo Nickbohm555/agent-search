@@ -10,6 +10,11 @@ if str(BACKEND_ROOT) not in sys.path:
 from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.nodes import search
 from schemas import GraphRunMetadata, SearchNodeInput
+from services.vector_store_service import (
+    CITATION_DOCUMENT_ID_METADATA_KEY,
+    CITATION_SOURCE_METADATA_KEY,
+    CITATION_TITLE_METADATA_KEY,
+)
 
 
 class _CompatibleVectorStore:
@@ -23,9 +28,28 @@ class _MissingVectorStoreMethod:
 
 
 class _Doc:
-    def __init__(self, *, doc_id: str, title: str, source: str, content: str, score: float | None = None):
+    def __init__(
+        self,
+        *,
+        doc_id: str,
+        title: str,
+        source: str,
+        content: str,
+        score: float | None = None,
+        include_legacy_only: bool = False,
+    ):
         self.id = doc_id
-        metadata: dict[str, object] = {"title": title, "source": source}
+        metadata: dict[str, object] = {}
+        if include_legacy_only:
+            metadata.update({"title": title, "source": source})
+        else:
+            metadata.update(
+                {
+                    CITATION_TITLE_METADATA_KEY: title,
+                    CITATION_SOURCE_METADATA_KEY: source,
+                    CITATION_DOCUMENT_ID_METADATA_KEY: doc_id,
+                }
+            )
         if score is not None:
             metadata["score"] = score
         self.metadata = metadata
@@ -119,6 +143,40 @@ def test_run_search_node_merges_and_dedupes_multi_query_results() -> None:
     assert sum(1 for item in output.retrieval_provenance if item["deduped"]) == 2
     assert output.citation_rows_by_index[1].title == "Policy Doc"
     assert output.citation_rows_by_index[3].title == "Timeline"
+
+
+def test_run_search_node_uses_explicit_citation_metadata_keys_only() -> None:
+    def fake_search_documents_for_queries(*, vector_store, queries, k, score_threshold):
+        _ = vector_store, queries, k, score_threshold
+        return {
+            "What changed in VAT policy?": [
+                _Doc(
+                    doc_id="doc-legacy",
+                    title="Legacy Title",
+                    source="wiki://legacy",
+                    content="Legacy metadata only.",
+                    include_legacy_only=True,
+                ),
+                _Doc(
+                    doc_id="doc-explicit",
+                    title="Explicit Title",
+                    source="wiki://explicit",
+                    content="Explicit citation metadata.",
+                ),
+            ]
+        }
+
+    output = search.run_search_node(
+        node_input=_node_input(),
+        vector_store=_CompatibleVectorStore(),
+        search_documents_for_queries_fn=fake_search_documents_for_queries,
+    )
+
+    assert [item.document_id for item in output.retrieved_docs] == ["doc-legacy", "doc-explicit"]
+    assert output.retrieved_docs[0].title == ""
+    assert output.retrieved_docs[0].source == ""
+    assert output.retrieved_docs[1].title == "Explicit Title"
+    assert output.retrieved_docs[1].source == "wiki://explicit"
 
 
 def test_run_search_node_returns_empty_output_when_no_queries() -> None:

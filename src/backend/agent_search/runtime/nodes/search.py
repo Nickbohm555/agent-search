@@ -9,7 +9,12 @@ from agent_search.vectorstore.protocol import (
     assert_vector_store_compatible,
 )
 from schemas import CitationSourceRow, SearchNodeInput, SearchNodeOutput
-from services.vector_store_service import search_documents_for_queries
+from services.vector_store_service import (
+    CITATION_DOCUMENT_ID_METADATA_KEY,
+    CITATION_SOURCE_METADATA_KEY,
+    CITATION_TITLE_METADATA_KEY,
+    search_documents_for_queries,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +60,17 @@ def _build_document_identity(
         return f"document_id:{document_id}"
     normalized_source = source.strip().casefold()
     normalized_content = content.strip()
-    return f"source_content:{normalized_source}|{normalized_content}"
+    if normalized_source:
+        return f"source_content:{normalized_source}|{normalized_content}"
+    return f"content:{normalized_content}"
 
 
 def _build_citation_row_from_document(*, document: Any, rank: int) -> CitationSourceRow:
     metadata = document.metadata or {}
-    title = str(metadata.get("topic") or metadata.get("title") or metadata.get("wiki_page") or "").strip()
-    source = str(metadata.get("wiki_url") or metadata.get("source") or "").strip()
+    title = str(metadata.get(CITATION_TITLE_METADATA_KEY) or "").strip()
+    source = str(metadata.get(CITATION_SOURCE_METADATA_KEY) or "").strip()
     content = str(getattr(document, "page_content", "") or "").strip()
-    document_id = str(getattr(document, "id", "") or "").strip()
+    document_id = str(metadata.get(CITATION_DOCUMENT_ID_METADATA_KEY) or getattr(document, "id", "") or "").strip()
     return CitationSourceRow(
         citation_index=rank,
         rank=rank,

@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+CITATION_TITLE_METADATA_KEY = "citation_title"
+CITATION_SOURCE_METADATA_KEY = "citation_source"
+CITATION_DOCUMENT_ID_METADATA_KEY = "document_id"
+
 
 def _collection_exists(connection: str, collection_name: str, use_jsonb: bool = True) -> bool:
     """Check whether the target PGVector collection already exists."""
@@ -44,12 +48,16 @@ def get_vector_store(connection: str, collection_name: str, embeddings: Embeddin
 
 
 def _normalize_document_metadata(document: Document) -> Document:
-    """Keep only required wiki metadata fields for retrieval/filtering."""
+    """Keep only required citation metadata fields for retrieval/filtering."""
     metadata = document.metadata or {}
     topic = str(metadata.get("title") or metadata.get("wiki_page") or "").strip()
     wiki_url = str(metadata.get("source") or metadata.get("wiki_url") or "").strip()
-    # Preserve legacy wiki keys for backward compatibility with existing retrieval consumers/tests.
+    document_id = str(metadata.get(CITATION_DOCUMENT_ID_METADATA_KEY) or document.id or "").strip()
+    # Preserve explicit citation keys and legacy wiki keys for non-citation consumers.
     slim_metadata = {
+        CITATION_TITLE_METADATA_KEY: topic,
+        CITATION_SOURCE_METADATA_KEY: wiki_url,
+        CITATION_DOCUMENT_ID_METADATA_KEY: document_id,
         "topic": topic,
         "wiki_url": wiki_url,
         "wiki_page": topic,
@@ -154,9 +162,9 @@ def build_initial_search_context(documents: list[Document]) -> list[dict[str, st
         context_items.append(
             {
                 "rank": rank,
-                "document_id": str(document.id or ""),
-                "title": str(metadata.get("topic") or metadata.get("title") or metadata.get("wiki_page") or ""),
-                "source": str(metadata.get("wiki_url") or metadata.get("source") or ""),
+                "document_id": str(metadata.get(CITATION_DOCUMENT_ID_METADATA_KEY) or document.id or ""),
+                "title": str(metadata.get(CITATION_TITLE_METADATA_KEY) or ""),
+                "source": str(metadata.get(CITATION_SOURCE_METADATA_KEY) or ""),
                 "snippet": snippet[:250],
             }
         )
