@@ -9,8 +9,8 @@
 ## Current Position
 
 - **Current phase:** 4
-- **Current plan:** 04-02
-- **Status:** Phase 4 Plan 04-02 Task 3 implemented; Phase 4 Plan 04-02 Summary queued
+- **Current plan:** 04-03
+- **Status:** Phase 4 Plan 04-02 summary implemented; Phase 4 Plan 04-03 Task 1 queued
 - **Progress:** 3/6 phases complete
 - **Progress bar:** `███░░░` (50%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create Phase 4 Plan 04-02 summary.
-- Continue Phase 4 in dependency order after the 04-02 summary.
+- Continue Phase 4 with Plan 04-03 Task 1.
+- Preserve the independent frontend rerank/query-expansion control mapping onto canonical `runtime_config` fields.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 45 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 Plan 04-02 Task 3 is complete, and the next dependency-ordered work item is writing the git-evidenced summary for Plan 04-02.
-- **Resume note:** State update: `phase=04`, `plan=04-02`, `task=3`, `status=implemented`; service tests now cover per-run query expansion and rerank disablement with default behavior preserved on subsequent runs.
+- **Next command:** Implement Section 46 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 4 Plan 04-02 is summarized, and the next dependency-ordered work item is the frontend control serialization task in Section 46.
+- **Resume note:** State update: `phase=04`, `plan=04-02`, `task=summary`, `status=implemented`; summary-time verification passed for `tests/sdk/test_runtime_config.py` and the scoped `test_agent_service.py -k "expand or rerank or runtime_config"` selectors, while the broader service suite still has unrelated failures.
