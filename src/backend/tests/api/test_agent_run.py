@@ -99,6 +99,52 @@ def test_runtime_agent_run_request_keeps_legacy_payload_compatible_when_custom_p
     assert payload.model_dump(exclude_none=True) == {"query": "Legacy payload"}
 
 
+def test_runtime_agent_run_request_normalizes_release_blocking_controls_to_canonical_shape() -> None:
+    payload = RuntimeAgentRunRequest.model_validate(
+        {
+            "query": "Use every additive contract field",
+            "controls": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+                "hitl": {
+                    "subquestions": {"enabled": True},
+                },
+            },
+            "runtime_config": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+            },
+            "custom-prompts": {
+                "subanswer": "Ground each subanswer.",
+                "synthesis": "Keep the final answer concise.",
+            },
+        }
+    )
+
+    assert payload.controls is not None
+    assert payload.controls.hitl is not None
+    assert payload.controls.hitl.enabled is True
+    assert payload.model_dump(exclude_none=True) == {
+        "query": "Use every additive contract field",
+        "controls": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {
+                "enabled": True,
+                "subquestions": {"enabled": True},
+            },
+        },
+        "runtime_config": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+        },
+        "custom_prompts": {
+            "subanswer": "Ground each subanswer.",
+            "synthesis": "Keep the final answer concise.",
+        },
+    }
+
+
 def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -202,6 +248,56 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         "config": {"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
     }
     assert response.json()["sub_answers"] == response.json()["sub_qa"]
+
+
+def test_runtime_agent_run_response_serializes_additive_sub_answers_alongside_legacy_sub_qa() -> None:
+    from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+
+    sub_answer = SubQuestionAnswer(
+        sub_question="What changed in policy X?",
+        sub_answer="Policy X was revised in January 2026.",
+        tool_call_input='{"query":"What changed in policy X?"}',
+        sub_agent_response="I reviewed the latest policy notes and summarized the change.",
+        answerable=True,
+        verification_reason="grounded_in_reranked_documents",
+    )
+
+    response = RuntimeAgentRunResponse(
+        main_question="Find Hormuz risks",
+        thread_id="550e8400-e29b-41d4-a716-446655440000",
+        sub_qa=[sub_answer],
+        sub_answers=[sub_answer],
+        output="Echo: Find Hormuz risks",
+    )
+
+    assert response.model_dump(mode="json") == {
+        "main_question": "Find Hormuz risks",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440000",
+        "sub_qa": [
+            {
+                "sub_question": "What changed in policy X?",
+                "sub_answer": "Policy X was revised in January 2026.",
+                "tool_call_input": '{"query":"What changed in policy X?"}',
+                "expanded_query": "",
+                "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
+                "answerable": True,
+                "verification_reason": "grounded_in_reranked_documents",
+            }
+        ],
+        "sub_answers": [
+            {
+                "sub_question": "What changed in policy X?",
+                "sub_answer": "Policy X was revised in January 2026.",
+                "tool_call_input": '{"query":"What changed in policy X?"}',
+                "expanded_query": "",
+                "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
+                "answerable": True,
+                "verification_reason": "grounded_in_reranked_documents",
+            }
+        ],
+        "output": "Echo: Find Hormuz risks",
+        "final_citations": [],
+    }
 
 
 def test_post_run_forwards_custom_prompts_with_thread_id(monkeypatch) -> None:

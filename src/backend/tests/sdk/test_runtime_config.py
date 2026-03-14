@@ -28,6 +28,10 @@ def test_runtime_config_defaults_preserve_current_runtime_values() -> None:
     assert config.rerank.top_n is None
     assert config.rerank.provider == "openai"
     assert config.query_expansion.enabled is True
+    assert config.hitl.enabled is False
+    assert config.hitl.subquestions_enabled is False
+    assert config.custom_prompts.subanswer is None
+    assert config.custom_prompts.synthesis is None
 
 
 def test_runtime_config_applies_nested_timeout_retrieval_and_rerank_overrides() -> None:
@@ -86,6 +90,20 @@ def test_runtime_config_falls_back_to_query_expansion_defaults_for_invalid_secti
     config = RuntimeConfig.from_dict({"query_expansion": "disabled"})
 
     assert config.query_expansion.enabled is True
+
+
+def test_runtime_config_enables_hitl_when_nested_subquestions_are_enabled() -> None:
+    config = RuntimeConfig.from_dict({"hitl": {"subquestions": {"enabled": True}}})
+
+    assert config.hitl.enabled is True
+    assert config.hitl.subquestions_enabled is True
+
+
+def test_runtime_config_falls_back_to_hitl_defaults_for_invalid_section_type() -> None:
+    config = RuntimeConfig.from_dict({"hitl": "paused"})
+
+    assert config.hitl.enabled is False
+    assert config.hitl.subquestions_enabled is False
 
 
 def test_runtime_config_parses_custom_prompts_with_alias_and_ignores_unknown_keys() -> None:

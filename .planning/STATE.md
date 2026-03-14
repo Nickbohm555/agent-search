@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-01
-- **Status:** Phase 6 Plan 06-01 Task 2 implemented; Task 3 is next
+- **Status:** Phase 6 Plan 06-01 Task 3 implemented; Summary is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,14 +30,14 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 6 Plan 06-01 Task 3.
-- Add release-blocking parity regressions for backend/api/runtime-config contract fields and OpenAPI drift validation.
+- Create Phase 6 Plan 06-01 summary.
+- Decide whether Phase 6 can be marked complete after summary generation.
 
 ### Blockers
 - None currently.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 69 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 06-01 Task 2 refreshed `openapi.json` and generated `sdk/python` artifacts, so the next dependency-ordered step is adding release-blocking parity regressions against the locked contract surface.
-- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=2`, `status=implemented`; OpenAPI and generated Python SDK artifacts now match the backend contract, and the next target is Task 3 regression coverage.
+- **Next command:** Implement Section 70 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 06-01 Task 3 added release-blocking parity regressions and validated OpenAPI/sdk drift, so the remaining dependency-ordered step is writing the execution summary for this plan.
+- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=3`, `status=implemented`; release-blocking API/runtime-config regressions now cover additive request defaults and response serialization, and `./scripts/validate_openapi.sh` passed against committed artifacts.
