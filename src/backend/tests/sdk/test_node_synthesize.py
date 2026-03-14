@@ -165,3 +165,106 @@ def test_run_synthesize_node_uses_partial_context_prefix_when_no_citable_fallbac
     )
 
     assert output.final_answer == "Partial context only. VAT changed in 2025."
+
+
+def test_run_synthesize_node_prompt_override_can_influence_generated_output() -> None:
+    def _fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
+        _ = main_question, sub_qa, callbacks
+        if prompt_template == "Summarize with a decisive tone":
+            return "Decisive synthesis [1] (source: wiki://vat-policy)."
+        return "Default synthesis [1] (source: wiki://vat-policy)."
+
+    default_output = synthesize.run_synthesize_node(
+        node_input=_node_input(
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            sub_question_artifacts=[
+                SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    citation_rows_by_index={
+                        1: CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="VAT policy",
+                            source="wiki://vat-policy",
+                            content="VAT changed in 2025.",
+                            document_id="doc-1",
+                        )
+                    },
+                )
+            ],
+        ),
+        generate_final_synthesis_answer_fn=_fake_generate_final_synthesis_answer,
+    )
+    custom_output = synthesize.run_synthesize_node(
+        node_input=_node_input(
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            sub_question_artifacts=[
+                SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    citation_rows_by_index={
+                        1: CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="VAT policy",
+                            source="wiki://vat-policy",
+                            content="VAT changed in 2025.",
+                            document_id="doc-1",
+                        )
+                    },
+                )
+            ],
+        ),
+        prompt_template="Summarize with a decisive tone",
+        generate_final_synthesis_answer_fn=_fake_generate_final_synthesis_answer,
+    )
+
+    assert default_output.final_answer == "Default synthesis [1] (source: wiki://vat-policy)."
+    assert custom_output.final_answer == "Decisive synthesis [1] (source: wiki://vat-policy)."
+
+
+def test_run_synthesize_node_preserves_citation_guardrail_when_prompt_override_omits_citation_guidance() -> None:
+    output = synthesize.run_synthesize_node(
+        node_input=_node_input(
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1] (source: wiki://vat-policy).",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                )
+            ],
+            sub_question_artifacts=[
+                SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    citation_rows_by_index={
+                        1: CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="VAT policy",
+                            source="wiki://vat-policy",
+                            content="VAT changed in 2025.",
+                            document_id="doc-1",
+                        )
+                    },
+                )
+            ],
+        ),
+        prompt_template="Write a confident answer without citations.",
+        generate_final_synthesis_answer_fn=lambda **_kwargs: "Confident but uncited synthesis.",
+    )
+
+    assert output.final_answer == "VAT changed in 2025 [1] (source: wiki://vat-policy)."

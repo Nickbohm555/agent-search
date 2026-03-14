@@ -144,3 +144,37 @@ def test_run_answer_node_enforces_missing_supporting_source_rows_contract() -> N
     assert output.verification_reason == "missing_supporting_source_rows"
     assert output.citation_indices_used == []
     assert output.citation_rows_by_index == {}
+
+
+def test_run_answer_node_prompt_override_can_influence_generated_output() -> None:
+    docs = [
+        CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title="Policy baseline",
+            source="wiki://policy",
+            content="VAT changed in 2025.",
+            document_id="doc-1",
+        )
+    ]
+
+    def _fake_generate_subanswer(*, sub_question, reranked_retrieved_output, prompt_template=None, callbacks):
+        _ = sub_question, reranked_retrieved_output, callbacks
+        if prompt_template == "Answer in terse mode":
+            return "Terse answer [1]."
+        return "Default answer [1]."
+
+    default_output = answer.run_answer_node(
+        node_input=_node_input(reranked_docs=docs),
+        generate_subanswer_fn=_fake_generate_subanswer,
+    )
+    custom_output = answer.run_answer_node(
+        node_input=_node_input(reranked_docs=docs),
+        prompt_template="Answer in terse mode",
+        generate_subanswer_fn=_fake_generate_subanswer,
+    )
+
+    assert default_output.sub_answer == "Default answer [1]."
+    assert custom_output.sub_answer == "Terse answer [1]."
+    assert custom_output.answerable is True
+    assert custom_output.verification_reason == "citation_supported"

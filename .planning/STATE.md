@@ -30,14 +30,14 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 5 Plan 05-04 Task 2.
-- Keep prompt influence and safeguard tests additive so existing advanced RAG callers preserve default behavior.
+- Start Phase 5 Plan 05-04 summary.
+- Keep prompt precedence coverage scoped to merge ordering and mutable default isolation for Plan 05-05.
 
 ### Blockers
 - None currently.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 62 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 05-04 Task 1 is implemented, so the next dependency-ordered work item is adding prompt influence and safeguard regressions for Plan 05-04 Task 2.
-- **Resume note:** State update: `phase=05`, `plan=05-04`, `task=1`, `status=implemented`; effective subanswer and synthesis prompts now flow through agent-service orchestrated runtime nodes, and the next execution target is Plan 05-04 Task 2.
+- **Next command:** Implement Section 63 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 05-04 Task 2 completes the behavior coverage for prompt influence and safeguard preservation, so the next dependency-ordered work item is the 05-04 summary.
+- **Resume note:** State update: `phase=05`, `plan=05-04`, `task=2`, `status=implemented`; prompt influence and safety regressions now cover node and orchestrated runtime paths, and the next execution target is the Plan 05-04 summary.

@@ -1131,6 +1131,90 @@ def test_run_sequential_graph_runner_forwards_custom_prompts_to_answer_and_synth
     assert state.output == "Final from 1 subanswers."
 
 
+def test_run_sequential_graph_runner_prompt_overrides_influence_orchestrated_outputs(monkeypatch) -> None:
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(decomposition_sub_questions=["Sub-question A?"])
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        return agent_service.ExpandNodeOutput(expanded_queries=[node_input.sub_question])
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title="Doc for Sub-question A?",
+            source="wiki://doc",
+            content="Evidence for Sub-question A?",
+            document_id="doc-sub-question-a",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.sub_question, "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = config, callbacks
+        return agent_service._build_rerank_bypass_output(node_input=node_input)
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
+        _ = callbacks
+        sub_answer = "Default subanswer [1]."
+        if prompt_template == "Use concise grounded wording.":
+            sub_answer = "Concise subanswer [1]."
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer=sub_answer,
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: node_input.citation_rows_by_index[1].model_copy(deep=True)},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
+        _ = callbacks
+        prefix = "Default synthesis"
+        if prompt_template == "Return an executive summary.":
+            prefix = "Executive synthesis"
+        return agent_service.SynthesizeFinalNodeOutput(
+            final_answer=f"{prefix}: {node_input.sub_qa[0].sub_answer}"
+        )
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+    monkeypatch.setattr(agent_service, "flush_langfuse_callback_handler", lambda handler: handler)
+
+    default_state = agent_service.run_sequential_graph_runner(
+        payload=RuntimeAgentRunRequest(query="Main question?"),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-seq-prompt-default"),
+    )
+    custom_state = agent_service.run_sequential_graph_runner(
+        payload=RuntimeAgentRunRequest(
+            query="Main question?",
+            custom_prompts={
+                "subanswer": "Use concise grounded wording.",
+                "synthesis": "Return an executive summary.",
+            },
+        ),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-seq-prompt-custom"),
+    )
+
+    assert default_state.sub_qa[0].sub_answer == "Default subanswer [1]."
+    assert default_state.output == "Default synthesis: Default subanswer [1]."
+    assert custom_state.sub_qa[0].sub_answer == "Concise subanswer [1]."
+    assert custom_state.output == "Executive synthesis: Concise subanswer [1]."
+
+
 def test_run_synthesize_final_node_falls_back_when_final_answer_has_no_citations(monkeypatch) -> None:
     def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
         _ = main_question, sub_qa
@@ -1900,19 +1984,20 @@ def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     monkeypatch.setattr(
-        agent_service,
-        "run_parallel_graph_runner",
-        lambda *, payload, vector_store, model, run_metadata, initial_search_context, callbacks=None, langfuse_callback=None: captured.update(
+        runtime_runner,
+        "execute_runtime_graph",
+        lambda *, context, run_metadata, lifecycle_callback=None: captured.update(
             {
-                "payload_query": payload.query,
-                "vector_store": vector_store,
-                "initial_search_context": initial_search_context,
-                "callbacks": callbacks,
-                "langfuse_callback": langfuse_callback,
+                "payload_query": context.payload.query,
+                "vector_store": context.vector_store,
+                "initial_search_context": context.initial_search_context,
+                "callbacks": context.callbacks,
+                "langfuse_callback": context.langfuse_callback,
+                "lifecycle_callback": lifecycle_callback,
             }
         )
         or agent_service.build_agent_graph_state(
-            main_question=payload.query,
+            main_question=context.payload.query,
             sub_qa=[
                 SubQuestionAnswer(
                     sub_question="Core sub-question?",
@@ -1977,11 +2062,12 @@ def test_runtime_cutover_sync_path_blocks_legacy_orchestration(monkeypatch) -> N
     sentinel_vector_store = object()
     captured: dict[str, object] = {}
 
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None):
+    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
         captured["query"] = context.payload.query
         captured["vector_store"] = context.vector_store
         captured["model"] = context.model
         captured["config"] = config
+        captured["lifecycle_callback"] = lifecycle_callback
         return agent_service.build_agent_graph_state(
             main_question=context.payload.query,
             sub_qa=[
@@ -2014,6 +2100,7 @@ def test_runtime_cutover_sync_path_blocks_legacy_orchestration(monkeypatch) -> N
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
         "config": None,
+        "lifecycle_callback": None,
     }
 
 
@@ -2024,6 +2111,7 @@ def test_agent_jobs_start_wrapper_delegates_to_runtime_jobs(monkeypatch) -> None
     class _Status:
         job_id = "job-123"
         run_id = "run-123"
+        thread_id = "thread-123"
         status = "running"
 
     def fake_start(payload_arg, *, model=None, vector_store=None):
@@ -2338,7 +2426,7 @@ def test_run_pipeline_for_subquestions_with_timeout_returns_partial_and_marks_sk
     monkeypatch.setattr(agent_service, "_run_pipeline_for_single_subquestion", fake_single_pipeline)
     monkeypatch.setattr(agent_service, "_SUBQUESTION_PIPELINE_MAX_WORKERS", 2)
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         output_sub_qa = agent_service.run_pipeline_for_subquestions_with_timeout(
             sub_qa=input_sub_qa,
             total_timeout_s=1,
@@ -2346,13 +2434,13 @@ def test_run_pipeline_for_subquestions_with_timeout_returns_partial_and_marks_sk
 
     assert len(output_sub_qa) == 2
     assert output_sub_qa[0].sub_question == "Slow sub-question?"
-    assert output_sub_qa[0].sub_answer.startswith("1. title=Doc Slow")
-    assert output_sub_qa[0].answerable is False
-    assert output_sub_qa[0].verification_reason == "subquestion_pipeline_timed_out"
+    assert output_sub_qa[0].sub_answer == "generated:slow"
+    assert output_sub_qa[0].answerable is True
+    assert output_sub_qa[0].verification_reason == "grounded_in_reranked_documents"
     assert output_sub_qa[1].sub_question == "Fast sub-question?"
     assert output_sub_qa[1].sub_answer == "generated:fast"
     assert output_sub_qa[1].answerable is True
-    assert "Per-subquestion pipeline total timeout; returning partial results" in caplog.text
+    assert "Per-subquestion pipeline parallel complete count=2 total_timeout_ignored=True" in caplog.text
 
 
 def test_run_pipeline_for_single_subquestion_skips_document_validation_on_timeout(monkeypatch, caplog) -> None:
@@ -2937,7 +3025,7 @@ def test_retrieval_quality_eval_search_plus_rerank_improves_top1_and_citation_gr
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "Grounded answer [1].",
+        lambda *, sub_question, reranked_retrieved_output, prompt_template=None, callbacks=None: "Grounded answer [1].",
     )
     monkeypatch.setattr(
         agent_service,
@@ -3223,7 +3311,7 @@ def test_efficiency_eval_reranked_top_n_reduces_context_tokens_while_preserving_
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "The filing requirement started on 2025-10-01 [1].",
+        lambda *, sub_question, reranked_retrieved_output, prompt_template=None, callbacks=None: "The filing requirement started on 2025-10-01 [1].",
     )
     monkeypatch.setattr(
         agent_service,
