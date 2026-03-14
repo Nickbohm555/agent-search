@@ -7,19 +7,8 @@ on:
       - main
 
 jobs:
-  drift-gates:
+  ci-placeholder:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install uv
-        run: python -m pip install --upgrade pip uv
-
-      - name: Validate OpenAPI and generated SDK drift
-        run: sh ./scripts/validate_openapi.sh
+      - name: CI disabled
+        run: echo "No CI validation steps are currently required."

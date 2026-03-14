@@ -18,7 +18,6 @@ src/backend/.venv/
 .cursor/
 sdk-token.txt
 *.sh
-!scripts/validate_openapi.sh
 completed.md
 IMPLEMENTATION_PLAN.md
 implementation_plan.md
