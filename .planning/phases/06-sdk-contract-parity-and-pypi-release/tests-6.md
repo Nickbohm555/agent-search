@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 4: CI workflow publishes only validated uploaded artifacts.
+Test 5: Public release docs provide a complete 1.0.3 adoption path.
 
 ## Information Needed from the Summary
 
@@ -103,6 +103,10 @@ Test 4: CI workflow publishes only validated uploaded artifacts.
 
 ### Test 4: CI workflow publishes only validated uploaded artifacts
 - Type: UAT CI release workflow behavior
+- result: pass - inspected `.github/workflows/release-sdk.yml` and `scripts/release_sdk.sh` on 2026-03-14; `build_and_check` runs `./scripts/release_sdk.sh`, uploads `sdk/core/dist/*` as `agent-search-core-dist`, and `publish` only downloads that artifact to `dist` before `pypa/gh-action-pypi-publish@release/v1` publishes `packages-dir: dist`.
+- reported: the release workflow enforces build-once/publish-once semantics by validating artifacts before upload, then publishing only the downloaded artifact bundle under Trusted Publishing without any rebuild step in the publish job.
+- severity: none
+- reason: observed workflow structure matches the Phase 6 requirement that CI publish only validated uploaded artifacts.
 - Preconditions:
   - Access to `.github/workflows/release-sdk.yml`.
 - Steps:
@@ -129,7 +133,7 @@ Test 4: CI workflow publishes only validated uploaded artifacts.
 
 ## Summary
 
-Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged. Test 3 passed on 2026-03-14 because the matching `agent-search-core-v1.0.3` dry run completed local build and artifact checks without uploading, while a mismatched `agent-search-core-v0.0.0` tag was rejected before publish logic.
+Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged. Test 3 passed on 2026-03-14 because the matching `agent-search-core-v1.0.3` dry run completed local build and artifact checks without uploading, while a mismatched `agent-search-core-v0.0.0` tag was rejected before publish logic. Test 4 passed on 2026-03-14 because `.github/workflows/release-sdk.yml` uploads the validated `sdk/core/dist/*` bundle from `build_and_check`, and `publish` only downloads `agent-search-core-dist` to `dist` before invoking `pypa/gh-action-pypi-publish@release/v1` with `packages-dir: dist`, so the publish job never rebuilds artifacts.
 
 ## Gaps
 
