@@ -15,6 +15,18 @@ _SUBANSWER_MODEL = os.getenv("SUBANSWER_MODEL", "gpt-4.1-mini")
 _SUBANSWER_TEMPERATURE = float(os.getenv("SUBANSWER_TEMPERATURE", "0"))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _CITATION_PATTERN = re.compile(r"\[\d+\]")
+DEFAULT_SUBANSWER_PROMPT_TEMPLATE = (
+    "You answer one sub-question using the full reranked evidence list below.\n"
+    "Requirements:\n"
+    "- Use only the evidence provided below.\n"
+    "- Treat each evidence line index as a citation key and cite claims with [index], e.g. [1] or [2][3].\n"
+    "- Keep citation indices from the provided evidence lines; do not invent new indices.\n"
+    "- Keep it to 1-3 sentences.\n"
+    "- Do not summarize the evidence list; directly answer the sub-question using cited evidence.\n"
+    "- If evidence is insufficient, explicitly say so.\n\n"
+    "Sub-question:\n{sub_question}\n\n"
+    "Reranked evidence:\n{context_block}\n"
+)
 
 
 def _build_context_block(documents: list[RetrievedDocument]) -> str:
@@ -37,6 +49,7 @@ def generate_subanswer(
     *,
     sub_question: str,
     reranked_retrieved_output: str,
+    prompt_template: str | None = None,
     callbacks: list[Any] | None = None,
 ) -> str:
     documents = parse_retrieved_documents(reranked_retrieved_output)
@@ -69,17 +82,9 @@ def generate_subanswer(
 
     try:
         llm = ChatOpenAI(model=_SUBANSWER_MODEL, temperature=_SUBANSWER_TEMPERATURE)
-        prompt = (
-            "You answer one sub-question using the full reranked evidence list below.\n"
-            "Requirements:\n"
-            "- Use only the evidence provided below.\n"
-            "- Treat each evidence line index as a citation key and cite claims with [index], e.g. [1] or [2][3].\n"
-            "- Keep citation indices from the provided evidence lines; do not invent new indices.\n"
-            "- Keep it to 1-3 sentences.\n"
-            "- Do not summarize the evidence list; directly answer the sub-question using cited evidence.\n"
-            "- If evidence is insufficient, explicitly say so.\n\n"
-            f"Sub-question:\n{sub_question}\n\n"
-            f"Reranked evidence:\n{context_block}\n"
+        prompt = (prompt_template or DEFAULT_SUBANSWER_PROMPT_TEMPLATE).format(
+            sub_question=sub_question,
+            context_block=context_block,
         )
         invoke_config = {"callbacks": callbacks} if callbacks else None
         response = llm.invoke(prompt, config=invoke_config) if invoke_config else llm.invoke(prompt)

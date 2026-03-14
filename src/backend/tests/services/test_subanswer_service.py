@@ -45,6 +45,46 @@ def test_generate_subanswer_uses_llm_when_available(monkeypatch) -> None:
     assert "cite claims with [index]" in captured["prompt"]
 
 
+def test_generate_subanswer_uses_custom_prompt_template(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _FakeResponse:
+        content = "Custom answer [1]."
+
+    class _FakeChatOpenAI:
+        def __init__(self, model: str, temperature: float) -> None:
+            assert model
+            assert temperature == subanswer_service._SUBANSWER_TEMPERATURE
+
+        def invoke(self, prompt: str, config=None):
+            captured["prompt"] = prompt
+            return _FakeResponse()
+
+    monkeypatch.setattr(subanswer_service, "ChatOpenAI", _FakeChatOpenAI)
+
+    output = subanswer_service.generate_subanswer(
+        sub_question="What changed in NATO policy?",
+        reranked_retrieved_output="1. title=NATO Policy source=wiki://nato content=Policy changed in 2025.",
+        prompt_template="Q={sub_question}\nCTX={context_block}",
+    )
+
+    assert output == "Custom answer [1]."
+    assert captured["prompt"] == (
+        "Q=What changed in NATO policy?\n"
+        "CTX=[1] title=NATO Policy source=wiki://nato content=Policy changed in 2025."
+    )
+
+
+def test_generate_subanswer_fallback_ignores_prompt_override_without_docs() -> None:
+    output = subanswer_service.generate_subanswer(
+        sub_question="What changed in NATO policy?",
+        reranked_retrieved_output="Non-parseable retrieval output",
+        prompt_template="unused {sub_question} {context_block}",
+    )
+
+    assert output == "No relevant evidence found in reranked documents."
+
+
 def test_generate_subanswer_prompt_includes_full_ranked_document_list(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
@@ -75,3 +115,34 @@ def test_generate_subanswer_prompt_includes_full_ranked_document_list(monkeypatc
     assert output == "Answer [4]."
     assert "[1] title=Doc 1 source=wiki://doc1 content=One." in captured["prompt"]
     assert "[4] title=Doc 4 source=wiki://doc4 content=Four." in captured["prompt"]
+
+
+def test_generate_subanswer_default_prompt_matches_constant(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class _FakeResponse:
+        content = "Answer [1]."
+
+    class _FakeChatOpenAI:
+        def __init__(self, model: str, temperature: float) -> None:
+            assert model
+            assert temperature == subanswer_service._SUBANSWER_TEMPERATURE
+
+        def invoke(self, prompt: str, config=None):
+            captured["prompt"] = prompt
+            return _FakeResponse()
+
+    monkeypatch.setattr(subanswer_service, "ChatOpenAI", _FakeChatOpenAI)
+
+    sub_question = "What changed in NATO policy?"
+    reranked_output = "1. title=NATO Policy source=wiki://nato content=Policy changed in 2025."
+    output = subanswer_service.generate_subanswer(
+        sub_question=sub_question,
+        reranked_retrieved_output=reranked_output,
+    )
+
+    assert output == "Answer [1]."
+    assert captured["prompt"] == subanswer_service.DEFAULT_SUBANSWER_PROMPT_TEMPLATE.format(
+        sub_question=sub_question,
+        context_block="[1] title=NATO Policy source=wiki://nato content=Policy changed in 2025.",
+    )
