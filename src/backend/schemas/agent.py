@@ -45,10 +45,16 @@ class RuntimeAgentRunControls(BaseModel):
     hitl: RuntimeHitlControl | None = None
 
 
+class RuntimeAgentRunRuntimeConfig(BaseModel):
+    rerank: RuntimeRerankControl | None = None
+    query_expansion: RuntimeQueryExpansionControl | None = None
+
+
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
     thread_id: str | None = None
     controls: RuntimeAgentRunControls | None = None
+    runtime_config: RuntimeAgentRunRuntimeConfig | None = None
 
     @field_validator("thread_id")
     @classmethod
