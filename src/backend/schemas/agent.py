@@ -20,13 +20,21 @@ class RuntimeSubquestionHitlControl(BaseModel):
     enabled: bool = False
 
 
+class RuntimeQueryExpansionHitlControl(BaseModel):
+    enabled: bool = False
+
+
 class RuntimeHitlControl(BaseModel):
     enabled: bool = False
     subquestions: RuntimeSubquestionHitlControl | None = None
+    query_expansion: RuntimeQueryExpansionHitlControl | None = None
 
     @model_validator(mode="after")
     def normalize_enabled(self) -> "RuntimeHitlControl":
-        if self.subquestions is not None and self.subquestions.enabled:
+        if (
+            (self.subquestions is not None and self.subquestions.enabled)
+            or (self.query_expansion is not None and self.query_expansion.enabled)
+        ):
             self.enabled = True
         return self
 
@@ -139,8 +147,33 @@ class RuntimeSubquestionResumeEnvelope(BaseModel):
     decisions: list[RuntimeSubquestionDecision] = Field(min_length=1)
 
 
+class RuntimeQueryExpansionDecision(BaseModel):
+    expansion_id: str = Field(min_length=1)
+    action: Literal["approve", "edit", "deny", "skip"]
+    edited_query: str | None = None
+
+    @model_validator(mode="after")
+    def validate_edit_payload(self) -> "RuntimeQueryExpansionDecision":
+        if self.action == "edit":
+            if self.edited_query is None or not self.edited_query.strip():
+                raise ValueError("edited_query is required when action='edit'.")
+        elif self.edited_query is not None:
+            self.edited_query = self.edited_query.strip() or None
+        return self
+
+
+class RuntimeQueryExpansionResumeEnvelope(BaseModel):
+    checkpoint_id: str = Field(min_length=1)
+    decisions: list[RuntimeQueryExpansionDecision] = Field(min_length=1)
+
+
 class RuntimeAgentRunResumeRequest(BaseModel):
-    resume: Union[bool, dict[str, Any], RuntimeSubquestionResumeEnvelope] = True
+    resume: Union[
+        bool,
+        dict[str, Any],
+        RuntimeSubquestionResumeEnvelope,
+        RuntimeQueryExpansionResumeEnvelope,
+    ] = True
 
     @field_validator("resume", mode="before")
     @classmethod
@@ -150,6 +183,13 @@ class RuntimeAgentRunResumeRequest(BaseModel):
         if not isinstance(value, dict):
             raise ValueError("resume must be a boolean, legacy object payload, or typed decision envelope.")
         if "checkpoint_id" in value or "decisions" in value:
+            decisions = value.get("decisions")
+            if isinstance(decisions, list):
+                for decision in decisions:
+                    if isinstance(decision, dict) and (
+                        "expansion_id" in decision or "edited_query" in decision
+                    ):
+                        return RuntimeQueryExpansionResumeEnvelope.model_validate(value)
             return RuntimeSubquestionResumeEnvelope.model_validate(value)
         return value
 

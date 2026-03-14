@@ -27,6 +27,7 @@ from schemas import (
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeQueryExpansionControl,
+    RuntimeQueryExpansionHitlControl,
     RuntimeRerankControl,
     RuntimeAgentRunResponse,
     RuntimeAgentRunResumeRequest,
@@ -58,6 +59,15 @@ def _get_nested_mapping(config: Mapping[str, Any] | None, key: str) -> Mapping[s
     return None
 
 
+def _read_enabled_flag(config: Mapping[str, Any] | None, *, default: bool = False) -> bool:
+    if not isinstance(config, Mapping):
+        return default
+    value = config.get("enabled")
+    if isinstance(value, bool):
+        return value
+    return default
+
+
 def _build_request_controls(
     config: Mapping[str, Any] | None,
     *,
@@ -73,6 +83,10 @@ def _build_request_controls(
         hitl_config = _get_nested_mapping(config, "hitl")
         if _has_mapping_key(hitl_config, "subquestions"):
             hitl.subquestions = RuntimeSubquestionHitlControl(enabled=runtime_config.hitl.subquestions_enabled)
+        if _has_mapping_key(hitl_config, "query_expansion"):
+            hitl.query_expansion = RuntimeQueryExpansionHitlControl(
+                enabled=_read_enabled_flag(_get_nested_mapping(hitl_config, "query_expansion")),
+            )
         controls.hitl = hitl
     return controls if controls.model_fields_set else None
 

@@ -10,7 +10,7 @@
 
 - **Current phase:** 3
 - **Current plan:** 03-01
-- **Status:** Phase 2 Plan 02-04 summary implemented; Phase 2 complete and next section queued
+- **Status:** Phase 3 Plan 03-01 Task 1 implemented; next section queued
 - **Progress:** 2/6 phases complete
 - **Progress bar:** `██░░░░` (33%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Execute Phase 3 Plan 03-01 Task 1.
-- Continue Phase 3 in dependency order after the completed Phase 2 summary.
+- Execute Phase 3 Plan 03-01 Task 2.
+- Continue Phase 3 in dependency order after the completed Phase 3 Task 1.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 28 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 is complete, and the next dependency-ordered work item is Phase 3 Plan 03-01 Task 1.
-- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=summary`, `status=implemented`; Phase 2 is complete and the next focus is query-expansion HITL contract work.
+- **Next command:** Implement Section 29 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 3 Plan 03-01 Task 1 is complete, and the next dependency-ordered work item is Task 2 API regression coverage.
+- **Resume note:** State update: `phase=03`, `plan=03-01`, `task=1`, `status=implemented`; query-expansion HITL contract fields are in place and the next focus is API boundary regression coverage.

@@ -389,6 +389,53 @@ def test_post_run_async_accepts_subquestion_hitl_controls(monkeypatch) -> None:
     }
 
 
+def test_post_run_async_accepts_query_expansion_hitl_controls(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run_async(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-qe-hitl-001",
+            run_id="run-qe-hitl-001",
+            thread_id="550e8400-e29b-41d4-a716-446655440097",
+            status="queued",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-async",
+        json={
+            "query": "Queue with query expansion hitl",
+            "controls": {
+                "hitl": {
+                    "query_expansion": {"enabled": True},
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Queue with query expansion hitl",
+        "config": {
+            "hitl": {
+                "enabled": True,
+                "query_expansion": {"enabled": True},
+            },
+        },
+    }
+
+
 def test_run_async_and_status_preserve_same_thread_id(monkeypatch) -> None:
     from routers import agent as agent_router_module
     from schemas import RuntimeAgentRunAsyncStartResponse, RuntimeAgentRunAsyncStatusResponse
@@ -893,6 +940,59 @@ def test_post_run_resume_accepts_typed_subquestion_decision_envelope(monkeypatch
     }
 
 
+def test_post_run_resume_accepts_typed_query_expansion_decision_envelope(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStatusResponse, RuntimeQueryExpansionResumeEnvelope
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_resume_run(job_id: str, *, resume):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id="run-qe-typed-001",
+            thread_id="550e8400-e29b-41d4-a716-446655440096",
+            status="running",
+            message="Resume accepted.",
+            stage="query_expansion_review",
+        )
+
+    monkeypatch.setattr(agent_router_module, "sdk_resume_run", fake_sdk_resume_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-resume/job-qe-typed-001",
+        json={
+            "resume": {
+                "checkpoint_id": "checkpoint-qe-123",
+                "decisions": [
+                    {"expansion_id": "qe-1", "action": "approve"},
+                    {"expansion_id": "qe-2", "action": "edit", "edited_query": "edited expansion"},
+                    {"expansion_id": "qe-3", "action": "deny"},
+                    {"expansion_id": "qe-4", "action": "skip"},
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["job_id"] == "job-qe-typed-001"
+    assert isinstance(captured["resume"], RuntimeQueryExpansionResumeEnvelope)
+    assert captured["resume"].model_dump() == {
+        "checkpoint_id": "checkpoint-qe-123",
+        "decisions": [
+            {"expansion_id": "qe-1", "action": "approve", "edited_query": None},
+            {"expansion_id": "qe-2", "action": "edit", "edited_query": "edited expansion"},
+            {"expansion_id": "qe-3", "action": "deny", "edited_query": None},
+            {"expansion_id": "qe-4", "action": "skip", "edited_query": None},
+        ],
+    }
+
+
 def test_post_run_resume_accepts_legacy_boolean_payload(monkeypatch) -> None:
     from routers import agent as agent_router_module
     from schemas import RuntimeAgentRunAsyncStatusResponse
@@ -960,6 +1060,17 @@ def test_post_run_resume_accepts_legacy_boolean_payload(monkeypatch) -> None:
                 }
             },
             "Input should be 'approve', 'edit', 'deny' or 'skip'",
+        ),
+        (
+            {
+                "resume": {
+                    "checkpoint_id": "checkpoint-qe-123",
+                    "decisions": [
+                        {"expansion_id": "qe-1", "action": "edit"},
+                    ],
+                }
+            },
+            "edited_query is required when action='edit'.",
         ),
     ],
 )
