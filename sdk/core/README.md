@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.13
+## Contract notes for 1.0.14
 
 Use these canonical names in new `config` payloads:
 
@@ -191,6 +191,8 @@ Advanced callers can still pass raw `config["controls"]["hitl"]`, but the top-le
 
 `advanced_rag(...)` supports these optional keyword parameters:
 
+- `rerank_enabled`: Explicit per-call override for whether the rerank node runs.
+- `query_expansion_enabled`: Explicit per-call override for whether the query-expansion node runs.
 - `config`: Runtime controls and prompt overrides. Use this for `rerank`, `query_expansion`, `hitl`, `runtime_config`, and `custom_prompts`.
 - `callbacks`: LangChain-compatible callbacks that should observe the run.
 - `hitl_subquestions`: Enables the supported SDK HITL pause after decomposition.
@@ -207,9 +209,9 @@ The SDK currently exposes two prompt override keys:
 - `custom_prompts.subanswer`
 - `custom_prompts.synthesis`
 
-If you do not override them, the runtime uses these built-in defaults.
+If you do not override them, the runtime uses these built-in defaults. These overrides only replace the instruction block. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs.
 
-Current default `subanswer` prompt:
+Current default `subanswer` instructions:
 
 ```text
 You answer one sub-question using the full reranked evidence list below.
@@ -220,15 +222,9 @@ Requirements:
 - Keep it to 1-3 sentences.
 - Do not summarize the evidence list; directly answer the sub-question using cited evidence.
 - If evidence is insufficient, explicitly say so.
-
-Sub-question:
-{sub_question}
-
-Reranked evidence:
-{context_block}
 ```
 
-Current default `synthesis` prompt:
+Current default `synthesis` instructions:
 
 ```text
 You synthesize the initial answer for the user's question.
@@ -244,15 +240,6 @@ Requirements:
 - Do not collapse cited evidence into an uncited summary.
 - Include at least one source attribution in parentheses, e.g. (source: ...).
 - If initial retrieval context is used, reference its source field explicitly.
-
-Main question:
-{main_question}
-
-Initial retrieval context:
-{formatted_initial_context or 'None'}
-
-Sub-question answers:
-{formatted_sub_qa or 'None'}
 ```
 
 Keep reusable prompt defaults in the existing `config` map, then override only the keys you need per run.
@@ -278,6 +265,7 @@ response = advanced_rag(
     "What changed in NATO maritime policy?",
     vector_store=vector_store,
     model=model,
+    rerank_enabled=False,
     config=client_config,
 )
 print(response.output)
@@ -363,6 +351,7 @@ The supported callable exported by `agent_search` is:
 Notes about `advanced_rag(...)`:
 - It is a synchronous call that runs the full retrieval-and-answer workflow and returns a `RuntimeAgentRunResponse`.
 - You supply the model and vector store; the SDK orchestrates the LangGraph-based runtime around them.
+- Optional `rerank_enabled=` and `query_expansion_enabled=` let one call override those runtime steps directly.
 - Optional `hitl_subquestions=True` opts into subquestion review checkpoints.
 - Checkpointed runs must also pass `checkpoint_db_url` so the SDK can use that Postgres DB for LangGraph checkpoints.
 - Optional `config={"custom_prompts": {...}}` lets you override prompt instructions per run.
@@ -372,23 +361,21 @@ Notes about `advanced_rag(...)`:
 ```python
 RuntimeAgentRunResponse(
   main_question: str,
-  sub_answers: list[SubQuestionAnswer],
-  sub_qa: list[SubQuestionAnswer],
+  thread_id: str | None,
+  sub_items: list[tuple[str, str]],
   output: str,
   final_citations: list[CitationSourceRow],
 )
 ```
 
-`sub_answers` and `sub_qa` are answer rows. Each item contains both the sub-question text and the corresponding sub-answer text.
+`sub_items` contains the sub-question text and corresponding sub-answer text as tuples.
 
-Read additive sub-answer fields like this:
+Read sub-items like this:
 
 ```python
-for item in response.sub_answers:
-    print(item.sub_question, item.sub_answer)
+for sub_question, sub_answer in response.sub_items:
+    print(sub_question, sub_answer)
 ```
-
-`sub_answers` is the canonical additive field for new reads. `sub_qa` remains available as the compatibility alias, and the SDK backfills whichever one is omitted so both fields resolve to the same answer rows.
 
 If you need the plain decomposed question list without answers, read `decomposition_sub_questions` from the async status payload instead of `RuntimeAgentRunResponse`:
 
@@ -398,15 +385,14 @@ status = client.get_run_status(job_id)
 for sub_question in status.decomposition_sub_questions:
     print(sub_question)
 
-for item in status.sub_answers:
-    print(item.sub_question, item.sub_answer)
+for sub_question, sub_answer in status.sub_items:
+    print(sub_question, sub_answer)
 ```
 
 Those fields are intentionally separate:
 
 - `decomposition_sub_questions`: `list[str]` of generated sub-questions only.
-- `sub_answers`: `list[SubQuestionAnswer]` with question-and-answer pairs.
-- `sub_qa`: compatibility alias for `sub_answers`.
+- `sub_items`: `list[tuple[str, str]]` with question-and-answer pairs.
 
 ## Vector store compatibility
 
