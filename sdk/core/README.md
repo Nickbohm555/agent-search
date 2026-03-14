@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.14
+## Contract notes for 1.0.15
 
 Use these canonical names in new `config` payloads:
 
@@ -191,8 +191,8 @@ Advanced callers can still pass raw `config["controls"]["hitl"]`, but the top-le
 
 `advanced_rag(...)` supports these optional keyword parameters:
 
-- `rerank_enabled`: Explicit per-call override for whether the rerank node runs.
-- `query_expansion_enabled`: Explicit per-call override for whether the query-expansion node runs.
+- `rerank_enabled`: Explicit per-call override for whether the rerank node runs. Reranking reorders retrieved documents to put the most relevant evidence first. This is helpful when raw vector retrieval returns noisy or weakly ordered matches. Disable it when you want lower latency, lower model usage, or to preserve the original retrieval order.
+- `query_expansion_enabled`: Explicit per-call override for whether the query-expansion node runs. Query expansion generates alternate retrieval phrasings for each sub-question. This is helpful when the source material may use different terminology or synonyms. Disable it when the user query is already precise and you want to keep retrieval narrower and more predictable.
 - `config`: Runtime controls and prompt overrides. Use this for `rerank`, `query_expansion`, `hitl`, `runtime_config`, and `custom_prompts`.
 - `callbacks`: LangChain-compatible callbacks that should observe the run.
 - `hitl_subquestions`: Enables the supported SDK HITL pause after decomposition.
@@ -201,6 +201,30 @@ Advanced callers can still pass raw `config["controls"]["hitl"]`, but the top-le
 - `checkpointer`: Optional injected LangGraph checkpoint saver. Use this instead of `checkpoint_db_url` when you already manage a ready-to-use saver instance.
 
 Normal non-HITL runs can omit both `checkpoint_db_url` and `checkpointer`.
+
+Examples:
+
+```python
+response = advanced_rag(
+    "Summarize the latest shipping guidance for Hormuz transit.",
+    vector_store=vector_store,
+    model=model,
+    rerank_enabled=False,
+)
+```
+
+Use `rerank_enabled=False` when you want the fastest possible path and are comfortable using the retrieval order directly.
+
+```python
+response = advanced_rag(
+    "What changed in maritime corridor insurance guidance?",
+    vector_store=vector_store,
+    model=model,
+    query_expansion_enabled=False,
+)
+```
+
+Use `query_expansion_enabled=False` when the wording is already exact and you do not want the runtime to broaden retrieval with alternate phrasings.
 
 ## Prompt customization
 
@@ -376,23 +400,6 @@ Read sub-items like this:
 for sub_question, sub_answer in response.sub_items:
     print(sub_question, sub_answer)
 ```
-
-If you need the plain decomposed question list without answers, read `decomposition_sub_questions` from the async status payload instead of `RuntimeAgentRunResponse`:
-
-```python
-status = client.get_run_status(job_id)
-
-for sub_question in status.decomposition_sub_questions:
-    print(sub_question)
-
-for sub_question, sub_answer in status.sub_items:
-    print(sub_question, sub_answer)
-```
-
-Those fields are intentionally separate:
-
-- `decomposition_sub_questions`: `list[str]` of generated sub-questions only.
-- `sub_items`: `list[tuple[str, str]]` with question-and-answer pairs.
 
 ## Vector store compatibility
 
