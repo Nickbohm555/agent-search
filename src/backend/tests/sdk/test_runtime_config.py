@@ -27,6 +27,7 @@ def test_runtime_config_defaults_preserve_current_runtime_values() -> None:
     assert config.rerank.enabled is True
     assert config.rerank.top_n is None
     assert config.rerank.provider == "openai"
+    assert config.query_expansion.enabled is True
 
 
 def test_runtime_config_applies_nested_timeout_retrieval_and_rerank_overrides() -> None:
@@ -46,6 +47,9 @@ def test_runtime_config_applies_nested_timeout_retrieval_and_rerank_overrides() 
                 "top_n": 8,
                 "provider": "openai",
             },
+            "query_expansion": {
+                "enabled": False,
+            },
         }
     )
 
@@ -57,6 +61,7 @@ def test_runtime_config_applies_nested_timeout_retrieval_and_rerank_overrides() 
     assert config.rerank.enabled is False
     assert config.rerank.top_n == 8
     assert config.rerank.provider == "openai"
+    assert config.query_expansion.enabled is False
 
 
 def test_runtime_config_falls_back_to_defaults_for_invalid_overrides() -> None:
@@ -65,6 +70,7 @@ def test_runtime_config_falls_back_to_defaults_for_invalid_overrides() -> None:
             "timeout": {"initial_search_timeout_s": "abc"},
             "retrieval": {"search_node_k_fetch": 0},
             "rerank": {"enabled": "maybe", "top_n": -3, "provider": "unknown-provider"},
+            "query_expansion": {"enabled": "maybe"},
         }
     )
 
@@ -73,3 +79,10 @@ def test_runtime_config_falls_back_to_defaults_for_invalid_overrides() -> None:
     assert config.rerank.enabled is True
     assert config.rerank.top_n is None
     assert config.rerank.provider == "openai"
+    assert config.query_expansion.enabled is True
+
+
+def test_runtime_config_falls_back_to_query_expansion_defaults_for_invalid_section_type() -> None:
+    config = RuntimeConfig.from_dict({"query_expansion": "disabled"})
+
+    assert config.query_expansion.enabled is True

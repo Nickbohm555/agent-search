@@ -10,7 +10,7 @@
 
 - **Current phase:** 4
 - **Current plan:** 04-02
-- **Status:** Phase 4 Plan 04-01 Summary implemented; Phase 4 Plan 04-02 Task 1 queued
+- **Status:** Phase 4 Plan 04-02 Task 1 implemented; Phase 4 Plan 04-02 Task 2 queued
 - **Progress:** 3/6 phases complete
 - **Progress bar:** `███░░░` (50%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Implement Phase 4 Plan 04-02 Task 1.
-- Continue Phase 4 in dependency order after runtime config contract plumbing.
+- Implement Phase 4 Plan 04-02 Task 2.
+- Continue Phase 4 in dependency order after runtime config runtime wiring.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 42 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 Plan 04-01 is now summarized, and the next dependency-ordered work item is extending backend runtime config parsing for query expansion behavior.
-- **Resume note:** State update: `phase=04`, `plan=04-01`, `task=summary`, `status=implemented`; `04-01-SUMMARY.md` records the additive `runtime_config` request contract, router/SDK forwarding, and green API plus sync/async SDK regression coverage.
+- **Next command:** Implement Section 43 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 4 Plan 04-02 Task 1 is complete, and the next dependency-ordered work item is wiring per-run runtime config into expand/rerank execution.
+- **Resume note:** State update: `phase=04`, `plan=04-02`, `task=1`, `status=implemented`; runtime config parser coverage now locks default, explicit disable, and invalid fallback behavior for `query_expansion.enabled`.
