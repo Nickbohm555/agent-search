@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 13. (move +1 after each turn)
+Current section to work on: section 14. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -306,7 +306,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-15: `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_enabled_initial_run_pauses_with_interrupt_payload_and_checkpoint_id` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed, confirming HITL-enabled runs emit a single `run.paused` after expansion candidates are available and before retrieval continues, with stable `checkpoint_id` plus actionable review payload that the frontend consumes into paused review UX.
 
 ## Section 14 — 03-query-expansion-hitl-end-to-end — tests-3 — Test 3 (Validation)
 - Source test markdown: `.planning/phases/03-query-expansion-hitl-end-to-end/tests-3.md`

@@ -6,12 +6,12 @@ source:
   - 03-02-SUMMARY.md
   - 03-03-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-14"
+updated: "2026-03-15"
 ---
 
 ## Current Test
 
-Test 2 - HITL-enabled run pauses after expansion and before retrieval.
+Test 3 - Approve decision resumes same run to completion.
 
 ## Information Needed from the Summary
 
@@ -93,6 +93,10 @@ testing_notes:
 - Run emits `run.paused` once at query-expansion review stage.
 - Pause arrives after expansion candidates are available and before retrieval work proceeds.
 - Payload includes a stable `checkpoint_id` and reviewable expansion data.
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_enabled_initial_run_pauses_with_interrupt_payload_and_checkpoint_id` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed.
+- reported: 2026-03-15
+- severity: none
+- reason: The backend paused HITL-enabled runs at `query_expansions_ready` with a persisted `checkpoint_id` plus reviewable expansion payload before retrieval advanced, and the frontend rendered that paused query-expansion review state from the streamed payload and resumed the same run successfully.
 
 ### Test 3 - Approve decision resumes same run to completion
 **Goal:** Confirm approve action continues the paused run deterministically.
@@ -161,7 +165,7 @@ testing_notes:
 
 ## Summary
 
-This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
+Tests 1-2 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
 
 ## Gaps
 
