@@ -111,21 +111,7 @@ print(response.output)
 
 **Included Features**
 
-- Multi-step agentic retrieval: Breaks a main question into subquestions, runs retrieval across parallel lanes, and synthesizes a final answer from the collected evidence.
-- Subquestion HITL review: Supports one optional human-in-the-loop checkpoint after decomposition so operators can review or edit subquestions before execution continues.
-- Optional query expansion: Lets you turn query expansion on or off per run to broaden retrieval coverage when the question benefits from wider search terms.
-- Optional reranking: Lets you turn reranking on or off per run to reorder retrieved evidence before subanswers are generated.
-- Checkpointed resume flows: Supports resumable HITL runs through checkpoint persistence so paused work can continue without restarting the full graph.
-- Flexible checkpoint ownership: Works with either an SDK-managed `checkpoint_db_url` or an injected `checkpointer`, depending on whether you want the SDK or your app to own checkpoint storage.
-- Runtime controls via config: Exposes `runtime_config` and related config controls so callers can adjust runtime behavior without changing application code.
-- Prompt overrides: Exposes `custom_prompts.subanswer` and `custom_prompts.synthesis` so teams can customize answer-generation behavior while preserving runtime-supplied question and evidence inputs.
-- SDK-friendly pause/resume contract: Returns a normalized `review` object on pauses and uses SDK-owned resume helpers instead of requiring callers to construct raw backend payloads.
-- Callback integration: Accepts LangChain-compatible callbacks so application telemetry or orchestration hooks can observe the run lifecycle.
-
-For more on the motivations and runtime tradeoffs behind these features, see `docs/application-document.html`.
-
-**Example Flow**
-
-Screenshot of the end-to-end flow with subquestion review, optional query expansion and reranking, and final synthesis.
-
-<img src="screenshot.png" alt="Example flow screenshot showing the end-to-end agent-search runtime flow." width="100%" />
+- **Multi-step agentic retrieval**: Breaks a large question into subquestions, works them in parallel, and synthesizes a final answer from grounded evidence.
+- **Subquestion HITL review**: Adds one high-leverage human review point so operators can inspect or edit subquestions before the expensive work continues.
+- **Advanced retrieval controls**: Supports optional query expansion and reranking so you can trade off recall, precision, and cost per run.
+- **Resumable runtime**: Supports checkpointed pause-and-resume flows for HITL runs so work can continue without restarting the graph.
