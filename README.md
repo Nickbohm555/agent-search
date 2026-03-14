@@ -29,7 +29,7 @@ Integrators adopting the current SDK contract should start with:
 
 Compatibility checklist:
 
-- Install `agent-search-core==1.0.10` for the current documented SDK surface.
+- Install `agent-search-core==1.0.11` for the current documented SDK surface.
 - Keep `controls`, `runtime_config`, and HITL fields omitted unless you explicitly want those behaviors; new controls stay default-off.
 - Send `custom_prompts` in new payloads. The `custom-prompts` alias remains compatibility-only.
 - Read `sub_answers` in new code, but keep `sub_qa` fallback handling during the compatibility window.

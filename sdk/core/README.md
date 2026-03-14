@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.10
+## Contract notes for 1.0.11
 
 Use these canonical names in new `config` payloads:
 
