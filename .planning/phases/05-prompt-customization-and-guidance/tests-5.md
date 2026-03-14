@@ -8,12 +8,12 @@ source:
   - 05-04-SUMMARY.md
   - 05-05-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-14"
+updated: "2026-03-15"
 ---
 
 ## Current Test
 
-Test 2 pending. Test 1 passed on 2026-03-14 for alias compatibility and safe prompt key handling.
+Test 3 pending. Tests 1-2 passed on 2026-03-14 and 2026-03-15 for alias compatibility, safe prompt key handling, and default-behavior preservation when overrides are omitted.
 
 ## Information Needed from the Summary
 
@@ -62,6 +62,7 @@ Test 2 pending. Test 1 passed on 2026-03-14 for alias compatibility and safe pro
    - Given two equivalent runs with no prompt override values set.
    - When both runs execute through the same backend flow.
    - Then output behavior matches baseline/default prompt behavior and no custom prompt side effects appear.
+   - result: Pass on 2026-03-15. `docker compose exec backend uv run pytest tests/sdk/test_runtime_config.py::test_runtime_config_preserves_legacy_defaults_when_custom_prompts_omitted tests/services/test_subanswer_service.py::test_generate_subanswer_unset_prompt_matches_explicit_default_template tests/services/test_initial_answer_service.py::test_generate_initial_answer_unset_prompt_matches_explicit_default_template` passed; omitted prompt overrides left `RuntimeConfig.custom_prompts` unset and both generation services produced the same outputs and prompt bodies as the explicit built-in default templates.
 
 3. **Prompt Override Influences Subanswer/Synthesis Output**
    - Given a run with explicit `subanswer` and `synthesis` override text designed to alter deterministic wording.
@@ -85,8 +86,8 @@ Test 2 pending. Test 1 passed on 2026-03-14 for alias compatibility and safe pro
 
 ## Summary
 
-Test 1 passed on 2026-03-14. Remaining coverage is still pending for defaults, runtime prompt influence, guardrails, precedence, and documentation.
+Tests 1-2 passed on 2026-03-14 and 2026-03-15. Remaining coverage is still pending for runtime prompt influence, guardrails, precedence, and documentation.
 
 ## Gaps
 
-- Tests 2-6 not yet executed.
+- Tests 3-6 not yet executed.

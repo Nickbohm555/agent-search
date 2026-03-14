@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 24. (move +1 after each turn)
+Current section to work on: section 25. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -552,7 +552,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-15: `docker compose exec backend uv run pytest tests/sdk/test_runtime_config.py::test_runtime_config_preserves_legacy_defaults_when_custom_prompts_omitted tests/services/test_subanswer_service.py::test_generate_subanswer_unset_prompt_matches_explicit_default_template tests/services/test_initial_answer_service.py::test_generate_initial_answer_unset_prompt_matches_explicit_default_template` passed, confirming omitted prompt overrides preserve the legacy default path end to end: `RuntimeConfig.custom_prompts` stays unset and both subanswer and synthesis generation match the explicit built-in default templates with no prompt-side effects.
 
 ## Section 25 — 05-prompt-customization-and-guidance — tests-5 — Test 3 (Validation)
 - Source test markdown: `.planning/phases/05-prompt-customization-and-guidance/tests-5.md`
