@@ -15,17 +15,14 @@ If you are adopting the LangGraph-native `1.0.0` release, start here before wiri
 Recommended action:
 
 - Use `advanced_rag(...)` as the primary sync entrypoint for new integrations.
-- Treat `run(...)` as a deprecated compatibility alias only.
 - Move tracing setup to `build_langfuse_callback(...)` plus `langfuse_callback=...` instead of relying on `langfuse_settings` alone.
+- Use `hitl_subquestions=True` and `hitl_query_expansion=True` for user-review checkpoints instead of raw `config["controls"]["hitl"]` in new code.
 
 ## Primary SDK: `agent_search` (in-process)
 
 Public functions:
 
-- `run(query, *, vector_store, model, config=None)`
-- `run_async(query, *, vector_store, model, config=None)`
-- `get_run_status(job_id)`
-- `cancel_run(job_id)`
+- `advanced_rag(query, *, vector_store, model, config=None, hitl_subquestions=False, hitl_query_expansion=False, ...)`
 
 Return contract:
 
@@ -45,13 +42,13 @@ Minimal usage (you must provide a chat model and a vector store):
 
 ```python
 from langchain_openai import ChatOpenAI
-from agent_search import run
+from agent_search import advanced_rag
 from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 
 vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
 model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
 
-response = run("What is pgvector?", vector_store=vector_store, model=model)
+response = advanced_rag("What is pgvector?", vector_store=vector_store, model=model)
 print(response.output)
 ```
 

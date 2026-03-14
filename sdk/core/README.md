@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.6
+## Contract notes for 1.0.7
 
 Use these canonical names in new `config` payloads:
 
@@ -54,44 +54,14 @@ Compatibility notes:
 
 ## Human-in-the-loop (HITL)
 
-`agent-search-core` supports HITL review/resume for subquestion decomposition.
-Use `advanced_rag(...)` with HITL controls to pause, inspect the normalized review object, then resume with SDK-owned decisions.
+`agent-search-core` supports two opt-in review stages on `advanced_rag(...)`:
 
-Start a run with HITL enabled:
+- `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
+- `hitl_query_expansion=True` pauses before search expansion execution so the caller can review or edit expanded queries.
 
-```python
-from langchain_openai import ChatOpenAI
-from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
-from agent_search.runtime.runner import run_checkpointed_agent
-from services.agent_service import build_graph_run_metadata
-from schemas import (
-    RuntimeAgentRunControls,
-    RuntimeAgentRunRequest,
-    RuntimeHitlControl,
-    RuntimeSubquestionHitlControl,
-)
+You can enable either stage or both. The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
-vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
-model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
-run_metadata = build_graph_run_metadata(thread_id="550e8400-e29b-41d4-a716-446655440000")
-
-payload = RuntimeAgentRunRequest(
-    query="Summarize the customer feedback themes.",
-    thread_id=run_metadata.thread_id,
-    controls=RuntimeAgentRunControls(
-        hitl=RuntimeHitlControl(subquestions=RuntimeSubquestionHitlControl(enabled=True))
-    ),
-)
-
-outcome = run_checkpointed_agent(
-    payload,
-    model=model,
-    vector_store=vector_store,
-    run_metadata=run_metadata,
-)
-```
-
-Example paused result (the run pauses at `subquestions_ready`):
+Example paused result for subquestion review:
 
 ```python
 from agent_search import advanced_rag
@@ -100,11 +70,37 @@ outcome = advanced_rag(
     "Summarize the customer feedback themes.",
     vector_store=vector_store,
     model=model,
-    hitl=True,
+    hitl_subquestions=True,
 )
 print(outcome.status)  # "paused"
 print(outcome.review.kind)  # "subquestion_review"
 print(outcome.review.items[0].text)
+```
+
+Example paused result for query expansion review:
+
+```python
+outcome = advanced_rag(
+    "Summarize the customer feedback themes.",
+    vector_store=vector_store,
+    model=model,
+    hitl_query_expansion=True,
+)
+print(outcome.status)  # "paused"
+print(outcome.review.kind)  # "query_expansion_review"
+print(outcome.review.items[0].text)
+```
+
+Enable both review stages in one run:
+
+```python
+outcome = advanced_rag(
+    "Summarize the customer feedback themes.",
+    vector_store=vector_store,
+    model=model,
+    hitl_subquestions=True,
+    hitl_query_expansion=True,
+)
 ```
 
 Resume with SDK helpers:
@@ -129,6 +125,8 @@ For simple approval flows:
 ```python
 resume = outcome.review.approve_all()
 ```
+
+Advanced callers can still pass raw `config["controls"]["hitl"]`, but the top-level HITL review toggles are now the preferred public API.
 
 ## Prompt customization
 
@@ -232,6 +230,7 @@ Notes about `advanced_rag(...)`:
 - It is a synchronous call that runs the full retrieval-and-answer workflow and returns a `RuntimeAgentRunResponse`.
 - You supply the model and vector store; the SDK orchestrates the LangGraph-based runtime around them.
 - Optional `config={"thread_id": "..."}` lets you pass a stable execution identity into the run.
+- Optional `hitl_subquestions=True` and `hitl_query_expansion=True` opt into user review checkpoints.
 - If you pass `langfuse_callback=...`, the SDK includes that callback in runtime tracing.
 - `langfuse_settings` is accepted for compatibility but ignored unless you provide an explicit `langfuse_callback`.
 
