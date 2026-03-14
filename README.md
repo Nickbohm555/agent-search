@@ -16,13 +16,21 @@ Prompt override guidance lives in [docs/prompt-customization.md](/Users/nickbohm
 
 Prompt edits change generation instructions only. Citation validation and fallback behavior remain enforced in runtime code, so custom prompts are not a supported way to bypass those safeguards.
 
-## 1.0.0 Release
+## Current Release Guidance
 
-Integrators adopting the LangGraph-native `1.0.0` release should start with:
+Integrators adopting the current contract-parity release should start with:
 
-- [1.0.0 release notes](docs/releases/1.0.0-langgraph-migration.md)
+- [1.0.3 release notes](docs/releases/1.0.3-sdk-contract-parity.md)
 - [Migration guide](docs/migration-guide.md)
+- [1.0.0 release notes](docs/releases/1.0.0-langgraph-migration.md)
 - [Deprecation map](docs/deprecation-map.md)
+
+Compatibility checklist:
+
+- Install `agent-search-core==1.0.3` when you want the documented Phase 6 SDK contract surface.
+- Keep `controls`, `runtime_config`, and HITL fields omitted unless you explicitly want those behaviors; new controls stay default-off.
+- Send `custom_prompts` in new payloads. The `custom-prompts` alias remains compatibility-only.
+- Read `sub_answers` in new code, but keep `sub_qa` fallback handling during the compatibility window.
 
 ## How The SDK Is Used
 
@@ -81,6 +89,7 @@ Response schema from `advanced_rag(...)`:
 ```python
 RuntimeAgentRunResponse(
   main_question: str,
+  sub_answers: list[SubQuestionAnswer],
   sub_qa: list[SubQuestionAnswer],
   output: str,
   final_citations: list[CitationSourceRow],
@@ -162,5 +171,5 @@ flowchart TD
     SAN --> R
 
     R -->|LM call #5<br/>final synthesis answer| S["final output"]
-    S --> T["RuntimeAgentRunResponse<br/>main_question + sub_qa + output + final_citations"]
+    S --> T["RuntimeAgentRunResponse<br/>main_question + sub_answers + sub_qa + output + final_citations"]
 ```
