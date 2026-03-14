@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.12
+## Contract notes for 1.0.13
 
 Use these canonical names in new `config` payloads:
 
@@ -62,12 +62,21 @@ Compatibility notes:
 
 The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
-HITL does still require checkpoint persistence, but the SDK no longer falls back to `DATABASE_URL` for that. The caller must provide the checkpoint Postgres database explicitly on every checkpointed call:
+HITL checkpoint persistence is optional overall because non-HITL runs do not need it. For HITL or resume flows, provide one of these:
+
+- `checkpoint_db_url="postgresql+psycopg://..."` when you want the SDK to create and own the LangGraph Postgres checkpointer for the call.
+- `checkpointer=existing_checkpointer` when you already manage a ready-to-use LangGraph checkpoint saver instance.
+
+Do not pass both at once.
+
+When you use `checkpoint_db_url`, the caller must provide the checkpoint Postgres database explicitly on every checkpointed call:
 
 - Provision a reachable Postgres database for LangGraph checkpoints before enabling HITL.
 - Pass `checkpoint_db_url="postgresql+psycopg://..."` to `advanced_rag(...)` for the initial HITL call and every resume call.
 - The runtime uses that caller-provided Postgres DB for checkpoint persistence only.
 - On first use, the runtime checks whether that DB already has LangGraph checkpoint tables (`checkpoint_migrations`, `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) and bootstraps them only when missing.
+
+If you inject `checkpointer`, that saver is used as-is and the SDK does not create or bootstrap a new one for you.
 
 Example paused result for subquestion review:
 
@@ -102,6 +111,24 @@ resumed = advanced_rag(
     checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search",
 )
 print(resumed.response.output)
+```
+
+Reuse an existing checkpointer instead of passing a DSN:
+
+```python
+from agent_search import advanced_rag
+from langgraph.checkpoint.postgres import PostgresSaver
+
+with PostgresSaver.from_conn_string(
+    "postgresql+psycopg://agent_user:agent_pass@localhost:5432/agent_search"
+) as checkpointer:
+    outcome = advanced_rag(
+        "Summarize the customer feedback themes.",
+        vector_store=vector_store,
+        model=model,
+        hitl_subquestions=True,
+        checkpointer=checkpointer,
+    )
 ```
 
 For simple approval flows:
@@ -160,7 +187,73 @@ Decision semantics:
 
 Advanced callers can still pass raw `config["controls"]["hitl"]`, but the top-level HITL review toggles are now the preferred public API.
 
+## Optional parameters
+
+`advanced_rag(...)` supports these optional keyword parameters:
+
+- `config`: Runtime controls and prompt overrides. Use this for `rerank`, `query_expansion`, `hitl`, `runtime_config`, and `custom_prompts`.
+- `callbacks`: LangChain-compatible callbacks that should observe the run.
+- `hitl_subquestions`: Enables the supported SDK HITL pause after decomposition.
+- `resume`: Resume payload for a paused HITL run. The preferred form is the SDK `review.with_decisions(...)` result.
+- `checkpoint_db_url`: Optional for normal runs. Required only for HITL or resume flows if you are not passing `checkpointer`.
+- `checkpointer`: Optional injected LangGraph checkpoint saver. Use this instead of `checkpoint_db_url` when you already manage a ready-to-use saver instance.
+
+Normal non-HITL runs can omit both `checkpoint_db_url` and `checkpointer`.
+
 ## Prompt customization
+
+The SDK currently exposes two prompt override keys:
+
+- `custom_prompts.subanswer`
+- `custom_prompts.synthesis`
+
+If you do not override them, the runtime uses these built-in defaults.
+
+Current default `subanswer` prompt:
+
+```text
+You answer one sub-question using the full reranked evidence list below.
+Requirements:
+- Use only the evidence provided below.
+- Treat each evidence line index as a citation key and cite claims with [index], e.g. [1] or [2][3].
+- Keep citation indices from the provided evidence lines; do not invent new indices.
+- Keep it to 1-3 sentences.
+- Do not summarize the evidence list; directly answer the sub-question using cited evidence.
+- If evidence is insufficient, explicitly say so.
+
+Sub-question:
+{sub_question}
+
+Reranked evidence:
+{context_block}
+```
+
+Current default `synthesis` prompt:
+
+```text
+You synthesize the initial answer for the user's question.
+Use both sources of input:
+1) Initial retrieval context from the original question.
+2) Per-subquestion answers with verification status.
+
+Requirements:
+- Return a concise answer (2-5 sentences).
+- Prefer answerable/verified sub-question answers when present.
+- If evidence is partial, say what is uncertain.
+- Preserve citation markers from sub-question answers exactly, e.g. [1], [2][3].
+- Do not collapse cited evidence into an uncited summary.
+- Include at least one source attribution in parentheses, e.g. (source: ...).
+- If initial retrieval context is used, reference its source field explicitly.
+
+Main question:
+{main_question}
+
+Initial retrieval context:
+{formatted_initial_context or 'None'}
+
+Sub-question answers:
+{formatted_sub_qa or 'None'}
+```
 
 Keep reusable prompt defaults in the existing `config` map, then override only the keys you need per run.
 

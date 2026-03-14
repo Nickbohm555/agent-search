@@ -18,6 +18,7 @@ from agent_search.runtime.persistence import compile_graph_with_checkpointer
 from agent_search.runtime.resume import build_resume_command
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from pydantic import ValidationError
 from schemas import (
     RuntimeAgentRunControls,
@@ -144,6 +145,21 @@ def _ensure_checkpoint_db_url(payload: RuntimeAgentRunRequest, *, resume: Any | 
     )
 
 
+def _ensure_checkpoint_config(
+    payload: RuntimeAgentRunRequest,
+    *,
+    resume: Any | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
+) -> None:
+    if checkpointer is not None and payload.checkpoint_db_url is not None and payload.checkpoint_db_url.strip():
+        raise SDKConfigurationError("Provide either checkpoint_db_url or checkpointer, not both.")
+    if not _hitl_requested(payload, resume=resume):
+        return
+    if checkpointer is not None:
+        return
+    _ensure_checkpoint_db_url(payload, resume=resume)
+
+
 def _apply_public_hitl_input(
     *,
     hitl_subquestions: bool,
@@ -237,6 +253,7 @@ def _run_hitl_runtime_agent(
     vector_store: Any,
     callbacks: list[Any] | None = None,
     resume: Any | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> RuntimeAgentRunResult:
     translated_resume = _translate_sdk_resume(resume)
     run_metadata = legacy_service.build_graph_run_metadata()
@@ -257,7 +274,11 @@ def _run_hitl_runtime_agent(
     terminal_state: Any = None
     latest_checkpoint_id: str | None = None
     interrupt_payload: Any | None = None
-    with compile_graph_with_checkpointer(builder, database_url=payload.checkpoint_db_url) as graph:
+    with compile_graph_with_checkpointer(
+        builder,
+        database_url=payload.checkpoint_db_url,
+        checkpointer=checkpointer,
+    ) as graph:
         for item in graph.stream(
             graph_input,
             config=execution_config,
@@ -316,6 +337,7 @@ def advanced_rag(
     callbacks: list[Any] | None = None,
     resume: Any | None = None,
     checkpoint_db_url: str | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> RuntimeAgentRunResponse | RuntimeAgentRunResult:
     logger.info(
         "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s has_config=%s has_callbacks=%s",
@@ -354,7 +376,7 @@ def advanced_rag(
             resume=resume,
             checkpoint_db_url=checkpoint_db_url,
         )
-        _ensure_checkpoint_db_url(request_payload, resume=resume)
+        _ensure_checkpoint_config(request_payload, resume=resume, checkpointer=checkpointer)
         if _hitl_requested(request_payload, resume=resume):
             response = _run_hitl_runtime_agent(
                 request_payload,
@@ -362,6 +384,7 @@ def advanced_rag(
                 vector_store=compatible_vector_store,
                 callbacks=resolved_callbacks or None,
                 resume=resume,
+                checkpointer=checkpointer,
             )
         else:
             response = run_runtime_agent(

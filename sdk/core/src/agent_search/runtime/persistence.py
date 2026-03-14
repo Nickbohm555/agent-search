@@ -6,6 +6,7 @@ import threading
 from typing import Any
 
 from agent_search.errors import SDKConfigurationError
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres import PostgresSaver
 from sqlalchemy.engine import make_url
 
@@ -73,11 +74,15 @@ def compile_graph_with_checkpointer(
     graph_builder: Any,
     *,
     database_url: str | None = None,
+    checkpointer: BaseCheckpointSaver | None = None,
     pipeline: bool = False,
     **compile_kwargs: Any,
 ) -> Iterator[Any]:
-    with ready_checkpointer(database_url=database_url, pipeline=pipeline) as checkpointer:
+    if checkpointer is not None:
         yield graph_builder.compile(checkpointer=checkpointer, **compile_kwargs)
+        return
+    with ready_checkpointer(database_url=database_url, pipeline=pipeline) as owned_checkpointer:
+        yield graph_builder.compile(checkpointer=owned_checkpointer, **compile_kwargs)
 
 
 __all__ = [
