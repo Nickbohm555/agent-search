@@ -12,6 +12,10 @@ Onyx builds AI search and knowledge experiences for teams that need dependable, 
 
 If you want more about the motivations behind the system, the runtime tradeoffs, and why certain design choices are opinionated, start with the live GitHub Pages essay: [https://nickbohm555.github.io/agent-search/architecture.html](https://nickbohm555.github.io/agent-search/architecture.html).
 
+## TLDR
+
+If you do not have much time to read, the basic idea is simple: take a large question, break it into subquestions, answer each one with stronger RAG techniques, optionally let a human review the subquestions, and then synthesize everything into one final answer. The flow below shows that path.
+
 ## Data Flow Diagram
 
 ```mermaid
