@@ -475,18 +475,16 @@
             "title": "Status",
             "type": "string"
           },
-          "sub_answers": {
+          "sub_items": {
             "items": {
-              "$ref": "#/components/schemas/SubQuestionAnswer"
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
             },
-            "title": "Sub Answers",
-            "type": "array"
-          },
-          "sub_qa": {
-            "items": {
-              "$ref": "#/components/schemas/SubQuestionAnswer"
-            },
-            "title": "Sub Qa",
+            "title": "Sub Items",
             "type": "array"
           },
           "sub_question_artifacts": {
@@ -602,18 +600,16 @@
             "title": "Output",
             "type": "string"
           },
-          "sub_answers": {
+          "sub_items": {
             "items": {
-              "$ref": "#/components/schemas/SubQuestionAnswer"
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
             },
-            "title": "Sub Answers",
-            "type": "array"
-          },
-          "sub_qa": {
-            "items": {
-              "$ref": "#/components/schemas/SubQuestionAnswer"
-            },
-            "title": "Sub Qa",
+            "title": "Sub Items",
             "type": "array"
           }
         },

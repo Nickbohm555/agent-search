@@ -216,7 +216,7 @@ def test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt(monkeypatch) -> N
             response=RuntimeAgentRunResponse(
                 main_question=payload.query,
                 thread_id=thread_id,
-                sub_qa=[SubQuestionAnswer(sub_question="What changed?", sub_answer="The checkpoint resumed.")],
+                sub_items=[("What changed?", "The checkpoint resumed.")],
                 output="The checkpoint resumed.",
             ),
             interrupt_payload=None,
@@ -300,7 +300,7 @@ def test_sdk_async_resume_e2e_supports_typed_subquestion_decision_matrix(
             response=RuntimeAgentRunResponse(
                 main_question=payload.query,
                 thread_id=thread_id,
-                sub_qa=[SubQuestionAnswer(sub_question="What changed?", sub_answer=expected_output)],
+                sub_items=[("What changed?", expected_output)],
                 output=expected_output,
             ),
             interrupt_payload=None,
@@ -477,7 +477,7 @@ def test_sdk_async_resume_status_preserves_thread_id_after_checkpoint_resume(mon
             result=RuntimeAgentRunResponse(
                 main_question="Resume and report status",
                 thread_id=thread_id,
-                sub_qa=[],
+                sub_items=[],
                 output="Recovered from checkpoint.",
             ),
         )

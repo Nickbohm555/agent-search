@@ -441,6 +441,7 @@ class SynthesizeFinalNodeInput(BaseModel):
 
 class SynthesizeFinalNodeOutput(BaseModel):
     final_answer: str = ""
+    citation_rows_by_index: dict[int, CitationSourceRow] = Field(default_factory=dict)
 
 
 class GraphStageSnapshot(BaseModel):

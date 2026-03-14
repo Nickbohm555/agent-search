@@ -17,17 +17,14 @@ src/backend/.venv/
 # Local-only files
 .cursor/
 sdk-token.txt
+.tmp/
+.planning/
+docs/*
+!docs/application-documentation.html
 *.sh
 completed.md
 IMPLEMENTATION_PLAN.md
 implementation_plan.md
 **/*.md
-!.planning/**/*.md
-!IMPLEMENTATION_PLAN.md
-!docs/langgraph-node-io-contracts.md
-!docs/langgraph-reducer-semantics.md
-!docs/releases/**/*.md
-!**/README.md
-!**/readme.md
 *.png
 !assets/readme-hud-banner.png

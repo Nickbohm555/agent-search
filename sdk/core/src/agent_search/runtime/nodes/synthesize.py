@@ -35,6 +35,76 @@ def _extract_citation_indices(answer: str) -> list[int]:
     return indices
 
 
+def _rewrite_citation_indices(answer: str, index_mapping: dict[int, int]) -> str:
+    if not answer or not index_mapping:
+        return answer
+
+    def _replace(match: re.Match[str]) -> str:
+        raw_index = match.group(1)
+        try:
+            index = int(raw_index)
+        except ValueError:
+            return match.group(0)
+        rewritten_index = index_mapping.get(index)
+        if rewritten_index is None:
+            return match.group(0)
+        return f"[{rewritten_index}]"
+
+    return _CITATION_INDEX_PATTERN.sub(_replace, answer)
+
+
+def _normalize_final_synthesis_inputs(
+    *,
+    sub_qa: list[SubQuestionAnswer],
+    sub_question_artifacts: list[SubQuestionArtifacts],
+) -> tuple[list[SubQuestionAnswer], list[SubQuestionArtifacts], dict[int, Any]]:
+    next_citation_index = 1
+    normalized_artifacts: list[SubQuestionArtifacts] = []
+    normalized_rows_by_index: dict[int, Any] = {}
+    citation_mapping_by_subquestion: dict[str, dict[int, int]] = {}
+
+    for artifact in sub_question_artifacts:
+        citation_mapping: dict[int, int] = {}
+        rewritten_rows: dict[int, Any] = {}
+        for original_index, row in sorted(artifact.citation_rows_by_index.items()):
+            rewritten_index = next_citation_index
+            next_citation_index += 1
+            citation_mapping[int(original_index)] = rewritten_index
+            rewritten_row = row.model_copy(
+                deep=True,
+                update={
+                    "citation_index": rewritten_index,
+                    "rank": rewritten_index,
+                },
+            )
+            rewritten_rows[rewritten_index] = rewritten_row
+            normalized_rows_by_index[rewritten_index] = rewritten_row
+        citation_mapping_by_subquestion[artifact.sub_question] = citation_mapping
+        normalized_artifacts.append(
+            artifact.model_copy(
+                deep=True,
+                update={
+                    "sub_answer": _rewrite_citation_indices(artifact.sub_answer, citation_mapping),
+                    "citation_rows_by_index": rewritten_rows,
+                },
+            )
+        )
+
+    normalized_sub_qa = [
+        item.model_copy(
+            deep=True,
+            update={
+                "sub_answer": _rewrite_citation_indices(
+                    item.sub_answer,
+                    citation_mapping_by_subquestion.get(item.sub_question, {}),
+                )
+            },
+        )
+        for item in sub_qa
+    ]
+    return normalized_sub_qa, normalized_artifacts, normalized_rows_by_index
+
+
 def _build_initial_answer_timeout_fallback(sub_qa: list[SubQuestionAnswer]) -> str:
     partial_answers = [item.sub_answer.strip() for item in sub_qa if isinstance(item.sub_answer, str) and item.sub_answer.strip()]
     if not partial_answers:
@@ -155,16 +225,20 @@ def run_synthesize_node(
         node_input.run_metadata.trace_id,
         node_input.run_metadata.correlation_id,
     )
+    normalized_sub_qa, normalized_artifacts, normalized_rows_by_index = _normalize_final_synthesis_inputs(
+        sub_qa=node_input.sub_qa,
+        sub_question_artifacts=node_input.sub_question_artifacts,
+    )
     generated_final_answer = generate_final_synthesis_answer_fn(
         main_question=node_input.main_question,
-        sub_qa=node_input.sub_qa,
+        sub_qa=normalized_sub_qa,
         prompt_template=prompt_template,
         callbacks=callbacks,
     )
     final_answer = _enforce_final_synthesis_citation_contract(
         generated_final_answer=generated_final_answer,
-        sub_qa=node_input.sub_qa,
-        sub_question_artifacts=node_input.sub_question_artifacts,
+        sub_qa=normalized_sub_qa,
+        sub_question_artifacts=normalized_artifacts,
         run_id=node_input.run_metadata.run_id,
         extract_citation_indices_fn=extract_citation_indices_fn,
         build_initial_answer_timeout_fallback_fn=build_initial_answer_timeout_fallback_fn,
@@ -174,7 +248,10 @@ def run_synthesize_node(
         len(final_answer),
         node_input.run_metadata.run_id,
     )
-    return SynthesizeFinalNodeOutput(final_answer=final_answer)
+    return SynthesizeFinalNodeOutput(
+        final_answer=final_answer,
+        citation_rows_by_index=normalized_rows_by_index,
+    )
 
 
 __all__ = ["run_synthesize_node"]

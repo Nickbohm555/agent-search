@@ -38,9 +38,10 @@ def test_rag_state_annotations_cover_runtime_response_fields() -> None:
 
     response = RuntimeAgentRunResponse(
         main_question="What changed?",
-        sub_qa=[SubQuestionAnswer(sub_question="What changed?", sub_answer="The public contract exports RAGState.")],
+        sub_items=[("What changed?", "The public contract exports RAGState.")],
         output="The public contract exports RAGState.",
     )
+    sub_qa = [SubQuestionAnswer(sub_question="What changed?", sub_answer="The public contract exports RAGState.")]
 
     rag_state: PublicRAGState = {
         "main_question": response.main_question,
@@ -49,7 +50,7 @@ def test_rag_state_annotations_cover_runtime_response_fields() -> None:
         "final_answer": response.output,
         "citation_rows_by_index": {},
         "run_metadata": GraphRunMetadata(run_id="run-123"),
-        "sub_qa": response.sub_qa,
+        "sub_qa": sub_qa,
         "output": response.output,
         "stage_snapshots": [],
     }
@@ -58,5 +59,5 @@ def test_rag_state_annotations_cover_runtime_response_fields() -> None:
     assert "sub_qa" in annotations
     assert "output" in annotations
     assert rag_state["main_question"] == response.main_question
-    assert rag_state["sub_qa"] == response.sub_qa
+    assert rag_state["sub_qa"] == sub_qa
     assert rag_state["output"] == response.output

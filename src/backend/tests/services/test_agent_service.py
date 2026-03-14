@@ -205,15 +205,55 @@ def test_map_graph_state_to_runtime_response_is_backward_compatible() -> None:
 
     assert response.main_question == "Main question?"
     assert response.output == "final from graph"
-    assert len(response.sub_qa) == 1
-    assert response.sub_qa[0].sub_question == "Sub-question?"
-    assert len(response.sub_answers) == 1
-    assert response.sub_answers[0].model_dump() == response.sub_qa[0].model_dump()
+    assert response.sub_items == [("Sub-question?", "sub-answer")]
 
-    response.sub_answers[0].sub_answer = "mutated alias copy"
 
-    assert response.sub_qa[0].sub_answer == "sub-answer"
-    assert response.sub_answers[0].sub_answer == "mutated alias copy"
+def test_map_graph_state_to_runtime_response_keeps_final_citations_aligned_with_output_indices() -> None:
+    run_metadata = agent_service.build_graph_run_metadata(run_id="run-map-citations")
+    state = agent_service.build_agent_graph_state(
+        main_question="What changed overall?",
+        decomposition_sub_questions=[
+            "What changed in VAT policy?",
+            "What changed in regional guidance?",
+        ],
+        sub_qa=[
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in VAT policy?",
+                sub_answer="VAT changed in 2025 [1].",
+            ),
+            agent_service.SubQuestionAnswer(
+                sub_question="What changed in regional guidance?",
+                sub_answer="Regional guidance changed [2].",
+            ),
+        ],
+        final_answer="Overall summary [2].",
+        run_metadata=run_metadata,
+    )
+    state.output = "Overall summary [2]."
+    state.citation_rows_by_index = {
+        1: CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title="VAT policy",
+            source="wiki://vat-policy",
+            content="VAT changed in 2025.",
+            document_id="doc-1",
+        ),
+        2: CitationSourceRow(
+            citation_index=2,
+            rank=2,
+            title="Regional guidance",
+            source="wiki://regional-guidance",
+            content="Regional guidance changed.",
+            document_id="doc-2",
+        ),
+    }
+
+    response = agent_service.map_graph_state_to_runtime_response(state)
+
+    assert response.output == "Overall summary [2]."
+    assert [row.citation_index for row in response.final_citations] == [2]
+    assert response.final_citations[0].source == "wiki://regional-guidance"
 
 
 def test_build_runtime_graph_compiles_into_callable_graph() -> None:
@@ -1317,11 +1357,22 @@ def test_apply_synthesize_final_node_output_to_graph_state_updates_final_answer_
         state=state,
         node_output=SynthesizeFinalNodeOutput(
             final_answer="Final synthesis [1] (source: wiki://vat-policy).",
+            citation_rows_by_index={
+                1: agent_service.CitationSourceRow(
+                    citation_index=1,
+                    rank=1,
+                    title="VAT Policy",
+                    source="wiki://vat-policy",
+                    content="VAT policy changed in 2025.",
+                    document_id="doc-1",
+                )
+            },
         ),
     )
 
     assert updated.final_answer == "Final synthesis [1] (source: wiki://vat-policy)."
     assert updated.output == "Final synthesis [1] (source: wiki://vat-policy)."
+    assert updated.citation_rows_by_index[1].source == "wiki://vat-policy"
     assert len(updated.sub_qa) == 1
 
 
@@ -2024,7 +2075,7 @@ def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
     assert captured["vector_store"] == "vector-store-core"
     assert captured["initial_search_context"] == []
     assert response.output == "Core final [1]."
-    assert response.sub_qa[0].sub_question == "Core sub-question?"
+    assert response.sub_items[0][0] == "Core sub-question?"
 
 
 def test_run_runtime_agent_wrapper_delegates_to_runtime_runner(monkeypatch) -> None:
@@ -2054,7 +2105,7 @@ def test_run_runtime_agent_wrapper_delegates_to_runtime_runner(monkeypatch) -> N
         "vector_store": "store-y",
     }
     assert response.output == "Wrapper output [1]."
-    assert response.sub_qa[0].sub_question == "Wrapper sub-question?"
+    assert response.sub_items[0][0] == "Wrapper sub-question?"
 
 
 def test_runtime_cutover_sync_path_blocks_legacy_orchestration(monkeypatch) -> None:
@@ -2094,7 +2145,7 @@ def test_runtime_cutover_sync_path_blocks_legacy_orchestration(monkeypatch) -> N
     )
 
     assert response.output == "The LangGraph runtime path completed the request."
-    assert response.sub_qa[0].sub_answer == "The LangGraph runtime path completed the request."
+    assert response.sub_items[0][1] == "The LangGraph runtime path completed the request."
     assert captured == {
         "query": "Which runtime completed the request?",
         "vector_store": sentinel_vector_store,

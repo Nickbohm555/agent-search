@@ -5,7 +5,6 @@ description = "agent-search"
 authors = [
   {name = "OpenAPI Generator Community",email = "team@openapitools.org"},
 ]
-readme = "README.md"
 keywords = ["OpenAPI", "OpenAPI-Generator", "agent-search"]
 requires-python = ">=3.9"
 

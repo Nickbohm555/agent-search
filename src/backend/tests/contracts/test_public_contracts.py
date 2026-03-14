@@ -17,7 +17,6 @@ from schemas import (
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunResponse,
-    SubQuestionAnswer,
 )
 
 
@@ -54,48 +53,25 @@ def test_public_api_return_annotations_are_runtime_models() -> None:
     assert annotations["return"] is RuntimeAgentRunAsyncCancelResponse
 
 
-def test_runtime_agent_run_response_contract_keeps_legacy_fields_and_additive_sub_answers() -> None:
+def test_runtime_agent_run_response_contract_exposes_sub_items() -> None:
     schema = RuntimeAgentRunResponse.model_json_schema()
 
     assert schema["required"] == ["output"]
     assert "main_question" in schema["properties"]
-    assert "sub_qa" in schema["properties"]
+    assert "sub_items" in schema["properties"]
     assert "final_citations" in schema["properties"]
-    assert "sub_answers" in schema["properties"]
+    assert "sub_qa" not in schema["properties"]
+    assert "sub_answers" not in schema["properties"]
 
-    legacy_payload = {
+    payload = {
         "output": "Final answer",
         "main_question": "Main question?",
-        "sub_qa": [
-            {
-                "sub_question": "Sub-question?",
-                "sub_answer": "Legacy answer",
-            }
-        ],
+        "sub_items": [["Sub-question?", "Answer"]],
         "final_citations": [],
     }
 
-    legacy_response = RuntimeAgentRunResponse.model_validate(legacy_payload)
-
-    assert legacy_response.sub_qa == [SubQuestionAnswer(sub_question="Sub-question?", sub_answer="Legacy answer")]
-    assert legacy_response.sub_answers == []
-
-    additive_response = RuntimeAgentRunResponse.model_validate(
-        {
-            **legacy_payload,
-            "sub_answers": [
-                {
-                    "sub_question": "Sub-question?",
-                    "sub_answer": "Additive answer",
-                }
-            ],
-        }
-    )
-
-    assert additive_response.sub_qa == legacy_response.sub_qa
-    assert additive_response.sub_answers == [
-        SubQuestionAnswer(sub_question="Sub-question?", sub_answer="Additive answer")
-    ]
+    response = RuntimeAgentRunResponse.model_validate(payload)
+    assert response.sub_items == [("Sub-question?", "Answer")]
 
 
 def test_runtime_agent_run_response_still_requires_output() -> None:
@@ -103,8 +79,7 @@ def test_runtime_agent_run_response_still_requires_output() -> None:
         RuntimeAgentRunResponse.model_validate(
             {
                 "main_question": "Main question?",
-                "sub_qa": [],
-                "sub_answers": [],
+                "sub_items": [],
                 "final_citations": [],
             }
         )

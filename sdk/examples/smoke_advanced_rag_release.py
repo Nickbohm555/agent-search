@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from agent_search import advanced_rag
 from agent_search import public_api
-from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import RuntimeAgentRunResponse
 
 
 class CompatibleVectorStore:
@@ -19,12 +19,7 @@ def fake_run_runtime_agent(payload, *, model, vector_store, callbacks=None, lang
     return RuntimeAgentRunResponse(
         main_question=payload.query,
         thread_id=payload.thread_id or "smoke-thread",
-        sub_qa=[
-            SubQuestionAnswer(
-                sub_question="Does the installed SDK expose advanced_rag?",
-                sub_answer="Yes.",
-            )
-        ],
+        sub_items=[("Does the installed SDK expose advanced_rag?", "Yes.")],
         output="advanced_rag smoke test passed.",
     )
 

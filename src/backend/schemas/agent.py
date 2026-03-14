@@ -86,28 +86,9 @@ class SubQuestionAnswer(BaseModel):
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
     thread_id: str | None = None
-    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
-    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunResponse":
-        if self.sub_items:
-            normalized = [SubQuestionAnswer(sub_question=item[0], sub_answer=item[1]) for item in self.sub_items]
-            if not self.sub_qa:
-                self.sub_qa = [item.model_copy(deep=True) for item in normalized]
-            if not self.sub_answers:
-                self.sub_answers = [item.model_copy(deep=True) for item in normalized]
-        elif self.sub_answers and not self.sub_qa:
-            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
-        elif self.sub_qa and not self.sub_answers:
-            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
-
-        if not self.sub_items and self.sub_qa:
-            self.sub_items = [(item.sub_question, item.sub_answer) for item in self.sub_qa]
-        return self
 
 
 class AgentRunStageMetadata(BaseModel):
@@ -136,8 +117,6 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     stages: list[AgentRunStageMetadata] = Field(default_factory=list)
     decomposition_sub_questions: list[str] = Field(default_factory=list)
     sub_question_artifacts: list["SubQuestionArtifacts"] = Field(default_factory=list)
-    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
-    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str = ""
     result: RuntimeAgentRunResponse | None = None
@@ -148,22 +127,6 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     started_at: float | None = None
     finished_at: float | None = None
     elapsed_ms: int | None = None
-
-    @model_validator(mode="after")
-    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunAsyncStatusResponse":
-        if self.sub_items:
-            normalized = [SubQuestionAnswer(sub_question=item[0], sub_answer=item[1]) for item in self.sub_items]
-            if not self.sub_qa:
-                self.sub_qa = [item.model_copy(deep=True) for item in normalized]
-            if not self.sub_answers:
-                self.sub_answers = [item.model_copy(deep=True) for item in normalized]
-        elif self.sub_answers and not self.sub_qa:
-            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
-        elif self.sub_qa and not self.sub_answers:
-            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
-        if not self.sub_items and self.sub_qa:
-            self.sub_items = [(item.sub_question, item.sub_answer) for item in self.sub_qa]
-        return self
 
 
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
@@ -321,6 +284,7 @@ class SynthesizeFinalNodeInput(BaseModel):
 
 class SynthesizeFinalNodeOutput(BaseModel):
     final_answer: str = ""
+    citation_rows_by_index: dict[int, CitationSourceRow] = Field(default_factory=dict)
 
 
 class GraphStageSnapshot(BaseModel):

@@ -121,7 +121,7 @@
           <span class="badge">Stream: <code>GET /api/agents/run-events/{job_id}</code></span>
           <span class="badge">Backend: <code>run_runtime_agent()</code></span>
           <span class="badge">Runner: <code>run_parallel_graph_runner()</code></span>
-          <span class="badge">Response: <code>{ main_question, sub_qa, output }</code></span>
+          <span class="badge">Response: <code>{ main_question, sub_items, output }</code></span>
         </div>
       </div>
 
@@ -139,7 +139,7 @@ Backend
       -> agent_search.runtime.runner::run_runtime_agent
       -> services/agent_service.py::run_parallel_graph_runner(...)
       -> map_graph_state_to_runtime_response(...)
-      -> RuntimeAgentRunResponse(main_question, sub_qa, output)</div>
+      -> RuntimeAgentRunResponse(main_question, sub_items, output)</div>
       </div>
 
       <div class="panel">
@@ -160,7 +160,7 @@ Backend
     M -->|LM call #4 generate_subanswer| N[sub_answer + citation indices]
     N --> P[Synthesize Final Node]
     P -->|LM call #5 generate_final_synthesis_answer| Q[final output]
-    Q --> R[RuntimeAgentRunResponse main_question + sub_qa + output]</pre>
+    Q --> R[RuntimeAgentRunResponse main_question + sub_items + output]</pre>
       </div>
 
       <div class="panel">
@@ -230,7 +230,7 @@ Backend
             <tr>
               <td><code>answer</code></td>
               <td><code>answer</code></td>
-              <td><code>sub_qa[].sub_answer</code> + citation linkage to rerank rows</td>
+              <td><code>sub_items[].sub_answer</code> + citation linkage to rerank rows</td>
             </tr>
             <tr>
               <td><code>final</code></td>

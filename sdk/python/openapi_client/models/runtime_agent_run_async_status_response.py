@@ -18,10 +18,9 @@ import re  # noqa: F401
 import json
 
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional, Union
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 from openapi_client.models.agent_run_stage_metadata import AgentRunStageMetadata
 from openapi_client.models.runtime_agent_run_response import RuntimeAgentRunResponse
-from openapi_client.models.sub_question_answer import SubQuestionAnswer
 from openapi_client.models.sub_question_artifacts import SubQuestionArtifacts
 from typing import Optional, Set
 from typing_extensions import Self
@@ -46,11 +45,10 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     stages: Optional[List[AgentRunStageMetadata]] = None
     started_at: Optional[Union[StrictFloat, StrictInt]] = None
     status: StrictStr
-    sub_answers: Optional[List[SubQuestionAnswer]] = None
-    sub_qa: Optional[List[SubQuestionAnswer]] = None
+    sub_items: Optional[List[Tuple[StrictStr, StrictStr]]] = None
     sub_question_artifacts: Optional[List[SubQuestionArtifacts]] = None
     thread_id: Optional[StrictStr] = ''
-    __properties: ClassVar[List[str]] = ["cancel_requested", "checkpoint_id", "decomposition_sub_questions", "elapsed_ms", "error", "finished_at", "interrupt_payload", "job_id", "message", "output", "result", "run_id", "stage", "stages", "started_at", "status", "sub_answers", "sub_qa", "sub_question_artifacts", "thread_id"]
+    __properties: ClassVar[List[str]] = ["cancel_requested", "checkpoint_id", "decomposition_sub_questions", "elapsed_ms", "error", "finished_at", "interrupt_payload", "job_id", "message", "output", "result", "run_id", "stage", "stages", "started_at", "status", "sub_items", "sub_question_artifacts", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -105,20 +103,6 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
                 if _item_stages:
                     _items.append(_item_stages.to_dict())
             _dict['stages'] = _items
-        # override the default output from pydantic by calling `to_dict()` of each item in sub_answers (list)
-        _items = []
-        if self.sub_answers:
-            for _item_sub_answers in self.sub_answers:
-                if _item_sub_answers:
-                    _items.append(_item_sub_answers.to_dict())
-            _dict['sub_answers'] = _items
-        # override the default output from pydantic by calling `to_dict()` of each item in sub_qa (list)
-        _items = []
-        if self.sub_qa:
-            for _item_sub_qa in self.sub_qa:
-                if _item_sub_qa:
-                    _items.append(_item_sub_qa.to_dict())
-            _dict['sub_qa'] = _items
         # override the default output from pydantic by calling `to_dict()` of each item in sub_question_artifacts (list)
         _items = []
         if self.sub_question_artifacts:
@@ -189,11 +173,9 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
             "stages": [AgentRunStageMetadata.from_dict(_item) for _item in obj["stages"]] if obj.get("stages") is not None else None,
             "started_at": obj.get("started_at"),
             "status": obj.get("status"),
-            "sub_answers": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_answers"]] if obj.get("sub_answers") is not None else None,
-            "sub_qa": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_qa"]] if obj.get("sub_qa") is not None else None,
+            "sub_items": obj.get("sub_items"),
             "sub_question_artifacts": [SubQuestionArtifacts.from_dict(_item) for _item in obj["sub_question_artifacts"]] if obj.get("sub_question_artifacts") is not None else None,
             "thread_id": obj.get("thread_id") if obj.get("thread_id") is not None else ''
         })
         return _obj
-
 

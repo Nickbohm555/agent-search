@@ -1152,6 +1152,10 @@ def apply_synthesize_final_node_output_to_graph_state(
     resolved_final_answer = (node_output.final_answer or "").strip()
     next_state["final_answer"] = resolved_final_answer
     next_state["output"] = resolved_final_answer
+    next_state["citation_rows_by_index"] = {
+        key: value.model_copy(deep=True)
+        for key, value in node_output.citation_rows_by_index.items()
+    }
     logger.info(
         "Final synthesis node state update output_len=%s sub_qa_count=%s run_id=%s",
         len(resolved_final_answer),

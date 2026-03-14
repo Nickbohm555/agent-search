@@ -67,8 +67,19 @@ def _build_document_identity(
 
 def _build_citation_row_from_document(*, document: Any, rank: int) -> CitationSourceRow:
     metadata = document.metadata or {}
-    title = str(metadata.get(CITATION_TITLE_METADATA_KEY) or "").strip()
-    source = str(metadata.get(CITATION_SOURCE_METADATA_KEY) or "").strip()
+    title = str(
+        metadata.get(CITATION_TITLE_METADATA_KEY)
+        or metadata.get("title")
+        or metadata.get("topic")
+        or metadata.get("wiki_page")
+        or ""
+    ).strip()
+    source = str(
+        metadata.get(CITATION_SOURCE_METADATA_KEY)
+        or metadata.get("source")
+        or metadata.get("wiki_url")
+        or ""
+    ).strip()
     content = str(getattr(document, "page_content", "") or "").strip()
     document_id = str(metadata.get(CITATION_DOCUMENT_ID_METADATA_KEY) or getattr(document, "id", "") or "").strip()
     return CitationSourceRow(

@@ -134,7 +134,7 @@ def test_advanced_rag_explicit_step_parameters_override_runtime_config(monkeypat
     def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
         _ = model, vector_store, callbacks
         captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_items=[], output="ok")
 
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
@@ -163,7 +163,7 @@ def test_advanced_rag_passes_checkpoint_db_url_into_runtime_payload(monkeypatch)
     def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
         _ = model, vector_store, callbacks
         captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_items=[], output="ok")
 
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 

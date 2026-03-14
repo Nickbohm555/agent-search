@@ -110,7 +110,7 @@ def test_trace_correlation_tuple_is_joinable_across_runtime_trace_success_path(m
         lambda _state: runtime_runner.RuntimeAgentRunResponse(
             main_question="How does success tracing work?",
             thread_id=run_metadata.thread_id,
-            sub_qa=[],
+            sub_items=[],
             output="done",
         ),
     )

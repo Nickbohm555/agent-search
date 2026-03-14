@@ -763,14 +763,13 @@ def map_graph_state_to_runtime_response(state: AgentGraphState | RAGState) -> Ru
     response = RuntimeAgentRunResponse(
         main_question=rag_state["main_question"],
         thread_id=rag_state["run_metadata"].thread_id,
-        sub_qa=[item.model_copy(deep=True) for item in rag_state["sub_qa"]],
-        sub_answers=[item.model_copy(deep=True) for item in rag_state["sub_qa"]],
+        sub_items=[(item.sub_question, item.sub_answer) for item in rag_state["sub_qa"]],
         output=output,
         final_citations=final_citations,
     )
     logger.info(
         "Agent graph state mapped to runtime response sub_qa_count=%s output_len=%s run_id=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
         rag_state["run_metadata"].run_id,
     )
@@ -1232,6 +1231,10 @@ def apply_synthesize_final_node_output_to_graph_state(
     resolved_final_answer = (node_output.final_answer or "").strip()
     next_state["final_answer"] = resolved_final_answer
     next_state["output"] = resolved_final_answer
+    next_state["citation_rows_by_index"] = {
+        key: value.model_copy(deep=True)
+        for key, value in node_output.citation_rows_by_index.items()
+    }
     logger.info(
         "Final synthesis node state update output_len=%s sub_qa_count=%s run_id=%s",
         len(resolved_final_answer),
@@ -1962,7 +1965,7 @@ def run_runtime_agent(
     )
     logger.info(
         "Runtime agent service wrapper completed delegation sub_qa_count=%s output_length=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
     )
     return response

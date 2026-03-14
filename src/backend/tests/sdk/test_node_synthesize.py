@@ -268,3 +268,69 @@ def test_run_synthesize_node_preserves_citation_guardrail_when_prompt_override_o
     )
 
     assert output.final_answer == "VAT changed in 2025 [1] (source: wiki://vat-policy)."
+
+
+def test_run_synthesize_node_reindexes_final_answer_citations_across_subquestions() -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
+        _ = main_question, prompt_template, callbacks
+        captured["sub_answers"] = [item.sub_answer for item in sub_qa]
+        return "Combined answer [2]."
+
+    output = synthesize.run_synthesize_node(
+        node_input=_node_input(
+            sub_qa=[
+                SubQuestionAnswer(
+                    sub_question="What changed in VAT policy?",
+                    sub_answer="VAT changed in 2025 [1].",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                ),
+                SubQuestionAnswer(
+                    sub_question="What changed in regional guidance?",
+                    sub_answer="Regional guidance changed [1].",
+                    answerable=True,
+                    verification_reason="grounded_in_reranked_documents",
+                ),
+            ],
+            sub_question_artifacts=[
+                SubQuestionArtifacts(
+                    sub_question="What changed in VAT policy?",
+                    citation_rows_by_index={
+                        1: CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="VAT policy",
+                            source="wiki://vat-policy",
+                            content="VAT changed in 2025.",
+                            document_id="doc-1",
+                        )
+                    },
+                ),
+                SubQuestionArtifacts(
+                    sub_question="What changed in regional guidance?",
+                    citation_rows_by_index={
+                        1: CitationSourceRow(
+                            citation_index=1,
+                            rank=1,
+                            title="Regional guidance",
+                            source="wiki://regional-guidance",
+                            content="Regional guidance changed.",
+                            document_id="doc-2",
+                        )
+                    },
+                ),
+            ],
+        ),
+        generate_final_synthesis_answer_fn=_fake_generate_final_synthesis_answer,
+    )
+
+    assert captured["sub_answers"] == [
+        "VAT changed in 2025 [1].",
+        "Regional guidance changed [2].",
+    ]
+    assert output.final_answer == "Combined answer [2]."
+    assert sorted(output.citation_rows_by_index) == [1, 2]
+    assert output.citation_rows_by_index[1].source == "wiki://vat-policy"
+    assert output.citation_rows_by_index[2].source == "wiki://regional-guidance"

@@ -145,7 +145,7 @@ def test_run_search_node_merges_and_dedupes_multi_query_results() -> None:
     assert output.citation_rows_by_index[3].title == "Timeline"
 
 
-def test_run_search_node_uses_explicit_citation_metadata_keys_only() -> None:
+def test_run_search_node_falls_back_to_legacy_metadata_keys_when_explicit_keys_are_missing() -> None:
     def fake_search_documents_for_queries(*, vector_store, queries, k, score_threshold):
         _ = vector_store, queries, k, score_threshold
         return {
@@ -173,8 +173,8 @@ def test_run_search_node_uses_explicit_citation_metadata_keys_only() -> None:
     )
 
     assert [item.document_id for item in output.retrieved_docs] == ["doc-legacy", "doc-explicit"]
-    assert output.retrieved_docs[0].title == ""
-    assert output.retrieved_docs[0].source == ""
+    assert output.retrieved_docs[0].title == "Legacy Title"
+    assert output.retrieved_docs[0].source == "wiki://legacy"
     assert output.retrieved_docs[1].title == "Explicit Title"
     assert output.retrieved_docs[1].source == "wiki://explicit"
 

@@ -60,26 +60,12 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
                         ], 
                     main_question = '', 
                     output = '', 
-                    sub_answers = [
-                        openapi_client.models.sub_question_answer.SubQuestionAnswer(
-                            answerable = True, 
-                            expanded_query = '', 
-                            sub_agent_response = '', 
-                            sub_answer = '', 
-                            sub_question = '', 
-                            tool_call_input = '', 
-                            verification_reason = '', )
-                        ], 
-                    sub_qa = [
-                        openapi_client.models.sub_question_answer.SubQuestionAnswer(
-                            answerable = True, 
-                            expanded_query = '', 
-                            sub_agent_response = '', 
-                            sub_answer = '', 
-                            sub_question = '', 
-                            tool_call_input = '', 
-                            verification_reason = '', )
-                        ], 
+                    sub_items = [
+                        [
+                            '',
+                            ''
+                        ],
+                        ],
                     thread_id = '', ),
                 run_id = '',
                 stage = '',
@@ -94,25 +80,11 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
                     ],
                 started_at = 1.337,
                 status = '',
-                sub_answers = [
-                    openapi_client.models.sub_question_answer.SubQuestionAnswer(
-                        answerable = True, 
-                        expanded_query = '', 
-                        sub_agent_response = '', 
-                        sub_answer = '', 
-                        sub_question = '', 
-                        tool_call_input = '', 
-                        verification_reason = '', )
+                sub_items = [
+                    [
+                        '',
+                        ''
                     ],
-                sub_qa = [
-                    openapi_client.models.sub_question_answer.SubQuestionAnswer(
-                        answerable = True, 
-                        expanded_query = '', 
-                        sub_agent_response = '', 
-                        sub_answer = '', 
-                        sub_question = '', 
-                        tool_call_input = '', 
-                        verification_reason = '', )
                     ],
                 sub_question_artifacts = [
                     openapi_client.models.sub_question_artifacts.SubQuestionArtifacts(
