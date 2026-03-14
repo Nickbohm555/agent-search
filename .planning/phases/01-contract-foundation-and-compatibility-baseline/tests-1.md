@@ -10,7 +10,7 @@ updated: "2026-03-14"
 ---
 
 ## Current Test
-Test 5 - Frontend validation accepts legacy-only and additive payloads.
+Complete - all tests in this file recorded.
 
 ## Information Needed from the Summary
 - what_changed:
@@ -87,11 +87,13 @@ Test 5 - Frontend validation accepts legacy-only and additive payloads.
    - **Given** one response payload that contains only legacy fields and another that also includes `sub_answers`
    - **When** both payloads are validated by frontend API guards
    - **Then** both payloads pass validation, and strict checks apply only when additive `sub_answers` is present.
+   - result: pass - `docker compose exec frontend npm run test -- src/App.test.tsx -t "shows ordered stage rail and progressive status updates from streamed events|renders subanswers from additive sub_answers payloads during streamed and final updates"` passed.
+   - reported: 2026-03-14
+   - severity: none
+   - reason: The frontend Vitest run passed for a legacy-only `sub_qa` lifecycle flow and for an additive `sub_answers` streamed/final-response flow, confirming the runtime guards accept both payload shapes while only validating `sub_answers` when present.
 
 ## Summary
-Tests 1-4 passed on 2026-03-14. Legacy payloads without additive controls still validate, explicit additive controls propagate consistently through both sync and async SDK entrypoints, async resume reconstructs the full normalized request payload instead of falling back to query/thread-only state, and runtime responses preserve the legacy `sub_qa` contract while exposing additive `sub_answers`.
+Tests 1-5 passed on 2026-03-14. Legacy payloads without additive controls still validate, explicit additive controls propagate consistently through both sync and async SDK entrypoints, async resume reconstructs the full normalized request payload instead of falling back to query/thread-only state, runtime responses preserve the legacy `sub_qa` contract while exposing additive `sub_answers`, and frontend runtime validation accepts both legacy-only and additive response payloads.
 
 ## Gaps
-[
-  "Test 5 pending: frontend runtime validators still need validation against legacy-only and additive `sub_answers` payloads."
-]
+[]
