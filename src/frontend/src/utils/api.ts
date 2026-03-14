@@ -398,9 +398,15 @@ export function subscribeToAgentRunEvents(
     onEvent: (event: RuntimeLifecycleEvent) => void;
     onError?: () => void;
   },
+  options: {
+    afterEventId?: string | null;
+  } = {},
 ): () => void {
   const streamUrl = new URL(`${API_BASE_URL}/api/agents/run-events/${jobId}`);
   streamUrl.searchParams.set("stream", `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  if (typeof options.afterEventId === "string" && options.afterEventId.trim()) {
+    streamUrl.searchParams.set("after_event_id", options.afterEventId.trim());
+  }
   const eventSource = new EventSource(streamUrl.toString());
   const eventTypes = [
     "stage.started",
@@ -437,6 +443,8 @@ export function subscribeToAgentRunEvents(
     for (const eventType of eventTypes) {
       eventSource.removeEventListener(eventType, handleMessage as EventListener);
     }
+    eventSource.onmessage = null;
+    eventSource.onerror = null;
     eventSource.close();
   };
 }

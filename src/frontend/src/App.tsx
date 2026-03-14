@@ -99,9 +99,15 @@ export default function App() {
   const [resumeState, setResumeState] = useState<RequestState>("idle");
   const [resumeMessage, setResumeMessage] = useState("");
   const runEventsUnsubscribeRef = useRef<(() => void) | null>(null);
-  const runStreamRef = useRef<{ jobId: string | null; terminal: boolean }>({ jobId: null, terminal: false });
+  const runStreamRef = useRef<{ jobId: string | null; terminal: boolean; streamToken: number }>({
+    jobId: null,
+    terminal: false,
+    streamToken: 0,
+  });
   const runStreamErrorTimeoutRef = useRef<number | null>(null);
   const seenRunEventIdsRef = useRef<Set<string>>(new Set());
+  const lastSeenRunEventIdRef = useRef<string | null>(null);
+  const nextRunStreamTokenRef = useRef(0);
 
   const selectedWikiSource = useMemo(
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
@@ -138,8 +144,9 @@ export default function App() {
       }
       runEventsUnsubscribeRef.current?.();
       runEventsUnsubscribeRef.current = null;
-      runStreamRef.current = { jobId: null, terminal: false };
+      runStreamRef.current = { jobId: null, terminal: false, streamToken: 0 };
       seenRunEventIdsRef.current = new Set();
+      lastSeenRunEventIdRef.current = null;
     };
   }, []);
 
@@ -270,6 +277,7 @@ export default function App() {
     setResumeState("idle");
     setResumeMessage("");
     seenRunEventIdsRef.current = new Set();
+    lastSeenRunEventIdRef.current = null;
     setRunSummary({
       searchRawHitsTotal: 0,
       searchDedupedHitsTotal: 0,
@@ -321,26 +329,43 @@ export default function App() {
       window.clearTimeout(runStreamErrorTimeoutRef.current);
       runStreamErrorTimeoutRef.current = null;
     }
-    runStreamRef.current = { jobId, terminal: false };
+    runStreamRef.current = { jobId, terminal: false, streamToken: 0 };
     console.info("Async run started.", { submittedQuery: submitted, jobId, runId: startResult.data.run_id });
     openRunEventStream(jobId, submitted);
   }
 
-  function openRunEventStream(jobId: string, submittedQueryValue: string): void {
+  function openRunEventStream(jobId: string, submittedQueryValue: string, afterEventId: string | null = null): void {
+    const streamToken = ++nextRunStreamTokenRef.current;
+    if (runStreamErrorTimeoutRef.current !== null) {
+      window.clearTimeout(runStreamErrorTimeoutRef.current);
+      runStreamErrorTimeoutRef.current = null;
+    }
+    runStreamRef.current = { jobId, terminal: false, streamToken };
     runEventsUnsubscribeRef.current?.();
     runEventsUnsubscribeRef.current = subscribeToAgentRunEvents(jobId, {
       onEvent: (lifecycleEvent) => {
+        if (
+          runStreamRef.current.jobId !== jobId ||
+          runStreamRef.current.terminal ||
+          runStreamRef.current.streamToken !== streamToken
+        ) {
+          return;
+        }
         if (seenRunEventIdsRef.current.has(lifecycleEvent.event_id)) {
           return;
         }
         seenRunEventIdsRef.current.add(lifecycleEvent.event_id);
+        lastSeenRunEventIdRef.current = lifecycleEvent.event_id;
         if (runStreamErrorTimeoutRef.current !== null) {
           window.clearTimeout(runStreamErrorTimeoutRef.current);
           runStreamErrorTimeoutRef.current = null;
         }
         setRunEvents((current) => current.concat(lifecycleEvent));
         setRunCurrentStage(lifecycleEvent.stage);
-        setRunStatusMessage(formatLifecycleEventLabel(lifecycleEvent));
+        const terminalFinalSnapshot = isSuccessfulFinalSnapshot(lifecycleEvent);
+        setRunStatusMessage(
+          terminalFinalSnapshot ? "run.completed · synthesize_final · success" : formatLifecycleEventLabel(lifecycleEvent),
+        );
         setStageStatuses((current) => computeStageStatusesFromEvents(orderedStages, current, lifecycleEvent));
         applyRunEventData({
           lifecycleEvent,
@@ -372,14 +397,16 @@ export default function App() {
           return;
         }
 
-        if (isTerminalLifecycleEvent(lifecycleEvent)) {
-          runStreamRef.current = { jobId, terminal: true };
-          setRunState(lifecycleEvent.status === "success" ? "success" : "error");
+        if (isTerminalLifecycleEvent(lifecycleEvent) || terminalFinalSnapshot) {
+          runStreamRef.current = { jobId, terminal: true, streamToken };
+          setRunState(
+            terminalFinalSnapshot || lifecycleEvent.status === "success" ? "success" : "error",
+          );
           setPausedPayload(null);
           setReviewDrafts({});
           setResumeState("idle");
           setResumeMessage("");
-          if (lifecycleEvent.status !== "success") {
+          if (!terminalFinalSnapshot && lifecycleEvent.status !== "success") {
             setRunStatusMessage(lifecycleEvent.error || formatLifecycleEventLabel(lifecycleEvent));
           }
           setRunJobId(null);
@@ -388,26 +415,34 @@ export default function App() {
         }
       },
       onError: () => {
-        if (runStreamRef.current.jobId !== jobId || runStreamRef.current.terminal) {
+        if (
+          runStreamRef.current.jobId !== jobId ||
+          runStreamRef.current.terminal ||
+          runStreamRef.current.streamToken !== streamToken
+        ) {
           return;
         }
         if (runStreamErrorTimeoutRef.current !== null) {
           window.clearTimeout(runStreamErrorTimeoutRef.current);
         }
         runStreamErrorTimeoutRef.current = window.setTimeout(() => {
-          if (runStreamRef.current.jobId !== jobId || runStreamRef.current.terminal) {
+          if (
+            runStreamRef.current.jobId !== jobId ||
+            runStreamRef.current.terminal ||
+            runStreamRef.current.streamToken !== streamToken
+          ) {
             return;
           }
           setRunState("error");
           setRunStatusMessage("Run event stream disconnected.");
           setRunJobId(null);
-          runStreamRef.current = { jobId, terminal: true };
+          runStreamRef.current = { jobId, terminal: true, streamToken };
           runEventsUnsubscribeRef.current?.();
           runEventsUnsubscribeRef.current = null;
           console.error("Async run event stream failed.", { submittedQuery: submittedQueryValue, jobId });
         }, streamErrorGracePeriodMs);
       },
-    });
+    }, { afterEventId });
   }
 
   function handleDecisionActionChange(itemId: string, action: ReviewDecisionDraft["action"]): void {
@@ -461,8 +496,7 @@ export default function App() {
     setRunState("loading");
     setRunStatusMessage(resumeResult.data.message);
     setRunCurrentStage(resumeResult.data.stage);
-    runStreamRef.current = { jobId: runJobId, terminal: false };
-    openRunEventStream(runJobId, submittedQuery);
+    openRunEventStream(runJobId, submittedQuery, lastSeenRunEventIdRef.current);
   }
 
   return (
@@ -1056,6 +1090,10 @@ function isTerminalLifecycleEvent(event: RuntimeLifecycleEvent): boolean {
   return event.event_type === "run.completed" || event.event_type === "run.failed";
 }
 
+function isSuccessfulFinalSnapshot(event: RuntimeLifecycleEvent): boolean {
+  return event.event_type === "stage.snapshot" && mapBackendStageToCanonical(event.stage) === "final" && event.status === "completed";
+}
+
 function formatLifecycleEventLabel(event: RuntimeLifecycleEvent): string {
   const parts = [event.event_type, event.stage, event.status];
   if (event.error?.trim()) {
@@ -1118,6 +1156,12 @@ function computeStageStatusesFromEvents(
   }
 
   if (event.event_type === "stage.completed") {
+    markPreviousStagesCompleted(next, orderedStages, mappedStage);
+    next[mappedStage] = "completed";
+    return next;
+  }
+
+  if (isSuccessfulFinalSnapshot(event)) {
     markPreviousStagesCompleted(next, orderedStages, mappedStage);
     next[mappedStage] = "completed";
     return next;
@@ -1287,7 +1331,7 @@ function applyRunEventData(args: {
     totalLatencyMs: lifecycleEvent.elapsed_ms ?? null,
   });
 
-  if (lifecycleEvent.event_type === "run.completed") {
+  if (lifecycleEvent.event_type === "run.completed" || isSuccessfulFinalSnapshot(lifecycleEvent)) {
     const response = lifecycleEvent.result ?? {
       main_question: submittedQuery,
       sub_items: lifecycleEvent.sub_items ?? [],

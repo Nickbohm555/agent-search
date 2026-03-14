@@ -142,14 +142,21 @@ def runtime_agent_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
 @router.get("/run-events/{job_id}")
 def runtime_agent_run_events(
     job_id: str,
+    after_event_id: str | None = None,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
-    logger.info("Agent router streaming lifecycle events job_id=%s last_event_id=%s", job_id, last_event_id)
+    effective_after_event_id = last_event_id or after_event_id
+    logger.info(
+        "Agent router streaming lifecycle events job_id=%s last_event_id=%s after_event_id=%s",
+        job_id,
+        last_event_id,
+        after_event_id,
+    )
     if get_agent_run_job(job_id) is None:
         raise HTTPException(status_code=404, detail="Job not found.")
 
     def event_stream():
-        for event in iter_agent_run_events(job_id, after_event_id=last_event_id):
+        for event in iter_agent_run_events(job_id, after_event_id=effective_after_event_id):
             yield _encode_sse_event(event)
 
     return StreamingResponse(

@@ -594,6 +594,59 @@ describe("App run query flow", () => {
     expect(screen.queryByText("Run status: Run event stream disconnected.")).not.toBeInTheDocument();
   });
 
+  it("treats a completed final snapshot as terminal success when run.completed is absent", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-final-snapshot", run_id: "run-final-snapshot", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Snapshot-only completion" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const eventSource = await findLatestEventSource();
+    eventSource.emit({
+      event_type: "stage.snapshot",
+      event_id: "run-final-snapshot:000048",
+      elapsed_ms: 950,
+      output: "Snapshot-only answer.",
+      result: {
+        final_citations: [],
+        main_question: "Snapshot-only completion",
+        output: "Snapshot-only answer.",
+        sub_items: [],
+      },
+      run_id: "run-final-snapshot",
+      stage: "synthesize_final",
+      status: "completed",
+      sub_items: [],
+      sub_question_artifacts: [],
+    });
+
+    act(() => {
+      eventSource.onerror?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Snapshot-only answer.")).toBeInTheDocument();
+    expect(screen.queryByText("Run status: Run event stream disconnected.")).not.toBeInTheDocument();
+  });
+
   it("shows paused subquestion review and resumes to completion with typed decisions", async () => {
     const fetchMock = vi
       .fn()
@@ -692,6 +745,7 @@ describe("App run query flow", () => {
         }),
       );
     });
+    expect(FakeEventSource.instances[1]?.url).toContain("after_event_id=run-hitl%3A000001");
 
     expect(await screen.findByText("Run status: Resume accepted.")).toBeInTheDocument();
 
@@ -813,6 +867,7 @@ describe("App run query flow", () => {
         }),
       );
     });
+    expect(FakeEventSource.instances[1]?.url).toContain("after_event_id=run-hitl-skip%3A000001");
 
     expect(await screen.findByText("Run status: Resume accepted.")).toBeInTheDocument();
     expect(screen.queryByText(/run\.paused · subquestions_ready · paused/)).not.toBeInTheDocument();
@@ -954,6 +1009,106 @@ describe("App run query flow", () => {
     });
     expect(screen.getByText("Replay-safe answer.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
+  });
+
+  it("ignores stale paused-stream errors after resume opens a new SSE connection", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-hitl-stale-error", run_id: "run-hitl-stale-error", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-hitl-stale-error",
+            run_id: "run-hitl-stale-error",
+            status: "running",
+            message: "Resume accepted.",
+            stage: "subquestions_ready",
+            stages: [],
+            decomposition_sub_questions: ["Keep this?"],
+            sub_question_artifacts: [],
+            sub_items: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+            checkpoint_id: "checkpoint-stale-error",
+            interrupt_payload: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Ignore stale paused stream errors" } });
+    fireEvent.click(screen.getByLabelText("Enable subquestion HITL"));
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const pausedEventSource = await findLatestEventSource();
+    pausedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-hitl-stale-error:000001",
+      run_id: "run-hitl-stale-error",
+      stage: "subquestions_ready",
+      status: "paused",
+      checkpoint_id: "checkpoint-stale-error",
+      decomposition_sub_questions: ["Keep this?"],
+      sub_items: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-stale-error",
+        kind: "subquestion_review",
+        stage: "subquestions_ready",
+        subquestions: [{ subquestion_id: "sq-1", sub_question: "Keep this?" }],
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Subquestion Review" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip Review" }));
+
+    const resumedEventSource = await findLatestEventSource();
+    expect(resumedEventSource).not.toBe(pausedEventSource);
+    expect(pausedEventSource.onerror).toBeNull();
+
+    act(() => {
+      pausedEventSource.onerror?.();
+    });
+
+    resumedEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-hitl-stale-error:000002",
+      run_id: "run-hitl-stale-error",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Stale error ignored answer.",
+      result: {
+        final_citations: [],
+        main_question: "Ignore stale paused stream errors",
+        output: "Stale error ignored answer.",
+        sub_items: [],
+      },
+      sub_items: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Stale error ignored answer.")).toBeInTheDocument();
+    expect(screen.queryByText("Run status: Run event stream disconnected.")).not.toBeInTheDocument();
   });
 
   it("keeps non-HITL runs on the default completion path without review UI or resume calls", async () => {
