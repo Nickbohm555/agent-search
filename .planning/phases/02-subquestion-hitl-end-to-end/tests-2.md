@@ -12,7 +12,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 6 - SDK typed async parity supports new and legacy resume modes.
+Completed.
 
 ## Information Needed from the Summary
 
@@ -118,10 +118,14 @@ Test 6 - SDK typed async parity supports new and legacy resume modes.
 **When** I enable subquestion HITL through SDK typed request controls and later resume with typed checkpoint decisions  
 **Then** the SDK flow succeeds and mirrors backend runtime behavior  
 **And** legacy `resume=True` / object-style resume payloads still function for backward compatibility
+- result: pass - `docker compose exec backend uv run pytest tests/sdk/test_public_api_async.py::test_resume_run_reconstructs_full_request_payload tests/sdk/test_public_api_async.py::test_resume_run_preserves_legacy_boolean_resume_mode tests/sdk/test_public_api_async.py::test_resume_run_validates_typed_subquestion_decisions_before_dispatch tests/sdk/test_sdk_async_e2e.py::test_sdk_async_resume_e2e_supports_typed_subquestion_decision_matrix tests/sdk/test_sdk_async_e2e.py::test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The SDK preserved the legacy boolean `resume=True` path, still accepted legacy object-style resume payloads when reconstructing paused request state, validated typed subquestion decision envelopes before dispatch, and completed async checkpoint resumes with the same thread continuity and decision-driven behavior as the backend runtime.
 
 ## Summary
 
-Tests 1-5 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows, malformed typed resume envelopes are rejected at the API boundary with deterministic `422` validation errors instead of silently falling back to ad hoc parsing, and the frontend paused-review UX remains actionable without changing the default non-HITL completion path.
+Tests 1-6 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows, malformed typed resume envelopes are rejected at the API boundary with deterministic `422` validation errors instead of silently falling back to ad hoc parsing, the frontend paused-review UX remains actionable without changing the default non-HITL completion path, and SDK async resume parity now confirms typed checkpoint decisions plus both legacy boolean and object-style resume modes remain supported.
 
 ## Gaps
 

@@ -771,6 +771,52 @@ def test_resume_run_reconstructs_full_request_payload(monkeypatch) -> None:
     }
 
 
+def test_resume_run_preserves_legacy_boolean_resume_mode(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    thread_id = "550e8400-e29b-41d4-a716-446655440098"
+
+    def fake_resume_agent_run_job(job_id: str, *, resume=True):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return SimpleNamespace(job_id=job_id)
+
+    monkeypatch.setattr(public_api, "resume_agent_run_job", fake_resume_agent_run_job)
+    monkeypatch.setattr(
+        public_api,
+        "get_agent_run_job",
+        lambda _job_id: SimpleNamespace(
+            job_id="job-legacy-bool-resume",
+            run_id="run-legacy-bool-resume",
+            thread_id=thread_id,
+            status="running",
+            message="Resume accepted.",
+            stage="resuming",
+            stages=[],
+            decomposition_sub_questions=[],
+            sub_question_artifacts=[],
+            sub_qa=[],
+            output="",
+            result=None,
+            error=None,
+            cancel_requested=False,
+            interrupt_payload=None,
+            checkpoint_id="checkpoint-legacy-bool",
+            started_at=None,
+            finished_at=None,
+        ),
+    )
+
+    response = public_api.resume_run("job-legacy-bool-resume")
+
+    assert response.job_id == "job-legacy-bool-resume"
+    assert response.thread_id == thread_id
+    assert response.status == "running"
+    assert captured == {
+        "job_id": "job-legacy-bool-resume",
+        "resume": True,
+    }
+
+
 def test_resume_run_validates_typed_subquestion_decisions_before_dispatch(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

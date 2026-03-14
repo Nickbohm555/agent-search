@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 11. (move +1 after each turn)
+Current section to work on: section 12. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -260,7 +260,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/sdk/test_public_api_async.py::test_resume_run_reconstructs_full_request_payload tests/sdk/test_public_api_async.py::test_resume_run_preserves_legacy_boolean_resume_mode tests/sdk/test_public_api_async.py::test_resume_run_validates_typed_subquestion_decisions_before_dispatch tests/sdk/test_sdk_async_e2e.py::test_sdk_async_resume_e2e_supports_typed_subquestion_decision_matrix tests/sdk/test_sdk_async_e2e.py::test_sdk_async_resume_e2e_reuses_thread_id_after_interrupt` passed, confirming SDK async resume parity for typed subquestion checkpoint decisions while preserving both legacy `resume=True` and legacy object-style resume payload compatibility.
 
 Next: update .planning/STATE.md after executing this phase's testing sections.
 
