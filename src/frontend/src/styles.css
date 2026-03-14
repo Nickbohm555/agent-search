@@ -311,16 +311,15 @@ p {
   padding: 8px;
 }
 
-.final-citation-title,
-.final-citation-source {
-  margin-top: 0;
+.final-citation-link {
   color: var(--text);
+  text-decoration: none;
+  word-break: break-word;
 }
 
-.final-citation-snippet {
-  margin-top: 6px;
-  color: var(--muted);
-  line-height: 1.35;
+.final-citation-link:hover {
+  color: #7af7ff;
+  text-decoration: underline;
 }
 
 strong {

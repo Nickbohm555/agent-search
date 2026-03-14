@@ -995,20 +995,15 @@ export default function App() {
             <ol className="final-citation-list">
               {lastSuccessfulSynthesis.final_citations.map((citation) => (
                 <li key={`final-citation-${citation.citation_index}`} className="final-citation-item">
-                  <p className="final-citation-title">
-                    <strong>[{citation.citation_index}]</strong> {citation.title || "Untitled source"}
-                  </p>
-                  <p className="final-citation-source">
-                    <strong>Source:</strong>{" "}
-                    {isHttpUrl(citation.source) ? (
-                      <a href={citation.source} target="_blank" rel="noreferrer">
-                        {citation.source}
-                      </a>
-                    ) : (
-                      citation.source || "unknown"
-                    )}
-                  </p>
-                  <p className="final-citation-snippet">{toSnippet(citation.content)}</p>
+                  {isHttpUrl(citation.source) ? (
+                    <a className="final-citation-link" href={citation.source} target="_blank" rel="noreferrer">
+                      [{citation.citation_index}] {citation.source}
+                    </a>
+                  ) : (
+                    <span className="final-citation-link">
+                      [{citation.citation_index}] {citation.source || citation.title || "unknown"}
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

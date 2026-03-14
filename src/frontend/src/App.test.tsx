@@ -2117,8 +2117,8 @@ describe("App run query flow", () => {
     await waitFor(() => {
       expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: "https://en.wikipedia.org/wiki/NATO" })).toBeInTheDocument();
-    expect(screen.getByText("NATO reference content.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "[1] https://en.wikipedia.org/wiki/NATO" })).toBeInTheDocument();
+    expect(screen.queryByText("NATO reference content.")).not.toBeInTheDocument();
   });
 
   it("shows an error message when run request fails", async () => {
