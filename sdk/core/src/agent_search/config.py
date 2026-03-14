@@ -267,6 +267,50 @@ class RuntimeRerankConfig:
 
 
 @dataclass(frozen=True)
+class RuntimeQueryExpansionConfig:
+    enabled: bool = True
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeQueryExpansionConfig:
+        values = dict(data or {})
+        return cls(
+            enabled=_read_bool(
+                value=values.get("enabled"),
+                default=True,
+                field_name="query_expansion.enabled",
+            )
+        )
+
+
+@dataclass(frozen=True)
+class RuntimeHitlConfig:
+    enabled: bool = False
+    subquestions_enabled: bool = False
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any] | None = None) -> RuntimeHitlConfig:
+        values = dict(data or {})
+        subquestions_data = values.get("subquestions")
+        if subquestions_data is not None and not isinstance(subquestions_data, Mapping):
+            logger.warning("RuntimeConfig hitl.subquestions section must be a mapping; using defaults")
+            subquestions_data = None
+        subquestions_enabled = _read_bool(
+            value=(subquestions_data or {}).get("enabled"),
+            default=False,
+            field_name="hitl.subquestions.enabled",
+        )
+        enabled = _read_bool(
+            value=values.get("enabled"),
+            default=False,
+            field_name="hitl.enabled",
+        )
+        return cls(
+            enabled=enabled or subquestions_enabled,
+            subquestions_enabled=subquestions_enabled,
+        )
+
+
+@dataclass(frozen=True)
 class RuntimeCustomPromptsConfig:
     subanswer: str | None = None
     synthesis: str | None = None
@@ -291,6 +335,8 @@ class RuntimeConfig:
     timeout: RuntimeTimeoutConfig = RuntimeTimeoutConfig()
     retrieval: RuntimeRetrievalConfig = RuntimeRetrievalConfig()
     rerank: RuntimeRerankConfig = RuntimeRerankConfig()
+    query_expansion: RuntimeQueryExpansionConfig = RuntimeQueryExpansionConfig()
+    hitl: RuntimeHitlConfig = RuntimeHitlConfig()
     custom_prompts: RuntimeCustomPromptsConfig = RuntimeCustomPromptsConfig()
 
     @classmethod
@@ -299,6 +345,8 @@ class RuntimeConfig:
         timeout_data = values.get("timeout")
         retrieval_data = values.get("retrieval")
         rerank_data = values.get("rerank")
+        query_expansion_data = values.get("query_expansion")
+        hitl_data = values.get("hitl")
         custom_prompts_data = values.get("custom_prompts", values.get("custom-prompts"))
 
         if timeout_data is not None and not isinstance(timeout_data, Mapping):
@@ -310,6 +358,12 @@ class RuntimeConfig:
         if rerank_data is not None and not isinstance(rerank_data, Mapping):
             logger.warning("RuntimeConfig rerank section must be a mapping; using defaults")
             rerank_data = None
+        if query_expansion_data is not None and not isinstance(query_expansion_data, Mapping):
+            logger.warning("RuntimeConfig query_expansion section must be a mapping; using defaults")
+            query_expansion_data = None
+        if hitl_data is not None and not isinstance(hitl_data, Mapping):
+            logger.warning("RuntimeConfig hitl section must be a mapping; using defaults")
+            hitl_data = None
         if custom_prompts_data is not None and not isinstance(custom_prompts_data, Mapping):
             logger.warning("RuntimeConfig custom_prompts section must be a mapping; using defaults")
             custom_prompts_data = None
@@ -318,14 +372,19 @@ class RuntimeConfig:
             timeout=RuntimeTimeoutConfig.from_dict(timeout_data),
             retrieval=RuntimeRetrievalConfig.from_dict(retrieval_data),
             rerank=RuntimeRerankConfig.from_dict(rerank_data),
+            query_expansion=RuntimeQueryExpansionConfig.from_dict(query_expansion_data),
+            hitl=RuntimeHitlConfig.from_dict(hitl_data),
             custom_prompts=RuntimeCustomPromptsConfig.from_dict(custom_prompts_data),
         )
         logger.info(
-            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s custom_prompt_keys=%s",
+            "RuntimeConfig resolved timeout_rerank_s=%s retrieval_k=%s rerank_enabled=%s rerank_provider=%s query_expansion_enabled=%s hitl_enabled=%s hitl_subquestions_enabled=%s custom_prompt_keys=%s",
             config.timeout.rerank_timeout_s,
             config.retrieval.search_node_k_fetch,
             config.rerank.enabled,
             config.rerank.provider,
+            config.query_expansion.enabled,
+            config.hitl.enabled,
+            config.hitl.subquestions_enabled,
             [key for key in _CUSTOM_PROMPT_KEYS if getattr(config.custom_prompts, key) is not None],
         )
         return config

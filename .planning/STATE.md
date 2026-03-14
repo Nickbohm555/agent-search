@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-01
-- **Status:** Phase 5 completed via Plan 05-05 summary; Phase 6 Plan 06-01 is next
+- **Status:** Phase 6 Plan 06-01 Task 1 implemented; Task 2 is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,14 +30,14 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 6 Plan 06-01 Task 1.
-- Lock SDK contract parity for HITL, controls, prompt fields, and additive `sub_answers`.
+- Start Phase 6 Plan 06-01 Task 2.
+- Regenerate OpenAPI and generated SDK artifacts after locking backend/sdk-core parity fields.
 
 ### Blockers
 - None currently.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 67 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 5 is complete, so the next dependency-ordered work item is Plan 06-01 Task 1 for SDK/backend contract parity before release.
-- **Resume note:** State update: `phase=05`, `plan=05-05`, `task=summary`, `status=implemented`; prompt customization now has contract, docs, runtime wiring, and SDK precedence coverage, and the next target is Phase 6 Plan 06-01 Task 1.
+- **Next command:** Implement Section 68 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 06-01 Task 1 locked backend and sdk/core contract fields, so the next dependency-ordered step is regenerating OpenAPI and generated SDK artifacts.
+- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=1`, `status=implemented`; backend and sdk/core now expose the Phase 1-5 HITL/control/prompt/sub-answer contract surface, and the next target is Task 2 artifact regeneration.
