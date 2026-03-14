@@ -142,7 +142,7 @@ This roadmap delivers opt-in HITL controls and prompt customization without chan
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1 | Completed | Additive contract baseline shipped; broader backend service suite still has unrelated red tests |
-| 2 | Pending | Subquestion checkpoint loop |
+| 2 | Completed | API, frontend, SDK, and runtime subquestion HITL flow shipped with pause/resume checkpoint coverage |
 | 3 | Pending | Query expansion checkpoint loop |
 | 4 | Pending | Frontend/SDK control parity and result rendering |
 | 5 | Pending | Prompt customization + docs |

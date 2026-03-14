@@ -4,15 +4,15 @@
 
 - **Core value:** Users can safely control and customize how the agent thinks (subquestions/query expansion/prompting) without breaking the existing advanced RAG experience.
 - **Current milestone roadmap:** `.planning/ROADMAP.md`
-- **Current focus:** Phase 2 - Subquestion HITL End-to-End
+- **Current focus:** Phase 3 - Query Expansion HITL End-to-End
 
 ## Current Position
 
-- **Current phase:** 2
-- **Current plan:** 02-04
-- **Status:** Phase 2 Plan 02-04 Task 3 implemented; next section queued
-- **Progress:** 1/6 phases complete
-- **Progress bar:** `█░░░░░` (17%)
+- **Current phase:** 3
+- **Current plan:** 03-01
+- **Status:** Phase 2 Plan 02-04 summary implemented; Phase 2 complete and next section queued
+- **Progress:** 2/6 phases complete
+- **Progress bar:** `██░░░░` (33%)
 
 ## Performance Metrics
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create Phase 2 Plan 02-04 summary.
-- Continue Phase 2 in dependency order after the completed 02-04 Task 3.
+- Execute Phase 3 Plan 03-01 Task 1.
+- Continue Phase 3 in dependency order after the completed Phase 2 summary.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 27 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-04 Task 3 is complete, and the next dependency-ordered work item is the Phase 2 Plan 02-04 summary.
-- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=3`, `status=implemented`; SSE regressions now lock paused payload shape, decision-driven resume completion behavior, and the no-pause non-HITL lifecycle path.
+- **Next command:** Implement Section 28 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 is complete, and the next dependency-ordered work item is Phase 3 Plan 03-01 Task 1.
+- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=summary`, `status=implemented`; Phase 2 is complete and the next focus is query-expansion HITL contract work.
