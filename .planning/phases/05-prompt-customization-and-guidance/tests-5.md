@@ -8,12 +8,12 @@ source:
   - 05-04-SUMMARY.md
   - 05-05-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-15"
+updated: "2026-03-16"
 ---
 
 ## Current Test
 
-Test 5 pending. Tests 1-4 passed on 2026-03-15 and confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, deterministic prompt-influenced output changes, and citation/fallback guardrails remaining enforced under custom prompts.
+Test 6 pending. Tests 1-5 passed through 2026-03-16 and confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, deterministic prompt-influenced output changes, citation/fallback guardrails remaining enforced under custom prompts, and deterministic sync/async public API precedence for config defaults versus per-run overrides.
 
 ## Information Needed from the Summary
 
@@ -80,6 +80,7 @@ Test 5 pending. Tests 1-4 passed on 2026-03-15 and confirm alias compatibility, 
    - Given reusable config-level `custom_prompts` defaults and per-run runtime overrides for the same keys.
    - When runs are executed via both sync and async public API entrypoints.
    - Then per-run values win over reusable defaults in both paths, with identical effective prompt resolution.
+   - result: Pass on 2026-03-16. `docker compose exec backend uv run pytest tests/sdk/test_public_api.py::test_advanced_rag_merges_prompt_defaults_and_per_run_overrides_with_override_precedence tests/sdk/test_public_api_async.py::test_run_async_merges_prompt_defaults_and_per_run_overrides_with_override_precedence` passed; the sync entrypoint resolved `subanswer` from the per-run override while retaining the config-level `synthesis` default, and the async entrypoint resolved `synthesis` from the per-run override while retaining the config-level `subanswer` default, confirming identical precedence behavior across both APIs.
 
 6. **Documentation UAT for Prompt Customization Discoverability**
    - Given a consumer following only published docs.
@@ -88,8 +89,8 @@ Test 5 pending. Tests 1-4 passed on 2026-03-15 and confirm alias compatibility, 
 
 ## Summary
 
-Tests 1-4 passed through 2026-03-15. Remaining coverage is still pending for public API precedence and documentation discoverability.
+Tests 1-5 passed through 2026-03-16. Remaining coverage is now limited to documentation discoverability.
 
 ## Gaps
 
-- Tests 5-6 not yet executed.
+- Test 6 not yet executed.

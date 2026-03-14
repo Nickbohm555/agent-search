@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 27. (move +1 after each turn)
+Current section to work on: section 28. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -618,7 +618,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-16: `docker compose exec backend uv run pytest tests/sdk/test_public_api.py::test_advanced_rag_merges_prompt_defaults_and_per_run_overrides_with_override_precedence tests/sdk/test_public_api_async.py::test_run_async_merges_prompt_defaults_and_per_run_overrides_with_override_precedence` passed, confirming sync and async public API entrypoints apply the same deterministic precedence rule where per-run `runtime_config.custom_prompts` overrides the matching config-level default key while preserving non-overridden default prompt keys.
 
 ## Section 28 — 05-prompt-customization-and-guidance — tests-5 — Test 6 (Validation)
 - Source test markdown: `.planning/phases/05-prompt-customization-and-guidance/tests-5.md`
