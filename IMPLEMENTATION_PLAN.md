@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 28. (move +1 after each turn)
+Current section to work on: section 29. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -640,7 +640,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: manual documentation UAT across `README.md`, `docs/prompt-customization.md`, `sdk/core/README.md`, and `sdk/python/README.md` confirmed consumers can find the supported prompt keys (`subanswer`, `synthesis`), the accepted naming forms (`custom-prompts` for JSON and `custom_prompts` for Python/config), the built-in defaults -> reusable config -> per-run override precedence, and the explicit statement that citation/fallback guardrails are still enforced.
 
 Next: update .planning/STATE.md after executing this phase's testing sections.
 

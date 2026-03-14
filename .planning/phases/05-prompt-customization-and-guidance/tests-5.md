@@ -1,5 +1,5 @@
 ---
-status: in_progress
+status: completed
 phase: "05-prompt-customization-and-guidance"
 source:
   - 05-01-SUMMARY.md
@@ -13,7 +13,7 @@ updated: "2026-03-16"
 
 ## Current Test
 
-Test 6 pending. Tests 1-5 passed through 2026-03-16 and confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, deterministic prompt-influenced output changes, citation/fallback guardrails remaining enforced under custom prompts, and deterministic sync/async public API precedence for config defaults versus per-run overrides.
+All phase 5 validation tests completed. Tests 1-6 confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, deterministic prompt-influenced output changes, citation/fallback guardrails remaining enforced under custom prompts, deterministic sync/async public API precedence for config defaults versus per-run overrides, and documentation discoverability for the published prompt customization contract.
 
 ## Information Needed from the Summary
 
@@ -86,11 +86,12 @@ Test 6 pending. Tests 1-5 passed through 2026-03-16 and confirm alias compatibil
    - Given a consumer following only published docs.
    - When they read `README.md`, SDK README(s), and `docs/prompt-customization.md`.
    - Then they can identify supported keys (`subanswer`, `synthesis`), accepted naming forms (`custom-prompts` JSON and `custom_prompts` Python/internal), precedence order, and the explicit statement that guardrails are not bypassed.
+   - result: Pass on 2026-03-14. Manual documentation UAT across `README.md`, `docs/prompt-customization.md`, `sdk/core/README.md`, and `sdk/python/README.md` confirmed the published docs consistently name the supported keys `subanswer` and `synthesis`, distinguish `custom-prompts` for external JSON from `custom_prompts` for Python/config usage, explain the built-in defaults -> reusable config -> per-run override precedence, and state that citation validation and fallback guardrails remain enforced under prompt overrides.
 
 ## Summary
 
-Tests 1-5 passed through 2026-03-16. Remaining coverage is now limited to documentation discoverability.
+Tests 1-6 passed through 2026-03-14. Coverage includes the published documentation UAT for prompt customization discoverability alongside the earlier contract, runtime, and SDK validations.
 
 ## Gaps
 
-- Test 6 not yet executed.
+- None.
