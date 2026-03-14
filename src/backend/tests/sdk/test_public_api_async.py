@@ -268,6 +268,114 @@ def test_run_async_preserves_omitted_controls_and_hitl_default_off(monkeypatch) 
     ]
 
 
+def test_run_async_merges_prompt_defaults_and_per_run_overrides_with_override_precedence(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        _ = kwargs
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        return SimpleNamespace(
+            job_id="job-prompt-precedence",
+            run_id="run-prompt-precedence",
+            thread_id="550e8400-e29b-41d4-a716-446655440217",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "async prompt precedence query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440217",
+            "custom_prompts": {
+                "subanswer": "default async subanswer prompt",
+                "synthesis": "default async synthesis prompt",
+            },
+            "runtime_config": {
+                "custom-prompts": {
+                    "synthesis": "per-run async synthesis prompt",
+                }
+            },
+        },
+    )
+
+    assert response.job_id == "job-prompt-precedence"
+    assert captured["payload"] == {
+        "query": "async prompt precedence query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440217",
+        "runtime_config": {},
+        "custom_prompts": {
+            "subanswer": "default async subanswer prompt",
+            "synthesis": "per-run async synthesis prompt",
+        },
+    }
+
+
+def test_run_async_isolates_mutable_prompt_defaults_across_runs(monkeypatch) -> None:
+    captured_payloads: list[dict[str, object]] = []
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        _ = kwargs
+        captured_payloads.append(payload.model_dump(mode="json", exclude_none=True))
+        if payload.custom_prompts is not None:
+            payload.custom_prompts.synthesis = "mutated during async run"
+        return SimpleNamespace(
+            job_id=f"job-prompt-isolation-{len(captured_payloads)}",
+            run_id=f"run-prompt-isolation-{len(captured_payloads)}",
+            thread_id="550e8400-e29b-41d4-a716-446655440218",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    shared_config = {
+        "custom_prompts": {
+            "subanswer": "shared async default subanswer prompt",
+            "synthesis": "shared async default synthesis prompt",
+        }
+    }
+
+    first_response = public_api.run_async(
+        "first async prompt isolation query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config=shared_config,
+    )
+    second_response = public_api.run_async(
+        "second async prompt isolation query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config=shared_config,
+    )
+
+    assert first_response.job_id == "job-prompt-isolation-1"
+    assert second_response.job_id == "job-prompt-isolation-2"
+    assert shared_config == {
+        "custom_prompts": {
+            "subanswer": "shared async default subanswer prompt",
+            "synthesis": "shared async default synthesis prompt",
+        }
+    }
+    assert captured_payloads == [
+        {
+            "query": "first async prompt isolation query",
+            "custom_prompts": {
+                "subanswer": "shared async default subanswer prompt",
+                "synthesis": "shared async default synthesis prompt",
+            },
+        },
+        {
+            "query": "second async prompt isolation query",
+            "custom_prompts": {
+                "subanswer": "shared async default subanswer prompt",
+                "synthesis": "shared async default synthesis prompt",
+            },
+        },
+    ]
+
+
 def test_run_async_and_status_share_same_thread_id_for_one_run_lineage(monkeypatch) -> None:
     thread_id = "550e8400-e29b-41d4-a716-446655440001"
 

@@ -203,6 +203,104 @@ def test_advanced_rag_preserves_omitted_controls_and_hitl_default_off(monkeypatc
     }
 
 
+def test_advanced_rag_merges_prompt_defaults_and_per_run_overrides_with_override_precedence(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+        _ = model, vector_store, callbacks, langfuse_callback
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    response = public_api.advanced_rag(
+        "prompt precedence query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440216",
+            "custom_prompts": {
+                "subanswer": "default subanswer prompt",
+                "synthesis": "default synthesis prompt",
+            },
+            "runtime_config": {
+                "custom_prompts": {
+                    "subanswer": "per-run subanswer prompt",
+                }
+            },
+        },
+    )
+
+    assert response.output == "ok"
+    assert captured["payload"] == {
+        "query": "prompt precedence query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440216",
+        "runtime_config": {},
+        "custom_prompts": {
+            "subanswer": "per-run subanswer prompt",
+            "synthesis": "default synthesis prompt",
+        },
+    }
+
+
+def test_advanced_rag_isolates_mutable_prompt_defaults_across_runs(monkeypatch) -> None:
+    captured_payloads: list[dict[str, object]] = []
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+        _ = model, vector_store, callbacks, langfuse_callback
+        captured_payloads.append(payload.model_dump(mode="json", exclude_none=True))
+        if payload.custom_prompts is not None:
+            payload.custom_prompts.subanswer = "mutated during run"
+        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    shared_config = {
+        "custom_prompts": {
+            "subanswer": "shared default subanswer prompt",
+            "synthesis": "shared default synthesis prompt",
+        }
+    }
+
+    first_response = public_api.advanced_rag(
+        "first prompt isolation query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config=shared_config,
+    )
+    second_response = public_api.advanced_rag(
+        "second prompt isolation query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config=shared_config,
+    )
+
+    assert first_response.output == "ok"
+    assert second_response.output == "ok"
+    assert shared_config == {
+        "custom_prompts": {
+            "subanswer": "shared default subanswer prompt",
+            "synthesis": "shared default synthesis prompt",
+        }
+    }
+    assert captured_payloads == [
+        {
+            "query": "first prompt isolation query",
+            "custom_prompts": {
+                "subanswer": "shared default subanswer prompt",
+                "synthesis": "shared default synthesis prompt",
+            },
+        },
+        {
+            "query": "second prompt isolation query",
+            "custom_prompts": {
+                "subanswer": "shared default subanswer prompt",
+                "synthesis": "shared default synthesis prompt",
+            },
+        },
+    ]
+
+
 def test_advanced_rag_raises_configuration_error_when_model_is_none() -> None:
     try:
         public_api.advanced_rag("q", model=None, vector_store=_CompatibleVectorStore())
