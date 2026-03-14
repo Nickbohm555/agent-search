@@ -4,10 +4,11 @@ import json
 import logging
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, Mapping
 
+from agent_search.config import RuntimeConfig as RequestRuntimeConfig
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
@@ -51,7 +52,7 @@ from services.document_validation_service import (
     parse_retrieved_documents,
     validate_subquestion_documents,
 )
-from services.reranker_service import build_reranker_config_from_env, rerank_documents
+from services.reranker_service import RerankerConfig, build_reranker_config_from_env, rerank_documents
 from services.initial_answer_service import generate_final_synthesis_answer, generate_initial_answer
 from services.query_expansion_service import (
     QueryExpansionConfig,
@@ -521,17 +522,104 @@ def _apply_subanswer_generation_to_sub_qa(sub_qa: list[SubQuestionAnswer]) -> li
     return sub_qa
 
 
+def _apply_subanswer_verification_to_sub_qa(
+    sub_qa: list[SubQuestionAnswer],
+    *,
+    reranked_output_by_sub_question: Mapping[str, str] | None = None,
+) -> list[SubQuestionAnswer]:
+    logger.info("Per-subquestion subanswer verification start count=%s", len(sub_qa))
+    for item in sub_qa:
+        verification_result = verify_subanswer(
+            sub_question=item.sub_question,
+            sub_answer=item.sub_answer,
+            reranked_retrieved_output=(reranked_output_by_sub_question or {}).get(item.sub_question, item.sub_answer),
+        )
+        item.answerable = verification_result.answerable
+        item.verification_reason = verification_result.reason
+        logger.info(
+            "Per-subquestion subanswer verification complete sub_question=%s answerable=%s reason=%s",
+            _truncate_query(item.sub_question),
+            item.answerable,
+            _truncate_query(item.verification_reason),
+        )
+    return sub_qa
+
+
+def _run_with_timeout_guardrail(
+    *,
+    operation: str,
+    timeout_s: int | None,
+    callback: Callable[[], list[SubQuestionAnswer]],
+) -> list[SubQuestionAnswer] | None:
+    if timeout_s is None:
+        return callback()
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(callback)
+    try:
+        return future.result(timeout=timeout_s)
+    except FuturesTimeoutError:
+        logger.warning("Runtime guardrail timeout operation=%s timeout_s=%s", operation, timeout_s)
+        future.cancel()
+        return None
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 def _run_pipeline_for_single_subquestion(item: SubQuestionAnswer) -> SubQuestionAnswer:
     working_item = item.model_copy(deep=True)
     logger.info(
         "Per-subquestion pipeline item start sub_question=%s",
         _truncate_query(working_item.sub_question),
     )
-    working_item = _apply_document_validation_to_sub_qa([working_item])[0]
-    working_item = _apply_reranking_to_sub_qa([working_item])[0]
-    working_item = _apply_subanswer_generation_to_sub_qa([working_item])[0]
-    working_item.answerable = True
-    working_item.verification_reason = "citation_supported"
+    validated_output = _run_with_timeout_guardrail(
+        operation="document_validation_subquestion",
+        timeout_s=_RUNTIME_TIMEOUT_CONFIG.document_validation_timeout_s,
+        callback=lambda: _apply_document_validation_to_sub_qa([working_item.model_copy(deep=True)]),
+    )
+    if validated_output is None:
+        logger.warning("Per-subquestion document validation timeout; continuing without validation")
+    else:
+        working_item = validated_output[0]
+
+    reranked_output = _run_with_timeout_guardrail(
+        operation="rerank_subquestion",
+        timeout_s=_RUNTIME_TIMEOUT_CONFIG.rerank_timeout_s,
+        callback=lambda: _apply_reranking_to_sub_qa([working_item.model_copy(deep=True)]),
+    )
+    if reranked_output is None:
+        logger.warning("Per-subquestion reranking timeout; continuing with original document order")
+    else:
+        working_item = reranked_output[0]
+    reranked_output_by_sub_question = {working_item.sub_question: working_item.sub_answer}
+
+    generated_output = _run_with_timeout_guardrail(
+        operation="subanswer_generation_subquestion",
+        timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_generation_timeout_s,
+        callback=lambda: _apply_subanswer_generation_to_sub_qa([working_item.model_copy(deep=True)]),
+    )
+    if generated_output is None:
+        logger.warning("Per-subquestion subanswer generation timeout; continuing with fallback text")
+        working_item.sub_answer = _SUBANSWER_GENERATION_TIMEOUT_FALLBACK_TEXT
+    else:
+        working_item = generated_output[0]
+
+    verified_output = _run_with_timeout_guardrail(
+        operation="subanswer_verification_subquestion",
+        timeout_s=_RUNTIME_TIMEOUT_CONFIG.subanswer_verification_timeout_s,
+        callback=lambda: _apply_subanswer_verification_to_sub_qa(
+            [working_item.model_copy(deep=True)],
+            reranked_output_by_sub_question=reranked_output_by_sub_question,
+        ),
+    )
+    if verified_output is None:
+        logger.warning(
+            "Per-subquestion subanswer verification timeout; continuing with default unanswerable status"
+        )
+        working_item.answerable = False
+        working_item.verification_reason = _SUBANSWER_VERIFICATION_TIMEOUT_FALLBACK_REASON
+    else:
+        working_item = verified_output[0]
+
     logger.info(
         "Per-subquestion pipeline item complete sub_question=%s answerable=%s reason=%s",
         _truncate_query(working_item.sub_question),
@@ -1168,6 +1256,80 @@ class _GraphLaneExecutionResult:
     answer_output: AnswerSubquestionNodeOutput
 
 
+@dataclass(frozen=True)
+class _ResolvedRuntimeExecutionConfig:
+    query_expansion_enabled: bool
+    query_expansion_config: QueryExpansionConfig
+    rerank_config: RerankerConfig
+
+
+def _resolve_request_runtime_config(payload: RuntimeAgentRunRequest) -> RequestRuntimeConfig | None:
+    if payload.runtime_config is None:
+        return None
+    runtime_config_payload = payload.runtime_config.model_dump(exclude_none=True)
+    if not isinstance(runtime_config_payload, Mapping):
+        return None
+    return RequestRuntimeConfig.from_dict(runtime_config_payload)
+
+
+def _resolve_runtime_execution_config(payload: RuntimeAgentRunRequest) -> _ResolvedRuntimeExecutionConfig:
+    runtime_config = _resolve_request_runtime_config(payload)
+    query_expansion_enabled = (
+        runtime_config.query_expansion.enabled if runtime_config is not None else True
+    )
+    rerank_enabled = runtime_config.rerank.enabled if runtime_config is not None else _RERANKER_CONFIG.enabled
+    return _ResolvedRuntimeExecutionConfig(
+        query_expansion_enabled=query_expansion_enabled,
+        query_expansion_config=QueryExpansionConfig(
+            model=_QUERY_EXPANSION_CONFIG.model,
+            temperature=_QUERY_EXPANSION_CONFIG.temperature,
+            max_queries=_QUERY_EXPANSION_CONFIG.max_queries,
+            max_query_length=_QUERY_EXPANSION_CONFIG.max_query_length,
+        ),
+        rerank_config=RerankerConfig(
+            enabled=rerank_enabled,
+            top_n=_RERANKER_CONFIG.top_n,
+            provider=_RERANKER_CONFIG.provider,
+            model_name=_RERANKER_CONFIG.model_name,
+            openai_model_name=_RERANKER_CONFIG.openai_model_name,
+            openai_temperature=_RERANKER_CONFIG.openai_temperature,
+        ),
+    )
+
+
+def _build_query_expansion_bypass_output(*, sub_question: str) -> ExpandNodeOutput:
+    logger.info(
+        "Expansion node bypassed by runtime config sub_question=%s",
+        _truncate_query(sub_question),
+    )
+    return ExpandNodeOutput(expanded_queries=[sub_question])
+
+
+def _build_rerank_bypass_output(*, node_input: RerankNodeInput) -> RerankNodeOutput:
+    reranked_docs = [
+        CitationSourceRow(
+            citation_index=index,
+            rank=index,
+            title=row.title,
+            source=row.source,
+            content=row.content,
+            document_id=row.document_id,
+            score=None,
+        )
+        for index, row in enumerate(node_input.retrieved_docs, start=1)
+    ]
+    logger.info(
+        "Rerank node bypassed by runtime config sub_question=%s candidate_count=%s run_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(reranked_docs),
+        node_input.run_metadata.run_id,
+    )
+    return RerankNodeOutput(
+        reranked_docs=reranked_docs,
+        citation_rows_by_index={row.citation_index: row for row in reranked_docs},
+    )
+
+
 def _emit_graph_state_snapshot(
     *,
     state: AgentGraphState,
@@ -1220,6 +1382,7 @@ def _run_graph_subquestion_lane(
     vector_store: Any,
     model: BaseChatModel | None,
     run_metadata: GraphRunMetadata,
+    runtime_execution_config: _ResolvedRuntimeExecutionConfig,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
 ) -> _GraphLaneExecutionResult:
@@ -1236,15 +1399,19 @@ def _run_graph_subquestion_lane(
         run_metadata.run_id,
     )
     try:
-        expand_output = run_expand_node(
-            node_input=ExpandNodeInput(
-                main_question=main_question,
-                sub_question=sub_question,
-                run_metadata=run_metadata,
-            ),
-            model=model,
-            callbacks=lane_callbacks,
-        )
+        if runtime_execution_config.query_expansion_enabled:
+            expand_output = run_expand_node(
+                node_input=ExpandNodeInput(
+                    main_question=main_question,
+                    sub_question=sub_question,
+                    run_metadata=run_metadata,
+                ),
+                model=model,
+                config=runtime_execution_config.query_expansion_config,
+                callbacks=lane_callbacks,
+            )
+        else:
+            expand_output = _build_query_expansion_bypass_output(sub_question=sub_question)
         search_output = run_search_node(
             node_input=SearchNodeInput(
                 sub_question=sub_question,
@@ -1254,19 +1421,23 @@ def _run_graph_subquestion_lane(
             vector_store=vector_store,
             k_fetch=_SEARCH_NODE_K_FETCH,
         )
-        rerank_output = run_rerank_node(
-            node_input=RerankNodeInput(
+        rerank_input = RerankNodeInput(
+            sub_question=sub_question,
+            expanded_query=_select_compat_expanded_query(
                 sub_question=sub_question,
-                expanded_query=_select_compat_expanded_query(
-                    sub_question=sub_question,
-                    expanded_queries=list(expand_output.expanded_queries),
-                ),
-                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
-                run_metadata=run_metadata,
+                expanded_queries=list(expand_output.expanded_queries),
             ),
-            config=_RERANKER_CONFIG,
-            callbacks=lane_callbacks,
+            retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+            run_metadata=run_metadata,
         )
+        if runtime_execution_config.rerank_config.enabled:
+            rerank_output = run_rerank_node(
+                node_input=rerank_input,
+                config=runtime_execution_config.rerank_config,
+                callbacks=lane_callbacks,
+            )
+        else:
+            rerank_output = _build_rerank_bypass_output(node_input=rerank_input)
         answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
         answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
         answer_output = run_answer_subquestion_node(
@@ -1315,6 +1486,7 @@ def run_parallel_graph_runner(
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
+    resolved_runtime_execution_config = _resolve_runtime_execution_config(payload)
     state = build_agent_graph_state(
         main_question=payload.query,
         decomposition_sub_questions=[],
@@ -1379,6 +1551,7 @@ def run_parallel_graph_runner(
                         vector_store=vector_store,
                         model=model,
                         run_metadata=state.run_metadata,
+                        runtime_execution_config=resolved_runtime_execution_config,
                         callbacks=callbacks,
                         langfuse_callback=langfuse_callback,
                     ): lane_index
@@ -1495,6 +1668,7 @@ def run_sequential_graph_runner(
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
+    resolved_runtime_execution_config = _resolve_runtime_execution_config(payload)
     state = build_agent_graph_state(
         main_question=payload.query,
         decomposition_sub_questions=[],
@@ -1540,15 +1714,19 @@ def run_sequential_graph_runner(
                 _truncate_query(sub_question),
                 state.run_metadata.run_id,
             )
-            expand_output = run_expand_node(
-                node_input=ExpandNodeInput(
-                    main_question=payload.query,
-                    sub_question=sub_question,
-                    run_metadata=state.run_metadata,
-                ),
-                model=model,
-                callbacks=resolved_callbacks,
-            )
+            if resolved_runtime_execution_config.query_expansion_enabled:
+                expand_output = run_expand_node(
+                    node_input=ExpandNodeInput(
+                        main_question=payload.query,
+                        sub_question=sub_question,
+                        run_metadata=state.run_metadata,
+                    ),
+                    model=model,
+                    config=resolved_runtime_execution_config.query_expansion_config,
+                    callbacks=resolved_callbacks,
+                )
+            else:
+                expand_output = _build_query_expansion_bypass_output(sub_question=sub_question)
             state = apply_expand_node_output_to_graph_state(
                 state=state,
                 sub_question=sub_question,
@@ -1570,19 +1748,23 @@ def run_sequential_graph_runner(
                 node_output=search_output,
             )
 
-            rerank_output = run_rerank_node(
-                node_input=RerankNodeInput(
+            rerank_input = RerankNodeInput(
+                sub_question=sub_question,
+                expanded_query=_select_compat_expanded_query(
                     sub_question=sub_question,
-                    expanded_query=_select_compat_expanded_query(
-                        sub_question=sub_question,
-                        expanded_queries=list(expand_output.expanded_queries),
-                    ),
-                    retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
-                    run_metadata=state.run_metadata,
+                    expanded_queries=list(expand_output.expanded_queries),
                 ),
-                config=_RERANKER_CONFIG,
-                callbacks=resolved_callbacks,
+                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                run_metadata=state.run_metadata,
             )
+            if resolved_runtime_execution_config.rerank_config.enabled:
+                rerank_output = run_rerank_node(
+                    node_input=rerank_input,
+                    config=resolved_runtime_execution_config.rerank_config,
+                    callbacks=resolved_callbacks,
+                )
+            else:
+                rerank_output = _build_rerank_bypass_output(node_input=rerank_input)
             state = apply_rerank_node_output_to_graph_state(
                 state=state,
                 sub_question=sub_question,

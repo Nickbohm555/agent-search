@@ -10,7 +10,7 @@
 
 - **Current phase:** 4
 - **Current plan:** 04-02
-- **Status:** Phase 4 Plan 04-02 Task 1 implemented; Phase 4 Plan 04-02 Task 2 queued
+- **Status:** Phase 4 Plan 04-02 Task 2 implemented; Phase 4 Plan 04-02 Task 3 queued
 - **Progress:** 3/6 phases complete
 - **Progress bar:** `███░░░` (50%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Implement Phase 4 Plan 04-02 Task 2.
-- Continue Phase 4 in dependency order after runtime config runtime wiring.
+- Implement Phase 4 Plan 04-02 Task 3.
+- Continue Phase 4 in dependency order after service-level control toggle regressions.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 43 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 Plan 04-02 Task 1 is complete, and the next dependency-ordered work item is wiring per-run runtime config into expand/rerank execution.
-- **Resume note:** State update: `phase=04`, `plan=04-02`, `task=1`, `status=implemented`; runtime config parser coverage now locks default, explicit disable, and invalid fallback behavior for `query_expansion.enabled`.
+- **Next command:** Implement Section 44 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 4 Plan 04-02 Task 2 is complete, and the next dependency-ordered work item is adding service-level regressions for per-run query expansion and rerank toggles.
+- **Resume note:** State update: `phase=04`, `plan=04-02`, `task=2`, `status=implemented`; service runners now honor request-scoped expand/rerank toggles and preserve baseline behavior when `runtime_config` is absent.
