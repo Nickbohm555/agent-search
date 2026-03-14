@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-02
-- **Status:** Phase 6 Plan 06-02 Task 1 implemented; Plan 06-02 Task 2 is next
+- **Status:** Phase 6 Plan 06-02 Task 2 implemented; Plan 06-02 Task 3 is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 6 Plan 06-02 Task 2.
+- Start Phase 6 Plan 06-02 Task 3.
 - Decide whether Phase 6 can be marked complete after Plans 06-02 and 06-03 finish.
 
 ### Blockers
@@ -38,6 +38,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 72 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 06-02 Task 1 is complete, so the dependency-ordered follow-up is Phase 6 Plan 06-02 Task 2 for Trusted Publishing build/publish artifact flow hardening.
-- **Resume note:** State update: `phase=06`, `plan=06-02`, `task=1`, `status=implemented`; `agent-search-core` is bumped to `1.0.3`, `scripts/release_sdk.sh` now verifies dist filenames and enforces tag alignment before publish, and Phase 6 remains open for workflow hardening and installability proof.
+- **Next command:** Implement Section 73 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 06-02 Task 2 is complete, so the dependency-ordered follow-up is Phase 6 Plan 06-02 Task 3 for post-publish installability proof.
+- **Resume note:** State update: `phase=06`, `plan=06-02`, `task=2`, `status=implemented`; `.github/workflows/release-sdk.yml` now accepts an explicit manual `release_tag`, keeps branch-based dry runs ungated, uploads validated build artifacts once, and only allows CI publish from downloaded artifacts when a tag or manual release tag is present.

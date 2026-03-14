@@ -6,6 +6,11 @@ on:
       - "agent-search-core-v*"
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: "Release tag to validate/publish (for example agent-search-core-v1.0.3)"
+        required: false
+        type: string
+        default: ""
       publish:
         description: "Publish to PyPI"
         required: false
@@ -29,7 +34,7 @@ jobs:
 
       - name: Build and validate SDK artifacts
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
         run: ./scripts/release_sdk.sh
 
       - name: Upload distribution artifacts
@@ -37,10 +42,11 @@ jobs:
         with:
           name: agent-search-core-dist
           path: sdk/core/dist/*
+          if-no-files-found: error
 
   publish:
     needs: build_and_check
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish && inputs.release_tag != '')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
