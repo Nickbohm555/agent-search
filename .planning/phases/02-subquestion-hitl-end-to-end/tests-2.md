@@ -12,7 +12,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 4 - Malformed typed resume envelope fails at API boundary.
+Test 5 - Frontend paused review UX is actionable and non-HITL flow is unchanged.
 
 ## Information Needed from the Summary
 
@@ -96,6 +96,10 @@ Test 4 - Malformed typed resume envelope fails at API boundary.
 **When** I submit a resume request with an invalid typed envelope (missing required fields or invalid decision shape)  
 **Then** the API responds with deterministic validation errors  
 **And** no silent fallback or ad hoc runtime parsing occurs for malformed typed payloads
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_resume_rejects_malformed_typed_decision_envelopes` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The API returned deterministic `422` validation errors for malformed typed resume envelopes spanning missing edit payloads, empty checkpoint IDs or decisions, invalid action values, and mismatched query-expansion versus subquestion decision shapes, with all seven parameterized cases rejected before runtime dispatch.
 
 ### Test 5: Frontend paused review UX is actionable and non-HITL flow is unchanged
 
@@ -113,7 +117,7 @@ Test 4 - Malformed typed resume envelope fails at API boundary.
 
 ## Summary
 
-Tests 1-3 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, and typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows.
+Tests 1-4 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows, and malformed typed resume envelopes are rejected at the API boundary with deterministic `422` validation errors instead of silently falling back to ad hoc parsing.
 
 ## Gaps
 

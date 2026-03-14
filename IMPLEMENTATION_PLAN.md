@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 9. (move +1 after each turn)
+Current section to work on: section 10. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -216,7 +216,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_resume_rejects_malformed_typed_decision_envelopes` passed, confirming malformed typed resume envelopes fail at the API boundary with deterministic `422` validation errors for missing edit payloads, empty checkpoint IDs or decision lists, invalid decision actions, and mismatched subquestion versus query-expansion decision shapes.
 
 ## Section 10 — 02-subquestion-hitl-end-to-end — tests-2 — Test 5 (Validation)
 - Source test markdown: `.planning/phases/02-subquestion-hitl-end-to-end/tests-2.md`
