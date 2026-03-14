@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-search-core"
-version = "1.0.17"
+version = "1.0.18"
 description = "In-process SDK runtime for agent-search"
 authors = [{ name = "agent-search maintainers" }]
 keywords = ["rag", "agent", "search", "sdk", "langchain"]
