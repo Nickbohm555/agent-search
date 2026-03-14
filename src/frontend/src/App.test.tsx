@@ -135,6 +135,36 @@ describe("App run query flow", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
   });
 
+  it("defaults both runtime controls on and lets each toggle change independently", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ sources: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const rerankToggle = await screen.findByLabelText("Rerank results");
+    const queryExpansionToggle = screen.getByLabelText("Expand queries");
+
+    expect(rerankToggle).toBeChecked();
+    expect(queryExpansionToggle).toBeChecked();
+
+    fireEvent.click(rerankToggle);
+    expect(rerankToggle).not.toBeChecked();
+    expect(queryExpansionToggle).toBeChecked();
+
+    fireEvent.click(queryExpansionToggle);
+    expect(rerankToggle).not.toBeChecked();
+    expect(queryExpansionToggle).not.toBeChecked();
+
+    fireEvent.click(rerankToggle);
+    expect(rerankToggle).toBeChecked();
+    expect(queryExpansionToggle).not.toBeChecked();
+  });
+
   it("serializes rerank and query expansion toggles to runtime_config independently", async () => {
     const fetchMock = vi
       .fn()
@@ -2143,6 +2173,106 @@ describe("App run query flow", () => {
       expect(screen.getByText("Second final answer.")).toBeInTheDocument();
     });
     expect(screen.queryByText("First final answer.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the previous additive final synthesis visible while rendering streamed subanswers for the next run", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-additive-first", run_id: "run-additive-first", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-additive-second", run_id: "run-additive-second", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "First additive question?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const firstEventSource = await findLatestEventSource();
+    firstEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-additive-first:000002",
+      elapsed_ms: 2100,
+      output: "First additive final answer.",
+      result: {
+        final_citations: [],
+        main_question: "First additive question?",
+        output: "First additive final answer.",
+        sub_answers: [
+          {
+            sub_question: "First additive subquestion?",
+            sub_answer: "First additive answer [1].",
+            sub_answer_citations: [1],
+            tool_call_input: "{}",
+          },
+        ],
+      },
+      run_id: "run-additive-first",
+      stage: "synthesize_final",
+      status: "success",
+      sub_answers: [
+        {
+          sub_question: "First additive subquestion?",
+          sub_answer: "First additive answer [1].",
+          sub_answer_citations: [1],
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("First additive final answer.")).toBeInTheDocument();
+    });
+    expect(screen.getByText("First additive answer [1].")).toBeInTheDocument();
+    expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "Second additive question?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const secondEventSource = await findLatestEventSource();
+    secondEventSource.emit({
+      event_type: "stage.completed",
+      event_id: "run-additive-second:000002",
+      elapsed_ms: 1300,
+      run_id: "run-additive-second",
+      stage: "answer",
+      status: "completed",
+      decomposition_sub_questions: ["Second additive subquestion?"],
+      output: "Second additive draft output.",
+      sub_answers: [
+        {
+          sub_question: "Second additive subquestion?",
+          sub_answer: "Second additive draft answer [2].",
+          sub_answer_citations: [2],
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [],
+    });
+
+    expect(await screen.findByText("Run status: stage.completed · answer · completed")).toBeInTheDocument();
+    expect(screen.getByText("Showing previous successful synthesis while current run is in progress.")).toBeInTheDocument();
+    expect(screen.getByText("First additive final answer.")).toBeInTheDocument();
+    expect(screen.queryByText("Second additive draft output.")).not.toBeInTheDocument();
+    expect(screen.getByText("Second additive draft answer [2].")).toBeInTheDocument();
+    expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
   });
 
   it("shows an error message when run request fails", async () => {

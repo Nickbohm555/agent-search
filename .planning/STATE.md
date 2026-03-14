@@ -10,7 +10,7 @@
 
 - **Current phase:** 4
 - **Current plan:** 04-03
-- **Status:** Phase 4 Plan 04-03 Task 2 implemented; Phase 4 Plan 04-03 Task 3 queued
+- **Status:** Phase 4 Plan 04-03 Task 3 implemented; Phase 4 Plan 04-03 Summary queued
 - **Progress:** 3/6 phases complete
 - **Progress bar:** `███░░░` (50%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Continue Phase 4 with Plan 04-03 Task 3.
-- Add frontend regression tests for control defaults/toggles, runtime_config payloads, and retained sub-answer rendering.
+- Continue Phase 4 with Plan 04-03 summary creation.
+- Keep frontend regression coverage for control defaults/toggles, runtime_config payloads, and retained sub-answer rendering aligned with future contract changes.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 48 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 Plan 04-03 Task 2 is complete, and the next dependency-ordered work item is adding the frontend regression coverage for runtime controls and sub-answer rendering continuity.
-- **Resume note:** State update: `phase=04`, `plan=04-03`, `task=2`, `status=implemented`; `docker compose exec frontend npm run test -- App.test.tsx -t "subanswer|run query flow|SSE"` passed after normalizing additive `sub_answers` into the frontend’s canonical sub-answer parsing path.
+- **Next command:** Implement Section 49 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 4 Plan 04-03 Task 3 is complete, and the next dependency-ordered work item is writing the plan summary with git-evidenced frontend control and sub-answer regression outcomes.
+- **Resume note:** State update: `phase=04`, `plan=04-03`, `task=3`, `status=implemented`; `docker compose exec frontend npm run test -- App.test.tsx` passed after adding explicit control default/toggle coverage and additive sub-answer retention regressions in `src/frontend/src/App.test.tsx`.
