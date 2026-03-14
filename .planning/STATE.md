@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-04
-- **Status:** Phase 2 Plan 02-04 Task 1 implemented; next section queued
+- **Status:** Phase 2 Plan 02-04 Task 2 implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-04 Task 2.
-- Continue Phase 2 in dependency order after the completed 02-04 Task 1.
+- Start Phase 2 Plan 02-04 Task 3.
+- Continue Phase 2 in dependency order after the completed 02-04 Task 2.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 25 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-04 Task 1 is complete, and the next dependency-ordered work item is Phase 2 Plan 02-04 Task 2.
-- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=1`, `status=implemented`; subquestion HITL-enabled async runs now route through a post-decompose checkpoint, pause at `subquestions_ready`, and preserve the default non-HITL execution path.
+- **Next command:** Implement Section 26 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-04 Task 2 is complete, and the next dependency-ordered work item is Phase 2 Plan 02-04 Task 3.
+- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=2`, `status=implemented`; typed subquestion resume decisions now validate checkpoint identity, deterministically approve/edit/deny/skip the paused subquestion set, and paused lifecycle events persist and emit both `interrupt_payload` and `checkpoint_id`.

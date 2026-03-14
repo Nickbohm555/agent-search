@@ -16,7 +16,12 @@ from agent_search.runtime.execution_identity import resolve_thread_identity
 from agent_search.runtime.graph.execution import execute_runtime_graph
 from agent_search.runtime.graph.state import RuntimeGraphContext
 from agent_search.runtime.lifecycle_events import RuntimeLifecycleEvent
-from agent_search.runtime.resume import ResumeTransitionError, ensure_resume_allowed
+from agent_search.runtime.resume import (
+    ResumeTransitionError,
+    attach_checkpoint_metadata,
+    ensure_resume_allowed,
+    normalize_resume_payload,
+)
 from agent_search.runtime.state import to_rag_state
 from db import SessionLocal
 from models import RuntimeCheckpointLink
@@ -122,6 +127,8 @@ def _build_job_lifecycle_event(
     sub_qa: list[SubQuestionAnswer] | None = None,
     output: str | None = None,
     result: RuntimeAgentRunResponse | None = None,
+    interrupt_payload: Any | None = None,
+    checkpoint_id: str | None = None,
     elapsed_ms: int | None = None,
 ) -> RuntimeLifecycleEvent:
     previous_event_id = job.lifecycle_events[-1].event_id if job.lifecycle_events else None
@@ -141,6 +148,8 @@ def _build_job_lifecycle_event(
         sub_qa=sub_qa,
         output=output,
         result=result,
+        interrupt_payload=interrupt_payload,
+        checkpoint_id=checkpoint_id,
         elapsed_ms=elapsed_ms,
     )
 
@@ -213,6 +222,8 @@ def _persist_job_status(job: AgentRunJobStatus) -> None:
         )
         if job.interrupt_payload is not None:
             metadata["interrupt_payload"] = job.interrupt_payload
+        if job.checkpoint_id is not None:
+            metadata["checkpoint_id"] = job.checkpoint_id
         run.metadata_json = metadata
         run.error_message = job.error
         if job.status in {"success", "error", "cancelled"}:
@@ -315,6 +326,10 @@ def resume_agent_run_job(job_id: str, *, resume: Any = True) -> AgentRunJobStatu
             raise SDKConfigurationError(str(exc)) from exc
         if job.runtime_model is None or job.runtime_vector_store is None:
             raise SDKConfigurationError("Job cannot be resumed because runtime dependencies are unavailable.")
+        try:
+            normalized_resume = normalize_resume_payload(resume, checkpoint_id=job.checkpoint_id)
+        except ResumeTransitionError as exc:
+            raise SDKConfigurationError(str(exc)) from exc
         job.status = "running"
         job.message = "Resuming from checkpoint."
         job.stage = "resuming"
@@ -327,7 +342,7 @@ def resume_agent_run_job(job_id: str, *, resume: Any = True) -> AgentRunJobStatu
         model = job.runtime_model
         vector_store = job.runtime_vector_store
     _persist_job_status(job)
-    _EXECUTOR.submit(_run_agent_job, job_id, payload, job.run_id, job.thread_id, model, vector_store, resume)
+    _EXECUTOR.submit(_run_agent_job, job_id, payload, job.run_id, job.thread_id, model, vector_store, normalized_resume)
     return job
 
 
@@ -474,19 +489,23 @@ def _run_agent_job(
                 current_job = _JOBS.get(job_id)
                 if current_job is None:
                     return
+                resolved_interrupt_payload = attach_checkpoint_metadata(
+                    outcome.interrupt_payload,
+                    checkpoint_id=outcome.checkpoint_id,
+                )
                 pause_stage = (
                     str(current_job.interrupt_payload.get("stage", "")).strip()
                     if isinstance(current_job.interrupt_payload, dict)
                     else ""
                 )
-                if not pause_stage and isinstance(outcome.interrupt_payload, dict):
-                    pause_stage = str(outcome.interrupt_payload.get("stage", "")).strip()
+                if not pause_stage and isinstance(resolved_interrupt_payload, dict):
+                    pause_stage = str(resolved_interrupt_payload.get("stage", "")).strip()
                 if not pause_stage:
                     pause_stage = current_job.stage or "paused"
                 current_job.status = "paused"
                 current_job.message = "Paused and awaiting resume input."
                 current_job.stage = pause_stage
-                current_job.interrupt_payload = outcome.interrupt_payload
+                current_job.interrupt_payload = resolved_interrupt_payload
                 current_job.checkpoint_id = outcome.checkpoint_id
                 current_job.lifecycle_events.append(
                     _build_job_lifecycle_event(
@@ -498,6 +517,8 @@ def _run_agent_job(
                         sub_question_artifacts=[item.model_copy(deep=True) for item in current_job.sub_question_artifacts],
                         sub_qa=[item.model_copy(deep=True) for item in current_job.sub_qa],
                         output=current_job.output,
+                        interrupt_payload=resolved_interrupt_payload,
+                        checkpoint_id=outcome.checkpoint_id,
                         elapsed_ms=_elapsed_ms(current_job),
                     )
                 )

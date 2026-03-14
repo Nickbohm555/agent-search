@@ -25,6 +25,8 @@ class RuntimeLifecycleEvent(BaseModel):
     sub_qa: list[SubQuestionAnswer] | None = None
     output: str | None = None
     result: RuntimeAgentRunResponse | None = None
+    interrupt_payload: Any | None = None
+    checkpoint_id: str | None = None
     elapsed_ms: int | None = None
 
 
@@ -145,6 +147,7 @@ class LifecycleEventBuilder:
                 stage=stage,
                 status="checkpointed",
                 error=f"checkpoint_id={checkpoint_id}" if checkpoint_id else None,
+                checkpoint_id=checkpoint_id,
             )
         ]
 
@@ -160,6 +163,8 @@ class LifecycleEventBuilder:
         sub_qa: list[SubQuestionAnswer] | None = None,
         output: str | None = None,
         result: RuntimeAgentRunResponse | None = None,
+        interrupt_payload: Any | None = None,
+        checkpoint_id: str | None = None,
         elapsed_ms: int | None = None,
     ) -> RuntimeLifecycleEvent:
         self._sequence += 1
@@ -184,6 +189,8 @@ class LifecycleEventBuilder:
             sub_qa=sub_qa,
             output=output,
             result=result,
+            interrupt_payload=interrupt_payload,
+            checkpoint_id=checkpoint_id,
             elapsed_ms=elapsed_ms,
         )
 

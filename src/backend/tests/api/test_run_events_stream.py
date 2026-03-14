@@ -10,6 +10,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.jobs import AgentRunJobStatus
 from agent_search.runtime.lifecycle_events import RuntimeLifecycleEvent
 from routers.agent import router as agent_router
@@ -204,7 +205,7 @@ def test_checkpoint_route_switches_to_subquestion_gate_when_hitl_enabled() -> No
     assert route_post_decompose(state) == "subquestion_checkpoint"
 
 
-def test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready(monkeypatch) -> None:
+def test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready_with_interrupt_payload_and_checkpoint_id(monkeypatch) -> None:
     from agent_search.runtime import jobs as jobs_module
 
     monkeypatch.setattr(jobs_module, "_persist_job_status", lambda _job: None)
@@ -300,6 +301,88 @@ def test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready(monkeypatch
     assert tracked_job.checkpoint_id == "checkpoint-42"
     assert tracked_job.lifecycle_events[-1].event_type == "run.paused"
     assert tracked_job.lifecycle_events[-1].stage == "subquestions_ready"
+    assert tracked_job.lifecycle_events[-1].interrupt_payload == tracked_job.interrupt_payload
+    assert tracked_job.lifecycle_events[-1].checkpoint_id == "checkpoint-42"
+
+
+def test_subquestion_checkpoint_resume_applies_typed_decisions_deterministically(monkeypatch) -> None:
+    from agent_search.runtime.graph.builder import _build_subquestion_checkpoint_node
+    from agent_search.runtime.graph.state import to_runtime_graph_state
+    from services.agent_service import build_graph_run_metadata
+    from schemas import RuntimeSubquestionResumeEnvelope
+
+    checkpoint_node = _build_subquestion_checkpoint_node()
+    state = to_runtime_graph_state(
+        RuntimeAgentRunRequest(
+            query="Review these subquestions",
+            controls=RuntimeAgentRunControls(
+                hitl=RuntimeHitlControl(
+                    enabled=True,
+                    subquestions=RuntimeSubquestionHitlControl(enabled=True),
+                )
+            ),
+        ),
+        run_metadata=build_graph_run_metadata(
+            run_id="run-typed-resume",
+            thread_id="550e8400-e29b-41d4-a716-446655440113",
+        ),
+    )
+    state["decomposition_sub_questions"] = [
+        "Keep this question?",
+        "Edit this question?",
+        "Remove this question?",
+        "Skip this question?",
+    ]
+    monkeypatch.setattr(
+        "agent_search.runtime.graph.builder.interrupt",
+        lambda _payload: RuntimeSubquestionResumeEnvelope.model_validate(
+            {
+                "checkpoint_id": "550e8400-e29b-41d4-a716-446655440113",
+                "decisions": [
+                    {"subquestion_id": "sq-1", "action": "approve"},
+                    {"subquestion_id": "sq-2", "action": "edit", "edited_text": "Edited question?"},
+                    {"subquestion_id": "sq-3", "action": "deny"},
+                    {"subquestion_id": "sq-4", "action": "skip"},
+                ],
+            }
+        ),
+    )
+
+    resumed_state = checkpoint_node(state)
+
+    assert resumed_state["decomposition_sub_questions"] == [
+        "Keep this question?",
+        "Edited question?",
+        "Skip this question?",
+    ]
+
+
+def test_resume_agent_run_job_rejects_checkpoint_id_mismatch() -> None:
+    from agent_search.runtime import jobs as jobs_module
+    from schemas import RuntimeSubquestionResumeEnvelope
+
+    with jobs_module._JOB_LOCK:
+        jobs_module._JOBS["job-resume-mismatch"] = AgentRunJobStatus(
+            job_id="job-resume-mismatch",
+            run_id="run-resume-mismatch",
+            thread_id="550e8400-e29b-41d4-a716-446655440114",
+            status="paused",
+            query="Resume mismatch",
+            checkpoint_id="checkpoint-expected",
+            runtime_model=object(),
+            runtime_vector_store=object(),
+        )
+
+    with pytest.raises(SDKConfigurationError, match="does not match paused checkpoint"):
+        jobs_module.resume_agent_run_job(
+            "job-resume-mismatch",
+            resume=RuntimeSubquestionResumeEnvelope.model_validate(
+                {
+                    "checkpoint_id": "checkpoint-other",
+                    "decisions": [{"subquestion_id": "sq-1", "action": "approve"}],
+                }
+            ),
+        )
 
 
 def test_non_checkpoint_initial_run_bypasses_pause_path_when_hitl_disabled(monkeypatch) -> None:

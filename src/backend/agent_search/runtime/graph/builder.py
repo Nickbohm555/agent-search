@@ -7,6 +7,7 @@ from langgraph.types import RetryPolicy, interrupt
 
 from agent_search.runtime.graph.routes import route_post_decompose, route_subquestion_lanes
 from agent_search.runtime.graph.state import RuntimeGraphContext, RuntimeGraphState
+from agent_search.runtime.resume import apply_subquestion_resume_decisions, attach_checkpoint_metadata
 from agent_search.runtime.reducers import merge_stage_snapshots
 from agent_search.runtime.state import to_rag_state
 from schemas import (
@@ -123,7 +124,7 @@ def _build_subquestion_checkpoint_node():
     def _subquestion_checkpoint(state: RuntimeGraphState) -> RuntimeGraphState:
         if not state["subquestion_hitl_enabled"] or not state["decomposition_sub_questions"]:
             return state
-        interrupt(
+        interrupt_payload = attach_checkpoint_metadata(
             {
                 "checkpoint_id": state["run_metadata"].thread_id,
                 "kind": "subquestion_review",
@@ -136,9 +137,22 @@ def _build_subquestion_checkpoint_node():
                     }
                     for index, sub_question in enumerate(state["decomposition_sub_questions"])
                 ],
-            }
+            },
+            checkpoint_id=state["run_metadata"].thread_id,
         )
-        return state
+        resume_value = interrupt(interrupt_payload)
+        next_state = to_rag_state(state)
+        next_state["decomposition_sub_questions"] = apply_subquestion_resume_decisions(
+            state["decomposition_sub_questions"],
+            resume=resume_value,
+            interrupt_payload=interrupt_payload,
+        )
+        return RuntimeGraphState(
+            **next_state,
+            lane_sub_question=str(state.get("lane_sub_question", "")),
+            initial_search_context=list(state.get("initial_search_context", [])),
+            subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
+        )
 
     return _subquestion_checkpoint
 
