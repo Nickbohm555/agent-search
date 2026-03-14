@@ -1,0 +1,28 @@
+<svg width="1200" height="260" viewBox="0 0 1200 260" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Supercharge your RAG flow">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1b2b"/>
+      <stop offset="55%" stop-color="#0f2a3f"/>
+      <stop offset="100%" stop-color="#0b2f57"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#57e6b4"/>
+      <stop offset="100%" stop-color="#7cd2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="260" rx="26" fill="url(#bg)"/>
+  <g opacity="0.25">
+    <circle cx="980" cy="80" r="120" fill="#2e8cff"/>
+    <circle cx="1040" cy="190" r="90" fill="#57e6b4"/>
+  </g>
+  <rect x="60" y="54" width="6" height="152" rx="3" fill="url(#accent)"/>
+  <text x="90" y="110" fill="#ffffff" font-size="40" font-family="Helvetica, Arial, sans-serif" font-weight="700">
+    Supercharge your RAG flow
+  </text>
+  <text x="90" y="160" fill="#cfe8ff" font-size="20" font-family="Helvetica, Arial, sans-serif" font-weight="500">
+    Faster, more accurate retrieval with agent-search
+  </text>
+  <text x="90" y="198" fill="#8db6d9" font-size="16" font-family="Helvetica, Arial, sans-serif">
+    Open-source agentic retrieval with HITL and custom prompts
+  </text>
+</svg>
