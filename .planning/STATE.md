@@ -4,15 +4,15 @@
 
 - **Core value:** Users can safely control and customize how the agent thinks (subquestions/query expansion/prompting) without breaking the existing advanced RAG experience.
 - **Current milestone roadmap:** `.planning/ROADMAP.md`
-- **Current focus:** Phase 6 - SDK Contract Parity and PyPI Release
+- **Current focus:** Milestone complete
 
 ## Current Position
 
 - **Current phase:** 6
 - **Current plan:** 06-03
-- **Status:** Phase 6 Plan 06-03 Task 3 implemented; Plan 06-03 Summary is next
-- **Progress:** 5/6 phases complete
-- **Progress bar:** `█████░` (83%)
+- **Status:** Phase 6 Plan 06-03 Summary implemented; milestone complete
+- **Progress:** 6/6 phases complete
+- **Progress bar:** `██████` (100%)
 
 ## Performance Metrics
 
@@ -27,17 +27,16 @@
 ### Decisions
 - Phase structure is requirement-driven: foundation -> two HITL loops -> control surfaces -> prompt customization -> external release.
 - HITL default-off compatibility is front-loaded in Phase 1 to protect existing users.
-- SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
+- SDK/PyPI release finalization was isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create Phase 6 Plan 06-03 summary.
-- Decide whether Phase 6 can be marked complete after Plans 06-02 and 06-03 finish.
+- Define the next roadmap or post-milestone follow-up work.
 
 ### Blockers
-- None currently.
+- None.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 78 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 6 Plan 06-03 Task 3 is complete, so the dependency-ordered follow-up is the plan summary.
-- **Resume note:** State update: `phase=06`, `plan=06-03`, `task=3`, `status=implemented`; `README.md` now routes root users to the `1.0.3` release notes and migration guide, includes a compatibility checklist, and reflects additive `sub_answers` alongside legacy `sub_qa`.
+- **Next command:** Review the completed milestone artifacts and decide on the next planning cycle.
+- **Why next:** Section 78 completed Plan `06-03`, which also completes Phase 6 and the current milestone roadmap.
+- **Resume note:** State update: `phase=06`, `plan=06-03`, `task=summary`, `status=implemented`; `.planning/phases/06-sdk-contract-parity-and-pypi-release/06-03-SUMMARY.md` records the release-doc outcome, and `.planning/ROADMAP.md` now marks Phase 6 complete.
