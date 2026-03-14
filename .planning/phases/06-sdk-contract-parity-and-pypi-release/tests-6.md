@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 2: OpenAPI and generated SDK artifacts stay in backend-contract parity.
+Test 3: Release guard blocks mismatched release tag before publish.
 
 ## Information Needed from the Summary
 
@@ -70,6 +70,10 @@ Test 2: OpenAPI and generated SDK artifacts stay in backend-contract parity.
 
 ### Test 2: OpenAPI and generated SDK artifacts stay in backend-contract parity
 - Type: UAT contract artifact parity
+- result: fail - `docker compose up -d backend && ./scripts/validate_openapi.sh` failed on 2026-03-14 because the parity gate detected generated SDK drift in `sdk/python/README.md` even though OpenAPI validation and runtime export parity passed; regenerated `runtime_agent_run_request.py` and `runtime_agent_run_response.py` still matched the committed files.
+- reported: backend-contract parity is not clean because the committed generated Python SDK bundle diverges from the repository generation flow in `sdk/python/README.md`, while the schema artifact and key generated request/response models remain aligned.
+- severity: high
+- reason: OpenAPI/SDK parity is a release-blocking gate in Phase 6, and the repository's own validation script currently fails on committed generated artifact drift.
 - Preconditions:
   - Workspace has committed `openapi.json` and generated SDK model files from Phase 6.
 - Steps:
@@ -121,8 +125,10 @@ Test 2: OpenAPI and generated SDK artifacts stay in backend-contract parity.
 
 ## Summary
 
-Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization.
+Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged.
 
 ## Gaps
 
-[]
+[
+  "Phase 6 Test 2 is currently blocked by generated SDK drift in `sdk/python/README.md`, so OpenAPI/SDK artifact parity is not yet clean."
+]

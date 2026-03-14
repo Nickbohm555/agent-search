@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 30. (move +1 after each turn)
+Current section to work on: section 31. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -686,7 +686,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Fail on 2026-03-14: `docker compose up -d backend && ./scripts/validate_openapi.sh` failed because the repository parity gate detected generated SDK drift in `sdk/python/README.md`; the same run confirmed `openapi.json` matched the runtime export, and spot checks against regenerated `sdk/python/openapi_client/models/runtime_agent_run_request.py` and `runtime_agent_run_response.py` still matched the committed files.
 
 ## Section 31 — 06-sdk-contract-parity-and-pypi-release — tests-6 — Test 3 (Validation)
 - Source test markdown: `.planning/phases/06-sdk-contract-parity-and-pypi-release/tests-6.md`
