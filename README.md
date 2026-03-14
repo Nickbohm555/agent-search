@@ -8,9 +8,9 @@
 
 Onyx builds AI search and knowledge experiences for teams that need dependable, source-grounded answers. Agent-search distills those production learnings into a developer SDK so you can ship more reliable retrieval flows without rebuilding the orchestration stack from scratch.
 
-## Documentation
+## Why It Is Built This Way
 
-The consolidated project reference is available at `docs/application-document.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
+If you want more about the motivations behind the system, the tradeoffs in the runtime, and why certain design choices are opinionated, start with `docs/application-document.html`.
 
 Live architecture blog (GitHub Pages): [https://nickbohm555.github.io/agent-search/architecture.html](https://nickbohm555.github.io/agent-search/architecture.html).
 
@@ -120,7 +120,7 @@ print(response.output)
 - SDK-friendly pause/resume contract: Returns a normalized `review` object on pauses and uses SDK-owned resume helpers instead of requiring callers to construct raw backend payloads.
 - Callback integration: Accepts LangChain-compatible callbacks so application telemetry or orchestration hooks can observe the run lifecycle.
 
-For broader runtime and prompt behavior details, see `docs/application-document.html`.
+For more on the motivations and runtime tradeoffs behind these features, see `docs/application-document.html`.
 
 **Example Flow**
 
