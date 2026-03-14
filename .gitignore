@@ -28,3 +28,4 @@ implementation_plan.md
 **/*.md
 *.png
 !assets/readme-hud-banner.png
+!screenshot.png

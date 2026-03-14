@@ -12,7 +12,7 @@ Onyx builds AI search and knowledge experiences for teams that need dependable, 
 
 The consolidated project reference is available at `docs/application-document.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
 
-Live architecture blog (GitHub Pages): `https://nickbohm555.github.io/agent-search/architecture.html`.
+Live architecture blog (GitHub Pages): [https://nickbohm555.github.io/agent-search/architecture.html](https://nickbohm555.github.io/agent-search/architecture.html).
 
 ## Data Flow Diagram
 
@@ -70,7 +70,7 @@ flowchart TD
 
 ## SDK Quick Reference (PyPI)
 
-For the full, canonical SDK docs, see `https://pypi.org/project/agent-search-core/`.
+For the full, canonical SDK docs, see [https://pypi.org/project/agent-search-core/](https://pypi.org/project/agent-search-core/).
 
 The PyPI package is an in-process Python SDK for `agent-search`. It is intentionally narrow: consumers should call `advanced_rag(...)` and treat that as the supported entrypoint. The SDK always requires both:
 
@@ -173,4 +173,4 @@ If you do not override them, the runtime uses built-in defaults. Overrides repla
 
 Screenshot of the end-to-end flow with subquestion review, optional query expansion and reranking, and final synthesis.
 
-![Example flow](screenshot.png)
+<img src="screenshot.png" alt="Example flow screenshot showing the end-to-end agent-search runtime flow." width="100%" />
