@@ -212,6 +212,26 @@
       simplicity matter more.
     </p>
 
+    <h2>Advanced RAG Techniques</h2>
+    <p>
+      Query expansion works by taking a subquestion and generating alternative phrasings or nearby search
+      formulations before retrieval runs. The point is not to make the model sound smarter. The point is to
+      widen the retrieval net just enough that the system can catch relevant evidence that would be missed by
+      one brittle query string.
+    </p>
+    <p>
+      Reranking happens after retrieval. Once the system has a larger pool of candidate chunks, reranking helps
+      sort that pool so the strongest and most relevant evidence rises to the top before answer generation. That
+      matters because answer quality is often constrained less by the model itself and more by whether the right
+      evidence was surfaced in the right order.
+    </p>
+    <p>
+      Used together, these techniques improve both recall and focus. Query expansion helps the system find more
+      of the right material, while reranking helps it stay disciplined about which material should actually drive
+      the response. That combination is effective because it attacks two different failure modes: missing evidence
+      entirely and drowning the answer step in noisy evidence.
+    </p>
+
     <h2>Why The SDK Stays Narrow</h2>
     <p>
       The supported sync entrypoint is still <code>advanced_rag(...)</code> because I do not want consumers
