@@ -42,6 +42,8 @@ def _normalize_stage_name(stage_name: str | None) -> str:
         return "synthesize_final"
     if normalized == "subquestion_checkpoint":
         return "subquestions_ready"
+    if normalized == "query_expansion_checkpoint":
+        return "query_expansions_ready"
     return normalized
 
 

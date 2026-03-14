@@ -188,13 +188,21 @@ def _deserialize_recorded_outcome(recorded_outcome: Mapping[str, Any], *, thread
     )
 
 
-def _subquestion_hitl_enabled(payload: RuntimeAgentRunRequest) -> bool:
+def _checkpointed_hitl_enabled(payload: RuntimeAgentRunRequest) -> bool:
     controls = payload.controls
     return bool(
         controls is not None
         and controls.hitl is not None
-        and controls.hitl.subquestions is not None
-        and controls.hitl.subquestions.enabled
+        and (
+            (
+                controls.hitl.subquestions is not None
+                and controls.hitl.subquestions.enabled
+            )
+            or (
+                controls.hitl.query_expansion is not None
+                and controls.hitl.query_expansion.enabled
+            )
+        )
     )
 
 
@@ -343,7 +351,7 @@ def run_checkpointed_agent(
     emit_success_terminal_event: bool = True,
     emit_paused_terminal_event: bool = True,
 ) -> DurableExecutionOutcome:
-    if _subquestion_hitl_enabled(payload):
+    if _checkpointed_hitl_enabled(payload):
         return _run_subquestion_checkpointed_graph(
             payload,
             model=model,

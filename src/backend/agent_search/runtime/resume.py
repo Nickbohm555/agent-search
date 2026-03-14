@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from langgraph.types import Command
-from schemas import RuntimeSubquestionResumeEnvelope
+from schemas import RuntimeQueryExpansionResumeEnvelope, RuntimeSubquestionResumeEnvelope
 
 
 class ResumeTransitionError(ValueError):
@@ -23,7 +23,7 @@ def normalize_resume_payload(
     *,
     checkpoint_id: str | None = None,
 ) -> Any:
-    if not isinstance(resume, RuntimeSubquestionResumeEnvelope):
+    if not isinstance(resume, (RuntimeSubquestionResumeEnvelope, RuntimeQueryExpansionResumeEnvelope)):
         return resume
     if checkpoint_id and resume.checkpoint_id != checkpoint_id:
         raise ResumeTransitionError(
@@ -110,6 +110,82 @@ def apply_subquestion_resume_decisions(
     return resolved_subquestions
 
 
+def apply_query_expansion_resume_decisions(
+    expanded_queries: Sequence[str],
+    *,
+    resume: Any = True,
+    interrupt_payload: Any | None = None,
+) -> list[str]:
+    baseline_queries = [str(query).strip() for query in expanded_queries if str(query).strip()]
+    if not isinstance(resume, RuntimeQueryExpansionResumeEnvelope):
+        return baseline_queries
+
+    checkpoint_id = None
+    indexed_items: list[tuple[int, str, str]] = []
+    if isinstance(interrupt_payload, Mapping):
+        raw_checkpoint_id = interrupt_payload.get("checkpoint_id")
+        if raw_checkpoint_id is not None:
+            checkpoint_id = str(raw_checkpoint_id)
+        raw_items = interrupt_payload.get("expansions")
+        if isinstance(raw_items, Sequence) and not isinstance(raw_items, (str, bytes, bytearray)):
+            for fallback_index, raw_item in enumerate(raw_items):
+                if not isinstance(raw_item, Mapping):
+                    continue
+                raw_id = raw_item.get("expansion_id")
+                if raw_id is None:
+                    continue
+                raw_index = raw_item.get("index", fallback_index)
+                try:
+                    item_index = int(raw_index)
+                except (TypeError, ValueError):
+                    item_index = fallback_index
+                item_text = str(raw_item.get("query", "")).strip()
+                indexed_items.append((item_index, str(raw_id), item_text))
+    normalize_resume_payload(resume, checkpoint_id=checkpoint_id)
+
+    if not indexed_items:
+        indexed_items = [
+            (index, f"qe-{index + 1}", query)
+            for index, query in enumerate(baseline_queries)
+        ]
+
+    indexed_items.sort(key=lambda item: item[0])
+    available_items = {expansion_id: (index, text) for index, expansion_id, text in indexed_items}
+    if len(available_items) != len(indexed_items):
+        raise ResumeTransitionError("Resume decisions contain duplicate expansion identifiers in interrupt payload.")
+
+    decisions_by_id: dict[str, Any] = {}
+    for decision in resume.decisions:
+        if decision.expansion_id in decisions_by_id:
+            raise ResumeTransitionError(f"Duplicate resume decision for expansion_id '{decision.expansion_id}'.")
+        if decision.expansion_id not in available_items:
+            raise ResumeTransitionError(f"Unknown expansion_id '{decision.expansion_id}' for paused checkpoint.")
+        decisions_by_id[decision.expansion_id] = decision
+
+    resolved_queries: list[str] = []
+    seen_queries: set[str] = set()
+    for expansion_id, (index, fallback_text) in available_items.items():
+        current_query = baseline_queries[index] if 0 <= index < len(baseline_queries) else fallback_text
+        decision = decisions_by_id.get(expansion_id)
+        if decision is None or decision.action in {"approve", "skip"}:
+            next_query = current_query
+        elif decision.action == "edit":
+            next_query = (decision.edited_query or "").strip()
+        elif decision.action == "deny":
+            continue
+        else:
+            raise ResumeTransitionError(f"Unsupported resume action '{decision.action}'.")
+
+        if not next_query:
+            continue
+        lowered = next_query.casefold()
+        if lowered in seen_queries:
+            continue
+        seen_queries.add(lowered)
+        resolved_queries.append(next_query)
+    return resolved_queries
+
+
 def ensure_resume_allowed(status: str) -> None:
     normalized_status = status.strip().lower()
     if normalized_status in _RESUMABLE_STATUSES:
@@ -119,6 +195,7 @@ def ensure_resume_allowed(status: str) -> None:
 
 __all__ = [
     "ResumeTransitionError",
+    "apply_query_expansion_resume_decisions",
     "apply_subquestion_resume_decisions",
     "attach_checkpoint_metadata",
     "build_resume_command",

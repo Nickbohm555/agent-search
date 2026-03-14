@@ -31,6 +31,7 @@ def route_subquestion_lanes(state: RuntimeGraphState) -> Sequence[Send]:
                 "output": "",
                 "stage_snapshots": [],
                 "subquestion_hitl_enabled": state["subquestion_hitl_enabled"],
+                "query_expansion_hitl_enabled": state["query_expansion_hitl_enabled"],
             },
         )
         for sub_question in state["decomposition_sub_questions"]

@@ -87,13 +87,21 @@ def _call_with_supported_kwargs(func: Any, /, **kwargs: Any) -> Any:
     return func(**supported_kwargs)
 
 
-def _subquestion_hitl_enabled(payload: RuntimeAgentRunRequest) -> bool:
+def _checkpointed_hitl_enabled(payload: RuntimeAgentRunRequest) -> bool:
     controls = payload.controls
     return bool(
         controls is not None
         and controls.hitl is not None
-        and controls.hitl.subquestions is not None
-        and controls.hitl.subquestions.enabled
+        and (
+            (
+                controls.hitl.subquestions is not None
+                and controls.hitl.subquestions.enabled
+            )
+            or (
+                controls.hitl.query_expansion is not None
+                and controls.hitl.query_expansion.enabled
+            )
+        )
     )
 
 
@@ -445,7 +453,7 @@ def _run_agent_job(
             )
 
         run_metadata = build_graph_run_metadata(run_id=run_id, thread_id=thread_id)
-        if resume is None and not _subquestion_hitl_enabled(payload):
+        if resume is None and not _checkpointed_hitl_enabled(payload):
             state = _call_with_supported_kwargs(
                 execute_runtime_graph,
                 context=RuntimeGraphContext(

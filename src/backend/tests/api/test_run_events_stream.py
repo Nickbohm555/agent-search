@@ -14,7 +14,19 @@ from agent_search.errors import SDKConfigurationError
 from agent_search.runtime.jobs import AgentRunJobStatus
 from agent_search.runtime.lifecycle_events import RuntimeLifecycleEvent
 from routers.agent import router as agent_router
-from schemas import GraphStageSnapshot, RuntimeAgentRunControls, RuntimeAgentRunRequest, RuntimeHitlControl, RuntimeSubquestionHitlControl
+from schemas import (
+    AnswerSubquestionNodeOutput,
+    ExpandNodeOutput,
+    GraphStageSnapshot,
+    RerankNodeOutput,
+    RuntimeAgentRunControls,
+    RuntimeAgentRunRequest,
+    RuntimeHitlControl,
+    RuntimeQueryExpansionHitlControl,
+    RuntimeQueryExpansionResumeEnvelope,
+    RuntimeSubquestionHitlControl,
+    SearchNodeOutput,
+)
 
 
 def _event(*, sequence: int, event_type: str, stage: str, status: str) -> RuntimeLifecycleEvent:
@@ -313,6 +325,206 @@ def test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready_with_interr
         ],
     }
     assert tracked_job.lifecycle_events[-1].model_dump(mode="json")["interrupt_payload"] == tracked_job.interrupt_payload
+
+
+def test_query_expansion_checkpoint_enabled_initial_run_pauses_with_interrupt_payload_and_checkpoint_id(monkeypatch) -> None:
+    from agent_search.runtime import jobs as jobs_module
+
+    monkeypatch.setattr(jobs_module, "_persist_job_status", lambda _job: None)
+    monkeypatch.setattr(
+        jobs_module,
+        "execute_runtime_graph",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("non-checkpoint path should not execute")),
+    )
+
+    payload = RuntimeAgentRunRequest(
+        query="Review these expansions",
+        thread_id="550e8400-e29b-41d4-a716-446655440211",
+        controls=RuntimeAgentRunControls(
+            hitl=RuntimeHitlControl(
+                enabled=True,
+                query_expansion=RuntimeQueryExpansionHitlControl(enabled=True),
+            )
+        ),
+    )
+    job = AgentRunJobStatus(
+        job_id="job-qe-hitl",
+        run_id="run-qe-hitl",
+        thread_id=payload.thread_id or "",
+        status="running",
+        query=payload.query,
+        request_payload=payload.model_dump(mode="json", exclude_none=True),
+        runtime_model=object(),
+        runtime_vector_store=object(),
+    )
+
+    with jobs_module._JOB_LOCK:
+        jobs_module._JOBS[job.job_id] = job
+
+    def fake_run_checkpointed_agent(*, snapshot_callback=None, **_kwargs):
+        if snapshot_callback is not None:
+            snapshot_callback(
+                GraphStageSnapshot(
+                    stage="expand",
+                    status="completed",
+                    decomposition_sub_questions=["Expansion review lane?"],
+                    sub_qa=[],
+                    sub_question_artifacts=[],
+                    output="",
+                ),
+                {
+                    "main_question": payload.query,
+                    "decomposition_sub_questions": ["Expansion review lane?"],
+                    "sub_question_artifacts": [],
+                    "final_answer": "",
+                    "citation_rows_by_index": {},
+                    "run_metadata": {"run_id": "run-qe-hitl", "thread_id": payload.thread_id},
+                    "sub_qa": [],
+                    "output": "",
+                    "stage_snapshots": [],
+                },
+            )
+        return type(
+            "PausedOutcome",
+            (),
+            {
+                "status": "paused",
+                "state": None,
+                "response": None,
+                "interrupt_payload": {
+                    "checkpoint_id": "checkpoint-qe-42",
+                    "kind": "query_expansion_review",
+                    "stage": "query_expansions_ready",
+                    "sub_question": "Expansion review lane?",
+                    "expansions": [
+                        {"expansion_id": "qe-1", "query": "Expansion review lane?", "index": 0},
+                        {"expansion_id": "qe-2", "query": "Expansion review variant?", "index": 1},
+                    ],
+                },
+                "checkpoint_id": "checkpoint-qe-42",
+            },
+        )()
+
+    monkeypatch.setattr(jobs_module, "run_checkpointed_agent", fake_run_checkpointed_agent)
+
+    jobs_module._run_agent_job(
+        job.job_id,
+        payload,
+        job.run_id,
+        job.thread_id,
+        job.runtime_model,
+        job.runtime_vector_store,
+    )
+
+    tracked_job = jobs_module.get_agent_run_job(job.job_id)
+    assert tracked_job is not None
+    assert tracked_job.status == "paused"
+    assert tracked_job.stage == "query_expansions_ready"
+    assert tracked_job.checkpoint_id == "checkpoint-qe-42"
+    assert tracked_job.lifecycle_events[-1].event_type == "run.paused"
+    assert tracked_job.lifecycle_events[-1].stage == "query_expansions_ready"
+    assert tracked_job.lifecycle_events[-1].interrupt_payload == tracked_job.interrupt_payload
+    assert tracked_job.interrupt_payload == {
+        "checkpoint_id": "checkpoint-qe-42",
+        "kind": "query_expansion_review",
+        "stage": "query_expansions_ready",
+        "sub_question": "Expansion review lane?",
+        "expansions": [
+            {"expansion_id": "qe-1", "query": "Expansion review lane?", "index": 0},
+            {"expansion_id": "qe-2", "query": "Expansion review variant?", "index": 1},
+        ],
+    }
+
+
+def test_query_expansion_checkpoint_resume_applies_typed_decisions_before_search(monkeypatch) -> None:
+    from agent_search.runtime.graph.builder import _build_lane_pipeline_node
+    from agent_search.runtime.graph.state import RuntimeGraphContext, to_runtime_graph_state
+    from services.agent_service import build_graph_run_metadata
+
+    lane_pipeline = _build_lane_pipeline_node(
+        RuntimeGraphContext(
+            payload=RuntimeAgentRunRequest(query="Review these expansions"),
+            model=object(),
+            vector_store=object(),
+        )
+    )
+    request = RuntimeAgentRunRequest(
+        query="Review these expansions",
+        controls=RuntimeAgentRunControls(
+            hitl=RuntimeHitlControl(
+                enabled=True,
+                query_expansion=RuntimeQueryExpansionHitlControl(enabled=True),
+            )
+        ),
+    )
+    state = to_runtime_graph_state(
+        request,
+        run_metadata=build_graph_run_metadata(
+            run_id="run-qe-resume",
+            thread_id="550e8400-e29b-41d4-a716-446655440212",
+        ),
+    )
+    state["decomposition_sub_questions"] = ["Expansion review lane?"]
+    state["lane_sub_question"] = "Expansion review lane?"
+
+    monkeypatch.setattr(
+        "agent_search.runtime.graph.builder.interrupt",
+        lambda _payload: RuntimeQueryExpansionResumeEnvelope.model_validate(
+            {
+                "checkpoint_id": "550e8400-e29b-41d4-a716-446655440212",
+                "decisions": [
+                    {"expansion_id": "qe-1", "action": "approve"},
+                    {"expansion_id": "qe-2", "action": "edit", "edited_query": "Edited expansion?"},
+                    {"expansion_id": "qe-3", "action": "deny"},
+                    {"expansion_id": "qe-4", "action": "skip"},
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "agent_search.runtime.graph.builder.legacy_service.run_expand_node",
+        lambda **_kwargs: ExpandNodeOutput(
+            expanded_queries=[
+                "Expansion review lane?",
+                "Editable expansion?",
+                "Denied expansion?",
+                "Skipped expansion?",
+            ]
+        ),
+    )
+    captured_search_queries: list[str] = []
+
+    def fake_run_search_node(*, node_input, **_kwargs):
+        captured_search_queries[:] = list(node_input.expanded_queries)
+        return SearchNodeOutput(retrieved_docs=[], retrieval_provenance=[], citation_rows_by_index={})
+
+    monkeypatch.setattr("agent_search.runtime.graph.builder.legacy_service.run_search_node", fake_run_search_node)
+    monkeypatch.setattr(
+        "agent_search.runtime.graph.builder.legacy_service.run_rerank_node",
+        lambda **_kwargs: RerankNodeOutput(reranked_docs=[], citation_rows_by_index={}),
+    )
+    monkeypatch.setattr(
+        "agent_search.runtime.graph.builder.legacy_service.run_answer_subquestion_node",
+        lambda **_kwargs: AnswerSubquestionNodeOutput(
+            sub_answer="",
+            citation_indices_used=[],
+            answerable=False,
+            verification_reason="",
+            citation_rows_by_index={},
+        ),
+    )
+
+    resumed_state = lane_pipeline(state)
+
+    assert captured_search_queries == [
+        "Expansion review lane?",
+        "Edited expansion?",
+        "Skipped expansion?",
+    ]
+    artifact = next(
+        item for item in resumed_state["sub_question_artifacts"] if item.sub_question == "Expansion review lane?"
+    )
+    assert artifact.expanded_queries == captured_search_queries
 
 
 def test_subquestion_checkpoint_resume_applies_typed_decisions_deterministically(monkeypatch) -> None:

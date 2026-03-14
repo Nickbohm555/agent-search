@@ -92,6 +92,12 @@ def to_runtime_graph_state(
             and payload.controls.hitl.subquestions
             and payload.controls.hitl.subquestions.enabled
         ),
+        query_expansion_hitl_enabled=bool(
+            payload.controls
+            and payload.controls.hitl
+            and payload.controls.hitl.query_expansion
+            and payload.controls.hitl.query_expansion.enabled
+        ),
     )
 
 
@@ -108,6 +114,7 @@ class RuntimeGraphState(TypedDict):
     stage_snapshots: StageSnapshotsChannel
     initial_search_context: Annotated[list[dict[str, Any]], _merge_stable_initial_search_context]
     subquestion_hitl_enabled: Annotated[bool, _merge_stable_bool]
+    query_expansion_hitl_enabled: Annotated[bool, _merge_stable_bool]
 
 
 RuntimeGraphStateMapping = Mapping[str, Any]
