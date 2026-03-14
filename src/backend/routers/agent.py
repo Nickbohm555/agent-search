@@ -60,6 +60,8 @@ def _build_run_config(payload: RuntimeAgentRunRequest) -> dict[str, Any] | None:
     config: dict[str, Any] = {}
     if payload.thread_id is not None:
         config["thread_id"] = payload.thread_id
+    if payload.custom_prompts is not None:
+        config["custom_prompts"] = payload.custom_prompts.model_dump(exclude_none=True)
 
     if payload.runtime_config is not None:
         config["runtime_config"] = payload.runtime_config.model_dump(exclude_none=True)

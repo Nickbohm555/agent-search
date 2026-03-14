@@ -179,6 +179,55 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
     assert response.json()["sub_answers"] == response.json()["sub_qa"]
 
 
+def test_post_run_forwards_custom_prompts_with_thread_id(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunResponse(
+            main_question=query,
+            thread_id="550e8400-e29b-41d4-a716-446655440015",
+            sub_qa=[],
+            sub_answers=[],
+            output=f"Echo: {query}",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_advanced_rag", fake_sdk_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": "Run with custom prompts",
+            "thread_id": "550e8400-e29b-41d4-a716-446655440015",
+            "custom_prompts": {
+                "subanswer": "Answer each subquestion with grounded evidence.",
+                "synthesis": "Provide a concise final synthesis with citations.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Run with custom prompts",
+        "config": {
+            "thread_id": "550e8400-e29b-41d4-a716-446655440015",
+            "custom_prompts": {
+                "subanswer": "Answer each subquestion with grounded evidence.",
+                "synthesis": "Provide a concise final synthesis with citations.",
+            },
+        },
+    }
+
+
 def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
     from routers import agent as agent_router_module
     from schemas import RuntimeAgentRunAsyncStartResponse
@@ -222,6 +271,54 @@ def test_post_run_async_returns_job_start_shape(monkeypatch) -> None:
         "vector_store": sentinel_vector_store,
         "model": sentinel_model,
         "config": {"thread_id": "550e8400-e29b-41d4-a716-446655440000"},
+    }
+
+
+def test_post_run_async_forwards_custom_prompts_with_thread_id(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run_async(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-custom-prompts",
+            run_id="run-custom-prompts",
+            thread_id="550e8400-e29b-41d4-a716-446655440016",
+            status="queued",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-async",
+        json={
+            "query": "Queue with custom prompts",
+            "thread_id": "550e8400-e29b-41d4-a716-446655440016",
+            "custom_prompts": {
+                "subanswer": "Keep subanswers strictly grounded.",
+                "synthesis": "Summarize the final answer with citation callouts.",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Queue with custom prompts",
+        "config": {
+            "thread_id": "550e8400-e29b-41d4-a716-446655440016",
+            "custom_prompts": {
+                "subanswer": "Keep subanswers strictly grounded.",
+                "synthesis": "Summarize the final answer with citation callouts.",
+            },
+        },
     }
 
 
