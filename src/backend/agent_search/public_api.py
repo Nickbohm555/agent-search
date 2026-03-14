@@ -36,6 +36,7 @@ from schemas import (
 )
 
 logger = logging.getLogger(__name__)
+_CUSTOM_PROMPT_KEYS = ("subanswer", "synthesis")
 
 
 def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str | None:
@@ -69,6 +70,32 @@ def _read_enabled_flag(config: Mapping[str, Any] | None, *, default: bool = Fals
     return default
 
 
+def _get_custom_prompt_mapping(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if not isinstance(config, Mapping):
+        return None
+
+    for key in ("custom_prompts", "custom-prompts"):
+        value = config.get(key)
+        if isinstance(value, Mapping):
+            return dict(value)
+    return None
+
+
+def _build_effective_custom_prompts(config: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    prompt_defaults = _get_custom_prompt_mapping(config)
+    runtime_config = _get_nested_mapping(config, "runtime_config")
+    prompt_overrides = _get_custom_prompt_mapping(runtime_config)
+    if prompt_defaults is None and prompt_overrides is None:
+        return None
+
+    merged_prompts: dict[str, Any] = {}
+    if prompt_defaults is not None:
+        merged_prompts.update(prompt_defaults)
+    if prompt_overrides is not None:
+        merged_prompts.update(prompt_overrides)
+    return merged_prompts
+
+
 def _resolve_runtime_config_input(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
     if not isinstance(config, Mapping):
         return None
@@ -81,6 +108,9 @@ def _resolve_runtime_config_input(config: Mapping[str, Any] | None) -> Mapping[s
     for key in ("timeout", "retrieval", "rerank", "query_expansion", "hitl"):
         if key in nested_runtime_config:
             resolved[key] = nested_runtime_config[key]
+    effective_custom_prompts = _build_effective_custom_prompts(config)
+    if effective_custom_prompts is not None:
+        resolved["custom_prompts"] = effective_custom_prompts
     return resolved
 
 
@@ -114,6 +144,11 @@ def _build_runtime_request_payload(
     runtime_config: RuntimeConfig,
 ) -> RuntimeAgentRunRequest:
     runtime_config_payload = _get_nested_mapping(config, "runtime_config")
+    custom_prompts_payload = {
+        key: value
+        for key in _CUSTOM_PROMPT_KEYS
+        if (value := getattr(runtime_config.custom_prompts, key)) is not None
+    }
     return RuntimeAgentRunRequest(
         query=query,
         thread_id=_resolve_request_thread_id(config),
@@ -121,6 +156,11 @@ def _build_runtime_request_payload(
         runtime_config=(
             RuntimeAgentRunRuntimeConfig.model_validate(runtime_config_payload)
             if runtime_config_payload is not None
+            else None
+        ),
+        custom_prompts=(
+            custom_prompts_payload
+            if custom_prompts_payload
             else None
         ),
     )

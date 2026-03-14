@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from schemas import RuntimeAgentRunRequest, RuntimeAgentRunResponse
 
 logger = logging.getLogger(__name__)
+_CUSTOM_PROMPT_KEYS = ("subanswer", "synthesis")
 
 
 def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str | None:
@@ -27,6 +28,74 @@ def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str |
     if thread_id is None:
         return None
     return str(thread_id)
+
+
+def _get_nested_mapping(config: Mapping[str, Any] | None, key: str) -> Mapping[str, Any] | None:
+    if not isinstance(config, Mapping):
+        return None
+    value = config.get(key)
+    if isinstance(value, Mapping):
+        return value
+    return None
+
+
+def _get_custom_prompt_mapping(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if not isinstance(config, Mapping):
+        return None
+
+    for key in ("custom_prompts", "custom-prompts"):
+        value = config.get(key)
+        if isinstance(value, Mapping):
+            return dict(value)
+    return None
+
+
+def _build_effective_custom_prompts(config: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    prompt_defaults = _get_custom_prompt_mapping(config)
+    runtime_config = _get_nested_mapping(config, "runtime_config")
+    prompt_overrides = _get_custom_prompt_mapping(runtime_config)
+    if prompt_defaults is None and prompt_overrides is None:
+        return None
+
+    merged_prompts: dict[str, Any] = {}
+    if prompt_defaults is not None:
+        merged_prompts.update(prompt_defaults)
+    if prompt_overrides is not None:
+        merged_prompts.update(prompt_overrides)
+    return merged_prompts
+
+
+def _resolve_runtime_config_input(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if not isinstance(config, Mapping):
+        return None
+
+    resolved: dict[str, Any] = dict(config)
+    effective_custom_prompts = _build_effective_custom_prompts(config)
+    if effective_custom_prompts is not None:
+        resolved["custom_prompts"] = effective_custom_prompts
+    return resolved
+
+
+def _build_runtime_request_payload(
+    query: str,
+    *,
+    config: Mapping[str, Any] | None,
+    runtime_config: RuntimeConfig,
+) -> RuntimeAgentRunRequest:
+    custom_prompts_payload = {
+        key: value
+        for key in _CUSTOM_PROMPT_KEYS
+        if (value := getattr(runtime_config.custom_prompts, key)) is not None
+    }
+    return RuntimeAgentRunRequest(
+        query=query,
+        thread_id=_resolve_request_thread_id(config),
+        custom_prompts=(
+            custom_prompts_payload
+            if custom_prompts_payload
+            else None
+        ),
+    )
 
 
 def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
@@ -68,7 +137,7 @@ def advanced_rag(
         langfuse_callback is not None,
         langfuse_settings is not None,
     )
-    runtime_config = RuntimeConfig.from_dict(config)
+    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
     logger.info(
         "SDK sync runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
         runtime_config.retrieval.initial_search_context_k,
@@ -97,7 +166,7 @@ def advanced_rag(
         if langfuse_callback is not None:
             resolved_callbacks.append(langfuse_callback)
         response = run_runtime_agent(
-            RuntimeAgentRunRequest(query=query, thread_id=_resolve_request_thread_id(config)),
+            _build_runtime_request_payload(query, config=config, runtime_config=runtime_config),
             model=model,
             vector_store=compatible_vector_store,
             callbacks=resolved_callbacks or None,
@@ -117,4 +186,3 @@ def advanced_rag(
         len(response.output),
     )
     return response
-
