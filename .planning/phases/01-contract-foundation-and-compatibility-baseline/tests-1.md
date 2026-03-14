@@ -10,7 +10,7 @@ updated: "2026-03-14"
 ---
 
 ## Current Test
-Test 4 - Response contract stays backward compatible with additive field.
+Test 5 - Frontend validation accepts legacy-only and additive payloads.
 
 ## Information Needed from the Summary
 - what_changed:
@@ -78,6 +78,10 @@ Test 4 - Response contract stays backward compatible with additive field.
    - **Given** a runtime response is generated for existing clients
    - **When** the response is returned by backend mapping
    - **Then** required legacy fields (`sub_qa`, `output`, citations and other required contract fields) remain present and unchanged, while additive `sub_answers` is also available.
+   - result: pass - `docker compose exec backend uv run pytest tests/contracts/test_public_contracts.py::test_runtime_agent_run_response_contract_keeps_legacy_fields_and_additive_sub_answers tests/services/test_agent_service.py::test_map_graph_state_to_runtime_response_is_backward_compatible tests/api/test_agent_run.py::test_runtime_agent_run_response_serializes_additive_sub_answers_alongside_legacy_sub_qa` passed.
+   - reported: 2026-03-14
+   - severity: none
+   - reason: The contract schema still requires only `output`, validates legacy payloads with `sub_qa`, accepts additive `sub_answers`, the graph-state mapper emits both fields as distinct copies, and API serialization preserves both fields without changing the legacy response shape.
 
 5. **Frontend validation accepts legacy-only and additive payloads**
    - **Given** one response payload that contains only legacy fields and another that also includes `sub_answers`
@@ -85,7 +89,9 @@ Test 4 - Response contract stays backward compatible with additive field.
    - **Then** both payloads pass validation, and strict checks apply only when additive `sub_answers` is present.
 
 ## Summary
-Tests 1-3 passed on 2026-03-14. Legacy payloads without additive controls still validate, explicit additive controls propagate consistently through both sync and async SDK entrypoints, and async resume reconstructs the full normalized request payload instead of falling back to query/thread-only state.
+Tests 1-4 passed on 2026-03-14. Legacy payloads without additive controls still validate, explicit additive controls propagate consistently through both sync and async SDK entrypoints, async resume reconstructs the full normalized request payload instead of falling back to query/thread-only state, and runtime responses preserve the legacy `sub_qa` contract while exposing additive `sub_answers`.
 
 ## Gaps
-[]
+[
+  "Test 5 pending: frontend runtime validators still need validation against legacy-only and additive `sub_answers` payloads."
+]

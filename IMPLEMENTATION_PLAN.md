@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 4. (move +1 after each turn)
+Current section to work on: section 5. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -104,7 +104,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/contracts/test_public_contracts.py::test_runtime_agent_run_response_contract_keeps_legacy_fields_and_additive_sub_answers tests/services/test_agent_service.py::test_map_graph_state_to_runtime_response_is_backward_compatible tests/api/test_agent_run.py::test_runtime_agent_run_response_serializes_additive_sub_answers_alongside_legacy_sub_qa` passed, confirming the schema still honors the legacy `sub_qa` and required `output` contract while backend mapping and API serialization also expose additive `sub_answers`.
 
 ## Section 5 — 01-contract-foundation-and-compatibility-baseline — tests-1 — Test 5 (Validation)
 - Source test markdown: `.planning/phases/01-contract-foundation-and-compatibility-baseline/tests-1.md`
