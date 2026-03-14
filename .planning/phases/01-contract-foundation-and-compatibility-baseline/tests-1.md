@@ -10,7 +10,7 @@ updated: "2026-03-14"
 ---
 
 ## Current Test
-Test 2 - Additive controls propagate consistently in sync and async flows.
+Test 3 - Async resume preserves full normalized controls.
 
 ## Information Needed from the Summary
 - what_changed:
@@ -60,6 +60,10 @@ Test 2 - Additive controls propagate consistently in sync and async flows.
    - **Given** a client sends explicit controls (for example: rerank/query expansion/HITL toggles and thread context)
    - **When** the request is executed via sync run and async run
    - **Then** both paths produce equivalent normalized runtime config behavior, confirming one shared control-shape contract.
+   - result: pass - `docker compose exec backend uv run pytest tests/sdk/test_public_api.py::test_advanced_rag_propagates_explicit_controls_without_mutation tests/sdk/test_public_api.py::test_advanced_rag_propagates_runtime_config_without_breaking_legacy_control_shape tests/sdk/test_public_api_async.py::test_run_async_propagates_explicit_controls_to_job_payload tests/sdk/test_public_api_async.py::test_run_async_propagates_runtime_config_to_job_payload_without_breaking_legacy_control_shape` passed.
+   - reported: 2026-03-14
+   - severity: none
+   - reason: Sync `advanced_rag` and async `run_async` both normalized explicit thread and additive control inputs into the same payload shapes, including the nested `runtime_config` compatibility path, confirming one shared contract across both flows.
 
 3. **Async resume preserves full normalized controls**
    - **Given** an async job is created with explicit additive controls
@@ -77,7 +81,7 @@ Test 2 - Additive controls propagate consistently in sync and async flows.
    - **Then** both payloads pass validation, and strict checks apply only when additive `sub_answers` is present.
 
 ## Summary
-Test 1 passed on 2026-03-14. Legacy payloads without additive controls still validate and both sync and async entrypoints preserve omitted-control defaults, keeping the Phase 1 compatibility baseline intact.
+Tests 1-2 passed on 2026-03-14. Legacy payloads without additive controls still validate, and explicit additive controls propagate consistently through both sync and async SDK entrypoints, keeping the Phase 1 compatibility baseline intact while confirming the shared control-shape contract.
 
 ## Gaps
 []

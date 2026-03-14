@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 2. (move +1 after each turn)
+Current section to work on: section 3. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -60,7 +60,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/sdk/test_public_api.py::test_advanced_rag_propagates_explicit_controls_without_mutation tests/sdk/test_public_api.py::test_advanced_rag_propagates_runtime_config_without_breaking_legacy_control_shape tests/sdk/test_public_api_async.py::test_run_async_propagates_explicit_controls_to_job_payload tests/sdk/test_public_api_async.py::test_run_async_propagates_runtime_config_to_job_payload_without_breaking_legacy_control_shape` passed, confirming sync and async entrypoints normalize explicit thread and additive controls into the same payload shapes, including the nested `runtime_config` compatibility path.
 
 ## Section 3 — 01-contract-foundation-and-compatibility-baseline — tests-1 — Test 3 (Validation)
 - Source test markdown: `.planning/phases/01-contract-foundation-and-compatibility-baseline/tests-1.md`
