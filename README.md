@@ -10,6 +10,12 @@
 
 The consolidated project reference is available at `docs/application-documentation.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
 
+## Prompt Customization
+
+Prompt override guidance lives in [docs/prompt-customization.md](/Users/nickbohm/Desktop/Tinkering/agent-search/docs/prompt-customization.md). Start there for the supported `custom-prompts` / `custom_prompts` shapes, the two supported keys (`subanswer`, `synthesis`), and the precedence rules for reusable defaults versus per-run overrides.
+
+Prompt edits change generation instructions only. Citation validation and fallback behavior remain enforced in runtime code, so custom prompts are not a supported way to bypass those safeguards.
+
 ## 1.0.0 Release
 
 Integrators adopting the LangGraph-native `1.0.0` release should start with:
