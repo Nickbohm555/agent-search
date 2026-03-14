@@ -70,9 +70,10 @@ def test_run_answer_node_returns_supported_answer_with_citation_rows() -> None:
         ),
     ]
 
-    def _fake_generate_subanswer(*, sub_question, reranked_retrieved_output, callbacks):
+    def _fake_generate_subanswer(*, sub_question, reranked_retrieved_output, prompt_template=None, callbacks):
         captured["sub_question"] = sub_question
         captured["reranked_retrieved_output"] = reranked_retrieved_output
+        captured["prompt_template"] = prompt_template
         captured["callbacks"] = callbacks
         return "VAT changed in 2025 [1][2]."
 
@@ -80,10 +81,12 @@ def test_run_answer_node_returns_supported_answer_with_citation_rows() -> None:
     output = answer.run_answer_node(
         node_input=_node_input(reranked_docs=docs),
         callbacks=[callback_marker],
+        prompt_template="Custom subanswer prompt",
         generate_subanswer_fn=_fake_generate_subanswer,
     )
 
     assert captured["sub_question"] == "What changed in VAT policy?"
+    assert captured["prompt_template"] == "Custom subanswer prompt"
     assert captured["callbacks"] == [callback_marker]
     assert "title=Policy baseline" in str(captured["reranked_retrieved_output"])
 

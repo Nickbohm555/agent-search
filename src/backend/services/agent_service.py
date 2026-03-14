@@ -1125,12 +1125,14 @@ def run_answer_subquestion_node(
     *,
     node_input: AnswerSubquestionNodeInput,
     callbacks: list[Any] | None = None,
+    prompt_template: str | None = None,
 ) -> AnswerSubquestionNodeOutput:
     from agent_search.runtime.nodes.answer import run_answer_node as run_runtime_answer_node
 
     return run_runtime_answer_node(
         node_input=node_input,
         callbacks=callbacks,
+        prompt_template=prompt_template,
         no_support_fallback=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
         format_citation_rows_for_pipeline_fn=_format_citation_rows_for_pipeline,
         generate_subanswer_fn=generate_subanswer,
@@ -1214,12 +1216,14 @@ def run_synthesize_final_node(
     *,
     node_input: SynthesizeFinalNodeInput,
     callbacks: list[Any] | None = None,
+    prompt_template: str | None = None,
 ) -> SynthesizeFinalNodeOutput:
     from agent_search.runtime.nodes.synthesize import run_synthesize_node as run_runtime_synthesize_node
 
     return run_runtime_synthesize_node(
         node_input=node_input,
         callbacks=callbacks,
+        prompt_template=prompt_template,
         generate_final_synthesis_answer_fn=generate_final_synthesis_answer,
         extract_citation_indices_fn=_extract_citation_indices,
         build_initial_answer_timeout_fallback_fn=_build_initial_answer_timeout_fallback,
@@ -1261,23 +1265,27 @@ class _ResolvedRuntimeExecutionConfig:
     query_expansion_enabled: bool
     query_expansion_config: QueryExpansionConfig
     rerank_config: RerankerConfig
+    subanswer_prompt: str | None
+    synthesis_prompt: str | None
 
 
-def _resolve_request_runtime_config(payload: RuntimeAgentRunRequest) -> RequestRuntimeConfig | None:
-    if payload.runtime_config is None:
-        return None
-    runtime_config_payload = payload.runtime_config.model_dump(exclude_none=True)
-    if not isinstance(runtime_config_payload, Mapping):
-        return None
+def _resolve_request_runtime_config(payload: RuntimeAgentRunRequest) -> RequestRuntimeConfig:
+    runtime_config_payload: dict[str, Any] = {}
+    if payload.runtime_config is not None:
+        resolved_runtime_config_payload = payload.runtime_config.model_dump(exclude_none=True)
+        if isinstance(resolved_runtime_config_payload, Mapping):
+            runtime_config_payload.update(resolved_runtime_config_payload)
+    if payload.custom_prompts is not None:
+        custom_prompts_payload = payload.custom_prompts.model_dump(exclude_none=True)
+        if custom_prompts_payload:
+            runtime_config_payload["custom_prompts"] = custom_prompts_payload
     return RequestRuntimeConfig.from_dict(runtime_config_payload)
 
 
 def _resolve_runtime_execution_config(payload: RuntimeAgentRunRequest) -> _ResolvedRuntimeExecutionConfig:
     runtime_config = _resolve_request_runtime_config(payload)
-    query_expansion_enabled = (
-        runtime_config.query_expansion.enabled if runtime_config is not None else True
-    )
-    rerank_enabled = runtime_config.rerank.enabled if runtime_config is not None else _RERANKER_CONFIG.enabled
+    query_expansion_enabled = runtime_config.query_expansion.enabled
+    rerank_enabled = runtime_config.rerank.enabled
     return _ResolvedRuntimeExecutionConfig(
         query_expansion_enabled=query_expansion_enabled,
         query_expansion_config=QueryExpansionConfig(
@@ -1294,6 +1302,8 @@ def _resolve_runtime_execution_config(payload: RuntimeAgentRunRequest) -> _Resol
             openai_model_name=_RERANKER_CONFIG.openai_model_name,
             openai_temperature=_RERANKER_CONFIG.openai_temperature,
         ),
+        subanswer_prompt=runtime_config.custom_prompts.subanswer,
+        synthesis_prompt=runtime_config.custom_prompts.synthesis,
     )
 
 
@@ -1450,6 +1460,7 @@ def _run_graph_subquestion_lane(
                 run_metadata=run_metadata,
             ),
             callbacks=lane_callbacks,
+            prompt_template=runtime_execution_config.subanswer_prompt,
         )
     finally:
         if langfuse_callback is None:
@@ -1633,6 +1644,7 @@ def run_parallel_graph_runner(
                 run_metadata=state.run_metadata,
             ),
             callbacks=resolved_callbacks,
+            prompt_template=resolved_runtime_execution_config.synthesis_prompt,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
             state=state,
@@ -1783,6 +1795,7 @@ def run_sequential_graph_runner(
                     run_metadata=state.run_metadata,
                 ),
                 callbacks=resolved_callbacks,
+                prompt_template=resolved_runtime_execution_config.subanswer_prompt,
             )
             state = apply_answer_subquestion_node_output_to_graph_state(
                 state=state,
@@ -1806,6 +1819,7 @@ def run_sequential_graph_runner(
                 run_metadata=state.run_metadata,
             ),
             callbacks=resolved_callbacks,
+            prompt_template=resolved_runtime_execution_config.synthesis_prompt,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
             state=state,

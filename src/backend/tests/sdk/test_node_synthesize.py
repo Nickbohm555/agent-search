@@ -31,9 +31,10 @@ def _node_input(
 def test_run_synthesize_node_returns_generated_answer_when_citations_are_valid() -> None:
     captured: dict[str, object] = {}
 
-    def _fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
+    def _fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
         captured["main_question"] = main_question
         captured["sub_qa_count"] = len(sub_qa)
+        captured["prompt_template"] = prompt_template
         captured["callbacks"] = callbacks
         return "Final synthesis [1] (source: wiki://vat-policy)."
 
@@ -65,12 +66,14 @@ def test_run_synthesize_node_returns_generated_answer_when_citations_are_valid()
             ],
         ),
         callbacks=[callback_marker],
+        prompt_template="Custom synthesis prompt",
         generate_final_synthesis_answer_fn=_fake_generate_final_synthesis_answer,
     )
 
     assert output.final_answer == "Final synthesis [1] (source: wiki://vat-policy)."
     assert captured["main_question"] == "Explain VAT policy changes."
     assert captured["sub_qa_count"] == 1
+    assert captured["prompt_template"] == "Custom synthesis prompt"
     assert captured["callbacks"] == [callback_marker]
 
 

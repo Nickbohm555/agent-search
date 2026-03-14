@@ -53,6 +53,7 @@ def run_answer_node(
     *,
     node_input: AnswerSubquestionNodeInput,
     callbacks: list[Any] | None = None,
+    prompt_template: str | None = None,
     no_support_fallback: str = _ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
     format_citation_rows_for_pipeline_fn: Callable[[list[CitationSourceRow]], str] = _format_citation_rows_for_pipeline,
     generate_subanswer_fn: Callable[..., str] = generate_subanswer,
@@ -86,6 +87,7 @@ def run_answer_node(
     generated_sub_answer = generate_subanswer_fn(
         sub_question=node_input.sub_question,
         reranked_retrieved_output=reranked_output,
+        prompt_template=prompt_template,
         callbacks=callbacks,
     )
 

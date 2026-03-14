@@ -298,7 +298,7 @@ def test_execute_runtime_graph_preserves_deterministic_fan_in_order(monkeypatch)
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -317,7 +317,7 @@ def test_execute_runtime_graph_preserves_deterministic_fan_in_order(monkeypatch)
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=" | ".join(item.sub_question for item in node_input.sub_qa)
@@ -843,10 +843,21 @@ def test_apply_rerank_node_output_to_graph_state_updates_artifacts_and_compat_fi
 
 
 def test_run_answer_subquestion_node_returns_cited_grounded_answer(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "VAT changes were enacted in 2025 [2].",
+        lambda *, sub_question, reranked_retrieved_output, prompt_template=None, callbacks=None: (
+            captured.update(
+                {
+                    "sub_question": sub_question,
+                    "prompt_template": prompt_template,
+                    "callbacks": callbacks,
+                }
+            )
+            or "VAT changes were enacted in 2025 [2]."
+        ),
     )
     monkeypatch.setattr(
         agent_service,
@@ -898,12 +909,16 @@ def test_run_answer_subquestion_node_returns_cited_grounded_answer(monkeypatch) 
             },
             run_metadata=agent_service.build_graph_run_metadata(run_id="run-answer-node"),
         ),
+        prompt_template="Use the custom subanswer prompt",
     )
 
     assert output.sub_answer == "VAT changes were enacted in 2025 [2]."
+    assert captured["sub_question"] == "What changed in VAT policy?"
+    assert captured["prompt_template"] == "Use the custom subanswer prompt"
+    assert captured["callbacks"] is None
     assert output.citation_indices_used == [2]
     assert output.answerable is True
-    assert output.verification_reason == "grounded_in_reranked_documents"
+    assert output.verification_reason == "citation_supported"
     assert list(output.citation_rows_by_index.keys()) == [2]
     assert output.citation_rows_by_index[2].title == "VAT Timeline"
 
@@ -912,7 +927,7 @@ def test_run_answer_subquestion_node_falls_back_when_answer_is_not_supported(mon
     monkeypatch.setattr(
         agent_service,
         "generate_subanswer",
-        lambda *, sub_question, reranked_retrieved_output, callbacks=None: "This changed in ways we cannot verify.",
+        lambda *, sub_question, reranked_retrieved_output, prompt_template=None, callbacks=None: "This changed in ways we cannot verify.",
     )
     monkeypatch.setattr(
         agent_service,
@@ -953,7 +968,7 @@ def test_run_answer_subquestion_node_falls_back_when_answer_is_not_supported(mon
     assert output.sub_answer == "nothing relevant found"
     assert output.citation_indices_used == []
     assert output.answerable is False
-    assert output.verification_reason == "insufficient_evidence_overlap"
+    assert output.verification_reason == "missing_citation_markers"
     assert output.citation_rows_by_index == {}
 
 
@@ -1007,9 +1022,10 @@ def test_apply_answer_subquestion_node_output_to_graph_state_updates_artifacts_a
 def test_run_synthesize_final_node_uses_subanswers_as_grounded_inputs(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
         captured["main_question"] = main_question
         captured["sub_qa_count"] = len(sub_qa)
+        captured["prompt_template"] = prompt_template
         return "Final synthesis [1] (source: wiki://vat-policy)."
 
     monkeypatch.setattr(agent_service, "generate_final_synthesis_answer", fake_generate_final_synthesis_answer)
@@ -1033,15 +1049,90 @@ def test_run_synthesize_final_node_uses_subanswers_as_grounded_inputs(monkeypatc
             ],
             run_metadata=agent_service.build_graph_run_metadata(run_id="run-synthesize-node"),
         ),
+        prompt_template="Use the custom synthesis prompt",
     )
 
     assert output.final_answer == "Final synthesis [1] (source: wiki://vat-policy)."
     assert captured["main_question"] == "Explain VAT policy changes."
     assert captured["sub_qa_count"] == 1
+    assert captured["prompt_template"] == "Use the custom synthesis prompt"
+
+
+def test_run_sequential_graph_runner_forwards_custom_prompts_to_answer_and_synthesis_nodes(monkeypatch) -> None:
+    captured: dict[str, list[str | None]] = {"answer": [], "synthesis": []}
+
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(decomposition_sub_questions=["Sub-question A?"])
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        return agent_service.ExpandNodeOutput(expanded_queries=[node_input.sub_question])
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title="Doc for Sub-question A?",
+            source="wiki://doc",
+            content="Evidence for Sub-question A?",
+            document_id="doc-sub-question-a",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.sub_question, "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = config, callbacks
+        return agent_service._build_rerank_bypass_output(node_input=node_input)
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
+        _ = callbacks
+        captured["answer"].append(prompt_template)
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer="Answer for Sub-question A? [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: node_input.citation_rows_by_index[1].model_copy(deep=True)},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
+        _ = node_input, callbacks
+        captured["synthesis"].append(prompt_template)
+        return agent_service.SynthesizeFinalNodeOutput(final_answer="Final from 1 subanswers.")
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+    monkeypatch.setattr(agent_service, "flush_langfuse_callback_handler", lambda handler: handler)
+
+    state = agent_service.run_sequential_graph_runner(
+        payload=RuntimeAgentRunRequest(
+            query="Main question?",
+            custom_prompts={
+                "subanswer": "Use the forwarded custom subanswer prompt.",
+                "synthesis": "Use the forwarded custom synthesis prompt.",
+            },
+        ),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-seq-custom-prompts"),
+    )
+
+    assert captured["answer"] == ["Use the forwarded custom subanswer prompt."]
+    assert captured["synthesis"] == ["Use the forwarded custom synthesis prompt."]
+    assert state.output == "Final from 1 subanswers."
 
 
 def test_run_synthesize_final_node_falls_back_when_final_answer_has_no_citations(monkeypatch) -> None:
-    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
         _ = main_question, sub_qa
         return "VAT policy changed in 2025."
 
@@ -1082,7 +1173,7 @@ def test_run_synthesize_final_node_falls_back_when_final_answer_has_no_citations
 
 
 def test_run_synthesize_final_node_falls_back_when_final_answer_uses_invalid_citations(monkeypatch) -> None:
-    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, callbacks=None):
+    def fake_generate_final_synthesis_answer(*, main_question: str, sub_qa, prompt_template=None, callbacks=None):
         _ = main_question, sub_qa
         return "VAT policy changed in 2025 [9] (source: wiki://vat-policy)."
 
@@ -1202,7 +1293,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         call_order.append(f"answer:{node_input.sub_question}")
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1221,7 +1312,7 @@ def test_run_sequential_graph_runner_executes_strict_node_order(monkeypatch) -> 
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         call_order.append("synthesize_final")
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
@@ -1319,7 +1410,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         completion_order.append(node_input.sub_question)
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1338,7 +1429,7 @@ def test_run_parallel_graph_runner_preserves_subquestion_order_and_emits_snapsho
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
         )
@@ -1444,7 +1535,7 @@ def test_run_parallel_graph_runner_is_deterministic_across_repeat_runs(monkeypat
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1463,7 +1554,7 @@ def test_run_parallel_graph_runner_is_deterministic_across_repeat_runs(monkeypat
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
@@ -1549,7 +1640,7 @@ def test_run_sequential_graph_runner_is_deterministic_across_repeat_runs(monkeyp
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         row = agent_service.CitationSourceRow(
             citation_index=1,
@@ -1568,7 +1659,7 @@ def test_run_sequential_graph_runner_is_deterministic_across_repeat_runs(monkeyp
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
@@ -1637,7 +1728,7 @@ def test_run_sequential_graph_runner_disables_query_expansion_per_run_without_mu
         _ = config, callbacks
         return agent_service._build_rerank_bypass_output(node_input=node_input)
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.AnswerSubquestionNodeOutput(
             sub_answer=f"Answer for {node_input.sub_question} [1].",
@@ -1647,7 +1738,7 @@ def test_run_sequential_graph_runner_disables_query_expansion_per_run_without_mu
             citation_rows_by_index={1: node_input.citation_rows_by_index[1].model_copy(deep=True)},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
@@ -1752,7 +1843,7 @@ def test_run_parallel_graph_runner_disables_rerank_per_run_without_mutating_defa
             citation_rows_by_index={1: row},
         )
 
-    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.AnswerSubquestionNodeOutput(
             sub_answer=f"Answer from {node_input.reranked_docs[0].title} [1].",
@@ -1762,7 +1853,7 @@ def test_run_parallel_graph_runner_disables_rerank_per_run_without_mutating_defa
             citation_rows_by_index={1: node_input.citation_rows_by_index[1].model_copy(deep=True)},
         )
 
-    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None, prompt_template=None):
         _ = callbacks
         return agent_service.SynthesizeFinalNodeOutput(
             final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
