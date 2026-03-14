@@ -14,6 +14,7 @@ from services.vector_store_service import (
     CITATION_DOCUMENT_ID_METADATA_KEY,
     CITATION_SOURCE_METADATA_KEY,
     CITATION_TITLE_METADATA_KEY,
+    _normalize_document_metadata,
     add_documents_to_store,
     build_initial_search_context,
     get_vector_store,
@@ -90,6 +91,30 @@ def test_add_documents_to_store_returns_ids_and_persists_wiki_metadata() -> None
     assert more_ids[0]
 
     vector_store.delete_collection()
+
+
+def test_normalize_document_metadata_prefers_explicit_citation_keys() -> None:
+    document = Document(
+        id="doc-explicit",
+        page_content="Explicit metadata should survive normalization.",
+        metadata={
+            CITATION_TITLE_METADATA_KEY: "Explicit Title",
+            CITATION_SOURCE_METADATA_KEY: "https://example.com/explicit",
+            CITATION_DOCUMENT_ID_METADATA_KEY: "doc-explicit",
+        },
+    )
+
+    normalized = _normalize_document_metadata(document)
+
+    assert normalized.metadata == {
+        CITATION_TITLE_METADATA_KEY: "Explicit Title",
+        CITATION_SOURCE_METADATA_KEY: "https://example.com/explicit",
+        CITATION_DOCUMENT_ID_METADATA_KEY: "doc-explicit",
+        "topic": "Explicit Title",
+        "wiki_url": "https://example.com/explicit",
+        "wiki_page": "Explicit Title",
+    }
+    assert normalized.id == "doc-explicit"
 
 
 def test_search_documents_for_context_uses_threshold_when_available() -> None:

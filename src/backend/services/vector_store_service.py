@@ -50,8 +50,18 @@ def get_vector_store(connection: str, collection_name: str, embeddings: Embeddin
 def _normalize_document_metadata(document: Document) -> Document:
     """Keep only required citation metadata fields for retrieval/filtering."""
     metadata = document.metadata or {}
-    topic = str(metadata.get("title") or metadata.get("wiki_page") or "").strip()
-    wiki_url = str(metadata.get("source") or metadata.get("wiki_url") or "").strip()
+    topic = str(
+        metadata.get(CITATION_TITLE_METADATA_KEY)
+        or metadata.get("title")
+        or metadata.get("wiki_page")
+        or ""
+    ).strip()
+    wiki_url = str(
+        metadata.get(CITATION_SOURCE_METADATA_KEY)
+        or metadata.get("source")
+        or metadata.get("wiki_url")
+        or ""
+    ).strip()
     document_id = str(metadata.get(CITATION_DOCUMENT_ID_METADATA_KEY) or document.id or "").strip()
     # Preserve explicit citation keys and legacy wiki keys for non-citation consumers.
     slim_metadata = {
