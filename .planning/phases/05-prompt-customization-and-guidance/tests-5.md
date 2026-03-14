@@ -1,5 +1,5 @@
 ---
-status: ready
+status: in_progress
 phase: "05-prompt-customization-and-guidance"
 source:
   - 05-01-SUMMARY.md
@@ -8,12 +8,12 @@ source:
   - 05-04-SUMMARY.md
   - 05-05-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Phase 05 UAT coverage for prompt customization and guidance, focusing on observable API behavior, runtime output impact, guardrail preservation, precedence, and documentation clarity.
+Test 2 pending. Test 1 passed on 2026-03-14 for alias compatibility and safe prompt key handling.
 
 ## Information Needed from the Summary
 
@@ -56,6 +56,7 @@ Phase 05 UAT coverage for prompt customization and guidance, focusing on observa
    - Given a run request that includes `custom-prompts` with `subanswer`, `synthesis`, and an unsupported key.
    - When the request is submitted through the standard run endpoint.
    - Then the run is accepted, supported overrides are applied, unsupported keys are ignored, and no schema/validation error is returned.
+   - result: Pass on 2026-03-14. `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_runtime_agent_run_request_accepts_custom_prompts_alias_and_ignores_unknown_keys tests/api/test_agent_run.py::test_post_run_forwards_custom_prompts_alias_and_ignores_unknown_keys tests/sdk/test_runtime_config.py::test_runtime_config_parses_custom_prompts_with_alias_and_ignores_unknown_keys` passed; the request model accepted `custom-prompts`, filtered the unsupported key, the standard run endpoint forwarded only `subanswer` and `synthesis`, and runtime config alias parsing matched the same behavior.
 
 2. **Default Behavior Preserved When Overrides Are Omitted**
    - Given two equivalent runs with no prompt override values set.
@@ -84,8 +85,8 @@ Phase 05 UAT coverage for prompt customization and guidance, focusing on observa
 
 ## Summary
 
-This test set validates the complete observable outcomes delivered in Phase 05: additive prompt-input contracts, preserved defaults, prompt influence at runtime, non-bypass safety guardrails, deterministic precedence across sync/async APIs, and accurate end-user documentation.
+Test 1 passed on 2026-03-14. Remaining coverage is still pending for defaults, runtime prompt influence, guardrails, precedence, and documentation.
 
 ## Gaps
 
-[]
+- Tests 2-6 not yet executed.

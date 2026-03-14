@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 23. (move +1 after each turn)
+Current section to work on: section 24. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -530,7 +530,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_runtime_agent_run_request_accepts_custom_prompts_alias_and_ignores_unknown_keys tests/api/test_agent_run.py::test_post_run_forwards_custom_prompts_alias_and_ignores_unknown_keys tests/sdk/test_runtime_config.py::test_runtime_config_parses_custom_prompts_with_alias_and_ignores_unknown_keys` passed, confirming `custom-prompts` is accepted through the request model and standard run endpoint, unsupported prompt keys are ignored safely, and runtime config alias parsing resolves the same supported `subanswer` and `synthesis` keys.
 
 ## Section 24 — 05-prompt-customization-and-guidance — tests-5 — Test 2 (Validation)
 - Source test markdown: `.planning/phases/05-prompt-customization-and-guidance/tests-5.md`
