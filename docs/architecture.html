@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agent-search Application Documentation</title>
+  <style>
+    :root {
+      --bg: #f6f3ed;
+      --paper: #fffdf8;
+      --ink: #1d1d1b;
+      --muted: #5e5a53;
+      --line: #ddd4c6;
+      --accent: #8f4f22;
+      --accent-soft: #f4e1ce;
+      --panel: rgba(255, 253, 248, 0.94);
+      --shadow: 0 16px 40px rgba(48, 34, 19, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.58;
+      background:
+        radial-gradient(circle at top left, rgba(143, 79, 34, 0.12), transparent 28%),
+        linear-gradient(180deg, #efe6d9 0%, var(--bg) 22%, #fbf9f5 100%);
+    }
+
+    a { color: var(--accent); }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.92em;
+      background: #f5ede3;
+      border-radius: 0.3rem;
+      padding: 0.08rem 0.32rem;
+    }
+
+    .layout {
+      width: min(1280px, calc(100vw - 32px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 24px;
+      padding: 24px 0 48px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      background: rgba(255, 253, 248, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.13em;
+      font-size: 0.75rem;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    .sidebar h1 {
+      margin: 0 0 10px;
+      font-size: 1.55rem;
+      line-height: 1.05;
+    }
+
+    .sidebar p {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .toc a {
+      display: block;
+      text-decoration: none;
+      color: var(--ink);
+      padding: 8px 10px;
+      border-radius: 10px;
+      margin-bottom: 4px;
+    }
+
+    .toc a:hover,
+    .toc a:focus {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .content { min-width: 0; }
+
+    .hero,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 34px;
+      margin-bottom: 24px;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -50px;
+      top: -70px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(143, 79, 34, 0.18) 0%, rgba(143, 79, 34, 0) 70%);
+      pointer-events: none;
+    }
+
+    .hero h2 {
+      margin: 0 0 10px;
+      font-size: clamp(2.05rem, 3vw, 3rem);
+      line-height: 0.96;
+      max-width: 11ch;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 74ch;
+      color: var(--muted);
+      font-size: 1.03rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .meta span {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.9rem;
+    }
+
+    section {
+      padding: 28px;
+      margin-bottom: 24px;
+    }
+
+    section h2 {
+      margin: 0 0 14px;
+      font-size: 1.7rem;
+    }
+
+    section h3 {
+      margin: 22px 0 10px;
+      font-size: 1.12rem;
+    }
+
+    p { margin: 0 0 14px; }
+    ul, ol { margin: 0 0 14px 20px; padding: 0; }
+    li + li { margin-top: 6px; }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+    }
+
+    .card h3, .card h4 { margin-top: 0; }
+    .card p:last-child, .card ul:last-child, .card ol:last-child { margin-bottom: 0; }
+
+    .stat {
+      font-size: 2rem;
+      color: var(--accent);
+      line-height: 1;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .flow {
+      border-left: 4px solid var(--accent);
+      padding-left: 14px;
+      margin-bottom: 18px;
+    }
+
+    .warn {
+      background: #fff3df;
+      border-color: #e7c89c;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--paper);
+    }
+
+    th, td {
+      padding: 14px 16px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      background: #f2e5d2;
+      color: var(--accent);
+      font-size: 0.92rem;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .footer-note {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    @media (max-width: 1040px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; max-height: none; }
+    }
+
+    @media (max-width: 720px) {
+      .two, .three { grid-template-columns: 1fr; }
+      .hero, section, .sidebar { border-radius: 18px; }
+      .hero, section { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="eyebrow">Single Source Of Truth</p>
+      <h1>agent-search Documentation</h1>
+      <p>
+        Consolidated HTML reference for the <code>agent-search</code> application only. This document merges the relevant
+        planning notes from <code>.planning/codebase</code> with direct code inspection of the repo.
+      </p>
+      <nav class="toc" aria-label="Table of contents">
+        <a href="#overview">Overview</a>
+        <a href="#scope">Scope And Sources</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#structure">Structure</a>
+        <a href="#flow">How It Works</a>
+        <a href="#api">API Surface</a>
+        <a href="#data">Data Model</a>
+        <a href="#stack">Stack</a>
+        <a href="#integrations">Integrations</a>
+        <a href="#conventions">Conventions</a>
+        <a href="#testing">Testing</a>
+        <a href="#concerns">Concerns</a>
+        <a href="#tradeoffs">Tradeoffs</a>
+        <a href="#operations">Operational Notes</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <header class="hero" id="overview">
+        <p class="eyebrow">Application Reference</p>
+        <h2>One document for how agent-search is built and why it behaves the way it does.</h2>
+        <p>
+          <code>agent-search</code> is a LangGraph-first, citation-grounded RAG application that exists in two forms at once:
+          an SDK for direct runtime use and a containerized web application with a FastAPI backend, React/Vite frontend,
+          pgvector-backed storage, canonical <code>thread_id</code> handling, and async lifecycle delivery for long-running runs and wiki ingestion.
+        </p>
+        <div class="meta">
+          <span>Project root: <code>agent-search/</code></span>
+          <span>Planning sources dated: 2026-03-13</span>
+          <span>Scope: agent-search only</span>
+        </div>
+      </header>
+
+      <section id="scope">
+        <h2>Scope And Sources</h2>
+        <p>
+          This document intentionally narrows the broader planning notes in <code>.planning/codebase</code> down to the part that matters for this repo:
+          the architecture, concerns, conventions, integrations, stack, structure, and testing practices that are relevant to <code>agent-search</code>.
+        </p>
+        <div class="grid three">
+          <div class="card">
+            <div class="stat">7</div>
+            <p>Planning categories merged here: architecture, structure, stack, conventions, integrations, testing, and concerns.</p>
+          </div>
+          <div class="card">
+            <div class="stat">2</div>
+            <p>Primary surfaces: SDK/runtime library and web application.</p>
+          </div>
+          <div class="card">
+            <div class="stat">3</div>
+            <p>Compose services in the default local topology: database, backend, and frontend. Browser verification uses a local Chrome DevTools session via <code>launch-devtools.sh</code>.</p>
+          </div>
+        </div>
+        <h3>Primary Inputs Used For This HTML</h3>
+        <ul>
+          <li>Planning docs in <code>.planning/codebase/*.md</code>, filtered to agent-search-relevant content.</li>
+          <li>Application entrypoints such as <code>src/backend/main.py</code>, <code>src/backend/routers/agent.py</code>, and <code>src/frontend/src/App.tsx</code>.</li>
+          <li>Runtime internals including <code>services/agent_service.py</code>, <code>agent_search/runtime/runner.py</code>, and <code>agent_search/runtime/jobs.py</code>.</li>
+          <li>Infrastructure and dependency files including <code>docker-compose.yml</code>, <code>src/backend/pyproject.toml</code>, and <code>src/frontend/package.json</code>.</li>
+        </ul>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture</h2>
+        <p>
+          The core architectural pattern is a containerized service app wrapped around a reusable SDK runtime. The HTTP API is thin and mostly delegates to SDK entrypoints,
+          while the actual question-answering logic now executes through a compiled LangGraph <code>StateGraph</code> over a canonical runtime state contract.
+        </p>
+        <div class="grid two">
+          <div class="card">
+            <h3>Primary Layers</h3>
+            <ul>
+              <li>Frontend UI in <code>src/frontend/</code> for wiki loading, run submission, polling, and visualization.</li>
+              <li>FastAPI backend in <code>src/backend/</code> for HTTP routing, dependency setup, and persistence.</li>
+              <li>SDK/runtime core in <code>src/backend/agent_search/</code> for public API methods, LangGraph execution, checkpoint bootstrap, and runtime jobs.</li>
+              <li>Runtime nodes and compatibility services cooperate: LangGraph nodes live under <code>agent_search/runtime/</code>, while legacy service functions still supply node logic and mapping helpers.</li>
+              <li>Postgres + pgvector persistence stores internal documents and chunks, and Postgres also tracks runtime executions, checkpoint links, and idempotency effects.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Core Patterns</h3>
+            <ul>
+              <li>Entrypoint to router to service separation.</li>
+              <li>SDK as the main business-logic surface, with HTTP as a wrapper around it.</li>
+              <li>LangGraph state-graph execution with typed reducers, stable channels, and per-stage snapshots.</li>
+              <li>Stable <code>thread_id</code> identity across sync, async, retry, and resume flows.</li>
+              <li>Lifecycle events streamed over SSE while job status remains queryable over REST.</li>
+              <li>Environment-composed runtime via Docker Compose and env vars.</li>
+              <li>Fallback-first behavior when retrieval or model dependencies are unavailable or slow.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Key Architectural Decision</h3>
+        <p>
+          The repo keeps the runtime logic inside the Python package and reuses it from both the SDK-facing API and the web backend.
+          That is the most important design choice in this codebase: the web app is not a separate implementation of the algorithm,
+          it is a transport and orchestration layer over the same LangGraph runtime core. Phase 5 documents the project after the migration rather than describing a future cutover.
+        </p>
+      </section>
+
+      <section id="structure">
+        <h2>Structure</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Role</th>
+                <th>Important Files</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>src/backend/</code></td>
+                <td>FastAPI app, DB access, schemas, services, tools, and tests.</td>
+                <td><code>main.py</code>, <code>routers/agent.py</code>, <code>routers/internal_data.py</code>, <code>services/agent_service.py</code></td>
+              </tr>
+              <tr>
+                <td><code>src/backend/agent_search/</code></td>
+                <td>Public SDK package and runtime-specific modules.</td>
+                <td><code>public_api.py</code>, <code>runtime/graph/</code>, <code>runtime/runner.py</code>, <code>runtime/jobs.py</code>, <code>runtime/persistence.py</code></td>
+              </tr>
+              <tr>
+                <td><code>src/frontend/</code></td>
+                <td>Vite/React UI for ingestion and agent runs.</td>
+                <td><code>src/App.tsx</code>, <code>src/utils/api.ts</code>, <code>src/utils/config.ts</code></td>
+              </tr>
+              <tr>
+                <td><code>sdk/</code></td>
+                <td>SDK packaging and supporting language-specific docs and assets.</td>
+                <td><code>sdk/README.md</code>, <code>sdk/core/</code>, <code>sdk/python/</code></td>
+              </tr>
+              <tr>
+                <td><code>docs/</code></td>
+                <td>Project documentation surface.</td>
+                <td><code>application-documentation.html</code></td>
+              </tr>
+              <tr>
+                <td><code>docker-compose.yml</code></td>
+                <td>Local service topology and environment composition.</td>
+                <td>db, backend, frontend, chrome</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Where New Code Belongs</h3>
+        <div class="grid two">
+          <div class="card">
+            <h3>Backend</h3>
+            <ul>
+              <li>HTTP endpoints: <code>src/backend/routers/</code></li>
+              <li>Request/response contracts: <code>src/backend/schemas/</code></li>
+              <li>Domain logic: <code>src/backend/services/</code></li>
+              <li>SDK/public runtime: <code>src/backend/agent_search/</code></li>
+              <li>Persistence models: <code>src/backend/models.py</code> and migrations under <code>alembic/versions/</code></li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Frontend</h3>
+            <ul>
+              <li>Main interaction flow: <code>src/frontend/src/App.tsx</code></li>
+              <li>HTTP client and validation: <code>src/frontend/src/utils/api.ts</code></li>
+              <li>Tests: <code>src/frontend/src/App.test.tsx</code> and test setup under <code>src/frontend/src/test/</code></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="flow">
+        <h2>How It Works</h2>
+        <p>
+          The application has two major workflows: internal wiki ingestion and LangGraph runtime query execution. Query execution now has one canonical state-graph path, with sync, async, SSE, and resume behavior layered around that shared runtime.
+        </p>
+
+        <div class="flow">
+          <h3>1. Wiki Ingestion Flow</h3>
+          <ol>
+            <li>The UI calls <code>/api/internal-data/wiki-sources</code> to discover curated load options and current loaded state.</li>
+            <li>The user starts a sync or async load via <code>/api/internal-data/load</code> or <code>/api/internal-data/load-async</code>.</li>
+            <li><code>services/internal_data_service.py</code> resolves the wiki source, fetches documents, chunks them, embeds them, and writes vectors to the configured collection.</li>
+            <li>Metadata rows are inserted into <code>internal_documents</code>, while chunk vectors live in the vector store layer.</li>
+            <li>The frontend polls load status every second and can cancel an in-flight load job.</li>
+          </ol>
+        </div>
+
+        <div class="flow">
+          <h3>2. Agent Query Flow</h3>
+          <ol>
+            <li>The UI submits a query through <code>/api/agents/run-async</code> and immediately opens a server-sent event stream on <code>/api/agents/run-events/{job_id}</code>. <code>/api/agents/run-status/{job_id}</code> remains available for backfill or polling.</li>
+            <li><code>routers/agent.py</code> builds runtime dependencies: a vector store pointed at the configured collection and a <code>ChatOpenAI</code> model instance.</li>
+            <li>The router delegates to SDK functions in <code>agent_search/public_api.py</code>.</li>
+            <li>The SDK validates inputs, normalizes config, preserves or mints a canonical <code>thread_id</code>, and builds a <code>RuntimeAgentRunRequest</code> that includes <code>controls</code>, <code>runtime_config</code>, and optional <code>custom_prompts</code>.</li>
+            <li><code>agent_search/runtime/graph/builder.py</code> compiles the runtime graph and <code>runtime/graph/execution.py</code> executes it with LangGraph stream modes for values, tasks, updates, and checkpoints.</li>
+            <li>The graph decomposes the query into sub-questions, optionally pauses for HITL subquestion review, then fans out sub-questions into parallel lanes for query expansion, search, rerank, and sub-answer generation.</li>
+            <li>Query expansion and reranking can be disabled per request via <code>runtime_config</code> (or via top-level SDK overrides like <code>rerank_enabled</code> and <code>query_expansion_enabled</code>).</li>
+            <li>The synthesis node merges sub-answers into the final response and maps citation indices back to stored evidence rows.</li>
+            <li>SSE lifecycle events (<code>stage.started</code>, <code>stage.updated</code>, <code>stage.snapshot</code>, <code>stage.completed</code>, <code>run.paused</code>, <code>run.completed</code>, <code>run.failed</code>) stream to the UI for the timeline and artifacts view.</li>
+          </ol>
+        </div>
+
+        <div class="flow">
+          <h3>3. Runtime State And Recovery</h3>
+          <ol>
+            <li><strong>Canonical state</strong>: <code>RAGState</code> is the named runtime contract; LangGraph uses <code>RuntimeGraphState</code> to add graph-only channels such as initial search context.</li>
+            <li><strong>Stable identity</strong>: <code>thread_id</code> is validated as a UUID and stays stable across run creation, status reads, and resume operations.</li>
+            <li><strong>Checkpoint support</strong>: HITL or resume flows require a LangGraph checkpointer. The runtime bootstraps checkpoint tables when missing and persists checkpoints in the caller-provided Postgres database.</li>
+            <li><strong>HITL pause</strong>: subquestion review pauses return an interrupt payload plus <code>checkpoint_id</code>; resume calls apply review decisions before continuing.</li>
+            <li><strong>Execution ledger</strong>: runtime execution rows, checkpoint links, and idempotency effects are stored in Postgres so retries and resumptions have a durable record.</li>
+            <li><strong>Delivery split</strong>: REST status and SSE events are caller-facing, while checkpoints and execution identity are runtime-facing infrastructure.</li>
+          </ol>
+        </div>
+
+        <div class="flow">
+          <h3>4. Runtime Stages</h3>
+          <ol>
+            <li><strong>Decompose</strong>: turn the user question into narrow atomic sub-questions.</li>
+            <li><strong>Expand (optional)</strong>: generate alternate search queries for each sub-question when query expansion is enabled.</li>
+            <li><strong>Search</strong>: retrieve candidate passages from the vector store.</li>
+            <li><strong>Rerank (optional)</strong>: reorder passages, usually with OpenAI-backed reranking.</li>
+            <li><strong>Answer</strong>: generate grounded sub-answers and verify whether each answer is supported.</li>
+            <li><strong>Synthesize</strong>: produce the final response and map citation indices back to stored evidence rows.</li>
+          </ol>
+          <p class="note">Sub-questions run in parallel lanes after decomposition; each lane executes expand/search/rerank/answer before synthesis merges the results.</p>
+        </div>
+
+        <h3>Fallback Behavior</h3>
+        <p>
+          This app no longer applies runtime timeout guardrails. The service layer still handles missing API keys, malformed model outputs, retrieval outages,
+          and citation-contract fallbacks, but it does not cut off work based on elapsed time.
+        </p>
+      </section>
+
+      <section id="api">
+        <h2>API Surface</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Agent Endpoints</h3>
+            <ul>
+              <li><code>POST /api/agents/run</code>: synchronous run returning a <code>RuntimeAgentRunResponse</code>.</li>
+              <li><code>POST /api/agents/run-async</code>: start async run and return job metadata.</li>
+              <li><code>GET /api/agents/run-status/{job_id}</code>: retrieve status, stage snapshots, artifacts, partial outputs, and final result when available.</li>
+              <li><code>GET /api/agents/run-events/{job_id}</code>: stream lifecycle events over server-sent events.</li>
+              <li><code>POST /api/agents/run-cancel/{job_id}</code>: request cancellation.</li>
+              <li><code>POST /api/agents/run-resume/{job_id}</code>: resume a paused run from checkpoint state.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Internal Data Endpoints</h3>
+            <ul>
+              <li><code>GET /api/internal-data/wiki-sources</code>: curated wiki source list with already-loaded flags.</li>
+              <li><code>POST /api/internal-data/load</code>: synchronous wiki ingestion.</li>
+              <li><code>POST /api/internal-data/load-async</code>: start async ingestion.</li>
+              <li><code>GET /api/internal-data/load-status/{job_id}</code>: poll ingestion progress.</li>
+              <li><code>POST /api/internal-data/load-cancel/{job_id}</code>: cancel ingestion.</li>
+              <li><code>POST /api/internal-data/wipe</code>: delete internal documents and chunks.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Public SDK Surface</h3>
+        <p>
+          The public Python entrypoints live in <code>src/backend/agent_search/public_api.py</code>. The main methods are <code>advanced_rag()</code> (supported entrypoint),
+          <code>run()</code> as a deprecated alias, <code>run_async()</code>, <code>get_run_status()</code>, <code>resume_run()</code>, and <code>cancel_run()</code>. The SDK accepts
+          optional overrides such as <code>rerank_enabled</code> and <code>query_expansion_enabled</code>, plus a <code>config</code> map that can hold <code>controls</code>,
+          <code>runtime_config</code>, and <code>custom_prompts</code>. HITL or resume flows require a checkpoint-backed run via <code>checkpoint_db_url</code>; the PyPI package also
+          documents optional injected <code>checkpointer</code> usage for advanced callers.
+        </p>
+
+        <h3>Async Contract</h3>
+        <p>
+          Async runs execute through an in-process <code>ThreadPoolExecutor</code> and active job registry, while execution identity, checkpoint linkage, and idempotency records
+          are persisted in Postgres. The UI starts a run via <code>/api/agents/run-async</code> and listens on the SSE stream at <code>/api/agents/run-events/{job_id}</code> for
+          <code>stage.*</code> and <code>run.*</code> lifecycle events; <code>/api/agents/run-status/{job_id}</code> remains available for polling or recovery.
+        </p>
+      </section>
+
+      <section id="data">
+        <h2>Data Model</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Persistent Tables</h3>
+            <ul>
+              <li><code>internal_documents</code>: source metadata and original content for loaded wiki documents.</li>
+              <li><code>internal_document_chunks</code>: per-chunk text, vector embedding, and JSON metadata.</li>
+              <li><code>runtime_execution_runs</code>: canonical run and <code>thread_id</code> registry.</li>
+              <li><code>runtime_checkpoint_links</code>: latest checkpoint linkage for resumable runs.</li>
+              <li><code>runtime_idempotency_effects</code>: replay-safe effect ledger for durable execution paths.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Runtime State</h3>
+            <ul>
+              <li><code>RuntimeAgentRunRequest</code> and <code>RuntimeAgentRunResponse</code> define the outer API contract, including <code>controls</code>, <code>runtime_config</code>, and <code>custom_prompts</code>.</li>
+              <li><code>RAGState</code> is the canonical runtime state contract for decomposition results, artifacts, final answer text, citations, run metadata, and snapshots.</li>
+              <li><code>RuntimeGraphState</code> wraps <code>RAGState</code> with LangGraph-only channels and reducer semantics.</li>
+              <li><code>SubQuestionArtifacts</code> retains the evidence chain for each lane: expanded queries, retrieved docs, reranked docs, and citation rows.</li>
+              <li>Paused HITL runs surface <code>interrupt_payload</code> and <code>checkpoint_id</code> so resume calls can apply subquestion decisions.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Citation Mapping</h3>
+        <p>
+          Final citations are not generic references; they are rows mapped back to retrieved or reranked documents. Citation quality depends on chunk metadata such as title,
+          source URL, and optional document identifiers being present at ingestion time.
+        </p>
+      </section>
+
+      <section id="stack">
+        <h2>Stack</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Languages And Frameworks</h3>
+            <ul>
+              <li>Python 3.11+ for backend and SDK.</li>
+              <li>FastAPI for the HTTP layer.</li>
+              <li>SQLAlchemy, Alembic, psycopg, and pgvector for persistence.</li>
+              <li>TypeScript, React 18, and Vite 5 for the frontend.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Core Runtime Dependencies</h3>
+            <ul>
+              <li><code>langchain</code>, <code>langchain-openai</code>, and <code>langchain-community</code> for model and retriever integration.</li>
+              <li><code>langgraph</code> and <code>langgraph-checkpoint-postgres</code> for compiled state-graph execution and checkpoint persistence.</li>
+              <li><code>wikipedia</code> and text splitters for internal source ingestion.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Compose Topology</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Purpose</th>
+                <th>Default Port</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>db</code></td>
+                <td>Postgres with pgvector extension.</td>
+                <td><code>5432</code></td>
+              </tr>
+              <tr>
+                <td><code>backend</code></td>
+                <td>FastAPI API and SDK-backed runtime.</td>
+                <td><code>8000</code></td>
+              </tr>
+              <tr>
+                <td><code>frontend</code></td>
+                <td>Vite development server.</td>
+                <td><code>5173</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Important Environment Variables</h3>
+        <ul>
+          <li><code>DATABASE_URL</code> for DB connectivity.</li>
+          <li><code>OPENAI_API_KEY</code> for decomposition, query expansion, reranking, sub-answer generation, and synthesis paths.</li>
+          <li><code>VECTOR_COLLECTION_NAME</code> to select the pgvector collection.</li>
+          <li><code>RUNTIME_AGENT_MODEL</code> and <code>DECOMPOSITION_ONLY_MODEL</code> to control model selection.</li>
+          <li><code>VITE_API_BASE_URL</code> and frontend timeout variables for browser behavior.</li>
+          <li>Runtime timeout env vars remain in config surfaces for compatibility, but the app no longer enforces timeout guardrails during execution.</li>
+        </ul>
+      </section>
+
+      <section id="integrations">
+        <h2>Integrations</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>LLM And Reranking</h3>
+            <ul>
+              <li>OpenAI is the dominant provider in the current implementation.</li>
+              <li>Model usage appears in decomposition, query expansion, reranking, sub-answer generation, and synthesis.</li>
+              <li>Several paths degrade gracefully if the key is missing.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Tracing</h3>
+            <ul>
+              <li>Tracing utilities exist in the codebase, but Langfuse is no longer supported as part of the public SDK/runtime contract.</li>
+              <li>Operational logging and lifecycle events remain the primary visibility mechanisms for runs.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Source Systems</h3>
+            <ul>
+              <li>Wikipedia-derived curated sources are the primary built-in internal data source.</li>
+              <li>The ingestion path resolves wiki documents, chunks them, embeds them, and stores them locally.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Persistence</h3>
+            <ul>
+              <li>Postgres is the system of record.</li>
+              <li>pgvector supports semantic retrieval for internal document chunks.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="conventions">
+        <h2>Conventions</h2>
+        <p>
+          The broader planning notes had convention examples drawn heavily from other repos, but the conventions actually visible in this repo are straightforward and consistent.
+        </p>
+        <div class="grid two">
+          <div class="card">
+            <h3>Naming</h3>
+            <ul>
+              <li>Backend modules use <code>snake_case.py</code>.</li>
+              <li>Tests follow <code>test_*.py</code> on the backend and <code>*.test.tsx</code> on the frontend.</li>
+              <li>React components use <code>PascalCase.tsx</code> such as <code>App.tsx</code>.</li>
+              <li>Schema and model classes use <code>PascalCase</code>.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Code Shape</h3>
+            <ul>
+              <li>Routers stay thin and build dependencies, then delegate.</li>
+              <li>Services hold the real behavior and fallback rules.</li>
+              <li>Pydantic models define request, response, and graph-state contracts.</li>
+              <li>Logging is explicit and operationally oriented, especially around runtime stages and fallbacks.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Error Handling Style</h3>
+        <p>
+          Errors are either translated into <code>HTTPException</code> at API boundaries or mapped into SDK-specific error types.
+          Internally, many functions prefer controlled fallback output over fatal exceptions, especially when LLM-dependent steps fail.
+        </p>
+      </section>
+
+      <section id="testing">
+        <h2>Testing</h2>
+        <div class="grid three">
+          <div class="card">
+            <h3>Backend API Tests</h3>
+            <p>FastAPI route tests validate response shapes, error mapping, and endpoint behavior.</p>
+          </div>
+          <div class="card">
+            <h3>Service And Runtime Tests</h3>
+            <p>Unit tests cover timeout config parsing, decomposition normalization, graph-state mapping, query expansion, verification, vector store behavior, and SDK entrypoints.</p>
+          </div>
+          <div class="card">
+            <h3>Frontend Tests</h3>
+            <p>Vitest and Testing Library cover the main React app behavior and API interaction patterns.</p>
+          </div>
+        </div>
+
+        <h3>Observed Test Layout</h3>
+        <ul>
+          <li><code>src/backend/tests/api/</code></li>
+          <li><code>src/backend/tests/services/</code></li>
+          <li><code>src/backend/tests/sdk/</code></li>
+          <li><code>src/backend/tests/tools/</code></li>
+          <li><code>src/backend/tests/utils/</code></li>
+          <li><code>src/frontend/src/App.test.tsx</code> and shared test setup under <code>src/frontend/src/test/</code></li>
+        </ul>
+
+        <h3>Common Commands</h3>
+        <ul>
+          <li><code>cd src/backend &amp;&amp; uv run pytest</code></li>
+          <li><code>cd src/frontend &amp;&amp; npm test</code></li>
+          <li><code>docker compose up</code> for full-stack local validation</li>
+        </ul>
+      </section>
+
+      <section id="concerns">
+        <h2>Concerns</h2>
+        <div class="grid two">
+          <div class="card warn">
+            <h3>Known Bug</h3>
+            <p>
+              The planning concerns correctly identify a CORS mismatch in <code>src/backend/main.py</code>:
+              <code>allow_origins=["*"]</code> is combined with <code>allow_credentials=True</code>.
+              That combination is invalid for credentialed browser requests and should be replaced with explicit origins.
+            </p>
+          </div>
+          <div class="card warn">
+            <h3>Security Gap</h3>
+            <p>
+              The same wildcard CORS configuration is also the main documented security concern for this app.
+              The application is otherwise lightweight and does not currently implement a deeper auth model.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Operational Fragility</h3>
+            <ul>
+              <li>Active async status and SSE delivery still depend on in-memory job objects, so process restarts can interrupt live streaming behavior.</li>
+              <li>The backend resolves critical dependencies at request time rather than through a managed service container abstraction.</li>
+              <li>Many stages depend on OpenAI availability for best quality, even though fallback behavior exists.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Performance Limits</h3>
+            <ul>
+              <li>Multi-stage LLM execution can be slow, which is why the UI defaults to SSE streaming and long frontend timeouts.</li>
+              <li>Each sub-question can fan out into multiple expanded queries, increasing search and rerank load.</li>
+              <li>The default threadpool-based async model is suited to local or small deployments, not large distributed workloads.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="tradeoffs">
+        <h2>Tradeoffs</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Why The Current Design Is Good</h3>
+            <ul>
+              <li>One LangGraph runtime implementation serves both SDK and web use cases.</li>
+              <li>Stage snapshots make the system inspectable, not just opaque.</li>
+              <li>Stable <code>thread_id</code> and checkpoint-aware execution improve operational traceability.</li>
+              <li>Curated wiki ingestion gives the app a deterministic internal corpus for demos and controlled tests.</li>
+              <li>Fallback logic prevents many empty-screen failures.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>What The Design Trades Away</h3>
+            <ul>
+              <li>In-memory async job tracking still limits horizontal scaling even though run identity and checkpoints are persisted.</li>
+              <li>Router-level dependency construction is simple but couples request handling to concrete provider setup.</li>
+              <li>Heavy fallback behavior improves uptime but can mask quality regressions unless carefully monitored.</li>
+              <li>One main frontend page keeps the UI simple, but it concentrates a lot of workflow complexity in <code>App.tsx</code>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <h3>Practical Reading Of The System</h3>
+        <p>
+          This is not just a CRUD app with an LLM call attached. It is a staged evidence-processing pipeline with an inspectable UI layered on top.
+          The most important operational fact is that the system is designed to preserve intermediate reasoning artifacts and surface them back to the caller.
+        </p>
+      </section>
+
+      <section id="operations">
+        <h2>Operational Notes</h2>
+        <ul>
+          <li>The backend container runs migrations on startup before launching Uvicorn.</li>
+          <li>The frontend expects the backend base URL via <code>VITE_API_BASE_URL</code> and uses long request timeouts for runs and ingestion.</li>
+          <li>The backend logs runtime progress aggressively to stdout to make container debugging easier.</li>
+          <li>The default vector collection name is <code>agent_search_internal_data</code>.</li>
+          <li>Initial search context retrieval is currently disabled in the runtime runner; the LangGraph path proceeds with an empty initial context before decomposition.</li>
+          <li>The migration to LangGraph-first execution is complete; remaining release work is documentation, SDK surface hygiene, and migration guidance rather than runtime cutover.</li>
+        </ul>
+        <p class="footer-note">
+          Document purpose: serve as the canonical HTML reference for <code>agent-search</code>, built from the planning notes plus direct repo inspection.
+        </p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
