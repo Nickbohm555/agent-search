@@ -456,13 +456,15 @@
         <div class="flow">
           <h3>2. Agent Query Flow</h3>
           <ol>
-            <li>The UI submits a query through <code>/api/agents/run-async</code> and begins polling <code>/api/agents/run-status/{job_id}</code>.</li>
+            <li>The UI submits a query through <code>/api/agents/run-async</code> and immediately opens a server-sent event stream on <code>/api/agents/run-events/{job_id}</code>. <code>/api/agents/run-status/{job_id}</code> remains available for backfill or polling.</li>
             <li><code>routers/agent.py</code> builds runtime dependencies: a vector store pointed at the configured collection and a <code>ChatOpenAI</code> model instance.</li>
             <li>The router delegates to SDK functions in <code>agent_search/public_api.py</code>.</li>
-            <li>The SDK validates inputs, normalizes config, preserves or mints a canonical <code>thread_id</code>, and sends the request into the LangGraph runtime.</li>
+            <li>The SDK validates inputs, normalizes config, preserves or mints a canonical <code>thread_id</code>, and builds a <code>RuntimeAgentRunRequest</code> that includes <code>controls</code>, <code>runtime_config</code>, and optional <code>custom_prompts</code>.</li>
             <li><code>agent_search/runtime/graph/builder.py</code> compiles the runtime graph and <code>runtime/graph/execution.py</code> executes it with LangGraph stream modes for values, tasks, updates, and checkpoints.</li>
-            <li>The graph decomposes the query into sub-questions, expands queries, searches, reranks, answers each sub-question, and synthesizes a final answer into canonical <code>RAGState</code>.</li>
-            <li>Stage snapshots and lifecycle events are emitted during the async run so the frontend can display the timeline, sub-questions, artifacts, retrieval counts, rerank bypasses, and citation coverage.</li>
+            <li>The graph decomposes the query into sub-questions, optionally pauses for HITL subquestion review, then fans out sub-questions into parallel lanes for query expansion, search, rerank, and sub-answer generation.</li>
+            <li>Query expansion and reranking can be disabled per request via <code>runtime_config</code> (or via top-level SDK overrides like <code>rerank_enabled</code> and <code>query_expansion_enabled</code>).</li>
+            <li>The synthesis node merges sub-answers into the final response and maps citation indices back to stored evidence rows.</li>
+            <li>SSE lifecycle events (<code>stage.started</code>, <code>stage.updated</code>, <code>stage.snapshot</code>, <code>stage.completed</code>, <code>run.paused</code>, <code>run.completed</code>, <code>run.failed</code>) stream to the UI for the timeline and artifacts view.</li>
           </ol>
         </div>
 
@@ -471,7 +473,8 @@
           <ol>
             <li><strong>Canonical state</strong>: <code>RAGState</code> is the named runtime contract; LangGraph uses <code>RuntimeGraphState</code> to add graph-only channels such as initial search context.</li>
             <li><strong>Stable identity</strong>: <code>thread_id</code> is validated as a UUID and stays stable across run creation, status reads, and resume operations.</li>
-            <li><strong>Checkpoint support</strong>: the durable runner can compile with a Postgres-backed LangGraph checkpointer, bootstrap checkpoint tables automatically, and resume from interrupt payloads.</li>
+            <li><strong>Checkpoint support</strong>: HITL or resume flows require a LangGraph checkpointer. The runtime bootstraps checkpoint tables when missing and persists checkpoints in the caller-provided Postgres database.</li>
+            <li><strong>HITL pause</strong>: subquestion review pauses return an interrupt payload plus <code>checkpoint_id</code>; resume calls apply review decisions before continuing.</li>
             <li><strong>Execution ledger</strong>: runtime execution rows, checkpoint links, and idempotency effects are stored in Postgres so retries and resumptions have a durable record.</li>
             <li><strong>Delivery split</strong>: REST status and SSE events are caller-facing, while checkpoints and execution identity are runtime-facing infrastructure.</li>
           </ol>
@@ -481,12 +484,13 @@
           <h3>4. Runtime Stages</h3>
           <ol>
             <li><strong>Decompose</strong>: turn the user question into narrow atomic sub-questions.</li>
-            <li><strong>Expand</strong>: generate alternate search queries for each sub-question.</li>
+            <li><strong>Expand (optional)</strong>: generate alternate search queries for each sub-question when query expansion is enabled.</li>
             <li><strong>Search</strong>: retrieve candidate passages from the vector store.</li>
-            <li><strong>Rerank</strong>: reorder passages, usually with OpenAI-backed reranking.</li>
+            <li><strong>Rerank (optional)</strong>: reorder passages, usually with OpenAI-backed reranking.</li>
             <li><strong>Answer</strong>: generate grounded sub-answers and verify whether each answer is supported.</li>
             <li><strong>Synthesize</strong>: produce the final response and map citation indices back to stored evidence rows.</li>
           </ol>
+          <p class="note">Sub-questions run in parallel lanes after decomposition; each lane executes expand/search/rerank/answer before synthesis merges the results.</p>
         </div>
 
         <h3>Fallback Behavior</h3>
@@ -525,14 +529,18 @@
 
         <h3>Public SDK Surface</h3>
         <p>
-          The public Python entrypoints live in <code>src/backend/agent_search/public_api.py</code>. The main methods are <code>advanced_rag()</code>,
-          <code>run()</code> as a deprecated alias, <code>run_async()</code>, <code>get_run_status()</code>, <code>resume_run()</code>, and <code>cancel_run()</code>.
+          The public Python entrypoints live in <code>src/backend/agent_search/public_api.py</code>. The main methods are <code>advanced_rag()</code> (supported entrypoint),
+          <code>run()</code> as a deprecated alias, <code>run_async()</code>, <code>get_run_status()</code>, <code>resume_run()</code>, and <code>cancel_run()</code>. The SDK accepts
+          optional overrides such as <code>rerank_enabled</code> and <code>query_expansion_enabled</code>, plus a <code>config</code> map that can hold <code>controls</code>,
+          <code>runtime_config</code>, and <code>custom_prompts</code>. HITL or resume flows require a checkpoint-backed run via <code>checkpoint_db_url</code>; the PyPI package also
+          documents optional injected <code>checkpointer</code> usage for advanced callers.
         </p>
 
         <h3>Async Contract</h3>
         <p>
-          Async runs still execute through an in-process <code>ThreadPoolExecutor</code> and active job registry, but the runtime now also persists execution identity,
-          checkpoint linkage, and idempotency records in Postgres. That means live status/SSE delivery remains single-process today, while run lineage and checkpoint recovery data survive independently of the in-memory job object.
+          Async runs execute through an in-process <code>ThreadPoolExecutor</code> and active job registry, while execution identity, checkpoint linkage, and idempotency records
+          are persisted in Postgres. The UI starts a run via <code>/api/agents/run-async</code> and listens on the SSE stream at <code>/api/agents/run-events/{job_id}</code> for
+          <code>stage.*</code> and <code>run.*</code> lifecycle events; <code>/api/agents/run-status/{job_id}</code> remains available for polling or recovery.
         </p>
       </section>
 
@@ -552,10 +560,11 @@
           <div class="card">
             <h3>Runtime State</h3>
             <ul>
-              <li><code>RuntimeAgentRunRequest</code> and <code>RuntimeAgentRunResponse</code> define the outer API contract.</li>
+              <li><code>RuntimeAgentRunRequest</code> and <code>RuntimeAgentRunResponse</code> define the outer API contract, including <code>controls</code>, <code>runtime_config</code>, and <code>custom_prompts</code>.</li>
               <li><code>RAGState</code> is the canonical runtime state contract for decomposition results, artifacts, final answer text, citations, run metadata, and snapshots.</li>
               <li><code>RuntimeGraphState</code> wraps <code>RAGState</code> with LangGraph-only channels and reducer semantics.</li>
               <li><code>SubQuestionArtifacts</code> retains the evidence chain for each lane: expanded queries, retrieved docs, reranked docs, and citation rows.</li>
+              <li>Paused HITL runs surface <code>interrupt_payload</code> and <code>checkpoint_id</code> so resume calls can apply subquestion decisions.</li>
             </ul>
           </div>
         </div>
@@ -584,7 +593,6 @@
             <ul>
               <li><code>langchain</code>, <code>langchain-openai</code>, and <code>langchain-community</code> for model and retriever integration.</li>
               <li><code>langgraph</code> and <code>langgraph-checkpoint-postgres</code> for compiled state-graph execution and checkpoint persistence.</li>
-              <li><code>langfuse</code> for callback-driven tracing.</li>
               <li><code>wikipedia</code> and text splitters for internal source ingestion.</li>
             </ul>
           </div>
@@ -645,8 +653,8 @@
           <div class="card">
             <h3>Tracing</h3>
             <ul>
-              <li>Langfuse support is built into the SDK and runtime through callback handlers and trace/span metadata.</li>
-              <li>Tracing is optional and can be configured through settings or environment variables.</li>
+              <li>Tracing utilities exist in the codebase, but Langfuse is no longer supported as part of the public SDK/runtime contract.</li>
+              <li>Operational logging and lifecycle events remain the primary visibility mechanisms for runs.</li>
             </ul>
           </div>
           <div class="card">
@@ -755,7 +763,7 @@
           <div class="card">
             <h3>Operational Fragility</h3>
             <ul>
-              <li>Active async status and SSE delivery still depend on in-memory job objects, so process restarts can interrupt live polling behavior.</li>
+              <li>Active async status and SSE delivery still depend on in-memory job objects, so process restarts can interrupt live streaming behavior.</li>
               <li>The backend resolves critical dependencies at request time rather than through a managed service container abstraction.</li>
               <li>Many stages depend on OpenAI availability for best quality, even though fallback behavior exists.</li>
             </ul>
@@ -763,7 +771,7 @@
           <div class="card">
             <h3>Performance Limits</h3>
             <ul>
-              <li>Multi-stage LLM execution can be slow, which is why the UI defaults to async polling and long frontend timeouts.</li>
+              <li>Multi-stage LLM execution can be slow, which is why the UI defaults to SSE streaming and long frontend timeouts.</li>
               <li>Each sub-question can fan out into multiple expanded queries, increasing search and rerank load.</li>
               <li>The default threadpool-based async model is suited to local or small deployments, not large distributed workloads.</li>
             </ul>
