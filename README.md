@@ -10,9 +10,9 @@ Onyx builds AI search and knowledge experiences for teams that need dependable, 
 
 ## Documentation
 
-The consolidated project reference is available at `docs/application-documentation.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
+The consolidated project reference is available at `docs/application-document.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
 
-Live architecture blog (GitHub Pages): `https://nickbohm.github.io/agent-search/architecture.html`.
+Live architecture blog (GitHub Pages): `https://nickbohm555.github.io/agent-search/architecture.html`.
 
 ## Data Flow Diagram
 
@@ -167,4 +167,10 @@ The SDK currently exposes two prompt override keys:
 - `custom_prompts.subanswer`
 - `custom_prompts.synthesis`
 
-If you do not override them, the runtime uses built-in defaults. Overrides replace the instruction block only. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs. For more detail, see `docs/prompt-customization.md`.
+If you do not override them, the runtime uses built-in defaults. Overrides replace the instruction block only. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs. For broader runtime and prompt behavior details, see `docs/application-document.html`.
+
+**Example Flow**
+
+Screenshot of the end-to-end flow with subquestion review, optional query expansion and reranking, and final synthesis.
+
+![Example flow](screenshot.png)
