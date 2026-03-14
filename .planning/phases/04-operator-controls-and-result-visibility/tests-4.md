@@ -75,13 +75,12 @@ Phase 4 UAT coverage for operator controls and result visibility, derived from d
    - Given a run emits streamed lifecycle updates and final output with sub-answer data
    - When backend payloads provide either legacy `sub_qa` or additive `sub_answers`
    - Then the frontend continues to render sub-answers in the run experience without regression.
+   - result: Pass on 2026-03-14. `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "renders subanswers from additive sub_answers payloads during streamed and final updates"` passed, confirming the frontend keeps the subanswer panel populated when streamed `stage.completed` events and terminal `run.completed` results provide additive `sub_answers`, preserving visible sub-answer rendering across the evolved response shape.
 
 ## Summary
 
-Phase 4 delivered run-scoped retrieval controls (query expansion and rerank) that are configurable through API, SDK, and frontend surfaces, while maintaining backward compatibility and preserving sub-answer visibility in streamed and final outputs. UAT-4.1 through UAT-4.4 passed on 2026-03-14. The tests above validate observable user-facing outcomes rather than internal implementation details.
+Phase 4 delivered run-scoped retrieval controls (query expansion and rerank) that are configurable through API, SDK, and frontend surfaces, while maintaining backward compatibility and preserving sub-answer visibility in streamed and final outputs. UAT-4.1 through UAT-4.5 passed on 2026-03-14. The tests above validate observable user-facing outcomes rather than internal implementation details.
 
 ## Gaps
 
-[
-  "UAT-4.1 through UAT-4.4 recorded as passing on 2026-03-14; UAT-4.5 remains to be executed."
-]
+[]

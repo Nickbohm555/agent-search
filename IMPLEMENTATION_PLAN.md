@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 22. (move +1 after each turn)
+Current section to work on: section 23. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -506,7 +506,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "renders subanswers from additive sub_answers payloads during streamed and final updates"` passed, confirming the frontend preserves visible sub-answer rendering when streamed and final payloads supply additive `sub_answers` instead of only legacy `sub_qa`.
 
 Next: update .planning/STATE.md after executing this phase's testing sections.
 
