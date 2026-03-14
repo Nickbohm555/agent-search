@@ -114,4 +114,5 @@ print(response.output)
 - **Multi-step agentic retrieval**: Breaks a large question into subquestions, works them in parallel, and synthesizes a final answer from grounded evidence.
 - **Subquestion HITL review**: Adds one high-leverage human review point so operators can inspect or edit subquestions before the expensive work continues.
 - **Advanced retrieval controls**: Supports optional query expansion and reranking so you can trade off recall, precision, and cost per run.
+- **Custom prompts**: Lets you override subanswer and synthesis instructions so you can tune output behavior without replacing the runtime’s evidence wiring.
 - **Resumable runtime**: Supports checkpointed pause-and-resume flows for HITL runs so work can continue without restarting the graph.
