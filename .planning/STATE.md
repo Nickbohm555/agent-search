@@ -9,8 +9,8 @@
 ## Current Position
 
 - **Current phase:** 3
-- **Current plan:** 03-02
-- **Status:** Phase 3 Plan 03-02 Summary implemented; next section queued
+- **Current plan:** 03-03
+- **Status:** Phase 3 Plan 03-03 Task 1 implemented; next section queued
 - **Progress:** 2/6 phases complete
 - **Progress bar:** `██░░░░` (33%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Begin Phase 3 Plan 03-03 Task 1.
-- Continue Phase 3 in dependency order after the completed Phase 3 Plan 03-02 Summary.
+- Begin Phase 3 Plan 03-03 Task 2.
+- Continue Phase 3 in dependency order after the completed Phase 3 Plan 03-03 Task 1.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 34 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 3 Plan 03-02 summary is complete, and the next dependency-ordered work item is Phase 3 Plan 03-03 Task 1.
-- **Resume note:** State update: `phase=03`, `plan=03-02`, `task=summary`, `status=implemented`; query-expansion HITL runtime checkpointing and backend API/SSE regression coverage are summarized and verified.
+- **Next command:** Implement Section 35 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 3 Plan 03-03 Task 1 is complete, and the next dependency-ordered work item is Phase 3 Plan 03-03 Task 2.
+- **Resume note:** State update: `phase=03`, `plan=03-03`, `task=1`, `status=implemented`; frontend API contracts now accept query-expansion HITL controls, paused payloads, and typed resume envelopes while remaining compatible with the current subquestion review UI.
