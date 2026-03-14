@@ -5,6 +5,7 @@ from typing import Any, Literal, Union
 
 from pydantic import AliasChoices
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import field_validator
 from pydantic import model_validator
 
 
@@ -74,18 +75,9 @@ class SubQuestionAnswer(BaseModel):
 
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
-    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
-    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunResponse":
-        if self.sub_answers and not self.sub_qa:
-            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
-        elif self.sub_qa and not self.sub_answers:
-            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
-        return self
 
 
 class HitlResumeDecision(BaseModel):
@@ -245,8 +237,7 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     stages: list[AgentRunStageMetadata] = Field(default_factory=list)
     decomposition_sub_questions: list[str] = Field(default_factory=list)
     sub_question_artifacts: list["SubQuestionArtifacts"] = Field(default_factory=list)
-    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
-    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str = ""
     result: RuntimeAgentRunResponse | None = None
     error: str | None = None
@@ -269,13 +260,6 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
             return HitlReview.from_interrupt_payload(value)
         return value
 
-    @model_validator(mode="after")
-    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunAsyncStatusResponse":
-        if self.sub_answers and not self.sub_qa:
-            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
-        elif self.sub_qa and not self.sub_answers:
-            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
-        return self
 
 
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
