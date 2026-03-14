@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import RetryPolicy
+from langgraph.types import RetryPolicy, interrupt
 
-from agent_search.runtime.graph.routes import route_post_decompose
+from agent_search.runtime.graph.routes import route_post_decompose, route_subquestion_lanes
 from agent_search.runtime.graph.state import RuntimeGraphContext, RuntimeGraphState
 from agent_search.runtime.reducers import merge_stage_snapshots
 from agent_search.runtime.state import to_rag_state
@@ -23,6 +24,55 @@ from schemas import (
 from services import agent_service as legacy_service
 
 _RETRY_POLICY = RetryPolicy(max_attempts=3)
+
+
+def _attach_checkpoint_metadata(interrupt_payload: Any, *, checkpoint_id: str | None = None) -> Any:
+    if not isinstance(interrupt_payload, Mapping):
+        return interrupt_payload
+    normalized_payload = dict(interrupt_payload)
+    if checkpoint_id and not normalized_payload.get("checkpoint_id"):
+        normalized_payload["checkpoint_id"] = checkpoint_id
+    return normalized_payload
+
+
+def _apply_subquestion_resume_decisions(
+    subquestions: Sequence[str],
+    *,
+    resume: Any = True,
+    interrupt_payload: Any | None = None,
+) -> list[str]:
+    baseline_subquestions = [str(subquestion) for subquestion in subquestions]
+    if not hasattr(resume, "decisions"):
+        return baseline_subquestions
+
+    available_ids = [f"sq-{index + 1}" for index in range(len(baseline_subquestions))]
+    if isinstance(interrupt_payload, Mapping):
+        raw_items = interrupt_payload.get("subquestions")
+        if isinstance(raw_items, Sequence) and not isinstance(raw_items, (str, bytes, bytearray)):
+            available_ids = []
+            for fallback_index, raw_item in enumerate(raw_items):
+                if not isinstance(raw_item, Mapping):
+                    available_ids.append(f"sq-{fallback_index + 1}")
+                    continue
+                raw_id = raw_item.get("subquestion_id")
+                available_ids.append(str(raw_id or f"sq-{fallback_index + 1}"))
+
+    decisions_by_id = {str(decision.subquestion_id): decision for decision in resume.decisions}
+    resolved_subquestions: list[str] = []
+    for index, current_text in enumerate(baseline_subquestions):
+        decision = decisions_by_id.get(available_ids[index] if index < len(available_ids) else f"sq-{index + 1}")
+        if decision is None or decision.action in {"approve", "skip"}:
+            resolved_subquestions.append(current_text)
+            continue
+        if decision.action == "edit":
+            edited_text = str(decision.edited_text or "").strip()
+            if edited_text:
+                resolved_subquestions.append(edited_text)
+            continue
+        if decision.action == "deny":
+            continue
+        raise ValueError(f"Unsupported resume action '{decision.action}'.")
+    return resolved_subquestions
 
 
 def _append_snapshot(
@@ -46,7 +96,21 @@ def _append_snapshot(
             )
         ],
     )
-    return RuntimeGraphState(**next_state, initial_search_context=list(state.get("initial_search_context", [])))
+    return RuntimeGraphState(
+        **next_state,
+        initial_search_context=list(state.get("initial_search_context", [])),
+        subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
+        query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
+    )
+
+
+def _with_runtime_context(state: RuntimeGraphState, next_state: dict[str, Any]) -> RuntimeGraphState:
+    return RuntimeGraphState(
+        **next_state,
+        initial_search_context=list(state.get("initial_search_context", [])),
+        subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
+        query_expansion_hitl_enabled=bool(state.get("query_expansion_hitl_enabled", False)),
+    )
 
 
 def _resolve_lane_sub_question(state: RuntimeGraphState) -> str:
@@ -68,9 +132,40 @@ def _build_decompose_node(context: RuntimeGraphContext):
             callbacks=context.callbacks,
         )
         next_state = legacy_service.apply_decompose_node_output_to_graph_state(state=state, node_output=node_output)
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="decompose")
+        return _append_snapshot(_with_runtime_context(state, to_rag_state(next_state)), stage="decompose")
 
     return _decompose
+
+
+def _build_subquestion_checkpoint_node():
+    def _subquestion_checkpoint(state: RuntimeGraphState) -> RuntimeGraphState:
+        if not state["subquestion_hitl_enabled"] or not state["decomposition_sub_questions"]:
+            return state
+        interrupt_payload = _attach_checkpoint_metadata(
+            {
+                "kind": "subquestion_review",
+                "stage": "subquestions_ready",
+                "subquestions": [
+                    {
+                        "subquestion_id": f"sq-{index + 1}",
+                        "sub_question": sub_question,
+                        "index": index,
+                    }
+                    for index, sub_question in enumerate(state["decomposition_sub_questions"])
+                ],
+            },
+            checkpoint_id=state["run_metadata"].thread_id,
+        )
+        resume_value = interrupt(interrupt_payload)
+        next_state = to_rag_state(state)
+        next_state["decomposition_sub_questions"] = _apply_subquestion_resume_decisions(
+            state["decomposition_sub_questions"],
+            resume=resume_value,
+            interrupt_payload=interrupt_payload,
+        )
+        return _with_runtime_context(state, next_state)
+
+    return _subquestion_checkpoint
 
 
 def _build_expand_node(context: RuntimeGraphContext):
@@ -90,7 +185,7 @@ def _build_expand_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="expand", sub_question=sub_question)
+        return _append_snapshot(_with_runtime_context(state, to_rag_state(next_state)), stage="expand", sub_question=sub_question)
 
     return _expand
 
@@ -116,7 +211,7 @@ def _build_search_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="search", sub_question=sub_question)
+        return _append_snapshot(_with_runtime_context(state, to_rag_state(next_state)), stage="search", sub_question=sub_question)
 
     return _search
 
@@ -146,7 +241,7 @@ def _build_rerank_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="rerank", sub_question=sub_question)
+        return _append_snapshot(_with_runtime_context(state, to_rag_state(next_state)), stage="rerank", sub_question=sub_question)
 
     return _rerank
 
@@ -176,7 +271,7 @@ def _build_answer_node(context: RuntimeGraphContext):
             sub_question=sub_question,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="answer", sub_question=sub_question)
+        return _append_snapshot(_with_runtime_context(state, to_rag_state(next_state)), stage="answer", sub_question=sub_question)
 
     return _answer
 
@@ -196,7 +291,7 @@ def _build_synthesize_node(context: RuntimeGraphContext):
             state=state,
             node_output=node_output,
         )
-        return _append_snapshot(RuntimeGraphState(**to_rag_state(next_state), initial_search_context=list(state.get("initial_search_context", []))), stage="synthesize_final")
+        return _append_snapshot(_with_runtime_context(state, to_rag_state(next_state)), stage="synthesize_final")
 
     return _synthesize
 
@@ -209,13 +304,19 @@ def build_runtime_graph(
     resolved_context = context or RuntimeGraphContext(payload=RuntimeAgentRunRequest(query="bootstrap"))
     builder = StateGraph(RuntimeGraphState)
     builder.add_node("decompose", _build_decompose_node(resolved_context))
+    builder.add_node("subquestion_checkpoint", _build_subquestion_checkpoint_node())
     builder.add_node("expand", _build_expand_node(resolved_context))
     builder.add_node("search", _build_search_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("rerank", _build_rerank_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("answer", _build_answer_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("synthesize", _build_synthesize_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_edge(START, "decompose")
-    builder.add_conditional_edges("decompose", route_post_decompose, {"synthesize": "synthesize"})
+    builder.add_conditional_edges(
+        "decompose",
+        route_post_decompose,
+        {"synthesize": "synthesize", "subquestion_checkpoint": "subquestion_checkpoint"},
+    )
+    builder.add_conditional_edges("subquestion_checkpoint", route_subquestion_lanes)
     builder.add_edge("expand", "search")
     builder.add_edge("search", "rerank")
     builder.add_edge("rerank", "answer")

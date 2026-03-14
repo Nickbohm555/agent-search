@@ -37,6 +37,8 @@ class RuntimeHitlControl(BaseModel):
             or (self.query_expansion is not None and self.query_expansion.enabled)
         ):
             self.enabled = True
+        elif self.enabled and self.subquestions is None and self.query_expansion is None:
+            self.subquestions = RuntimeSubquestionHitlControl(enabled=True)
         return self
 
 
@@ -99,6 +101,14 @@ class RuntimeAgentRunResponse(BaseModel):
     sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
+
+
+class RuntimeAgentRunResult(BaseModel):
+    status: Literal["completed", "paused"]
+    thread_id: str = ""
+    checkpoint_id: str | None = None
+    interrupt_payload: Any | None = None
+    response: RuntimeAgentRunResponse | None = None
 
 
 class AgentRunStageMetadata(BaseModel):
