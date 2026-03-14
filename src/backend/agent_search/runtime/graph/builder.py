@@ -9,7 +9,6 @@ from agent_search.runtime.graph.routes import route_post_decompose, route_subque
 from agent_search.runtime.graph.state import RuntimeGraphContext, RuntimeGraphState
 from agent_search.runtime.resume import (
     apply_subquestion_resume_decisions,
-    attach_checkpoint_metadata,
 )
 from agent_search.runtime.reducers import merge_stage_snapshots
 from agent_search.runtime.state import to_rag_state
@@ -127,22 +126,18 @@ def _build_subquestion_checkpoint_node():
     def _subquestion_checkpoint(state: RuntimeGraphState) -> RuntimeGraphState:
         if not state["subquestion_hitl_enabled"] or not state["decomposition_sub_questions"]:
             return state
-        interrupt_payload = attach_checkpoint_metadata(
-            {
-                "checkpoint_id": state["run_metadata"].thread_id,
-                "kind": "subquestion_review",
-                "stage": "subquestions_ready",
-                "subquestions": [
-                    {
-                        "subquestion_id": f"sq-{index + 1}",
-                        "sub_question": sub_question,
-                        "index": index,
-                    }
-                    for index, sub_question in enumerate(state["decomposition_sub_questions"])
-                ],
-            },
-            checkpoint_id=state["run_metadata"].thread_id,
-        )
+        interrupt_payload = {
+            "kind": "subquestion_review",
+            "stage": "subquestions_ready",
+            "subquestions": [
+                {
+                    "subquestion_id": f"sq-{index + 1}",
+                    "sub_question": sub_question,
+                    "index": index,
+                }
+                for index, sub_question in enumerate(state["decomposition_sub_questions"])
+            ],
+        }
         resume_value = interrupt(interrupt_payload)
         next_state = to_rag_state(state)
         next_state["decomposition_sub_questions"] = apply_subquestion_resume_decisions(

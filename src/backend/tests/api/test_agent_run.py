@@ -213,6 +213,54 @@ def test_status_and_resume_routes_map_sdk_configuration_errors(monkeypatch) -> N
     assert resume_response.json() == {"detail": "Run is not resumable."}
 
 
+def test_resume_route_normalizes_typed_resume_payload_to_plain_dict(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    captured: dict[str, object] = {}
+
+    def fake_resume(job_id, *, resume):
+        captured["job_id"] = job_id
+        captured["resume"] = resume
+        return RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id="run-typed-resume",
+            thread_id="550e8400-e29b-41d4-a716-446655440099",
+            status="running",
+            message="Resume accepted.",
+            stage="subquestions_ready",
+            checkpoint_id="checkpoint-typed",
+        )
+
+    monkeypatch.setattr(agent_router_module, "sdk_resume_run", fake_resume)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-resume/job-typed",
+        json={
+            "resume": {
+                "checkpoint_id": "checkpoint-typed",
+                "decisions": [
+                    {"subquestion_id": "sq-1", "action": "skip"},
+                ],
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "job_id": "job-typed",
+        "resume": {
+            "checkpoint_id": "checkpoint-typed",
+            "decisions": [
+                {"subquestion_id": "sq-1", "action": "skip"},
+            ],
+        },
+    }
+
+
 def test_status_route_returns_async_status_shape(monkeypatch) -> None:
     from routers import agent as agent_router_module
 

@@ -8,7 +8,7 @@ import {
   RuntimeSubquestionDecision,
   RuntimeSubquestionPausePayload,
   SearchCandidateRow,
-  SubQuestionAnswer,
+  SubItem,
   SubQuestionArtifact,
   WikiSourceOption,
   cancelInternalDataLoad,
@@ -84,7 +84,7 @@ export default function App() {
   });
   const [decompositionSubQuestions, setDecompositionSubQuestions] = useState<string[]>([]);
   const [subQuestionArtifacts, setSubQuestionArtifacts] = useState<SubQuestionArtifact[]>([]);
-  const [runSubQa, setRunSubQa] = useState<SubQuestionAnswer[]>([]);
+  const [runSubItems, setRunSubItems] = useState<SubItem[]>([]);
   const [stageStatuses, setStageStatuses] = useState<Record<AgentStageName, AgentStageRuntimeStatus>>({
     decompose: "pending",
     expand: "pending",
@@ -101,6 +101,7 @@ export default function App() {
   const runEventsUnsubscribeRef = useRef<(() => void) | null>(null);
   const runStreamRef = useRef<{ jobId: string | null; terminal: boolean }>({ jobId: null, terminal: false });
   const runStreamErrorTimeoutRef = useRef<number | null>(null);
+  const seenRunEventIdsRef = useRef<Set<string>>(new Set());
 
   const selectedWikiSource = useMemo(
     () => wikiSources.find((source) => source.source_id === wikiSourceId) ?? null,
@@ -138,6 +139,7 @@ export default function App() {
       runEventsUnsubscribeRef.current?.();
       runEventsUnsubscribeRef.current = null;
       runStreamRef.current = { jobId: null, terminal: false };
+      seenRunEventIdsRef.current = new Set();
     };
   }, []);
 
@@ -262,11 +264,12 @@ export default function App() {
     setRunEvents([]);
     setDecompositionSubQuestions([]);
     setSubQuestionArtifacts([]);
-    setRunSubQa([]);
+    setRunSubItems([]);
     setPausedPayload(null);
     setReviewDrafts({});
     setResumeState("idle");
     setResumeMessage("");
+    seenRunEventIdsRef.current = new Set();
     setRunSummary({
       searchRawHitsTotal: 0,
       searchDedupedHitsTotal: 0,
@@ -327,6 +330,10 @@ export default function App() {
     runEventsUnsubscribeRef.current?.();
     runEventsUnsubscribeRef.current = subscribeToAgentRunEvents(jobId, {
       onEvent: (lifecycleEvent) => {
+        if (seenRunEventIdsRef.current.has(lifecycleEvent.event_id)) {
+          return;
+        }
+        seenRunEventIdsRef.current.add(lifecycleEvent.event_id);
         if (runStreamErrorTimeoutRef.current !== null) {
           window.clearTimeout(runStreamErrorTimeoutRef.current);
           runStreamErrorTimeoutRef.current = null;
@@ -341,7 +348,7 @@ export default function App() {
           jobId,
           setDecompositionSubQuestions,
           setSubQuestionArtifacts,
-          setRunSubQa,
+          setRunSubItems,
           setRunSummary,
           setLastSuccessfulSynthesis,
         });
@@ -829,11 +836,7 @@ export default function App() {
                   const artifact =
                     subQuestionArtifacts[index] ?? subQuestionArtifacts.find((item) => item.sub_question === subQuestion);
                   const rerankRows = getRerankRows(artifact);
-                  const matchingSubQa = runSubQa.find((item) => item.sub_question === subQuestion);
-                  const fallbackBypassed = isRerankFallback({
-                    artifact,
-                    subQa: matchingSubQa,
-                  });
+                  const fallbackBypassed = isRerankFallback({ artifact });
                   const orderChanged = didRerankOrderChange(artifact);
                   return (
                     <li key={`${index}-${subQuestion}`} className="rerank-lane-item">
@@ -892,10 +895,10 @@ export default function App() {
             {decompositionSubQuestions.length > 0 ? (
               <ol className="subanswer-lane-list" aria-label="Subanswer groups">
                 {decompositionSubQuestions.map((subQuestion, index) => {
-                  const subQa = runSubQa[index] ?? runSubQa.find((item) => item.sub_question === subQuestion);
-                  const subAnswer = subQa?.sub_answer?.trim() ?? "";
-                  const citationIndices = subQa?.sub_answer_citations ?? extractCitationIndices(subAnswer);
-                  const fallback = subQa?.sub_answer_is_fallback ?? isFallbackSubanswer(subAnswer);
+                  const subItem = runSubItems[index] ?? runSubItems.find(([question]) => question === subQuestion);
+                  const subAnswer = subItem?.[1]?.trim() ?? "";
+                  const citationIndices = extractCitationIndices(subAnswer);
+                  const fallback = isFallbackSubanswer(subAnswer);
                   return (
                     <li key={`${index}-${subQuestion}`} className="subanswer-lane-item">
                       <p className="subanswer-lane-title">
@@ -984,13 +987,13 @@ export default function App() {
           {lastSuccessfulSynthesis ? (
             <div className="final-synthesis-summary">
               <p>
-                Subanswers used: {countNonEmptySubanswers(lastSuccessfulSynthesis.sub_qa)}/{lastSuccessfulSynthesis.sub_qa.length}
+                Subanswers used: {countNonEmptySubanswers(lastSuccessfulSynthesis.sub_items)}/{lastSuccessfulSynthesis.sub_items.length}
               </p>
               <p>
-                Citation coverage: {countSubanswersWithCitations(lastSuccessfulSynthesis.sub_qa)}/{lastSuccessfulSynthesis.sub_qa.length} subanswers with citations ({countTotalCitations(lastSuccessfulSynthesis.sub_qa)} total citations)
+                Citation coverage: {countSubanswersWithCitations(lastSuccessfulSynthesis.sub_items)}/{lastSuccessfulSynthesis.sub_items.length} subanswers with citations ({countTotalCitations(lastSuccessfulSynthesis.sub_items)} total citations)
               </p>
               <p>
-                Fallback subanswers: {countFallbackSubanswers(lastSuccessfulSynthesis.sub_qa)}
+                Fallback subanswers: {countFallbackSubanswers(lastSuccessfulSynthesis.sub_items)}
               </p>
             </div>
           ) : (
@@ -999,17 +1002,17 @@ export default function App() {
         </section>
         <section className="final-readout-section" aria-labelledby="final-readout-subquestions">
           <h3 id="final-readout-subquestions">Subquestions &amp; subanswers</h3>
-          {lastSuccessfulSynthesis && lastSuccessfulSynthesis.sub_qa.length > 0 ? (
+          {lastSuccessfulSynthesis && lastSuccessfulSynthesis.sub_items.length > 0 ? (
             <div className="subquestions-list">
-              {lastSuccessfulSynthesis.sub_qa.map((item, index) => {
-                const subAnswer = item.sub_answer?.trim() ?? "";
-                const toolCallInput = item.tool_call_input?.trim() ?? "";
-                const citationIndices = getSubanswerCitationIndices(item);
+              {lastSuccessfulSynthesis.sub_items.map((item, index) => {
+                const subQuestion = item[0];
+                const subAnswer = item[1]?.trim() ?? "";
+                const citationIndices = extractCitationIndices(subAnswer);
                 const summaryId = `subquestion-summary-${index}`;
                 const contentId = `subquestion-content-${index}`;
                 return (
-                  <details key={`${item.sub_question}-${index}`} className="subquestion-item">
-                    <summary id={summaryId}>{item.sub_question.trim() || `Subquestion ${index + 1}`}</summary>
+                  <details key={`${subQuestion}-${index}`} className="subquestion-item">
+                    <summary id={summaryId}>{subQuestion.trim() || `Subquestion ${index + 1}`}</summary>
                     <div className="subquestion-content" id={contentId} role="region" aria-labelledby={summaryId}>
                       {subAnswer ? (
                         <p className="subquestion-answer">
@@ -1025,11 +1028,6 @@ export default function App() {
                           <strong>Citation coverage:</strong> none
                         </p>
                       )}
-                      {toolCallInput ? (
-                        <p className="subquestion-tool-input">
-                          <strong>Tool call input:</strong> {toolCallInput}
-                        </p>
-                      ) : null}
                     </div>
                   </details>
                 );
@@ -1230,7 +1228,7 @@ function applyRunEventData(args: {
   jobId: string;
   setDecompositionSubQuestions: (value: string[]) => void;
   setSubQuestionArtifacts: (value: SubQuestionArtifact[]) => void;
-  setRunSubQa: (value: SubQuestionAnswer[]) => void;
+  setRunSubItems: (value: SubItem[]) => void;
   setRunSummary: (value: RunSummary) => void;
   setLastSuccessfulSynthesis: (value: RuntimeAgentRunResponse | null) => void;
 }): void {
@@ -1240,7 +1238,7 @@ function applyRunEventData(args: {
     jobId,
     setDecompositionSubQuestions,
     setSubQuestionArtifacts,
-    setRunSubQa,
+    setRunSubItems,
     setRunSummary,
     setLastSuccessfulSynthesis,
   } = args;
@@ -1251,14 +1249,14 @@ function applyRunEventData(args: {
   if (lifecycleEvent.sub_question_artifacts) {
     setSubQuestionArtifacts(lifecycleEvent.sub_question_artifacts);
   }
-  if (lifecycleEvent.sub_qa) {
-    setRunSubQa(lifecycleEvent.sub_qa);
+  if (lifecycleEvent.sub_items) {
+    setRunSubItems(lifecycleEvent.sub_items);
   }
 
-  if (!lifecycleEvent.sub_question_artifacts || !lifecycleEvent.sub_qa) {
+  if (!lifecycleEvent.sub_question_artifacts || !lifecycleEvent.sub_items) {
     if (lifecycleEvent.result && mapBackendStageToCanonical(lifecycleEvent.stage) === "final") {
       setLastSuccessfulSynthesis(lifecycleEvent.result);
-      setRunSubQa(lifecycleEvent.result.sub_qa);
+      setRunSubItems(lifecycleEvent.result.sub_items);
     }
     return;
   }
@@ -1276,8 +1274,7 @@ function applyRunEventData(args: {
     0,
   );
   const rerankBypassedCount = lifecycleEvent.sub_question_artifacts.reduce((sum, artifact) => {
-    const matchingSubQa = lifecycleEvent.sub_qa?.find((item) => item.sub_question === artifact.sub_question);
-    return sum + (isRerankFallback({ artifact, subQa: matchingSubQa }) ? 1 : 0);
+    return sum + (isRerankFallback({ artifact }) ? 1 : 0);
   }, 0);
 
   setRunSummary({
@@ -1285,15 +1282,15 @@ function applyRunEventData(args: {
     searchDedupedHitsTotal,
     rerankRowsTotal,
     rerankBypassedCount,
-    citationCoverageCount: countSubanswersWithCitations(lifecycleEvent.sub_qa),
-    citationCoverageTotal: lifecycleEvent.sub_qa.length,
+    citationCoverageCount: countSubanswersWithCitations(lifecycleEvent.sub_items),
+    citationCoverageTotal: lifecycleEvent.sub_items.length,
     totalLatencyMs: lifecycleEvent.elapsed_ms ?? null,
   });
 
   if (lifecycleEvent.event_type === "run.completed") {
     const response = lifecycleEvent.result ?? {
       main_question: submittedQuery,
-      sub_qa: lifecycleEvent.sub_qa,
+      sub_items: lifecycleEvent.sub_items ?? [],
       output: lifecycleEvent.output ?? "",
       final_citations: [],
     };
@@ -1304,8 +1301,8 @@ function applyRunEventData(args: {
         submittedQuery,
         jobId,
         mainQuestion: response.main_question,
-        subQuestionCount: response.sub_qa.length,
-        citationCoverageCount: countSubanswersWithCitations(response.sub_qa),
+        subQuestionCount: response.sub_items.length,
+        citationCoverageCount: countSubanswersWithCitations(response.sub_items),
       });
     } else {
       console.warn("Run marked as success before synthesis stage completed; preserving previous final synthesis panel.", {
@@ -1314,12 +1311,12 @@ function applyRunEventData(args: {
         backendStage: lifecycleEvent.stage,
       });
     }
-    setRunSubQa(response.sub_qa);
+    setRunSubItems(response.sub_items);
     console.info("Async run completed.", {
       submittedQuery,
       jobId,
       hasMainQuestion: Boolean(response.main_question.trim()),
-      subQuestionCount: response.sub_qa.length,
+      subQuestionCount: response.sub_items.length,
       outputLength: response.output.length,
     });
   }
@@ -1385,9 +1382,8 @@ function getRerankRows(artifact: SubQuestionArtifact | undefined): SearchCandida
   return artifact.reranked_docs;
 }
 
-function isRerankFallback(args: { artifact: SubQuestionArtifact | undefined; subQa: SubQuestionAnswer | undefined }): boolean {
+function isRerankFallback(args: { artifact: SubQuestionArtifact | undefined }): boolean {
   if (!args.artifact) return false;
-  if (args.subQa?.rerank_bypassed !== undefined) return args.subQa.rerank_bypassed;
   if (args.artifact.reranked_docs.length === 0) return false;
   return args.artifact.reranked_docs.every((item) => item.score === null || item.score === undefined);
 }
@@ -1465,25 +1461,18 @@ function toRerankEvidenceRowId(laneIndex: number, citationIndex: number): string
   return `rerank-evidence-lane-${laneIndex + 1}-citation-${citationIndex}`;
 }
 
-function getSubanswerCitationIndices(subQa: SubQuestionAnswer): number[] {
-  return subQa.sub_answer_citations ?? extractCitationIndices(subQa.sub_answer ?? "");
+function countNonEmptySubanswers(subItems: SubItem[]): number {
+  return subItems.reduce((sum, item) => sum + (item[1].trim().length > 0 ? 1 : 0), 0);
 }
 
-function countNonEmptySubanswers(subQa: SubQuestionAnswer[]): number {
-  return subQa.reduce((sum, item) => sum + (item.sub_answer.trim().length > 0 ? 1 : 0), 0);
+function countSubanswersWithCitations(subItems: SubItem[]): number {
+  return subItems.reduce((sum, item) => sum + (extractCitationIndices(item[1]).length > 0 ? 1 : 0), 0);
 }
 
-function countSubanswersWithCitations(subQa: SubQuestionAnswer[]): number {
-  return subQa.reduce((sum, item) => sum + (getSubanswerCitationIndices(item).length > 0 ? 1 : 0), 0);
+function countTotalCitations(subItems: SubItem[]): number {
+  return subItems.reduce((sum, item) => sum + extractCitationIndices(item[1]).length, 0);
 }
 
-function countTotalCitations(subQa: SubQuestionAnswer[]): number {
-  return subQa.reduce((sum, item) => sum + getSubanswerCitationIndices(item).length, 0);
-}
-
-function countFallbackSubanswers(subQa: SubQuestionAnswer[]): number {
-  return subQa.reduce((sum, item) => {
-    const isFallback = item.sub_answer_is_fallback ?? isFallbackSubanswer(item.sub_answer);
-    return sum + (isFallback ? 1 : 0);
-  }, 0);
+function countFallbackSubanswers(subItems: SubItem[]): number {
+  return subItems.reduce((sum, item) => sum + (isFallbackSubanswer(item[1]) ? 1 : 0), 0);
 }

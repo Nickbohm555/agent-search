@@ -36,7 +36,7 @@ def attach_checkpoint_metadata(interrupt_payload: Any, *, checkpoint_id: str | N
     if not isinstance(interrupt_payload, Mapping):
         return interrupt_payload
     normalized_payload = dict(interrupt_payload)
-    if checkpoint_id and not normalized_payload.get("checkpoint_id"):
+    if checkpoint_id:
         normalized_payload["checkpoint_id"] = checkpoint_id
     return normalized_payload
 

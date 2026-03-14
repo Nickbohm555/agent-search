@@ -15,7 +15,7 @@ from agent_search.runtime.persistence import compile_graph_with_checkpointer
 from agent_search.runtime.resume import build_resume_command
 from agent_search.runtime.state import to_rag_state
 from langgraph.types import Command
-from schemas import AgentGraphState, RuntimeAgentRunRequest, RuntimeAgentRunResponse
+from schemas import AgentGraphState, RuntimeAgentRunRequest, RuntimeAgentRunResponse, RuntimeSubquestionResumeEnvelope
 from services import agent_service as legacy_service
 from services.idempotency_service import execute_idempotent_effect
 
@@ -227,6 +227,12 @@ def _extract_interrupt_payload(payload: Any) -> Any | None:
     return None
 
 
+def _resolve_checkpoint_config_id(run_metadata: Any, resume: Any | None = None) -> str:
+    if isinstance(resume, RuntimeSubquestionResumeEnvelope) and resume.checkpoint_id.strip():
+        return resume.checkpoint_id.strip()
+    return str(run_metadata.thread_id)
+
+
 def _run_subquestion_checkpointed_graph(
     payload: RuntimeAgentRunRequest,
     *,
@@ -252,7 +258,7 @@ def _run_subquestion_checkpointed_graph(
     config = {
         "configurable": {
             "thread_id": run_metadata.thread_id,
-            "checkpoint_id": run_metadata.thread_id,
+            "checkpoint_id": _resolve_checkpoint_config_id(run_metadata, resume),
         }
     }
     graph_input: RuntimeAgentRunRequest | Command | dict[str, Any]
@@ -458,7 +464,7 @@ def run_runtime_agent(
     response = legacy_service.map_graph_state_to_runtime_response(state)
     logger.info(
         "Runtime core run complete sub_qa_count=%s output_length=%s snapshot_count=%s run_id=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
         len(rag_state["stage_snapshots"]),
         run_metadata.run_id,

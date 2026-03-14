@@ -14,8 +14,7 @@ type LifecycleEventShape = {
   error?: string | null;
   decomposition_sub_questions?: string[] | null;
   sub_question_artifacts?: unknown[] | null;
-  sub_qa?: unknown[] | null;
-  sub_answers?: unknown[] | null;
+  sub_items?: unknown[] | null;
   output?: string | null;
   result?: unknown;
   elapsed_ms?: number | null;
@@ -285,7 +284,7 @@ describe("App run query flow", () => {
                 ],
               },
             ],
-            sub_qa: [],
+            sub_items: [],
             output: "",
             result: null,
             error: null,
@@ -312,11 +311,11 @@ describe("App run query flow", () => {
                 retrieval_provenance: [],
               },
             ],
-            sub_qa: [],
+            sub_items: [],
             output: "NATO is a military alliance.",
             result: {
               main_question: "What is NATO?",
-              sub_qa: [],
+              sub_items: [],
               output: "NATO is a military alliance.",
             },
             error: null,
@@ -341,7 +340,7 @@ describe("App run query flow", () => {
       run_id: "run-1",
       stage: "search",
       status: "completed",
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [
         {
           sub_question: "First subquestion?",
@@ -438,12 +437,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "What is NATO?",
         output: "NATO is a military alliance.",
-        sub_qa: [],
+        sub_items: [],
       },
       run_id: "run-1",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [
         {
           sub_question: "First subquestion?",
@@ -527,12 +526,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "What is NATO?",
         output: "NATO is a military alliance.",
-        sub_qa: [],
+        sub_items: [],
       },
       run_id: "run-sse",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
     });
 
@@ -576,12 +575,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "What is NATO?",
         output: "NATO is a military alliance.",
-        sub_qa: [],
+        sub_items: [],
       },
       run_id: "run-close",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
     });
 
@@ -621,7 +620,7 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
             sub_question_artifacts: [],
-            sub_qa: [],
+            sub_items: [],
             output: "",
             result: null,
             error: null,
@@ -649,7 +648,7 @@ describe("App run query flow", () => {
       status: "paused",
       checkpoint_id: "checkpoint-42",
       decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
       interrupt_payload: {
         checkpoint_id: "checkpoint-42",
@@ -709,9 +708,9 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "Review my subquestions",
         output: "Resumed answer.",
-        sub_qa: [],
+        sub_items: [],
       },
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
     });
 
@@ -748,7 +747,7 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
             sub_question_artifacts: [],
-            sub_qa: [],
+            sub_items: [],
             output: "",
             result: null,
             error: null,
@@ -776,7 +775,7 @@ describe("App run query flow", () => {
       status: "paused",
       checkpoint_id: "checkpoint-skip",
       decomposition_sub_questions: ["Keep this?", "Change this?", "Remove this?"],
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
       interrupt_payload: {
         checkpoint_id: "checkpoint-skip",
@@ -831,9 +830,9 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "Skip my subquestion review",
         output: "Skipped review answer.",
-        sub_qa: [],
+        sub_items: [],
       },
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
     });
 
@@ -841,6 +840,119 @@ describe("App run query flow", () => {
       expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
     expect(screen.getByText("Skipped review answer.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
+  });
+
+  it("ignores replayed paused events after resume when the SSE stream restarts from the beginning", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-hitl-replay", run_id: "run-hitl-replay", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-hitl-replay",
+            run_id: "run-hitl-replay",
+            status: "running",
+            message: "Resume accepted.",
+            stage: "subquestions_ready",
+            stages: [],
+            decomposition_sub_questions: ["Keep this?"],
+            sub_question_artifacts: [],
+            sub_items: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+            checkpoint_id: "checkpoint-replay",
+            interrupt_payload: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Replay paused events after resume" } });
+    fireEvent.click(screen.getByLabelText("Enable subquestion HITL"));
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const pausedEventSource = await findLatestEventSource();
+    pausedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-hitl-replay:000001",
+      run_id: "run-hitl-replay",
+      stage: "subquestions_ready",
+      status: "paused",
+      checkpoint_id: "checkpoint-replay",
+      decomposition_sub_questions: ["Keep this?"],
+      sub_items: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-replay",
+        kind: "subquestion_review",
+        stage: "subquestions_ready",
+        subquestions: [{ subquestion_id: "sq-1", sub_question: "Keep this?" }],
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Subquestion Review" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Skip Review" }));
+
+    const resumedEventSource = await findLatestEventSource();
+    expect(resumedEventSource).not.toBe(pausedEventSource);
+
+    resumedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-hitl-replay:000001",
+      run_id: "run-hitl-replay",
+      stage: "subquestions_ready",
+      status: "paused",
+      checkpoint_id: "checkpoint-replay",
+      decomposition_sub_questions: ["Keep this?"],
+      sub_items: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-replay",
+        kind: "subquestion_review",
+        stage: "subquestions_ready",
+        subquestions: [{ subquestion_id: "sq-1", sub_question: "Keep this?" }],
+      },
+    });
+
+    resumedEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-hitl-replay:000002",
+      run_id: "run-hitl-replay",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Replay-safe answer.",
+      result: {
+        final_citations: [],
+        main_question: "Replay paused events after resume",
+        output: "Replay-safe answer.",
+        sub_items: [],
+      },
+      sub_items: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Replay-safe answer.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
   });
 
@@ -879,9 +991,9 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "Standard async run",
         output: "Standard async answer.",
-        sub_qa: [],
+        sub_items: [],
       },
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
     });
 
@@ -994,19 +1106,9 @@ describe("App run query flow", () => {
                 ],
               },
             ],
-            sub_qa: [
-              {
-                sub_question: "Primary subquestion?",
-                sub_answer: "",
-                tool_call_input:
-                  '{"rerank_top_n":2,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":0.98,"document_id":"doc-b","source":"wiki://b"},{"reranked_rank":2,"citation_index":2,"score":0.65,"document_id":"doc-a","source":"wiki://a"}]}',
-              },
-              {
-                sub_question: "Fallback subquestion?",
-                sub_answer: "",
-                tool_call_input:
-                  '{"rerank_top_n":1,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":null,"document_id":"doc-c","source":"wiki://c"}]}',
-              },
+            sub_items: [
+              ["Primary subquestion?", ""],
+              ["Fallback subquestion?", ""],
             ],
             output: "",
             result: null,
@@ -1027,11 +1129,11 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["Primary subquestion?", "Fallback subquestion?"],
             sub_question_artifacts: [],
-            sub_qa: [],
+            sub_items: [],
             output: "Rerank run done.",
             result: {
               main_question: "Test rerank view",
-              sub_qa: [],
+              sub_items: [],
               output: "Rerank run done.",
             },
             error: null,
@@ -1057,19 +1159,9 @@ describe("App run query flow", () => {
       status: "completed",
       decomposition_sub_questions: ["Primary subquestion?", "Fallback subquestion?"],
       output: "",
-      sub_qa: [
-        {
-          sub_question: "Primary subquestion?",
-          sub_answer: "",
-          tool_call_input:
-            '{"rerank_top_n":2,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":0.98,"document_id":"doc-b","source":"wiki://b"},{"reranked_rank":2,"citation_index":2,"score":0.65,"document_id":"doc-a","source":"wiki://a"}]}',
-        },
-        {
-          sub_question: "Fallback subquestion?",
-          sub_answer: "",
-          tool_call_input:
-            '{"rerank_top_n":1,"rerank_provenance":[{"reranked_rank":1,"citation_index":1,"score":null,"document_id":"doc-c","source":"wiki://c"}]}',
-        },
+      sub_items: [
+        ["Primary subquestion?", ""],
+        ["Fallback subquestion?", ""],
       ],
       sub_question_artifacts: [
         {
@@ -1167,12 +1259,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "Test rerank view",
         output: "Rerank run done.",
-        sub_qa: [],
+        sub_items: [],
       },
       run_id: "run-rerank",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [],
+      sub_items: [],
       sub_question_artifacts: [],
     });
     await waitFor(() => {
@@ -1240,17 +1332,9 @@ describe("App run query flow", () => {
                 reranked_docs: [],
               },
             ],
-            sub_qa: [
-              {
-                sub_question: "Supported subquestion?",
-                sub_answer: "Supported answer [1] with more detail [2].",
-                tool_call_input: "{}",
-              },
-              {
-                sub_question: "Unsupported subquestion?",
-                sub_answer: "nothing relevant found",
-                tool_call_input: "{}",
-              },
+            sub_items: [
+              ["Supported subquestion?", "Supported answer [1] with more detail [2]."],
+              ["Unsupported subquestion?", "nothing relevant found"],
             ],
             output: "",
             result: null,
@@ -1271,36 +1355,16 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["Supported subquestion?", "Unsupported subquestion?"],
             sub_question_artifacts: [],
-            sub_qa: [
-              {
-                sub_question: "Supported subquestion?",
-                sub_answer: "Supported answer [1] with more detail [2].",
-                sub_answer_citations: [1, 2],
-                tool_call_input: "{}",
-              },
-              {
-                sub_question: "Unsupported subquestion?",
-                sub_answer: "nothing relevant found",
-                sub_answer_is_fallback: true,
-                tool_call_input: "{}",
-              },
+            sub_items: [
+              ["Supported subquestion?", "Supported answer [1] with more detail [2]."],
+              ["Unsupported subquestion?", "nothing relevant found"],
             ],
             output: "Answer run done.",
             result: {
               main_question: "Test subanswer stage",
-              sub_qa: [
-                {
-                  sub_question: "Supported subquestion?",
-                  sub_answer: "Supported answer [1] with more detail [2].",
-                  sub_answer_citations: [1, 2],
-                  tool_call_input: "{}",
-                },
-                {
-                  sub_question: "Unsupported subquestion?",
-                  sub_answer: "nothing relevant found",
-                  sub_answer_is_fallback: true,
-                  tool_call_input: "{}",
-                },
+              sub_items: [
+                ["Supported subquestion?", "Supported answer [1] with more detail [2]."],
+                ["Unsupported subquestion?", "nothing relevant found"],
               ],
               output: "Answer run done.",
             },
@@ -1327,17 +1391,9 @@ describe("App run query flow", () => {
       status: "completed",
       decomposition_sub_questions: ["Supported subquestion?", "Unsupported subquestion?"],
       output: "",
-      sub_qa: [
-        {
-          sub_question: "Supported subquestion?",
-          sub_answer: "Supported answer [1] with more detail [2].",
-          tool_call_input: "{}",
-        },
-        {
-          sub_question: "Unsupported subquestion?",
-          sub_answer: "nothing relevant found",
-          tool_call_input: "{}",
-        },
+      sub_items: [
+        ["Supported subquestion?", "Supported answer [1] with more detail [2]."],
+        ["Unsupported subquestion?", "nothing relevant found"],
       ],
       sub_question_artifacts: [
         {
@@ -1398,37 +1454,17 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "Test subanswer stage",
         output: "Answer run done.",
-        sub_qa: [
-          {
-            sub_question: "Supported subquestion?",
-            sub_answer: "Supported answer [1] with more detail [2].",
-            sub_answer_citations: [1, 2],
-            tool_call_input: "{}",
-          },
-          {
-            sub_question: "Unsupported subquestion?",
-            sub_answer: "nothing relevant found",
-            sub_answer_is_fallback: true,
-            tool_call_input: "{}",
-          },
+        sub_items: [
+          ["Supported subquestion?", "Supported answer [1] with more detail [2]."],
+          ["Unsupported subquestion?", "nothing relevant found"],
         ],
       },
       run_id: "run-answer",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [
-        {
-          sub_question: "Supported subquestion?",
-          sub_answer: "Supported answer [1] with more detail [2].",
-          sub_answer_citations: [1, 2],
-          tool_call_input: "{}",
-        },
-        {
-          sub_question: "Unsupported subquestion?",
-          sub_answer: "nothing relevant found",
-          sub_answer_is_fallback: true,
-          tool_call_input: "{}",
-        },
+      sub_items: [
+        ["Supported subquestion?", "Supported answer [1] with more detail [2]."],
+        ["Unsupported subquestion?", "nothing relevant found"],
       ],
       sub_question_artifacts: [],
     });
@@ -1437,7 +1473,7 @@ describe("App run query flow", () => {
     });
   });
 
-  it("renders subanswers from additive sub_answers payloads during streamed and final updates", async () => {
+  it("renders subanswers from sub_items payloads during streamed and final updates", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -1469,14 +1505,7 @@ describe("App run query flow", () => {
       stage: "answer",
       status: "completed",
       decomposition_sub_questions: ["What changed in the contract?"],
-      sub_answers: [
-        {
-          sub_question: "What changed in the contract?",
-          sub_answer: "The payload now includes additive sub_answers [1].",
-          sub_answer_citations: [1],
-          tool_call_input: "{}",
-        },
-      ],
+      sub_items: [["What changed in the contract?", "The payload now includes sub_items [1]."]],
       sub_question_artifacts: [
         {
           sub_question: "What changed in the contract?",
@@ -1489,7 +1518,7 @@ describe("App run query flow", () => {
               rank: 1,
               title: "Contract note",
               source: "wiki://contract-note",
-              content: "The response now exposes additive sub_answers.",
+              content: "The response now exposes sub_items.",
               document_id: "doc-contract-note",
               score: 0.8,
             },
@@ -1503,9 +1532,7 @@ describe("App run query flow", () => {
     const subanswerHeading = screen.getByRole("heading", { name: "Subanswer" });
     const subanswerSection = subanswerHeading.closest("section");
     expect(subanswerSection).toBeTruthy();
-    expect(
-      within(subanswerSection as HTMLElement).getByText("The payload now includes additive sub_answers [1]."),
-    ).toBeInTheDocument();
+    expect(within(subanswerSection as HTMLElement).getByText("The payload now includes sub_items [1].")).toBeInTheDocument();
 
     eventSource.emit({
       event_type: "run.completed",
@@ -1514,27 +1541,18 @@ describe("App run query flow", () => {
       run_id: "run-sub-answers",
       stage: "synthesize_final",
       status: "success",
-      output: "The contract now supports additive sub_answers without dropping sub_qa.",
+      output: "The contract now exposes sub_items without extra aliases.",
       result: {
         final_citations: [],
         main_question: "What changed in the contract?",
-        output: "The contract now supports additive sub_answers without dropping sub_qa.",
-        sub_answers: [
-          {
-            sub_question: "What changed in the contract?",
-            sub_answer: "The payload now includes additive sub_answers [1].",
-            sub_answer_citations: [1],
-            tool_call_input: "{}",
-          },
-        ],
+        output: "The contract now exposes sub_items without extra aliases.",
+        sub_items: [["What changed in the contract?", "The payload now includes sub_items [1]."]],
       },
       sub_question_artifacts: [],
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("The contract now supports additive sub_answers without dropping sub_qa."),
-      ).toBeInTheDocument();
+      expect(screen.getByText("The contract now exposes sub_items without extra aliases.")).toBeInTheDocument();
     });
     expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
   });
@@ -1579,26 +1597,12 @@ describe("App run query flow", () => {
                 retrieval_provenance: [],
               },
             ],
-            sub_qa: [
-              {
-                sub_question: "Which treaty created NATO?",
-                sub_answer: "The North Atlantic Treaty created NATO.",
-                sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
-                tool_call_input: "{\"query\":\"NATO founding treaty\"}",
-              },
-            ],
+            sub_items: [["Which treaty created NATO?", "The North Atlantic Treaty created NATO."]],
             output: "NATO was formed in 1949.",
             result: {
               output: "NATO was formed in 1949.",
               main_question: "When and why was NATO formed?",
-              sub_qa: [
-                {
-                  sub_question: "Which treaty created NATO?",
-                  sub_answer: "The North Atlantic Treaty created NATO.",
-                  sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
-                  tool_call_input: "{\"query\":\"NATO founding treaty\"}",
-                },
-              ],
+              sub_items: [["Which treaty created NATO?", "The North Atlantic Treaty created NATO."]],
             },
             error: null,
             cancel_requested: false,
@@ -1625,26 +1629,12 @@ describe("App run query flow", () => {
       result: {
         main_question: "When and why was NATO formed?",
         output: "NATO was formed in 1949.",
-        sub_qa: [
-          {
-            sub_question: "Which treaty created NATO?",
-            sub_answer: "The North Atlantic Treaty created NATO.",
-            sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
-            tool_call_input: "{\"query\":\"NATO founding treaty\"}",
-          },
-        ],
+        sub_items: [["Which treaty created NATO?", "The North Atlantic Treaty created NATO."]],
       },
       run_id: "run-2",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [
-        {
-          sub_question: "Which treaty created NATO?",
-          sub_answer: "The North Atlantic Treaty created NATO.",
-          sub_agent_response: "NATO was established by the Washington Treaty in April 1949.",
-          tool_call_input: "{\"query\":\"NATO founding treaty\"}",
-        },
-      ],
+      sub_items: [["Which treaty created NATO?", "The North Atlantic Treaty created NATO."]],
       sub_question_artifacts: [
         {
           sub_question: "Which treaty created NATO?",
@@ -1669,7 +1659,6 @@ describe("App run query flow", () => {
     fireEvent.click(firstSubQuestion);
 
     expect(screen.getAllByText(/The North Atlantic Treaty created NATO\./).length).toBeGreaterThan(0);
-    expect(screen.getByText('{"query":"NATO founding treaty"}')).toBeInTheDocument();
   });
 
   it("keeps the previous successful final synthesis visible until a new run reaches final stage", async () => {
@@ -1698,25 +1687,11 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["First subquestion?"],
             sub_question_artifacts: [],
-            sub_qa: [
-              {
-                sub_question: "First subquestion?",
-                sub_answer: "First answer [1].",
-                sub_answer_citations: [1],
-                tool_call_input: "{}",
-              },
-            ],
+            sub_items: [["First subquestion?", "First answer [1]."]],
             output: "First final answer.",
             result: {
               main_question: "First question?",
-              sub_qa: [
-                {
-                  sub_question: "First subquestion?",
-                  sub_answer: "First answer [1].",
-                  sub_answer_citations: [1],
-                  tool_call_input: "{}",
-                },
-              ],
+              sub_items: [["First subquestion?", "First answer [1]."]],
               output: "First final answer.",
             },
             error: null,
@@ -1742,14 +1717,7 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["Second subquestion?"],
             sub_question_artifacts: [],
-            sub_qa: [
-              {
-                sub_question: "Second subquestion?",
-                sub_answer: "Second draft answer [2].",
-                sub_answer_citations: [2],
-                tool_call_input: "{}",
-              },
-            ],
+            sub_items: [["Second subquestion?", "Second draft answer [2]."]],
             output: "Second draft output should not be shown.",
             result: null,
             error: null,
@@ -1769,25 +1737,11 @@ describe("App run query flow", () => {
             stages: [],
             decomposition_sub_questions: ["Second subquestion?"],
             sub_question_artifacts: [],
-            sub_qa: [
-              {
-                sub_question: "Second subquestion?",
-                sub_answer: "Second final answer [2].",
-                sub_answer_citations: [2],
-                tool_call_input: "{}",
-              },
-            ],
+            sub_items: [["Second subquestion?", "Second final answer [2]."]],
             output: "Second final answer.",
             result: {
               main_question: "Second question?",
-              sub_qa: [
-                {
-                  sub_question: "Second subquestion?",
-                  sub_answer: "Second final answer [2].",
-                  sub_answer_citations: [2],
-                  tool_call_input: "{}",
-                },
-              ],
+              sub_items: [["Second subquestion?", "Second final answer [2]."]],
               output: "Second final answer.",
             },
             error: null,
@@ -1813,26 +1767,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "First question?",
         output: "First final answer.",
-        sub_qa: [
-          {
-            sub_question: "First subquestion?",
-            sub_answer: "First answer [1].",
-            sub_answer_citations: [1],
-            tool_call_input: "{}",
-          },
-        ],
+        sub_items: [["First subquestion?", "First answer [1]."]],
       },
       run_id: "run-first",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [
-        {
-          sub_question: "First subquestion?",
-          sub_answer: "First answer [1].",
-          sub_answer_citations: [1],
-          tool_call_input: "{}",
-        },
-      ],
+      sub_items: [["First subquestion?", "First answer [1]."]],
       sub_question_artifacts: [],
     });
 
@@ -1854,14 +1794,7 @@ describe("App run query flow", () => {
       status: "completed",
       decomposition_sub_questions: ["Second subquestion?"],
       output: "Second draft output should not be shown.",
-      sub_qa: [
-        {
-          sub_question: "Second subquestion?",
-          sub_answer: "Second draft answer [2].",
-          sub_answer_citations: [2],
-          tool_call_input: "{}",
-        },
-      ],
+      sub_items: [["Second subquestion?", "Second draft answer [2]."]],
       sub_question_artifacts: [],
     });
 
@@ -1878,26 +1811,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "Second question?",
         output: "Second final answer.",
-        sub_qa: [
-          {
-            sub_question: "Second subquestion?",
-            sub_answer: "Second final answer [2].",
-            sub_answer_citations: [2],
-            tool_call_input: "{}",
-          },
-        ],
+        sub_items: [["Second subquestion?", "Second final answer [2]."]],
       },
       run_id: "run-second",
       stage: "synthesize_final",
       status: "success",
-      sub_qa: [
-        {
-          sub_question: "Second subquestion?",
-          sub_answer: "Second final answer [2].",
-          sub_answer_citations: [2],
-          tool_call_input: "{}",
-        },
-      ],
+      sub_items: [["Second subquestion?", "Second final answer [2]."]],
       sub_question_artifacts: [],
     });
 
@@ -1946,26 +1865,12 @@ describe("App run query flow", () => {
         final_citations: [],
         main_question: "First additive question?",
         output: "First additive final answer.",
-        sub_answers: [
-          {
-            sub_question: "First additive subquestion?",
-            sub_answer: "First additive answer [1].",
-            sub_answer_citations: [1],
-            tool_call_input: "{}",
-          },
-        ],
+        sub_items: [["First additive subquestion?", "First additive answer [1]."]],
       },
       run_id: "run-additive-first",
       stage: "synthesize_final",
       status: "success",
-      sub_answers: [
-        {
-          sub_question: "First additive subquestion?",
-          sub_answer: "First additive answer [1].",
-          sub_answer_citations: [1],
-          tool_call_input: "{}",
-        },
-      ],
+      sub_items: [["First additive subquestion?", "First additive answer [1]."]],
       sub_question_artifacts: [],
     });
 
@@ -1988,14 +1893,7 @@ describe("App run query flow", () => {
       status: "completed",
       decomposition_sub_questions: ["Second additive subquestion?"],
       output: "Second additive draft output.",
-      sub_answers: [
-        {
-          sub_question: "Second additive subquestion?",
-          sub_answer: "Second additive draft answer [2].",
-          sub_answer_citations: [2],
-          tool_call_input: "{}",
-        },
-      ],
+      sub_items: [["Second additive subquestion?", "Second additive draft answer [2]."]],
       sub_question_artifacts: [],
     });
 

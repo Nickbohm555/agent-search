@@ -145,6 +145,8 @@ def _build_job_lifecycle_event(
         event_type=event_type,
         event_id=f"{job.run_id}:{next_sequence:06d}",
         run_id=job.run_id,
+        thread_id=job.thread_id,
+        trace_id=job.trace_id,
         stage=stage,
         status=status,
         emitted_at=datetime.now(timezone.utc).isoformat(),

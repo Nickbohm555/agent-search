@@ -52,23 +52,12 @@ export interface WipeInternalDataResponse {
   message: string;
 }
 
-export interface SubQuestionAnswer {
-  sub_question: string;
-  sub_answer: string;
-  sub_answer_citations?: number[];
-  sub_answer_is_fallback?: boolean;
-  tool_call_input?: string;
-  sub_agent_response?: string;
-  rerank_top_n?: number;
-  rerank_provenance?: RerankProvenanceRow[];
-  rerank_bypassed?: boolean;
-}
+export type SubItem = [string, string];
 
 export interface RuntimeAgentRunResponse {
   output: string;
   main_question: string;
-  sub_qa: SubQuestionAnswer[];
-  sub_answers?: SubQuestionAnswer[];
+  sub_items: SubItem[];
   final_citations: SearchCandidateRow[];
 }
 
@@ -208,8 +197,7 @@ export interface RuntimeAgentRunAsyncStatusResponse {
   stages: AgentRunStageMetadata[];
   decomposition_sub_questions: string[];
   sub_question_artifacts: SubQuestionArtifact[];
-  sub_qa: SubQuestionAnswer[];
-  sub_answers?: SubQuestionAnswer[];
+  sub_items: SubItem[];
   output: string;
   result?: RuntimeAgentRunResponse | null;
   error?: string | null;
@@ -233,8 +221,7 @@ export interface RuntimeLifecycleEvent {
   error?: string | null;
   decomposition_sub_questions?: string[] | null;
   sub_question_artifacts?: SubQuestionArtifact[] | null;
-  sub_qa?: SubQuestionAnswer[] | null;
-  sub_answers?: SubQuestionAnswer[] | null;
+  sub_items?: SubItem[] | null;
   output?: string | null;
   result?: RuntimeAgentRunResponse | null;
   interrupt_payload?: RuntimeSubquestionPausePayload | null;
@@ -412,10 +399,13 @@ export function subscribeToAgentRunEvents(
     onError?: () => void;
   },
 ): () => void {
-  const eventSource = new EventSource(`${API_BASE_URL}/api/agents/run-events/${jobId}`);
+  const streamUrl = new URL(`${API_BASE_URL}/api/agents/run-events/${jobId}`);
+  streamUrl.searchParams.set("stream", `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const eventSource = new EventSource(streamUrl.toString());
   const eventTypes = [
     "stage.started",
     "stage.updated",
+    "stage.snapshot",
     "stage.retrying",
     "stage.completed",
     "stage.failed",
@@ -477,75 +467,31 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === "string";
 }
 
-
-function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
-  if (
-    isObject(value) &&
-    typeof value.sub_question === "string" &&
-    typeof value.sub_answer === "string" &&
-    isOptionalString(value.tool_call_input) &&
-    isOptionalString(value.sub_agent_response)
-  ) {
-    attachSubanswerMetadata(value);
-    attachRerankMetadataFromToolCallInput(value);
-    return (
-      (value.sub_answer_citations === undefined ||
-        (Array.isArray(value.sub_answer_citations) &&
-          value.sub_answer_citations.every((item) => typeof item === "number"))) &&
-      (value.sub_answer_is_fallback === undefined || typeof value.sub_answer_is_fallback === "boolean") &&
-      (value.rerank_top_n === undefined || typeof value.rerank_top_n === "number") &&
-      (value.rerank_bypassed === undefined || typeof value.rerank_bypassed === "boolean") &&
-      (value.rerank_provenance === undefined ||
-        (Array.isArray(value.rerank_provenance) && value.rerank_provenance.every(isRerankProvenanceRow)))
-    );
-  }
-  return false;
+function isSubItem(value: unknown): value is SubItem {
+  return Array.isArray(value) && value.length === 2 && value.every((entry) => typeof entry === "string");
 }
 
-function normalizeSubAnswerFields(
+function normalizeSubItemsField(
   value: Record<string, unknown>,
   options: { required: boolean; defaultEmpty: boolean },
 ): boolean {
   const { required, defaultEmpty } = options;
-  const subQa = value.sub_qa;
-  const subAnswers = value.sub_answers;
+  const subItems = value.sub_items;
 
-  if (
-    subQa !== undefined &&
-    subQa !== null &&
-    (!Array.isArray(subQa) || !subQa.every(isSubQuestionAnswer))
-  ) {
+  if (subItems !== undefined && subItems !== null && (!Array.isArray(subItems) || !subItems.every(isSubItem))) {
     return false;
   }
 
-  if (
-    subAnswers !== undefined &&
-    subAnswers !== null &&
-    (!Array.isArray(subAnswers) || !subAnswers.every(isSubQuestionAnswer))
-  ) {
-    return false;
-  }
-
-  const normalized = Array.isArray(subQa)
-    ? subQa
-    : Array.isArray(subAnswers)
-      ? subAnswers
-      : null;
-
-  if (normalized === null) {
+  if (subItems === undefined || subItems === null) {
     if (required) {
       return false;
     }
     if (defaultEmpty) {
-      value.sub_qa = [];
+      value.sub_items = [];
     }
     return true;
   }
-
-  value.sub_qa = normalized;
-  if (subAnswers === undefined || subAnswers === null) {
-    value.sub_answers = normalized;
-  }
+  value.sub_items = subItems;
   return true;
 }
 
@@ -563,7 +509,7 @@ function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata
 
 function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeAgentRunAsyncStatusResponse {
   if (!isObject(value)) return false;
-  if (!normalizeSubAnswerFields(value, { required: true, defaultEmpty: false })) {
+  if (!normalizeSubItemsField(value, { required: true, defaultEmpty: false })) {
     return false;
   }
 
@@ -580,7 +526,7 @@ function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeA
     value.decomposition_sub_questions.every((item) => typeof item === "string") &&
     Array.isArray(value.sub_question_artifacts) &&
     value.sub_question_artifacts.every(isSubQuestionArtifact) &&
-    Array.isArray(value.sub_qa) &&
+    Array.isArray(value.sub_items) &&
     typeof value.output === "string" &&
     (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
     (value.error === undefined || value.error === null || typeof value.error === "string") &&
@@ -597,7 +543,7 @@ function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeA
 
 function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent {
   if (!isObject(value)) return false;
-  if (!normalizeSubAnswerFields(value, { required: false, defaultEmpty: false })) {
+  if (!normalizeSubItemsField(value, { required: false, defaultEmpty: false })) {
     return false;
   }
 
@@ -618,7 +564,7 @@ function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent
     (value.sub_question_artifacts === undefined ||
       value.sub_question_artifacts === null ||
       (Array.isArray(value.sub_question_artifacts) && value.sub_question_artifacts.every(isSubQuestionArtifact))) &&
-    (value.sub_qa === undefined || value.sub_qa === null || Array.isArray(value.sub_qa)) &&
+    (value.sub_items === undefined || value.sub_items === null || Array.isArray(value.sub_items)) &&
     (value.output === undefined || value.output === null || typeof value.output === "string") &&
     (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
     (value.interrupt_payload === undefined ||
@@ -726,58 +672,6 @@ function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {
   );
 }
 
-function attachSubanswerMetadata(value: Record<string, unknown>): void {
-  const rawSubAnswer = value.sub_answer;
-  if (typeof rawSubAnswer !== "string") return;
-  const citations = extractCitationIndices(rawSubAnswer);
-  if (citations.length > 0) {
-    value.sub_answer_citations = citations;
-  }
-  value.sub_answer_is_fallback = rawSubAnswer.trim().toLowerCase() === "nothing relevant found";
-}
-
-function extractCitationIndices(text: string): number[] {
-  const matches = text.matchAll(/\[(\d+)\]/g);
-  const values = Array.from(matches, (match) => Number(match[1])).filter((item) => Number.isInteger(item) && item > 0);
-  return Array.from(new Set(values));
-}
-
-function attachRerankMetadataFromToolCallInput(value: Record<string, unknown>): void {
-  const rawToolCallInput = value.tool_call_input;
-  if (typeof rawToolCallInput !== "string" || !rawToolCallInput.trim()) return;
-
-  try {
-    const parsed: unknown = JSON.parse(rawToolCallInput);
-    if (!isObject(parsed)) return;
-
-    const rerankTopN = parsed.rerank_top_n;
-    if (typeof rerankTopN === "number") {
-      value.rerank_top_n = rerankTopN;
-    }
-
-    const rerankProvenance = parsed.rerank_provenance;
-    if (Array.isArray(rerankProvenance) && rerankProvenance.every(isRerankProvenanceRow)) {
-      value.rerank_provenance = rerankProvenance;
-      if (rerankProvenance.length > 0) {
-        value.rerank_bypassed = rerankProvenance.every((row) => row.score === null || row.score === undefined);
-      }
-    }
-  } catch {
-    return;
-  }
-}
-
-function isRerankProvenanceRow(value: unknown): value is RerankProvenanceRow {
-  return (
-    isObject(value) &&
-    typeof value.reranked_rank === "number" &&
-    typeof value.citation_index === "number" &&
-    (value.score === undefined || value.score === null || typeof value.score === "number") &&
-    typeof value.document_id === "string" &&
-    typeof value.source === "string"
-  );
-}
-
 function isSearchCandidateRow(value: unknown): value is SearchCandidateRow {
   return (
     isObject(value) &&
@@ -814,8 +708,8 @@ function validateRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentR
     return false;
   }
 
-  if (!normalizeSubAnswerFields(value, { required: false, defaultEmpty: true })) {
-    console.warn("runAgent response validation failed: sub_qa/sub_answers must be arrays of sub-question objects.");
+  if (!normalizeSubItemsField(value, { required: false, defaultEmpty: true })) {
+    console.warn("runAgent response validation failed: sub_items must be an array of [sub_question, sub_answer].");
     return false;
   }
 

@@ -89,6 +89,12 @@ def _resolve_checkpoint_db_url(payload: RuntimeAgentRunRequest) -> str | None:
     return DATABASE_URL
 
 
+def _normalize_resume_payload_for_sdk(resume: object) -> object:
+    if hasattr(resume, "model_dump"):
+        return resume.model_dump(exclude_none=True)
+    return resume
+
+
 def _encode_sse_event(event: object) -> str:
     payload = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
     return f"id: {event.event_id}\nevent: {event.event_type}\ndata: {payload}\n\n"
@@ -166,7 +172,7 @@ def runtime_agent_run_cancel(job_id: str) -> RuntimeAgentRunAsyncCancelResponse:
 def runtime_agent_run_resume(job_id: str, payload: RuntimeAgentRunResumeRequest) -> RuntimeAgentRunAsyncStatusResponse:
     logger.info("Agent router delegating async resume job_id=%s", job_id)
     try:
-        return sdk_resume_run(job_id, resume=payload.resume)
+        return sdk_resume_run(job_id, resume=_normalize_resume_payload_for_sdk(payload.resume))
     except SDKConfigurationError as exc:
         detail = str(exc)
         if detail == "Job not found.":
