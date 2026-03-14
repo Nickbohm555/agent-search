@@ -38,6 +38,8 @@ def _normalize_stage_name(stage_name: str | None) -> str:
         return "runtime"
     if normalized == "synthesize":
         return "synthesize_final"
+    if normalized == "subquestion_checkpoint":
+        return "subquestions_ready"
     return normalized
 
 
@@ -110,6 +112,8 @@ class LifecycleEventBuilder:
     def _consume_update_signal(self, payload: Mapping[str, Any]) -> list[RuntimeLifecycleEvent]:
         events: list[RuntimeLifecycleEvent] = []
         for stage_name in payload:
+            if str(stage_name).startswith("__"):
+                continue
             stage = _normalize_stage_name(str(stage_name))
             self._active_stage = stage
             events.append(self._emit(event_type="stage.updated", stage=stage, status="running"))

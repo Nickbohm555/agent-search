@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
-from langgraph.types import RetryPolicy
+from langgraph.types import RetryPolicy, interrupt
 
-from agent_search.runtime.graph.routes import route_post_decompose
+from agent_search.runtime.graph.routes import route_post_decompose, route_subquestion_lanes
 from agent_search.runtime.graph.state import RuntimeGraphContext, RuntimeGraphState
 from agent_search.runtime.reducers import merge_stage_snapshots
 from agent_search.runtime.state import to_rag_state
@@ -50,6 +50,7 @@ def _append_snapshot(
         **next_state,
         lane_sub_question=str(state.get("lane_sub_question", "")),
         initial_search_context=list(state.get("initial_search_context", [])),
+        subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
     )
 
 
@@ -79,6 +80,7 @@ def _build_decompose_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="decompose",
         )
@@ -108,12 +110,37 @@ def _build_expand_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="expand",
             sub_question=sub_question,
         )
 
     return _expand
+
+
+def _build_subquestion_checkpoint_node():
+    def _subquestion_checkpoint(state: RuntimeGraphState) -> RuntimeGraphState:
+        if not state["subquestion_hitl_enabled"] or not state["decomposition_sub_questions"]:
+            return state
+        interrupt(
+            {
+                "checkpoint_id": state["run_metadata"].thread_id,
+                "kind": "subquestion_review",
+                "stage": "subquestions_ready",
+                "subquestions": [
+                    {
+                        "subquestion_id": f"sq-{index + 1}",
+                        "sub_question": sub_question,
+                        "index": index,
+                    }
+                    for index, sub_question in enumerate(state["decomposition_sub_questions"])
+                ],
+            }
+        )
+        return state
+
+    return _subquestion_checkpoint
 
 
 def _build_search_node(context: RuntimeGraphContext):
@@ -142,6 +169,7 @@ def _build_search_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="search",
             sub_question=sub_question,
@@ -180,6 +208,7 @@ def _build_rerank_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="rerank",
             sub_question=sub_question,
@@ -218,6 +247,7 @@ def _build_answer_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="answer",
             sub_question=sub_question,
@@ -246,6 +276,7 @@ def _build_synthesize_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="synthesize_final",
         )
@@ -276,6 +307,7 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="expand",
             sub_question=sub_question,
@@ -304,6 +336,7 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="search",
             sub_question=sub_question,
@@ -336,6 +369,7 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="rerank",
             sub_question=sub_question,
@@ -367,6 +401,7 @@ def _build_lane_pipeline_node(context: RuntimeGraphContext):
                 **to_rag_state(next_state),
                 lane_sub_question=str(state.get("lane_sub_question", "")),
                 initial_search_context=list(state.get("initial_search_context", [])),
+                subquestion_hitl_enabled=bool(state.get("subquestion_hitl_enabled", False)),
             ),
             stage="answer",
             sub_question=sub_question,
@@ -383,6 +418,7 @@ def build_runtime_graph(
     resolved_context = context or RuntimeGraphContext(payload=RuntimeAgentRunRequest(query="bootstrap"))
     builder = StateGraph(RuntimeGraphState)
     builder.add_node("decompose", _build_decompose_node(resolved_context))
+    builder.add_node("subquestion_checkpoint", _build_subquestion_checkpoint_node())
     builder.add_node("lane_pipeline", _build_lane_pipeline_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("expand", _build_expand_node(resolved_context))
     builder.add_node("search", _build_search_node(resolved_context), retry_policy=_RETRY_POLICY)
@@ -391,6 +427,7 @@ def build_runtime_graph(
     builder.add_node("synthesize", _build_synthesize_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_edge(START, "decompose")
     builder.add_conditional_edges("decompose", route_post_decompose, {"synthesize": "synthesize"})
+    builder.add_conditional_edges("subquestion_checkpoint", route_subquestion_lanes)
     builder.add_edge("lane_pipeline", "synthesize")
     builder.add_edge("expand", "search")
     builder.add_edge("search", "rerank")

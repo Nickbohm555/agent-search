@@ -82,6 +82,16 @@ def _call_with_supported_kwargs(func: Any, /, **kwargs: Any) -> Any:
     return func(**supported_kwargs)
 
 
+def _subquestion_hitl_enabled(payload: RuntimeAgentRunRequest) -> bool:
+    controls = payload.controls
+    return bool(
+        controls is not None
+        and controls.hitl is not None
+        and controls.hitl.subquestions is not None
+        and controls.hitl.subquestions.enabled
+    )
+
+
 def _event_sequence(event_id: str | None) -> int:
     if event_id is None:
         return 0
@@ -420,7 +430,7 @@ def _run_agent_job(
             )
 
         run_metadata = build_graph_run_metadata(run_id=run_id, thread_id=thread_id)
-        if resume is None:
+        if resume is None and not _subquestion_hitl_enabled(payload):
             state = _call_with_supported_kwargs(
                 execute_runtime_graph,
                 context=RuntimeGraphContext(
@@ -464,16 +474,25 @@ def _run_agent_job(
                 current_job = _JOBS.get(job_id)
                 if current_job is None:
                     return
+                pause_stage = (
+                    str(current_job.interrupt_payload.get("stage", "")).strip()
+                    if isinstance(current_job.interrupt_payload, dict)
+                    else ""
+                )
+                if not pause_stage and isinstance(outcome.interrupt_payload, dict):
+                    pause_stage = str(outcome.interrupt_payload.get("stage", "")).strip()
+                if not pause_stage:
+                    pause_stage = current_job.stage or "paused"
                 current_job.status = "paused"
                 current_job.message = "Paused and awaiting resume input."
-                current_job.stage = "paused"
+                current_job.stage = pause_stage
                 current_job.interrupt_payload = outcome.interrupt_payload
                 current_job.checkpoint_id = outcome.checkpoint_id
                 current_job.lifecycle_events.append(
                     _build_job_lifecycle_event(
                         current_job,
                         event_type="run.paused",
-                        stage="paused",
+                        stage=pause_stage,
                         status="paused",
                         decomposition_sub_questions=list(current_job.decomposition_sub_questions),
                         sub_question_artifacts=[item.model_copy(deep=True) for item in current_job.sub_question_artifacts],

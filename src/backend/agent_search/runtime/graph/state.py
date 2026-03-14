@@ -47,6 +47,12 @@ def _merge_stable_initial_search_context(
     return [dict(item) for item in (update or current)]
 
 
+def _merge_stable_bool(current: bool, update: bool) -> bool:
+    if current != update:
+        raise ValueError(f"boolean channel must remain stable across graph lanes: {current!r} != {update!r}")
+    return update
+
+
 @dataclass(slots=True)
 class RuntimeGraphContext:
     payload: RuntimeAgentRunRequest
@@ -80,6 +86,12 @@ def to_runtime_graph_state(
     return RuntimeGraphState(
         **base_state,
         initial_search_context=list(initial_search_context or []),
+        subquestion_hitl_enabled=bool(
+            payload.controls
+            and payload.controls.hitl
+            and payload.controls.hitl.subquestions
+            and payload.controls.hitl.subquestions.enabled
+        ),
     )
 
 
@@ -95,6 +107,7 @@ class RuntimeGraphState(TypedDict):
     output: Annotated[str, _merge_stable_optional_text]
     stage_snapshots: StageSnapshotsChannel
     initial_search_context: Annotated[list[dict[str, Any]], _merge_stable_initial_search_context]
+    subquestion_hitl_enabled: Annotated[bool, _merge_stable_bool]
 
 
 RuntimeGraphStateMapping = Mapping[str, Any]

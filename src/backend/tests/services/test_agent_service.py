@@ -224,7 +224,7 @@ def test_build_runtime_graph_compiles_into_callable_graph() -> None:
     )
 
     assert callable(graph.invoke)
-    assert {"decompose", "expand", "search", "rerank", "answer", "synthesize"} <= set(graph.get_graph().nodes)
+    assert {"decompose", "subquestion_checkpoint", "expand", "search", "rerank", "answer", "synthesize"} <= set(graph.get_graph().nodes)
 
 
 def test_route_post_decompose_fans_out_one_expand_send_per_subquestion() -> None:

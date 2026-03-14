@@ -10,6 +10,8 @@ from agent_search.runtime.graph.state import RuntimeGraphState
 def route_post_decompose(state: RuntimeGraphState) -> str | Sequence[Send]:
     if not state["decomposition_sub_questions"]:
         return "synthesize"
+    if state["subquestion_hitl_enabled"]:
+        return "subquestion_checkpoint"
     return route_subquestion_lanes(state)
 
 
@@ -28,6 +30,7 @@ def route_subquestion_lanes(state: RuntimeGraphState) -> Sequence[Send]:
                 "sub_qa": [],
                 "output": "",
                 "stage_snapshots": [],
+                "subquestion_hitl_enabled": state["subquestion_hitl_enabled"],
             },
         )
         for sub_question in state["decomposition_sub_questions"]

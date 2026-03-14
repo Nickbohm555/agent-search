@@ -7,9 +7,10 @@ import logging
 from typing import Any, Callable, Mapping
 
 from agent_search.errors import SDKConfigurationError
+from agent_search.runtime.graph.builder import build_runtime_graph
 from agent_search.runtime.graph.execution import execute_runtime_graph
-from agent_search.runtime.lifecycle_events import RuntimeLifecycleEvent
-from agent_search.runtime.graph.state import RuntimeGraphContext
+from agent_search.runtime.graph.state import RuntimeGraphContext, to_runtime_graph_state
+from agent_search.runtime.lifecycle_events import LifecycleEventBuilder, RuntimeLifecycleEvent
 from agent_search.runtime.persistence import compile_graph_with_checkpointer
 from agent_search.runtime.resume import build_resume_command
 from agent_search.runtime.state import to_rag_state
@@ -139,6 +140,14 @@ class _LegacyGraphBuilder:
         return self._compiled_graph
 
 
+class _CheckpointedRuntimeGraphBuilder:
+    def __init__(self, *, context: RuntimeGraphContext) -> None:
+        self._context = context
+
+    def compile(self, **compile_kwargs: Any) -> Any:
+        return build_runtime_graph(context=self._context, **compile_kwargs)
+
+
 def _coerce_durable_outcome(result: Any, *, thread_id: str) -> DurableExecutionOutcome:
     if isinstance(result, DurableExecutionOutcome):
         return result
@@ -179,6 +188,146 @@ def _deserialize_recorded_outcome(recorded_outcome: Mapping[str, Any], *, thread
     )
 
 
+def _subquestion_hitl_enabled(payload: RuntimeAgentRunRequest) -> bool:
+    controls = payload.controls
+    return bool(
+        controls is not None
+        and controls.hitl is not None
+        and controls.hitl.subquestions is not None
+        and controls.hitl.subquestions.enabled
+    )
+
+
+def _extract_checkpoint_id(payload: Any) -> str | None:
+    if not isinstance(payload, Mapping):
+        return None
+    config = payload.get("config")
+    if not isinstance(config, Mapping):
+        return None
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        return None
+    raw_checkpoint_id = configurable.get("checkpoint_id")
+    if raw_checkpoint_id is None:
+        return None
+    return str(raw_checkpoint_id)
+
+
+def _extract_interrupt_payload(payload: Any) -> Any | None:
+    if not isinstance(payload, Mapping):
+        return None
+    interrupts = payload.get("interrupts")
+    if isinstance(interrupts, list) and interrupts:
+        first_interrupt = interrupts[0]
+        if isinstance(first_interrupt, Mapping):
+            return first_interrupt.get("value")
+    interrupt_update = payload.get("__interrupt__")
+    if isinstance(interrupt_update, (list, tuple)) and interrupt_update:
+        first_interrupt = interrupt_update[0]
+        value = getattr(first_interrupt, "value", None)
+        if value is not None:
+            return value
+    return None
+
+
+def _run_subquestion_checkpointed_graph(
+    payload: RuntimeAgentRunRequest,
+    *,
+    model: Any,
+    vector_store: Any,
+    run_metadata: Any,
+    callbacks: list[Any] | None = None,
+    langfuse_callback: Any | None = None,
+    lifecycle_callback: Callable[[RuntimeLifecycleEvent], None] | None = None,
+    initial_search_context: list[dict[str, Any]] | None = None,
+    snapshot_callback: Any | None = None,
+    resume: Any | None = None,
+    emit_success_terminal_event: bool = True,
+    emit_paused_terminal_event: bool = True,
+) -> DurableExecutionOutcome:
+    context = RuntimeGraphContext(
+        payload=payload,
+        model=model,
+        vector_store=vector_store,
+        callbacks=list(callbacks or []),
+        langfuse_callback=langfuse_callback,
+        initial_search_context=list(initial_search_context or []),
+    )
+    builder = _CheckpointedRuntimeGraphBuilder(context=context)
+    config = {"configurable": {"thread_id": run_metadata.thread_id}}
+    graph_input: RuntimeAgentRunRequest | Command | dict[str, Any]
+    if resume is None:
+        graph_input = to_runtime_graph_state(
+            payload,
+            run_metadata=run_metadata,
+            initial_search_context=list(initial_search_context or []),
+        )
+    else:
+        graph_input = build_resume_command(resume)
+
+    lifecycle_builder = LifecycleEventBuilder(run_metadata=run_metadata) if lifecycle_callback is not None else None
+    last_snapshot_count = 0
+    latest_checkpoint_id: str | None = None
+    interrupt_payload: Any | None = None
+    terminal_state: Any | None = None
+
+    with compile_graph_with_checkpointer(builder) as graph:
+        try:
+            if lifecycle_builder is not None:
+                if resume is None:
+                    lifecycle_callback(lifecycle_builder.emit_run_started())
+                else:
+                    lifecycle_callback(lifecycle_builder.emit_recovery_started(checkpoint_id=run_metadata.thread_id))
+            for item in graph.stream(
+                graph_input,
+                config=config,
+                stream_mode=["values", "tasks", "updates", "checkpoints"],
+            ):
+                if isinstance(item, tuple) and len(item) == 2:
+                    mode, payload_item = item
+                else:
+                    mode, payload_item = "values", item
+                latest_checkpoint_id = _extract_checkpoint_id(payload_item) or latest_checkpoint_id
+                interrupt_payload = _extract_interrupt_payload(payload_item) or interrupt_payload
+                if lifecycle_builder is not None:
+                    for event in lifecycle_builder.consume_stream_signal(str(mode), payload_item):
+                        lifecycle_callback(event)
+                if mode != "values":
+                    continue
+                terminal_state = payload_item
+                if snapshot_callback is None:
+                    continue
+                rag_state = to_rag_state(payload_item)
+                snapshots = rag_state["stage_snapshots"]
+                while last_snapshot_count < len(snapshots):
+                    snapshot_callback(snapshots[last_snapshot_count], rag_state)
+                    last_snapshot_count += 1
+            if interrupt_payload is not None:
+                if lifecycle_builder is not None and emit_paused_terminal_event:
+                    lifecycle_callback(lifecycle_builder.emit_terminal(status="paused"))
+                return DurableExecutionOutcome(
+                    status="paused",
+                    state=terminal_state,
+                    interrupt_payload=interrupt_payload,
+                    checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
+                )
+            if terminal_state is None:
+                terminal_state = graph.invoke(graph_input, config=config)
+            response = legacy_service.map_graph_state_to_runtime_response(terminal_state)
+            if lifecycle_builder is not None and emit_success_terminal_event:
+                lifecycle_callback(lifecycle_builder.emit_terminal(status="success"))
+            return DurableExecutionOutcome(
+                status="completed",
+                state=terminal_state,
+                response=response,
+                checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
+            )
+        except Exception as exc:
+            if lifecycle_builder is not None:
+                lifecycle_callback(lifecycle_builder.emit_terminal(status="error", error=str(exc)))
+            raise
+
+
 def run_checkpointed_agent(
     payload: RuntimeAgentRunRequest,
     *,
@@ -194,6 +343,21 @@ def run_checkpointed_agent(
     emit_success_terminal_event: bool = True,
     emit_paused_terminal_event: bool = True,
 ) -> DurableExecutionOutcome:
+    if _subquestion_hitl_enabled(payload):
+        return _run_subquestion_checkpointed_graph(
+            payload,
+            model=model,
+            vector_store=vector_store,
+            run_metadata=run_metadata,
+            callbacks=callbacks,
+            langfuse_callback=langfuse_callback,
+            lifecycle_callback=lifecycle_callback,
+            initial_search_context=initial_search_context,
+            snapshot_callback=snapshot_callback,
+            resume=resume,
+            emit_success_terminal_event=emit_success_terminal_event,
+            emit_paused_terminal_event=emit_paused_terminal_event,
+        )
     compiled_graph = _LegacyCompiledGraph(
         payload=payload,
         vector_store=vector_store,
