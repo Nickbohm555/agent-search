@@ -10,7 +10,7 @@ updated: "2026-03-14"
 ---
 
 ## Current Test
-Test 3 - Async resume preserves full normalized controls.
+Test 4 - Response contract stays backward compatible with additive field.
 
 ## Information Needed from the Summary
 - what_changed:
@@ -69,6 +69,10 @@ Test 3 - Async resume preserves full normalized controls.
    - **Given** an async job is created with explicit additive controls
    - **When** the job is resumed from persisted state
    - **Then** resume reconstruction uses the stored normalized request payload and retains the full control envelope (not query/thread-only fallback behavior).
+   - result: pass - `docker compose exec backend uv run pytest tests/sdk/test_public_api_async.py::test_resume_run_reconstructs_full_request_payload` passed.
+   - reported: 2026-03-14
+   - severity: none
+   - reason: Resume reconstruction validated the persisted normalized request payload, including `controls.rerank`, `controls.query_expansion`, and `controls.hitl`, before re-entering the checkpointed async runtime path.
 
 4. **Response contract stays backward compatible with additive field**
    - **Given** a runtime response is generated for existing clients
@@ -81,7 +85,7 @@ Test 3 - Async resume preserves full normalized controls.
    - **Then** both payloads pass validation, and strict checks apply only when additive `sub_answers` is present.
 
 ## Summary
-Tests 1-2 passed on 2026-03-14. Legacy payloads without additive controls still validate, and explicit additive controls propagate consistently through both sync and async SDK entrypoints, keeping the Phase 1 compatibility baseline intact while confirming the shared control-shape contract.
+Tests 1-3 passed on 2026-03-14. Legacy payloads without additive controls still validate, explicit additive controls propagate consistently through both sync and async SDK entrypoints, and async resume reconstructs the full normalized request payload instead of falling back to query/thread-only state.
 
 ## Gaps
 []

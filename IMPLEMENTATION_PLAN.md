@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 3. (move +1 after each turn)
+Current section to work on: section 4. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -82,7 +82,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass - `docker compose exec backend uv run pytest tests/sdk/test_public_api_async.py::test_resume_run_reconstructs_full_request_payload` passed on 2026-03-14, confirming paused async jobs resume from the persisted normalized request payload and retain the full controls envelope instead of reverting to query/thread-only reconstruction.
 
 ## Section 4 — 01-contract-foundation-and-compatibility-baseline — tests-1 — Test 4 (Validation)
 - Source test markdown: `.planning/phases/01-contract-foundation-and-compatibility-baseline/tests-1.md`
