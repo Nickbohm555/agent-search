@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.16
+## Contract notes for 1.0.17
 
 Use these canonical names in new `config` payloads:
 
@@ -412,18 +412,15 @@ For LangChain-backed stores, use:
 
 `final_citations` and the per-subquestion citation rows come from the metadata attached to the retrieved `Document` objects returned by your vector store.
 
-For pgvector-backed stores, this means the citation fields must be present in the document metadata payload stored alongside each chunk. The SDK’s preferred metadata keys are:
+For pgvector-backed stores, this means the citation title/source fields should be present in the document metadata payload stored alongside each chunk. The SDK’s preferred metadata keys are:
 
 - `citation_title`
 - `citation_source`
-- `document_id`
 
 When those keys are present, retrieval maps them into citation rows like:
 
 - `title <- metadata["citation_title"]`
 - `source <- metadata["citation_source"]`
-- `document_id <- metadata["document_id"]`
-- `content <- document.page_content`
 
 The SDK keeps a small fallback chain for older payloads:
 
@@ -431,7 +428,7 @@ The SDK keeps a small fallback chain for older payloads:
 - source fallback: `source`, then `wiki_url`
 - document id fallback: `Document.id`
 
-If you are writing chunks into pgvector yourself, put those values in the metadata column under those exact names. A minimal chunk should look like:
+If you are writing chunks into pgvector yourself, put the citation title/source values in the metadata column under those exact names. A minimal chunk should look like:
 
 ```python
 from langchain_core.documents import Document
@@ -441,7 +438,6 @@ doc = Document(
     metadata={
         "citation_title": "pgvector README",
         "citation_source": "https://github.com/pgvector/pgvector",
-        "document_id": "pgvector-readme",
     },
 )
 ```
@@ -468,8 +464,7 @@ Why this matters:
 
 - Missing `citation_title` or its fallbacks leads to blank citation titles.
 - Missing `citation_source` or its fallbacks leads to blank or weak source attribution.
-- Missing `document_id` makes deduplication less stable because the runtime falls back to source-plus-content identity.
-- `page_content` is required because citation snippets and answer grounding come from the chunk text itself.
+- `document_id` is optional in metadata. If your vector store preserves a stable `Document.id`, the runtime uses that automatically.
 
 ## Notes
 
