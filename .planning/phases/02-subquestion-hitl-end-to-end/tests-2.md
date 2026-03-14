@@ -7,12 +7,12 @@ source:
   - 02-03-SUMMARY.md
   - 02-04-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Phase 2 subquestion HITL end-to-end UAT coverage for backend contracts, runtime checkpointing, frontend paused review/resume UX, and SDK async parity with compatibility guarantees.
+Test 2 - Paused HITL run exposes reviewable checkpoint metadata to clients.
 
 ## Information Needed from the Summary
 
@@ -63,6 +63,10 @@ Phase 2 subquestion HITL end-to-end UAT coverage for backend contracts, runtime 
 **When** I submit an async run with `hitl.subquestions.enabled: true`  
 **Then** the request is accepted and returns a `job_id`  
 **And** when I submit the same request without `hitl` fields, it is also accepted and follows default non-HITL behavior (no required review step introduced by default)
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_async_accepts_subquestion_hitl_controls tests/sdk/test_public_api_async.py::test_run_async_preserves_omitted_controls_and_hitl_default_off tests/sdk/test_sdk_async_e2e.py::test_sdk_async_run_e2e_preserves_default_off_subquestion_hitl_path` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The API accepted additive `hitl.subquestions.enabled` on async start, omitted controls still preserved HITL default-off behavior, and the async E2E path completed through the non-checkpoint runtime when subquestion HITL remained disabled.
 
 ### Test 2: Paused HITL run exposes reviewable checkpoint metadata to clients
 
@@ -101,7 +105,7 @@ Phase 2 subquestion HITL end-to-end UAT coverage for backend contracts, runtime 
 
 ## Summary
 
-This test set validates externally observable outcomes introduced in Phase 2: additive HITL enablement, single checkpoint pause semantics, typed decision-based resume, deterministic validation on malformed envelopes, frontend operator-review behavior, and SDK parity with legacy compatibility.
+Test 1 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement, omitted HITL controls remain backward compatible, and the default-off async path still completes without entering checkpointed pause/resume flow.
 
 ## Gaps
 
