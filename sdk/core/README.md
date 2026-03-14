@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.3
+## Contract notes for 1.0.6
 
 Use these canonical names in new `config` payloads:
 
@@ -54,8 +54,8 @@ Compatibility notes:
 
 ## Human-in-the-loop (HITL)
 
-`agent-search-core` supports HITL review/resume for subquestion decomposition via the checkpointed runtime runner.
-Use `run_checkpointed_agent(...)` with HITL controls to pause, inspect the interrupt payload, then resume with typed decisions.
+`agent-search-core` supports HITL review/resume for subquestion decomposition.
+Use `advanced_rag(...)` with HITL controls to pause, inspect the normalized review object, then resume with SDK-owned decisions.
 
 Start a run with HITL enabled:
 
@@ -91,47 +91,43 @@ outcome = run_checkpointed_agent(
 )
 ```
 
-Example pause payload (the run pauses at `subquestions_ready`):
+Example paused result (the run pauses at `subquestions_ready`):
 
 ```python
+from agent_search import advanced_rag
+
+outcome = advanced_rag(
+    "Summarize the customer feedback themes.",
+    vector_store=vector_store,
+    model=model,
+    hitl=True,
+)
 print(outcome.status)  # "paused"
-print(outcome.interrupt_payload)
-# {
-#   "kind": "subquestion_review",
-#   "stage": "subquestions_ready",
-#   "checkpoint_id": "550e8400-e29b-41d4-a716-446655440000",
-#   "subquestions": [
-#     {"subquestion_id": "sq-1", "sub_question": "Theme 1?", "index": 0},
-#     {"subquestion_id": "sq-2", "sub_question": "Theme 2?", "index": 1},
-#   ],
-# }
+print(outcome.review.kind)  # "subquestion_review"
+print(outcome.review.items[0].text)
 ```
 
-Resume with typed decisions (approve, edit, deny, skip):
+Resume with SDK helpers:
 
 ```python
-from schemas import RuntimeSubquestionDecision, RuntimeSubquestionResumeEnvelope
-
-resume = RuntimeSubquestionResumeEnvelope(
-    checkpoint_id=outcome.checkpoint_id,
-    decisions=[
-        RuntimeSubquestionDecision(subquestion_id="sq-1", action="approve"),
-        RuntimeSubquestionDecision(
-            subquestion_id="sq-2",
-            action="edit",
-            edited_text="Theme 2 (billing and invoices)",
-        ),
-    ],
+resume = outcome.review.with_decisions(
+    outcome.review.items[0].approve(),
+    outcome.review.items[1].edit("Theme 2 (billing and invoices)"),
 )
 
-resumed = run_checkpointed_agent(
-    payload,
+resumed = advanced_rag(
+    "Summarize the customer feedback themes.",
     model=model,
     vector_store=vector_store,
-    run_metadata=run_metadata,
     resume=resume,
 )
 print(resumed.response.output)
+```
+
+For simple approval flows:
+
+```python
+resume = outcome.review.approve_all()
 ```
 
 ## Prompt customization

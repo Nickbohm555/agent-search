@@ -27,7 +27,15 @@ from schemas import (
     RuntimeHitlControl,
     RuntimeSubquestionHitlControl,
 )
-from schemas.agent import RuntimeAgentRunResult
+from schemas.agent import (
+    HitlResumeRequest,
+    HitlReview,
+    RuntimeAgentRunResult,
+    RuntimeQueryExpansionDecision,
+    RuntimeQueryExpansionResumeEnvelope,
+    RuntimeSubquestionDecision,
+    RuntimeSubquestionResumeEnvelope,
+)
 from services import agent_service as legacy_service
 
 logger = logging.getLogger(__name__)
@@ -195,6 +203,42 @@ def _extract_interrupt_payload(payload: Any) -> Any | None:
     return None
 
 
+def _normalize_hitl_review(payload: Any) -> HitlReview | None:
+    if payload is None:
+        return None
+    return HitlReview.from_interrupt_payload(payload)
+
+
+def _translate_sdk_resume(resume: Any | None) -> Any | None:
+    if not isinstance(resume, HitlResumeRequest):
+        return resume
+    if resume.review_kind == "subquestion_review":
+        return RuntimeSubquestionResumeEnvelope(
+            checkpoint_id=resume.checkpoint_id,
+            decisions=[
+                RuntimeSubquestionDecision(
+                    subquestion_id=decision.item_id,
+                    action="deny" if decision.action == "reject" else decision.action,
+                    edited_text=decision.replacement_text,
+                )
+                for decision in resume.decisions
+            ],
+        )
+    if resume.review_kind == "query_expansion_review":
+        return RuntimeQueryExpansionResumeEnvelope(
+            checkpoint_id=resume.checkpoint_id,
+            decisions=[
+                RuntimeQueryExpansionDecision(
+                    expansion_id=decision.item_id,
+                    action="deny" if decision.action == "reject" else decision.action,
+                    edited_query=decision.replacement_text,
+                )
+                for decision in resume.decisions
+            ],
+        )
+    raise SDKConfigurationError(f"Unsupported HITL review kind '{resume.review_kind}'.")
+
+
 class _RuntimeGraphBuilder:
     def __init__(self, *, context: RuntimeGraphContext) -> None:
         self._context = context
@@ -212,6 +256,7 @@ def _run_hitl_runtime_agent(
     langfuse_callback: Any | None = None,
     resume: Any | None = None,
 ) -> RuntimeAgentRunResult:
+    translated_resume = _translate_sdk_resume(resume)
     run_metadata = legacy_service.build_graph_run_metadata(thread_id=payload.thread_id)
     context = RuntimeGraphContext(
         payload=payload,
@@ -224,8 +269,8 @@ def _run_hitl_runtime_agent(
     builder = _RuntimeGraphBuilder(context=context)
     graph_input: Any = (
         to_runtime_graph_state(payload, run_metadata=run_metadata, initial_search_context=[])
-        if resume is None
-        else build_resume_command(resume)
+        if translated_resume is None
+        else build_resume_command(translated_resume)
     )
     execution_config = {"configurable": {"thread_id": run_metadata.thread_id}}
     terminal_state: Any = None
@@ -249,8 +294,8 @@ def _run_hitl_runtime_agent(
             return RuntimeAgentRunResult(
                 status="paused",
                 thread_id=run_metadata.thread_id,
-                checkpoint_id=run_metadata.thread_id,
-                interrupt_payload=interrupt_payload,
+                checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
+                review=_normalize_hitl_review(interrupt_payload),
             )
         if terminal_state is None:
             terminal_state = graph.invoke(graph_input, config=execution_config)
@@ -258,7 +303,7 @@ def _run_hitl_runtime_agent(
     return RuntimeAgentRunResult(
         status="completed",
         thread_id=run_metadata.thread_id,
-        checkpoint_id=run_metadata.thread_id,
+        checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
         response=response,
     )
 

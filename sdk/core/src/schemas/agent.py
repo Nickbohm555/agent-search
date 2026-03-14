@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypeAlias, Union
 
 from pydantic import AliasChoices
@@ -106,12 +107,138 @@ class RuntimeAgentRunResponse(BaseModel):
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
 
 
+class HitlResumeDecision(BaseModel):
+    item_id: str = Field(min_length=1)
+    action: Literal["approve", "edit", "reject"]
+    replacement_text: str | None = None
+
+    @model_validator(mode="after")
+    def validate_replacement_text(self) -> "HitlResumeDecision":
+        if self.action == "edit":
+            if self.replacement_text is None or not self.replacement_text.strip():
+                raise ValueError("replacement_text is required when action='edit'.")
+            self.replacement_text = self.replacement_text.strip()
+            return self
+        if self.replacement_text is not None:
+            self.replacement_text = self.replacement_text.strip() or None
+        return self
+
+
+class HitlReviewItem(BaseModel):
+    item_id: str = Field(min_length=1)
+    text: str
+    index: int = Field(ge=0)
+
+    def approve(self) -> HitlResumeDecision:
+        return HitlResumeDecision(item_id=self.item_id, action="approve")
+
+    def edit(self, replacement_text: str) -> HitlResumeDecision:
+        return HitlResumeDecision(item_id=self.item_id, action="edit", replacement_text=replacement_text)
+
+    def reject(self) -> HitlResumeDecision:
+        return HitlResumeDecision(item_id=self.item_id, action="reject")
+
+
+class HitlReview(BaseModel):
+    kind: Literal["subquestion_review", "query_expansion_review"]
+    stage: str = ""
+    checkpoint_id: str = Field(min_length=1)
+    items: list[HitlReviewItem] = Field(default_factory=list)
+
+    @classmethod
+    def from_interrupt_payload(cls, payload: Any) -> "HitlReview":
+        if not isinstance(payload, Mapping):
+            raise ValueError("HITL interrupt payload must be a mapping.")
+        kind = str(payload.get("kind") or "").strip()
+        checkpoint_id = str(payload.get("checkpoint_id") or "").strip()
+        if not kind:
+            raise ValueError("HITL interrupt payload is missing kind.")
+        if kind not in {"subquestion_review", "query_expansion_review"}:
+            raise ValueError(f"Unsupported HITL review kind '{kind}'.")
+        if not checkpoint_id:
+            raise ValueError("HITL interrupt payload is missing checkpoint_id.")
+        return cls(
+            kind=kind,
+            stage=str(payload.get("stage") or ""),
+            checkpoint_id=checkpoint_id,
+            items=cls._normalize_items(kind=kind, payload=payload),
+        )
+
+    @staticmethod
+    def _normalize_items(*, kind: str, payload: Mapping[str, Any]) -> list[HitlReviewItem]:
+        raw_items_key = "subquestions" if kind == "subquestion_review" else "expansions"
+        raw_items = payload.get(raw_items_key)
+        if not isinstance(raw_items, Sequence) or isinstance(raw_items, (str, bytes, bytearray)):
+            return []
+        item_id_key = "subquestion_id" if kind == "subquestion_review" else "expansion_id"
+        text_key = "sub_question" if kind == "subquestion_review" else "query"
+        items: list[HitlReviewItem] = []
+        for index, raw_item in enumerate(raw_items):
+            if not isinstance(raw_item, Mapping):
+                continue
+            raw_index = raw_item.get("index")
+            items.append(
+                HitlReviewItem(
+                    item_id=str(raw_item.get(item_id_key) or f"item-{index + 1}").strip(),
+                    text=str(raw_item.get(text_key) or "").strip(),
+                    index=raw_index if isinstance(raw_index, int) and raw_index >= 0 else index,
+                )
+            )
+        return items
+
+    def approve_all(self) -> "HitlResumeRequest":
+        return HitlResumeRequest(
+            checkpoint_id=self.checkpoint_id,
+            review_kind=self.kind,
+            decisions=[item.approve() for item in self.items],
+        )
+
+    def with_decisions(self, *decisions: HitlResumeDecision) -> "HitlResumeRequest":
+        return HitlResumeRequest(
+            checkpoint_id=self.checkpoint_id,
+            review_kind=self.kind,
+            decisions=list(decisions),
+        )
+
+
+class HitlResumeRequest(BaseModel):
+    checkpoint_id: str = Field(min_length=1)
+    review_kind: Literal["subquestion_review", "query_expansion_review"]
+    decisions: list[HitlResumeDecision] = Field(min_length=1)
+
+    @classmethod
+    def approve(cls, review: HitlReview, item_id: str) -> "HitlResumeRequest":
+        return review.with_decisions(HitlResumeDecision(item_id=item_id, action="approve"))
+
+    @classmethod
+    def edit(cls, review: HitlReview, item_id: str, replacement_text: str) -> "HitlResumeRequest":
+        return review.with_decisions(
+            HitlResumeDecision(item_id=item_id, action="edit", replacement_text=replacement_text)
+        )
+
+    @classmethod
+    def reject(cls, review: HitlReview, item_id: str) -> "HitlResumeRequest":
+        return review.with_decisions(HitlResumeDecision(item_id=item_id, action="reject"))
+
+
 class RuntimeAgentRunResult(BaseModel):
     status: Literal["completed", "paused"]
     thread_id: str = ""
     checkpoint_id: str | None = None
-    interrupt_payload: Any | None = None
+    review: HitlReview | None = Field(
+        default=None,
+        validation_alias=AliasChoices("review", "interrupt_payload"),
+    )
     response: RuntimeAgentRunResponse | None = None
+
+    @field_validator("review", mode="before")
+    @classmethod
+    def validate_review(cls, value: Any) -> HitlReview | Any | None:
+        if value is None or isinstance(value, HitlReview):
+            return value
+        if isinstance(value, Mapping):
+            return HitlReview.from_interrupt_payload(value)
+        return value
 
 
 class AgentRunStageMetadata(BaseModel):
@@ -146,11 +273,23 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     result: RuntimeAgentRunResponse | None = None
     error: str | None = None
     cancel_requested: bool = False
-    interrupt_payload: Any | None = None
+    review: HitlReview | None = Field(
+        default=None,
+        validation_alias=AliasChoices("review", "interrupt_payload"),
+    )
     checkpoint_id: str | None = None
     started_at: float | None = None
     finished_at: float | None = None
     elapsed_ms: int | None = None
+
+    @field_validator("review", mode="before")
+    @classmethod
+    def validate_review(cls, value: Any) -> HitlReview | Any | None:
+        if value is None or isinstance(value, HitlReview):
+            return value
+        if isinstance(value, Mapping):
+            return HitlReview.from_interrupt_payload(value)
+        return value
 
 
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
@@ -201,6 +340,7 @@ class RuntimeQueryExpansionResumeEnvelope(BaseModel):
 class RuntimeAgentRunResumeRequest(BaseModel):
     resume: Union[
         bool,
+        HitlResumeRequest,
         dict[str, Any],
         RuntimeSubquestionResumeEnvelope,
         RuntimeQueryExpansionResumeEnvelope,
@@ -211,8 +351,14 @@ class RuntimeAgentRunResumeRequest(BaseModel):
     def validate_resume(cls, value: Any) -> Any:
         if isinstance(value, bool):
             return value
+        if isinstance(value, HitlResumeRequest):
+            return value
         if not isinstance(value, dict):
-            raise ValueError("resume must be a boolean, legacy object payload, or typed decision envelope.")
+            raise ValueError(
+                "resume must be a boolean, SDK HITL resume request, legacy object payload, or typed decision envelope."
+            )
+        if "review_kind" in value and "checkpoint_id" in value and "decisions" in value:
+            return HitlResumeRequest.model_validate(value)
         if "checkpoint_id" in value or "decisions" in value:
             decisions = value.get("decisions")
             if isinstance(decisions, list):
