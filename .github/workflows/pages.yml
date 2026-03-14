@@ -28,9 +28,9 @@ jobs:
       - name: Prepare Pages artifact
         run: |
           mkdir -p _site
-          cp docs/application-documentation.html _site/application-documentation.html
-          cp docs/application-documentation.html _site/architecture.html
-          cp docs/application-documentation.html _site/index.html
+          cp docs/application-document.html _site/application-document.html
+          cp docs/application-document.html _site/architecture.html
+          cp docs/application-document.html _site/index.html
           touch _site/.nojekyll
 
       - name: Configure Pages

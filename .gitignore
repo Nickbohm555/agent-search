@@ -20,7 +20,7 @@ sdk-token.txt
 .tmp/
 .planning/
 docs/*
-!docs/application-documentation.html
+!docs/application-document.html
 *.sh
 completed.md
 IMPLEMENTATION_PLAN.md
