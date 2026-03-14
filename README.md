@@ -163,14 +163,16 @@ For `final_citations` to be populated, both must be true:
 - The generated final answer must include citation markers like `[1]`, `[2]`.
 - Those indices must map to retrieved/reranked rows from the search pipeline.
 
-PGVector metadata does not need one single mandatory key, but citation quality depends on metadata fields on each stored `Document`.
+Citation rows are now built from explicit PGVector metadata keys only. The runtime does not read citation fields from multiple fallback keys anymore.
 
-Recommended metadata per chunk:
-- `topic` or `title` or `wiki_page`: used as citation `title`
-- `wiki_url` or `source`: used as citation `source`
-- `id` (Document id): optional, used as `document_id` and dedupe identity
+Required metadata contract per stored chunk:
+- `citation_source`: canonical citation source. This is the only metadata key used to populate citation `source`.
 
-If `title`/`source` metadata is missing, `final_citations` can still be returned, but those fields may be empty in the citation rows.
+Recommended metadata contract per stored chunk:
+- `citation_title`: canonical citation title. This is the only metadata key used to populate citation `title`.
+- `document_id`: stable identity used for dedupe. If missing, retrieval falls back to `citation_source + chunk content`.
+
+Indexing normalizes incoming wiki/internal data so legacy `title`/`source` values are copied into `citation_title`/`citation_source` before storage. Older vectors already stored without these explicit keys should be reindexed if you want robust `final_citations`.
 
 Example chunk shape before indexing:
 
@@ -178,8 +180,9 @@ Example chunk shape before indexing:
 Document(
     page_content=\"pgvector adds vector similarity search to Postgres ...\",
     metadata={
-        \"topic\": \"pgvector\",
-        \"wiki_url\": \"https://github.com/pgvector/pgvector\",
+        \"citation_title\": \"pgvector\",
+        \"citation_source\": \"https://github.com/pgvector/pgvector\",
+        \"document_id\": \"pgvector-intro-001\",
     },
     id=\"pgvector-intro-001\",
 )
