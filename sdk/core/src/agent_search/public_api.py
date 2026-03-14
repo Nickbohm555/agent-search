@@ -128,11 +128,6 @@ def _build_runtime_request_payload(
     resume: Any | None = None,
     checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunRequest:
-    resolved_thread_id = None
-    if isinstance(config, Mapping) and config.get("thread_id") is not None:
-        resolved_thread_id = str(config.get("thread_id")).strip() or None
-    if resolved_thread_id is None:
-        resolved_thread_id = _resolve_resume_checkpoint_id(resume)
     custom_prompts_payload = {
         key: value
         for key in _CUSTOM_PROMPT_KEYS
@@ -150,7 +145,7 @@ def _build_runtime_request_payload(
         )
     return RuntimeAgentRunRequest(
         query=query,
-        thread_id=resolved_thread_id,
+        thread_id=(str(config.get("thread_id")).strip() if isinstance(config, Mapping) and config.get("thread_id") is not None else None),
         checkpoint_db_url=checkpoint_db_url,
         controls=controls,
         runtime_config=(
@@ -257,6 +252,15 @@ def _normalize_hitl_review(payload: Any) -> HitlReview | None:
     return HitlReview.from_interrupt_payload(payload)
 
 
+def _attach_checkpoint_id_to_interrupt(payload: Any, *, checkpoint_id: str | None = None) -> Any | None:
+    if payload is None or not isinstance(payload, Mapping):
+        return payload
+    normalized = dict(payload)
+    if checkpoint_id:
+        normalized["checkpoint_id"] = checkpoint_id
+    return normalized
+
+
 def _translate_sdk_resume(resume: Any | None) -> Any | None:
     if not isinstance(resume, HitlResumeRequest):
         return resume
@@ -307,12 +311,21 @@ def _run_hitl_runtime_agent(
         if translated_resume is None
         else build_resume_command(translated_resume)
     )
-    execution_config = {
-        "configurable": {
-            "thread_id": run_metadata.thread_id,
-            "checkpoint_id": run_metadata.thread_id,
+    if translated_resume is None:
+        execution_config = {
+            "configurable": {
+                "thread_id": run_metadata.thread_id,
+                "checkpoint_id": run_metadata.thread_id,
+            }
         }
-    }
+    else:
+        execution_config = {
+            "configurable": {
+                "checkpoint_id": _resolve_resume_checkpoint_id(translated_resume) or run_metadata.thread_id,
+            }
+        }
+        if payload.thread_id is not None and payload.thread_id.strip():
+            execution_config["configurable"]["thread_id"] = payload.thread_id.strip()
     terminal_state: Any = None
     latest_checkpoint_id: str | None = None
     interrupt_payload: Any | None = None
@@ -335,10 +348,16 @@ def _run_hitl_runtime_agent(
             if mode == "values":
                 terminal_state = payload_item
         if interrupt_payload is not None:
+            resolved_checkpoint_id = latest_checkpoint_id or run_metadata.thread_id
             return RuntimeAgentRunResult(
                 status="paused",
-                checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
-                review=_normalize_hitl_review(interrupt_payload),
+                checkpoint_id=resolved_checkpoint_id,
+                review=_normalize_hitl_review(
+                    _attach_checkpoint_id_to_interrupt(
+                        interrupt_payload,
+                        checkpoint_id=resolved_checkpoint_id,
+                    )
+                ),
             )
         if terminal_state is None:
             terminal_state = graph.invoke(graph_input, config=execution_config)

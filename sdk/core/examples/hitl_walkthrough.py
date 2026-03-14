@@ -36,7 +36,8 @@ class DemoGraph:
 
     def stream(self, graph_input: Any, *, config: dict[str, Any], stream_mode: list[str]):
         _ = stream_mode
-        thread_id = str(config["configurable"]["thread_id"])
+        configurable = config["configurable"]
+        thread_id = str(configurable.get("thread_id") or configurable.get("checkpoint_id"))
         resume_payload = graph_input.resume if isinstance(graph_input, Command) else None
 
         if resume_payload is None:
