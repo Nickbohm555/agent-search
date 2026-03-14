@@ -30,21 +30,56 @@ flowchart TD
     H --> GOK["Approved sub-questions"]
     HITL -->|Disabled| GOK
 
-    GOK --> SQ["Sub-questions (parallel lanes)"]
+    GOK --> L1_START
+    GOK --> L2_START
+    GOK --> L3_START
 
-    SQ --> QE{"Query expansion toggle on?"}
-    QE -->|On| EX["Expand Node<br/>optional LLM call #2 per lane"]
-    QE -->|Off| SR["Search Node"]
-    EX --> SR
+    subgraph L1["Subquestion Lane 1"]
+        direction TD
+        L1_START["Sub-question 1"] --> L1_QE{"Query expansion on?"}
+        L1_QE -->|On| L1_EX["Expand Node<br/>optional LLM call #2"]
+        L1_QE -->|Off| L1_SR["Search Node"]
+        L1_EX --> L1_SR
+        L1_SR --> L1_RR{"Rerank on?"}
+        L1_RR -->|On| L1_RERANK["Rerank Node<br/>optional LLM call #3"]
+        L1_RR -->|Off| L1_AN["Answer Node"]
+        L1_RERANK --> L1_AN
+        L1_AN -->|LLM call #4| L1_SA["sub-answer + citations"]
+    end
 
-    SR --> RERANK{"Rerank toggle on?"}
-    RERANK -->|On| RR["Rerank Node<br/>optional LLM call #3 per lane"]
-    RERANK -->|Off| AN["Answer Node"]
-    RR --> AN
+    subgraph L2["Subquestion Lane 2"]
+        direction TD
+        L2_START["Sub-question 2"] --> L2_QE{"Query expansion on?"}
+        L2_QE -->|On| L2_EX["Expand Node<br/>optional LLM call #2"]
+        L2_QE -->|Off| L2_SR["Search Node"]
+        L2_EX --> L2_SR
+        L2_SR --> L2_RR{"Rerank on?"}
+        L2_RR -->|On| L2_RERANK["Rerank Node<br/>optional LLM call #3"]
+        L2_RR -->|Off| L2_AN["Answer Node"]
+        L2_RERANK --> L2_AN
+        L2_AN -->|LLM call #4| L2_SA["sub-answer + citations"]
+    end
 
-    CP1["Custom prompts<br/>subanswer"] -.-> AN
-    AN -->|LLM call #4 per lane| SA["sub-answer + citations"]
-    SA --> SYN["Synthesize Final Node"]
+    subgraph L3["Subquestion Lane 3"]
+        direction TD
+        L3_START["Sub-question N"] --> L3_QE{"Query expansion on?"}
+        L3_QE -->|On| L3_EX["Expand Node<br/>optional LLM call #2"]
+        L3_QE -->|Off| L3_SR["Search Node"]
+        L3_EX --> L3_SR
+        L3_SR --> L3_RR{"Rerank on?"}
+        L3_RR -->|On| L3_RERANK["Rerank Node<br/>optional LLM call #3"]
+        L3_RR -->|Off| L3_AN["Answer Node"]
+        L3_RERANK --> L3_AN
+        L3_AN -->|LLM call #4| L3_SA["sub-answer + citations"]
+    end
+
+    CP1["Custom prompts<br/>subanswer"] -.-> L1_AN
+    CP1 -.-> L2_AN
+    CP1 -.-> L3_AN
+
+    L1_SA --> SYN["Synthesize Final Node"]
+    L2_SA --> SYN
+    L3_SA --> SYN
     CP2["Custom prompts<br/>synthesis"] -.-> SYN
     SYN -->|LLM call #5| OUT["final output"]
 
