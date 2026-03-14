@@ -1,5 +1,5 @@
 ---
-status: ready
+status: completed
 phase: "06-sdk-contract-parity-and-pypi-release"
 source:
   - 06-01-SUMMARY.md
@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 5: Public release docs provide a complete 1.0.3 adoption path.
+All phase 6 validation tests are now recorded. Tests 1-5 cover runtime contract compatibility, OpenAPI and generated SDK parity checks, release-tag safety gating, CI artifact publish integrity, and the public 1.0.3 documentation adoption path.
 
 ## Information Needed from the Summary
 
@@ -120,6 +120,10 @@ Test 5: Public release docs provide a complete 1.0.3 adoption path.
 
 ### Test 5: Public release docs provide a complete 1.0.3 adoption path
 - Type: UAT documentation usability
+- result: pass - manual documentation UAT passed on 2026-03-14 after tracing `README.md` to `docs/releases/1.0.3-sdk-contract-parity.md`, `docs/migration-guide.md`, `sdk/core/README.md`, and `sdk/python/README.md`; all links resolved in-repo and the docs consistently documented canonical `controls`, `runtime_config`, `custom_prompts`, additive `sub_answers`, `sub_qa` fallback handling, and default-off controls/HITL behavior.
+- reported: the published docs provide a complete adoption path for `agent-search-core==1.0.3`, from the root README through release and migration guidance into both SDK READMEs, without dead links or naming inconsistencies in the documented compatibility surface.
+- severity: none
+- reason: observed documentation matches the Phase 6 release guidance requirement for navigable, compatibility-safe adoption instructions.
 - Preconditions:
   - Documentation files from Phase 6 are present in workspace.
 - Steps:
@@ -133,7 +137,7 @@ Test 5: Public release docs provide a complete 1.0.3 adoption path.
 
 ## Summary
 
-Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged. Test 3 passed on 2026-03-14 because the matching `agent-search-core-v1.0.3` dry run completed local build and artifact checks without uploading, while a mismatched `agent-search-core-v0.0.0` tag was rejected before publish logic. Test 4 passed on 2026-03-14 because `.github/workflows/release-sdk.yml` uploads the validated `sdk/core/dist/*` bundle from `build_and_check`, and `publish` only downloads `agent-search-core-dist` to `dist` before invoking `pypa/gh-action-pypi-publish@release/v1` with `packages-dir: dist`, so the publish job never rebuilds artifacts.
+Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged. Test 3 passed on 2026-03-14 because the matching `agent-search-core-v1.0.3` dry run completed local build and artifact checks without uploading, while a mismatched `agent-search-core-v0.0.0` tag was rejected before publish logic. Test 4 passed on 2026-03-14 because `.github/workflows/release-sdk.yml` uploads the validated `sdk/core/dist/*` bundle from `build_and_check`, and `publish` only downloads `agent-search-core-dist` to `dist` before invoking `pypa/gh-action-pypi-publish@release/v1` with `packages-dir: dist`, so the publish job never rebuilds artifacts. Test 5 passed on 2026-03-14 after a documentation UAT from `README.md` through the Phase 6 release notes, migration guide, and both SDK READMEs confirmed the 1.0.3 adoption path is navigable, names the canonical contract fields consistently, documents `sub_qa` compatibility fallback for additive `sub_answers`, and states that new controls and HITL remain default-off unless explicitly enabled.
 
 ## Gaps
 

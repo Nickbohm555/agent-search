@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 33. (move +1 after each turn)
+Current section to work on: section 34. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -752,6 +752,6 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: manual documentation UAT from `README.md` through `docs/releases/1.0.3-sdk-contract-parity.md`, `docs/migration-guide.md`, `sdk/core/README.md`, and `sdk/python/README.md` confirmed the 1.0.3 adoption path has no dead links and consistently documents canonical `controls`, `runtime_config`, `custom_prompts`, additive `sub_answers`, `sub_qa` compatibility fallback, and default-off controls/HITL behavior.
 
 Next: update .planning/STATE.md after executing this phase's testing sections.
