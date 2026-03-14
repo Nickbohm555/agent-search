@@ -11,6 +11,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from agent_search.errors import SDKConfigurationError
+from agent_search.runtime.jobs import AgentRunJobStatus
 from routers.agent import router as agent_router
 from schemas import (
     AgentRunStageMetadata,
@@ -365,6 +366,55 @@ def test_resume_route_restores_missing_job_with_runtime_dependencies_before_disp
             message="Resuming from checkpoint.",
             stage="resuming",
             checkpoint_id="checkpoint-restore",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-resume/job-restored", json={"resume": True})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert captured == {"job_id": "job-restored", "model": sentinel_model, "vector_store": sentinel_vector_store}
+
+
+def test_resume_route_backfills_runtime_dependencies_for_previously_restored_job(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    captured: dict[str, object] = {}
+    sentinel_vector_store = object()
+    sentinel_model = object()
+    restored_job = AgentRunJobStatus(
+        job_id="job-restored",
+        run_id="job-restored",
+        thread_id="550e8400-e29b-41d4-a716-446655440077",
+        status="paused",
+    )
+
+    monkeypatch.setattr(agent_router_module, "get_agent_run_job", lambda _job_id: restored_job)
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (sentinel_vector_store, sentinel_model))
+
+    def fake_restore(job_id: str, *, model=None, vector_store=None):
+        captured["job_id"] = job_id
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        restored_job.runtime_model = model
+        restored_job.runtime_vector_store = vector_store
+        return restored_job
+
+    monkeypatch.setattr(agent_router_module, "restore_agent_run_job", fake_restore)
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_resume_run",
+        lambda job_id, resume: RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id=job_id,
+            thread_id=restored_job.thread_id,
+            status="running",
+            message="Resuming from checkpoint.",
+            stage="resuming",
         ),
     )
 

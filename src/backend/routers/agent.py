@@ -101,7 +101,11 @@ def _encode_sse_event(event: object) -> str:
 
 
 def _restore_http_runtime_job(job_id: str, *, include_runtime_dependencies: bool = False) -> bool:
-    if get_agent_run_job(job_id) is not None:
+    existing_job = get_agent_run_job(job_id)
+    if existing_job is not None and (
+        not include_runtime_dependencies
+        or (existing_job.runtime_model is not None and existing_job.runtime_vector_store is not None)
+    ):
         return True
     if include_runtime_dependencies:
         vector_store, model = _build_sdk_runtime_dependencies()
