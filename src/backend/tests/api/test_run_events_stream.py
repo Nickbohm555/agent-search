@@ -303,6 +303,16 @@ def test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready_with_interr
     assert tracked_job.lifecycle_events[-1].stage == "subquestions_ready"
     assert tracked_job.lifecycle_events[-1].interrupt_payload == tracked_job.interrupt_payload
     assert tracked_job.lifecycle_events[-1].checkpoint_id == "checkpoint-42"
+    assert tracked_job.interrupt_payload == {
+        "checkpoint_id": "checkpoint-42",
+        "kind": "subquestion_review",
+        "stage": "subquestions_ready",
+        "subquestions": [
+            {"subquestion_id": "sq-1", "sub_question": "Keep this?"},
+            {"subquestion_id": "sq-2", "sub_question": "Change this?"},
+        ],
+    }
+    assert tracked_job.lifecycle_events[-1].model_dump(mode="json")["interrupt_payload"] == tracked_job.interrupt_payload
 
 
 def test_subquestion_checkpoint_resume_applies_typed_decisions_deterministically(monkeypatch) -> None:
@@ -385,6 +395,153 @@ def test_resume_agent_run_job_rejects_checkpoint_id_mismatch() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("decision_payload", "expected_subquestions"),
+    [
+        (
+            [{"subquestion_id": "sq-1", "action": "approve"}],
+            ["Keep this question?"],
+        ),
+        (
+            [{"subquestion_id": "sq-1", "action": "edit", "edited_text": "Edited question?"}],
+            ["Edited question?"],
+        ),
+        (
+            [{"subquestion_id": "sq-1", "action": "deny"}],
+            [],
+        ),
+        (
+            [{"subquestion_id": "sq-1", "action": "skip"}],
+            ["Keep this question?"],
+        ),
+    ],
+)
+def test_resume_agent_run_job_records_decision_driven_completion_events(
+    monkeypatch,
+    decision_payload: list[dict[str, str]],
+    expected_subquestions: list[str],
+) -> None:
+    from agent_search.runtime import jobs as jobs_module
+    from services.agent_service import build_graph_run_metadata
+    from schemas import RuntimeAgentRunResponse, RuntimeSubquestionResumeEnvelope
+
+    monkeypatch.setattr(jobs_module, "_persist_job_status", lambda _job: None)
+
+    submitted_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def run_submitted_job(fn, *args, **kwargs):
+        submitted_calls.append((args, kwargs))
+        fn(*args, **kwargs)
+
+    monkeypatch.setattr(jobs_module._EXECUTOR, "submit", run_submitted_job)
+
+    request_payload = RuntimeAgentRunRequest(
+        query="Review these subquestions",
+        thread_id="550e8400-e29b-41d4-a716-446655440115",
+        controls=RuntimeAgentRunControls(
+            hitl=RuntimeHitlControl(
+                enabled=True,
+                subquestions=RuntimeSubquestionHitlControl(enabled=True),
+            )
+        ),
+    )
+    paused_job = AgentRunJobStatus(
+        job_id="job-resume-decisions",
+        run_id="run-resume-decisions",
+        thread_id=request_payload.thread_id or "",
+        status="paused",
+        stage="subquestions_ready",
+        query=request_payload.query,
+        request_payload=request_payload.model_dump(mode="json", exclude_none=True),
+        decomposition_sub_questions=["Keep this question?"],
+        interrupt_payload={
+            "checkpoint_id": "checkpoint-resume",
+            "kind": "subquestion_review",
+            "stage": "subquestions_ready",
+            "subquestions": [
+                {"subquestion_id": "sq-1", "sub_question": "Keep this question?", "index": 0},
+            ],
+        },
+        checkpoint_id="checkpoint-resume",
+        runtime_model=object(),
+        runtime_vector_store=object(),
+        lifecycle_events=[
+            _event(sequence=1, event_type="run.paused", stage="subquestions_ready", status="paused"),
+        ],
+    )
+
+    with jobs_module._JOB_LOCK:
+        jobs_module._JOBS[paused_job.job_id] = paused_job
+
+    def fake_run_checkpointed_agent(*, payload, resume=None, **_kwargs):
+        assert payload.query == request_payload.query
+        assert isinstance(resume, RuntimeSubquestionResumeEnvelope)
+        assert resume.checkpoint_id == "checkpoint-resume"
+        resolved_subquestions = (
+            []
+            if resume.decisions[0].action == "deny"
+            else [resume.decisions[0].edited_text or "Keep this question?"]
+        )
+        return type(
+            "CompletedOutcome",
+            (),
+            {
+                "status": "completed",
+                "checkpoint_id": "checkpoint-resume",
+                "interrupt_payload": None,
+                "state": {
+                    "main_question": payload.query,
+                    "decomposition_sub_questions": resolved_subquestions,
+                    "sub_question_artifacts": [],
+                    "final_answer": "Resumed answer.",
+                    "citation_rows_by_index": {},
+                    "run_metadata": build_graph_run_metadata(
+                        run_id="run-resume-decisions",
+                        thread_id=request_payload.thread_id,
+                    ),
+                    "sub_qa": [],
+                    "output": "Resumed answer.",
+                    "stage_snapshots": [],
+                },
+                "response": RuntimeAgentRunResponse(
+                    main_question=payload.query,
+                    thread_id=request_payload.thread_id or "",
+                    sub_qa=[],
+                    sub_answers=[],
+                    output="Resumed answer.",
+                    final_citations=[],
+                ),
+            },
+        )()
+
+    monkeypatch.setattr(jobs_module, "run_checkpointed_agent", fake_run_checkpointed_agent)
+
+    resumed_job = jobs_module.resume_agent_run_job(
+        paused_job.job_id,
+        resume=RuntimeSubquestionResumeEnvelope.model_validate(
+            {
+                "checkpoint_id": "checkpoint-resume",
+                "decisions": decision_payload,
+            }
+        ),
+    )
+
+    assert resumed_job.status == "success"
+    assert submitted_calls
+
+    tracked_job = jobs_module.get_agent_run_job(paused_job.job_id)
+    assert tracked_job is not None
+    assert tracked_job.status == "success"
+    assert tracked_job.interrupt_payload is None
+    assert tracked_job.checkpoint_id == "checkpoint-resume"
+    assert tracked_job.decomposition_sub_questions == expected_subquestions
+    assert [event.event_type for event in tracked_job.lifecycle_events] == [
+        "run.paused",
+        "run.completed",
+    ]
+    assert tracked_job.lifecycle_events[-1].status == "success"
+
+
 def test_non_checkpoint_initial_run_bypasses_pause_path_when_hitl_disabled(monkeypatch) -> None:
     from agent_search.runtime import jobs as jobs_module
     from services.agent_service import build_graph_run_metadata
@@ -465,4 +622,9 @@ def test_non_checkpoint_initial_run_bypasses_pause_path_when_hitl_disabled(monke
     assert tracked_job.status == "success"
     assert tracked_job.stage == "subquestions_ready"
     assert tracked_job.checkpoint_id is None
+    assert tracked_job.interrupt_payload is None
+    assert [event.event_type for event in tracked_job.lifecycle_events] == [
+        "stage.snapshot",
+        "run.completed",
+    ]
     assert tracked_job.lifecycle_events[-1].event_type == "run.completed"

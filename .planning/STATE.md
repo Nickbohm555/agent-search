@@ -10,7 +10,7 @@
 
 - **Current phase:** 2
 - **Current plan:** 02-04
-- **Status:** Phase 2 Plan 02-04 Task 2 implemented; next section queued
+- **Status:** Phase 2 Plan 02-04 Task 3 implemented; next section queued
 - **Progress:** 1/6 phases complete
 - **Progress bar:** `█░░░░░` (17%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 2 Plan 02-04 Task 3.
-- Continue Phase 2 in dependency order after the completed 02-04 Task 2.
+- Create Phase 2 Plan 02-04 summary.
+- Continue Phase 2 in dependency order after the completed 02-04 Task 3.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 26 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 2 Plan 02-04 Task 2 is complete, and the next dependency-ordered work item is Phase 2 Plan 02-04 Task 3.
-- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=2`, `status=implemented`; typed subquestion resume decisions now validate checkpoint identity, deterministically approve/edit/deny/skip the paused subquestion set, and paused lifecycle events persist and emit both `interrupt_payload` and `checkpoint_id`.
+- **Next command:** Implement Section 27 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 2 Plan 02-04 Task 3 is complete, and the next dependency-ordered work item is the Phase 2 Plan 02-04 summary.
+- **Resume note:** State update: `phase=02`, `plan=02-04`, `task=3`, `status=implemented`; SSE regressions now lock paused payload shape, decision-driven resume completion behavior, and the no-pause non-HITL lifecycle path.
