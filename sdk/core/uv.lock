@@ -8,7 +8,7 @@ resolution-markers = [
 
 [[package]]
 name = "agent-search-core"
-version = "1.0.9"
+version = "1.0.10"
 source = { editable = "." }
 dependencies = [
     { name = "langchain" },
@@ -391,7 +391,7 @@ wheels = [
 
 [[package]]
 name = "httpcore"
-version = "1.0.9"
+version = "1.0.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
