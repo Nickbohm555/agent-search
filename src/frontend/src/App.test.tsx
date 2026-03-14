@@ -15,6 +15,7 @@ type LifecycleEventShape = {
   decomposition_sub_questions?: string[] | null;
   sub_question_artifacts?: unknown[] | null;
   sub_qa?: unknown[] | null;
+  sub_answers?: unknown[] | null;
   output?: string | null;
   result?: unknown;
   elapsed_ms?: number | null;
@@ -1672,6 +1673,108 @@ describe("App run query flow", () => {
     await waitFor(() => {
       expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
     });
+  });
+
+  it("renders subanswers from additive sub_answers payloads during streamed and final updates", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-sub-answers", run_id: "run-sub-answers", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "What changed in the contract?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const eventSource = await findLatestEventSource();
+    eventSource.emit({
+      event_type: "stage.completed",
+      event_id: "run-sub-answers:000002",
+      elapsed_ms: 1400,
+      run_id: "run-sub-answers",
+      stage: "answer",
+      status: "completed",
+      decomposition_sub_questions: ["What changed in the contract?"],
+      sub_answers: [
+        {
+          sub_question: "What changed in the contract?",
+          sub_answer: "The payload now includes additive sub_answers [1].",
+          sub_answer_citations: [1],
+          tool_call_input: "{}",
+        },
+      ],
+      sub_question_artifacts: [
+        {
+          sub_question: "What changed in the contract?",
+          expanded_queries: ["What changed in the contract?"],
+          retrieved_docs: [],
+          retrieval_provenance: [],
+          reranked_docs: [
+            {
+              citation_index: 1,
+              rank: 1,
+              title: "Contract note",
+              source: "wiki://contract-note",
+              content: "The response now exposes additive sub_answers.",
+              document_id: "doc-contract-note",
+              score: 0.8,
+            },
+          ],
+        },
+      ],
+      output: "",
+    });
+
+    expect(await screen.findByText("Run status: stage.completed · answer · completed")).toBeInTheDocument();
+    const subanswerHeading = screen.getByRole("heading", { name: "Subanswer" });
+    const subanswerSection = subanswerHeading.closest("section");
+    expect(subanswerSection).toBeTruthy();
+    expect(
+      within(subanswerSection as HTMLElement).getByText("The payload now includes additive sub_answers [1]."),
+    ).toBeInTheDocument();
+
+    eventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-sub-answers:000003",
+      elapsed_ms: 2500,
+      run_id: "run-sub-answers",
+      stage: "synthesize_final",
+      status: "success",
+      output: "The contract now supports additive sub_answers without dropping sub_qa.",
+      result: {
+        final_citations: [],
+        main_question: "What changed in the contract?",
+        output: "The contract now supports additive sub_answers without dropping sub_qa.",
+        sub_answers: [
+          {
+            sub_question: "What changed in the contract?",
+            sub_answer: "The payload now includes additive sub_answers [1].",
+            sub_answer_citations: [1],
+            tool_call_input: "{}",
+          },
+        ],
+      },
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("The contract now supports additive sub_answers without dropping sub_qa."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
   });
 
   it("renders main question and expandable subquestion details from async final result", async () => {

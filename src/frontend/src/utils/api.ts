@@ -535,6 +535,53 @@ function isSubQuestionAnswer(value: unknown): value is SubQuestionAnswer {
   return false;
 }
 
+function normalizeSubAnswerFields(
+  value: Record<string, unknown>,
+  options: { required: boolean; defaultEmpty: boolean },
+): boolean {
+  const { required, defaultEmpty } = options;
+  const subQa = value.sub_qa;
+  const subAnswers = value.sub_answers;
+
+  if (
+    subQa !== undefined &&
+    subQa !== null &&
+    (!Array.isArray(subQa) || !subQa.every(isSubQuestionAnswer))
+  ) {
+    return false;
+  }
+
+  if (
+    subAnswers !== undefined &&
+    subAnswers !== null &&
+    (!Array.isArray(subAnswers) || !subAnswers.every(isSubQuestionAnswer))
+  ) {
+    return false;
+  }
+
+  const normalized = Array.isArray(subQa)
+    ? subQa
+    : Array.isArray(subAnswers)
+      ? subAnswers
+      : null;
+
+  if (normalized === null) {
+    if (required) {
+      return false;
+    }
+    if (defaultEmpty) {
+      value.sub_qa = [];
+    }
+    return true;
+  }
+
+  value.sub_qa = normalized;
+  if (subAnswers === undefined || subAnswers === null) {
+    value.sub_answers = normalized;
+  }
+  return true;
+}
+
 function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata {
   return (
     isObject(value) &&
@@ -548,8 +595,12 @@ function isAgentRunStageMetadata(value: unknown): value is AgentRunStageMetadata
 }
 
 function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeAgentRunAsyncStatusResponse {
+  if (!isObject(value)) return false;
+  if (!normalizeSubAnswerFields(value, { required: true, defaultEmpty: false })) {
+    return false;
+  }
+
   return (
-    isObject(value) &&
     typeof value.job_id === "string" &&
     typeof value.run_id === "string" &&
     (value.thread_id === undefined || typeof value.thread_id === "string") &&
@@ -563,9 +614,6 @@ function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeA
     Array.isArray(value.sub_question_artifacts) &&
     value.sub_question_artifacts.every(isSubQuestionArtifact) &&
     Array.isArray(value.sub_qa) &&
-    value.sub_qa.every(isSubQuestionAnswer) &&
-    (value.sub_answers === undefined ||
-      (Array.isArray(value.sub_answers) && value.sub_answers.every(isSubQuestionAnswer))) &&
     typeof value.output === "string" &&
     (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
     (value.error === undefined || value.error === null || typeof value.error === "string") &&
@@ -581,8 +629,12 @@ function isRuntimeAgentRunAsyncStatusResponse(value: unknown): value is RuntimeA
 }
 
 function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent {
+  if (!isObject(value)) return false;
+  if (!normalizeSubAnswerFields(value, { required: false, defaultEmpty: false })) {
+    return false;
+  }
+
   return (
-    isObject(value) &&
     typeof value.event_type === "string" &&
     typeof value.event_id === "string" &&
     typeof value.run_id === "string" &&
@@ -599,10 +651,7 @@ function isRuntimeLifecycleEvent(value: unknown): value is RuntimeLifecycleEvent
     (value.sub_question_artifacts === undefined ||
       value.sub_question_artifacts === null ||
       (Array.isArray(value.sub_question_artifacts) && value.sub_question_artifacts.every(isSubQuestionArtifact))) &&
-    (value.sub_qa === undefined || value.sub_qa === null || (Array.isArray(value.sub_qa) && value.sub_qa.every(isSubQuestionAnswer))) &&
-    (value.sub_answers === undefined ||
-      value.sub_answers === null ||
-      (Array.isArray(value.sub_answers) && value.sub_answers.every(isSubQuestionAnswer))) &&
+    (value.sub_qa === undefined || value.sub_qa === null || Array.isArray(value.sub_qa)) &&
     (value.output === undefined || value.output === null || typeof value.output === "string") &&
     (value.result === undefined || value.result === null || validateRuntimeAgentRunResponse(value.result)) &&
     (value.interrupt_payload === undefined ||
@@ -885,18 +934,9 @@ function validateRuntimeAgentRunResponse(value: unknown): value is RuntimeAgentR
     return false;
   }
 
-  if (value.sub_qa === undefined) {
-    value.sub_qa = [];
-  } else if (!Array.isArray(value.sub_qa) || !value.sub_qa.every(isSubQuestionAnswer)) {
-    console.warn("runAgent response validation failed: sub_qa must be an array of sub-question objects.");
+  if (!normalizeSubAnswerFields(value, { required: false, defaultEmpty: true })) {
+    console.warn("runAgent response validation failed: sub_qa/sub_answers must be arrays of sub-question objects.");
     return false;
-  }
-
-  if (value.sub_answers !== undefined) {
-    if (!Array.isArray(value.sub_answers) || !value.sub_answers.every(isSubQuestionAnswer)) {
-      console.warn("runAgent response validation failed: sub_answers must be an array of sub-question objects.");
-      return false;
-    }
   }
 
   if (value.final_citations === undefined) {
