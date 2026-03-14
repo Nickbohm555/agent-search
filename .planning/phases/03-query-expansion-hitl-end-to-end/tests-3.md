@@ -6,12 +6,12 @@ source:
   - 03-02-SUMMARY.md
   - 03-03-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Phase 03 end-to-end query-expansion HITL behavior across backend contracts, runtime checkpointing/resume, SSE lifecycle, and frontend review/resume UX.
+Test 2 - HITL-enabled run pauses after expansion and before retrieval.
 
 ## Information Needed from the Summary
 
@@ -72,6 +72,10 @@ testing_notes:
 - Run goes from async start to completion without `run.paused`.
 - No query-expansion review panel appears in UI.
 - No resume request is sent for this run.
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_run_events_stream_non_hitl_completed_run_has_no_pause_event`, `docker compose exec backend uv run pytest tests/services/test_agent_service.py::test_run_sequential_graph_runner_disables_query_expansion_per_run_without_mutating_defaults`, and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "keeps non-HITL runs on the default completion path without review UI or resume calls"` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: Non-HITL runs still streamed directly from start/completion without `run.paused`, the default runtime path continued to execute query expansion only when its standard config remained enabled, and the frontend completed without showing query-expansion review UI or issuing any resume request.
 
 ### Test 2 - HITL-enabled run pauses after expansion and before retrieval
 **Goal:** Confirm query-expansion HITL creates one actionable pause at the correct stage.
