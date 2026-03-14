@@ -22,8 +22,11 @@ def normalize_resume_payload(
     resume: Any = True,
     *,
     checkpoint_id: str | None = None,
+    thread_id: str | None = None,
 ) -> Any:
     if not isinstance(resume, RuntimeSubquestionResumeEnvelope):
+        return resume
+    if checkpoint_id and thread_id and checkpoint_id == thread_id:
         return resume
     if checkpoint_id and resume.checkpoint_id != checkpoint_id:
         raise ResumeTransitionError(
@@ -32,12 +35,19 @@ def normalize_resume_payload(
     return resume
 
 
-def attach_checkpoint_metadata(interrupt_payload: Any, *, checkpoint_id: str | None = None) -> Any:
+def attach_checkpoint_metadata(
+    interrupt_payload: Any,
+    *,
+    checkpoint_id: str | None = None,
+    thread_id: str | None = None,
+) -> Any:
     if not isinstance(interrupt_payload, Mapping):
         return interrupt_payload
     normalized_payload = dict(interrupt_payload)
     if checkpoint_id and not normalized_payload.get("checkpoint_id"):
         normalized_payload["checkpoint_id"] = checkpoint_id
+    if thread_id and not normalized_payload.get("thread_id"):
+        normalized_payload["thread_id"] = thread_id
     return normalized_payload
 
 
@@ -52,11 +62,15 @@ def apply_subquestion_resume_decisions(
         return baseline_subquestions
 
     checkpoint_id = None
+    thread_id = None
     if isinstance(interrupt_payload, Mapping):
         raw_checkpoint_id = interrupt_payload.get("checkpoint_id")
         if raw_checkpoint_id is not None:
             checkpoint_id = str(raw_checkpoint_id)
-    normalize_resume_payload(resume, checkpoint_id=checkpoint_id)
+        raw_thread_id = interrupt_payload.get("thread_id")
+        if raw_thread_id is not None:
+            thread_id = str(raw_thread_id)
+    normalize_resume_payload(resume, checkpoint_id=checkpoint_id, thread_id=thread_id)
 
     indexed_items: list[tuple[int, str, str]] = []
     if isinstance(interrupt_payload, Mapping):

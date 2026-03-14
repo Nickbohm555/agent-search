@@ -48,6 +48,16 @@ def _resolve_resume_checkpoint_id(resume: Any | None = None) -> str | None:
     return str(checkpoint_id).strip() if checkpoint_id is not None else None
 
 
+def _resolve_resume_thread_id(resume: Any | None = None) -> str | None:
+    thread_id = getattr(resume, "thread_id", None)
+    if thread_id is None and isinstance(resume, Mapping):
+        thread_id = resume.get("thread_id")
+    if thread_id is None:
+        return None
+    normalized = str(thread_id).strip()
+    return normalized or None
+
+
 def _get_nested_mapping(config: Mapping[str, Any] | None, key: str) -> Mapping[str, Any] | None:
     if not isinstance(config, Mapping):
         return None
@@ -261,11 +271,28 @@ def _attach_checkpoint_id_to_interrupt(payload: Any, *, checkpoint_id: str | Non
     return normalized
 
 
+def _attach_resume_metadata_to_interrupt(
+    payload: Any,
+    *,
+    checkpoint_id: str | None = None,
+    thread_id: str | None = None,
+) -> Any | None:
+    if payload is None or not isinstance(payload, Mapping):
+        return payload
+    normalized = dict(payload)
+    if checkpoint_id:
+        normalized["checkpoint_id"] = checkpoint_id
+    if thread_id:
+        normalized["thread_id"] = thread_id
+    return normalized
+
+
 def _translate_sdk_resume(resume: Any | None) -> Any | None:
     if not isinstance(resume, HitlResumeRequest):
         return resume
     if resume.review_kind == "subquestion_review":
         return RuntimeSubquestionResumeEnvelope(
+            thread_id=resume.thread_id,
             checkpoint_id=resume.checkpoint_id,
             decisions=[
                 RuntimeSubquestionDecision(
@@ -297,7 +324,8 @@ def _run_hitl_runtime_agent(
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> RuntimeAgentRunResult:
     translated_resume = _translate_sdk_resume(resume)
-    run_metadata = legacy_service.build_graph_run_metadata(thread_id=payload.thread_id)
+    resolved_thread_id = payload.thread_id or _resolve_resume_thread_id(translated_resume)
+    run_metadata = legacy_service.build_graph_run_metadata(thread_id=resolved_thread_id)
     context = RuntimeGraphContext(
         payload=payload,
         model=model,
@@ -319,13 +347,13 @@ def _run_hitl_runtime_agent(
             }
         }
     else:
+        resume_thread_id = _resolve_resume_thread_id(translated_resume) or payload.thread_id or run_metadata.thread_id
         execution_config = {
             "configurable": {
+                "thread_id": resume_thread_id,
                 "checkpoint_id": _resolve_resume_checkpoint_id(translated_resume) or run_metadata.thread_id,
             }
         }
-        if payload.thread_id is not None and payload.thread_id.strip():
-            execution_config["configurable"]["thread_id"] = payload.thread_id.strip()
     terminal_state: Any = None
     latest_checkpoint_id: str | None = None
     interrupt_payload: Any | None = None
@@ -353,9 +381,10 @@ def _run_hitl_runtime_agent(
                 status="paused",
                 checkpoint_id=resolved_checkpoint_id,
                 review=_normalize_hitl_review(
-                    _attach_checkpoint_id_to_interrupt(
+                    _attach_resume_metadata_to_interrupt(
                         interrupt_payload,
                         checkpoint_id=resolved_checkpoint_id,
+                        thread_id=run_metadata.thread_id,
                     )
                 ),
             )

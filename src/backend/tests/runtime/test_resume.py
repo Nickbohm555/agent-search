@@ -12,15 +12,21 @@ from agent_search.runtime.resume import attach_checkpoint_metadata
 
 def test_attach_checkpoint_metadata_overrides_stale_checkpoint_id() -> None:
     payload = {
+        "thread_id": "thread-live",
         "checkpoint_id": "stale-thread-id",
         "stage": "subquestions_ready",
         "subquestions": [{"subquestion_id": "sq-1", "sub_question": "What is NATO?"}],
     }
 
-    normalized = attach_checkpoint_metadata(payload, checkpoint_id="checkpoint-live")
+    normalized = attach_checkpoint_metadata(
+        payload,
+        checkpoint_id="checkpoint-live",
+        thread_id="thread-live",
+    )
 
     assert normalized == {
         "checkpoint_id": "checkpoint-live",
+        "thread_id": "thread-live",
         "stage": "subquestions_ready",
         "subquestions": [{"subquestion_id": "sq-1", "sub_question": "What is NATO?"}],
     }

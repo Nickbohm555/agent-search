@@ -129,6 +129,7 @@ def _build_subquestion_checkpoint_node():
             return state
         interrupt_payload = attach_checkpoint_metadata(
             {
+                "thread_id": state["run_metadata"].thread_id,
                 "checkpoint_id": state["run_metadata"].thread_id,
                 "kind": "subquestion_review",
                 "stage": "subquestions_ready",
@@ -142,6 +143,7 @@ def _build_subquestion_checkpoint_node():
                 ],
             },
             checkpoint_id=state["run_metadata"].thread_id,
+            thread_id=state["run_metadata"].thread_id,
         )
         resume_value = interrupt(interrupt_payload)
         next_state = to_rag_state(state)

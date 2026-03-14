@@ -4,10 +4,10 @@
     "passed": true,
     "details": {
       "package_version": "1.0.17",
-      "initial_import_error": "cannot import name 'RuntimeAgentRunRuntimeConfig' from 'schemas' (/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/schemas/__init__.py)",
+      "initial_import_error": null,
       "sub_item_count": 2,
       "final_citation_count": 1,
-      "output_preview": "pgvector is a tool that stores vector embeddings inside PostgreSQL, allowing applications to perform semantic similarity searches directly alongside their relational data [1]. An a"
+      "output_preview": "pgvector is a tool that stores vector embeddings inside PostgreSQL, allowing applications to perform semantic similarity searches directly within their relational database. Applica"
     }
   },
   {
@@ -26,34 +26,34 @@
       ],
       "sub_item_count": 4,
       "final_citation_count": 3,
-      "output_preview": "Customer feedback from the support archive highlights appreciation for the product's ease of use and the time savings it offers small teams. However, common complaints focus on ref"
+      "output_preview": "Customer feedback from the support archive highlights positive themes such as the product's ease of use and the time savings it offers small teams. However, common complaints focus"
     }
   },
   {
     "name": "hitl_pause_and_approve_all",
-    "passed": false,
+    "passed": true,
     "details": {
-      "error_type": "SDKError",
-      "error": "advanced_rag failed.",
-      "traceback": "Traceback (most recent call last):\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 422, in advanced_rag\n    response = _run_hitl_runtime_agent(\n               ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 314, in _run_hitl_runtime_agent\n    for item in graph.stream(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/main.py\", line 2724, in stream\n    for _ in runner.tick(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/_runner.py\", line 167, in tick\n    run_with_retry(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/_retry.py\", line 71, in run_with_retry\n    return task.proc.invoke(task.input, config)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/_internal/_runnable.py\", line 656, in invoke\n    input = context.run(step.invoke, input, config, **kwargs)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nKeyError: 'run_metadata'\nDuring task with name 'decompose' and id '2fb90aa8-b43e-3bc9-4d47-0fb639541e43'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 218, in make_case\n    details = fn()\n              ^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 419, in <lambda>\n    make_case(\"hitl_pause_and_approve_all\", lambda: case_hitl_pause_and_approve_all(checkpoint_db_url)),\n                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 304, in case_hitl_pause_and_approve_all\n    resumed = advanced_rag(\n              ^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 444, in advanced_rag\n    raise mapped from exc\nagent_search.errors.SDKError: advanced_rag failed.\n"
+      "review_kind": "subquestion_review",
+      "review_item_count": 4,
+      "output_preview": "Customer feedback from the support archive highlights positive themes such as the product's ease of use and the time savings it offers small teams. However, common complaints focus"
     }
   },
   {
     "name": "hitl_edit_and_reject",
-    "passed": false,
+    "passed": true,
     "details": {
-      "error_type": "SDKError",
-      "error": "advanced_rag failed.",
-      "traceback": "Traceback (most recent call last):\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 422, in advanced_rag\n    response = _run_hitl_runtime_agent(\n               ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 314, in _run_hitl_runtime_agent\n    for item in graph.stream(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/main.py\", line 2724, in stream\n    for _ in runner.tick(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/_runner.py\", line 167, in tick\n    run_with_retry(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/_retry.py\", line 71, in run_with_retry\n    return task.proc.invoke(task.input, config)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/_internal/_runnable.py\", line 656, in invoke\n    input = context.run(step.invoke, input, config, **kwargs)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nKeyError: 'run_metadata'\nDuring task with name 'decompose' and id 'da8ccf81-a7a1-8703-6262-b8522b4df78d'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 218, in make_case\n    details = fn()\n              ^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 420, in <lambda>\n    make_case(\"hitl_edit_and_reject\", lambda: case_hitl_edit_and_reject(checkpoint_db_url)),\n                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 334, in case_hitl_edit_and_reject\n    resumed = advanced_rag(\n              ^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 444, in advanced_rag\n    raise mapped from exc\nagent_search.errors.SDKError: advanced_rag failed.\n"
+      "review_item_count": 4,
+      "final_sub_item_count": 5,
+      "output_preview": "Customer feedback from the support archive highlights positive themes such as the product's ease of use and the time savings it offers small teams. However, frequent complaints foc"
     }
   },
   {
     "name": "injected_checkpointer",
-    "passed": false,
+    "passed": true,
     "details": {
-      "error_type": "SDKError",
-      "error": "advanced_rag failed.",
-      "traceback": "Traceback (most recent call last):\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 422, in advanced_rag\n    response = _run_hitl_runtime_agent(\n               ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 314, in _run_hitl_runtime_agent\n    for item in graph.stream(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/main.py\", line 2724, in stream\n    for _ in runner.tick(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/_runner.py\", line 167, in tick\n    run_with_retry(\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/pregel/_retry.py\", line 71, in run_with_retry\n    return task.proc.invoke(task.input, config)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/langgraph/_internal/_runnable.py\", line 656, in invoke\n    input = context.run(step.invoke, input, config, **kwargs)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nKeyError: 'run_metadata'\nDuring task with name 'decompose' and id 'f5d8aa61-dcc3-4cd9-a8b5-632f7232e534'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 218, in make_case\n    details = fn()\n              ^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 421, in <lambda>\n    make_case(\"injected_checkpointer\", lambda: case_injected_checkpointer(checkpoint_db_url)),\n                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/sdk/examples/evaluate_pypi_core_sdk.py\", line 367, in case_injected_checkpointer\n    resumed = advanced_rag(\n              ^^^^^^^^^^^^^\n  File \"/Users/nickbohm/Desktop/Tinkering/agent-search/.venv-agent-search-core-eval/lib/python3.11/site-packages/agent_search/public_api.py\", line 444, in advanced_rag\n    raise mapped from exc\nagent_search.errors.SDKError: advanced_rag failed.\n"
+      "review_kind": "subquestion_review",
+      "review_item_count": 4,
+      "output_preview": "Customer feedback from the support archive highlights positive remarks about the product's ease of use and the time savings it offers small teams. However, common complaints focus "
     }
   },
   {

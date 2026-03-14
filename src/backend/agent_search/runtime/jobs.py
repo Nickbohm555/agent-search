@@ -500,6 +500,7 @@ def _run_agent_job(
                 resolved_interrupt_payload = attach_checkpoint_metadata(
                     outcome.interrupt_payload,
                     checkpoint_id=outcome.checkpoint_id,
+                    thread_id=current_job.thread_id,
                 )
                 pause_stage = (
                     str(current_job.interrupt_payload.get("stage", "")).strip()

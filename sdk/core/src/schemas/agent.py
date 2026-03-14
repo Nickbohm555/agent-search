@@ -86,28 +86,9 @@ class SubQuestionAnswer(BaseModel):
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
     thread_id: str | None = None
-    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
-    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunResponse":
-        if self.sub_items:
-            normalized = [SubQuestionAnswer(sub_question=item[0], sub_answer=item[1]) for item in self.sub_items]
-            if not self.sub_qa:
-                self.sub_qa = [item.model_copy(deep=True) for item in normalized]
-            if not self.sub_answers:
-                self.sub_answers = [item.model_copy(deep=True) for item in normalized]
-        elif self.sub_answers and not self.sub_qa:
-            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
-        elif self.sub_qa and not self.sub_answers:
-            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
-
-        if not self.sub_items and self.sub_qa:
-            self.sub_items = [(item.sub_question, item.sub_answer) for item in self.sub_qa]
-        return self
 
 
 class HitlResumeDecision(BaseModel):
@@ -145,6 +126,7 @@ class HitlReviewItem(BaseModel):
 class HitlReview(BaseModel):
     kind: Literal["subquestion_review"]
     stage: str = ""
+    thread_id: str | None = None
     checkpoint_id: str = Field(min_length=1)
     items: list[HitlReviewItem] = Field(default_factory=list)
 
@@ -163,6 +145,7 @@ class HitlReview(BaseModel):
         return cls(
             kind=kind,
             stage=str(payload.get("stage") or ""),
+            thread_id=str(payload.get("thread_id") or "").strip() or None,
             checkpoint_id=checkpoint_id,
             items=cls._normalize_items(kind=kind, payload=payload),
         )
@@ -191,6 +174,7 @@ class HitlReview(BaseModel):
 
     def approve_all(self) -> "HitlResumeRequest":
         return HitlResumeRequest(
+            thread_id=self.thread_id,
             checkpoint_id=self.checkpoint_id,
             review_kind=self.kind,
             decisions=[item.approve() for item in self.items],
@@ -198,6 +182,7 @@ class HitlReview(BaseModel):
 
     def with_decisions(self, *decisions: HitlResumeDecision) -> "HitlResumeRequest":
         return HitlResumeRequest(
+            thread_id=self.thread_id,
             checkpoint_id=self.checkpoint_id,
             review_kind=self.kind,
             decisions=list(decisions),
@@ -205,6 +190,7 @@ class HitlReview(BaseModel):
 
 
 class HitlResumeRequest(BaseModel):
+    thread_id: str | None = None
     checkpoint_id: str = Field(min_length=1)
     review_kind: Literal["subquestion_review"]
     decisions: list[HitlResumeDecision] = Field(min_length=1)
@@ -269,8 +255,6 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     stages: list[AgentRunStageMetadata] = Field(default_factory=list)
     decomposition_sub_questions: list[str] = Field(default_factory=list)
     sub_question_artifacts: list["SubQuestionArtifacts"] = Field(default_factory=list)
-    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
-    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str = ""
     result: RuntimeAgentRunResponse | None = None
@@ -294,24 +278,6 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
             return HitlReview.from_interrupt_payload(value)
         return value
 
-    @model_validator(mode="after")
-    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunAsyncStatusResponse":
-        if self.sub_items:
-            normalized = [SubQuestionAnswer(sub_question=item[0], sub_answer=item[1]) for item in self.sub_items]
-            if not self.sub_qa:
-                self.sub_qa = [item.model_copy(deep=True) for item in normalized]
-            if not self.sub_answers:
-                self.sub_answers = [item.model_copy(deep=True) for item in normalized]
-        elif self.sub_answers and not self.sub_qa:
-            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
-        elif self.sub_qa and not self.sub_answers:
-            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
-        if not self.sub_items and self.sub_qa:
-            self.sub_items = [(item.sub_question, item.sub_answer) for item in self.sub_qa]
-        return self
-
-
-
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
     status: Literal["success"]
     message: str
@@ -333,6 +299,7 @@ class RuntimeSubquestionDecision(BaseModel):
 
 
 class RuntimeSubquestionResumeEnvelope(BaseModel):
+    thread_id: str | None = None
     checkpoint_id: str = Field(min_length=1)
     decisions: list[RuntimeSubquestionDecision] = Field(min_length=1)
 

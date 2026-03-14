@@ -32,12 +32,19 @@ def normalize_resume_payload(
     return resume
 
 
-def attach_checkpoint_metadata(interrupt_payload: Any, *, checkpoint_id: str | None = None) -> Any:
+def attach_checkpoint_metadata(
+    interrupt_payload: Any,
+    *,
+    checkpoint_id: str | None = None,
+    thread_id: str | None = None,
+) -> Any:
     if not isinstance(interrupt_payload, Mapping):
         return interrupt_payload
     normalized_payload = dict(interrupt_payload)
     if checkpoint_id:
         normalized_payload["checkpoint_id"] = checkpoint_id
+    if thread_id:
+        normalized_payload["thread_id"] = thread_id
     return normalized_payload
 
 
