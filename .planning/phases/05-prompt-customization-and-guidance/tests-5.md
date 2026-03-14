@@ -8,12 +8,12 @@ source:
   - 05-04-SUMMARY.md
   - 05-05-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-14"
+updated: "2026-03-15"
 ---
 
 ## Current Test
 
-Test 4 pending. Tests 1-3 passed on 2026-03-14 and confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, and deterministic prompt-influenced output changes.
+Test 5 pending. Tests 1-4 passed on 2026-03-15 and confirm alias compatibility, safe prompt key handling, default-behavior preservation when overrides are omitted, deterministic prompt-influenced output changes, and citation/fallback guardrails remaining enforced under custom prompts.
 
 ## Information Needed from the Summary
 
@@ -74,6 +74,7 @@ Test 4 pending. Tests 1-3 passed on 2026-03-14 and confirm alias compatibility, 
    - Given a custom prompt that omits citation-oriented instructions.
    - When generation completes in a case that requires citation checks.
    - Then runtime citation/fallback behavior still triggers guarded output rather than allowing uncited unsupported content.
+   - result: Pass on 2026-03-15. `docker compose exec backend uv run pytest tests/sdk/test_node_synthesize.py::test_run_synthesize_node_preserves_citation_guardrail_when_prompt_override_omits_citation_guidance` passed; when the prompt override explicitly requested an uncited confident answer, the synthesize node still replaced the uncited model output with the grounded fallback `VAT changed in 2025 [1] (source: wiki://vat-policy).`
 
 5. **Deterministic Precedence in Public API (Sync + Async)**
    - Given reusable config-level `custom_prompts` defaults and per-run runtime overrides for the same keys.
@@ -87,8 +88,8 @@ Test 4 pending. Tests 1-3 passed on 2026-03-14 and confirm alias compatibility, 
 
 ## Summary
 
-Tests 1-3 passed on 2026-03-14. Remaining coverage is still pending for guardrails, precedence, and documentation.
+Tests 1-4 passed through 2026-03-15. Remaining coverage is still pending for public API precedence and documentation discoverability.
 
 ## Gaps
 
-- Tests 4-6 not yet executed.
+- Tests 5-6 not yet executed.

@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 26. (move +1 after each turn)
+Current section to work on: section 27. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -596,7 +596,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-15: `docker compose exec backend uv run pytest tests/sdk/test_node_synthesize.py::test_run_synthesize_node_preserves_citation_guardrail_when_prompt_override_omits_citation_guidance` passed, confirming a custom synthesis prompt that explicitly asked for an uncited confident answer still triggered the runtime citation/fallback guardrail and returned the grounded fallback `VAT changed in 2025 [1] (source: wiki://vat-policy).`
 
 ## Section 27 — 05-prompt-customization-and-guidance — tests-5 — Test 5 (Validation)
 - Source test markdown: `.planning/phases/05-prompt-customization-and-guidance/tests-5.md`
