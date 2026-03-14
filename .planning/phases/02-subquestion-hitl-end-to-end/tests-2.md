@@ -12,7 +12,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 5 - Frontend paused review UX is actionable and non-HITL flow is unchanged.
+Test 6 - SDK typed async parity supports new and legacy resume modes.
 
 ## Information Needed from the Summary
 
@@ -107,6 +107,10 @@ Test 5 - Frontend paused review UX is actionable and non-HITL flow is unchanged.
 **When** a run pauses for subquestion HITL  
 **Then** the UI displays review controls for approve/edit/deny/skip and can submit a typed resume request  
 **And** when a run is started without HITL controls, completion follows the previous non-review path with no resume UI requirement
+- result: pass - `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused subquestion review and resumes to completion with typed decisions"` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "keeps non-HITL runs on the default completion path without review UI or resume calls"` passed; `./launch-devtools.sh http://localhost:5173` plus `curl http://127.0.0.1:9222/json/list` also confirmed a healthy local Chrome target for `http://localhost:5173/`.
+- reported: 2026-03-14
+- severity: none
+- reason: The paused subquestion review flow rendered actionable approve/edit/deny/skip controls and resumed through the typed checkpoint envelope, while non-HITL runs completed on the existing default path without showing review UI or issuing resume requests.
 
 ### Test 6: SDK typed async parity supports new and legacy resume modes
 
@@ -117,7 +121,7 @@ Test 5 - Frontend paused review UX is actionable and non-HITL flow is unchanged.
 
 ## Summary
 
-Tests 1-4 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows, and malformed typed resume envelopes are rejected at the API boundary with deterministic `422` validation errors instead of silently falling back to ad hoc parsing.
+Tests 1-5 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, HITL-enabled runs emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata, typed approve/edit/deny/skip resume decisions deterministically drive the completed downstream subquestion set across runtime and SDK flows, malformed typed resume envelopes are rejected at the API boundary with deterministic `422` validation errors instead of silently falling back to ad hoc parsing, and the frontend paused-review UX remains actionable without changing the default non-HITL completion path.
 
 ## Gaps
 

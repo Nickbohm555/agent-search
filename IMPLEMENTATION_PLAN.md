@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 10. (move +1 after each turn)
+Current section to work on: section 11. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -238,7 +238,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused subquestion review and resumes to completion with typed decisions"` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "keeps non-HITL runs on the default completion path without review UI or resume calls"` passed, confirming the paused UI exposes actionable approve/edit/deny/skip controls and submits typed resume payloads while non-HITL runs still complete without surfacing review UI or issuing resume requests; `./launch-devtools.sh http://localhost:5173` and `curl http://127.0.0.1:9222/json/list` also confirmed a healthy local Chrome target for `http://localhost:5173/`.
 
 ## Section 11 — 02-subquestion-hitl-end-to-end — tests-2 — Test 6 (Validation)
 - Source test markdown: `.planning/phases/02-subquestion-hitl-end-to-end/tests-2.md`
