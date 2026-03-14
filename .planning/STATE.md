@@ -9,8 +9,8 @@
 ## Current Position
 
 - **Current phase:** 5
-- **Current plan:** 05-03
-- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-03 Task 3 implemented
+- **Current plan:** 05-04
+- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-03 summary implemented
 - **Progress:** 4/6 phases complete
 - **Progress bar:** `████░░` (67%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 5 Plan 05-03 summary.
+- Start Phase 5 Plan 05-04 Task 1.
 - Keep prompt precedence work additive so existing advanced RAG callers preserve default behavior.
 
 ### Blockers
@@ -38,6 +38,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 60 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 05-03 execution tasks are complete, so the next dependency-ordered work item is the summary for the prompt customization documentation set.
-- **Resume note:** State update: `phase=05`, `plan=05-03`, `task=3`, `status=implemented`; `README.md` now points to the canonical prompt customization guide and states that citation/fallback safeguards remain enforced in runtime code, and the next execution target is the Plan 05-03 summary.
+- **Next command:** Implement Section 61 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 05-03 is summarized, so the next dependency-ordered work item is wiring effective prompt overrides into runtime nodes for Plan 05-04 Task 1.
+- **Resume note:** State update: `phase=05`, `plan=05-03`, `task=summary`, `status=implemented`; prompt customization guidance is documented in the canonical guide plus root and SDK READMEs, and the next execution target is Plan 05-04 Task 1.
