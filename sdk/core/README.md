@@ -38,6 +38,62 @@ response = advanced_rag(
 print(response.output)
 ```
 
+## Prompt customization
+
+Keep reusable prompt defaults in the existing `config` map, then override only the keys you need per run.
+
+```python
+from copy import deepcopy
+
+from langchain_openai import ChatOpenAI
+from agent_search import advanced_rag
+from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
+
+vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
+model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
+
+client_config = {
+    "thread_id": "customer-42",
+    "custom_prompts": {
+        "subanswer": "Answer each sub-question with concise cited evidence only.",
+        "synthesis": "Write a short final synthesis that preserves citation markers.",
+    },
+}
+
+response = advanced_rag(
+    "What changed in NATO maritime policy?",
+    vector_store=vector_store,
+    model=model,
+    config=client_config,
+)
+print(response.output)
+```
+
+Per-run overrides should be merged into a fresh copy so one call does not mutate the reusable defaults for the next call.
+
+```python
+run_config = deepcopy(client_config)
+run_config["custom_prompts"] = {
+    **run_config.get("custom_prompts", {}),
+    "synthesis": "Return a two-paragraph answer and keep every citation marker.",
+}
+
+response = advanced_rag(
+    "Summarize the policy shift for shipping operators.",
+    vector_store=vector_store,
+    model=model,
+    config=run_config,
+)
+```
+
+Merge and fallback behavior:
+
+- Built-in runtime defaults apply when `custom_prompts` is omitted.
+- Client-level `config["custom_prompts"]` replaces built-ins on a per-key basis.
+- Per-run merged values replace only the keys you override for that call.
+- Use `custom_prompts` in Python code; the supported keys are `subanswer` and `synthesis`.
+- Prompt overrides change generation instructions only. Citation validation and fallback behavior remain enforced in runtime code.
+
 ## Requirements
 
 - Python `>=3.11,<3.14`

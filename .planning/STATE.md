@@ -10,7 +10,7 @@
 
 - **Current phase:** 5
 - **Current plan:** 05-03
-- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-03 Task 1 implemented
+- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-03 Task 2 implemented
 - **Progress:** 4/6 phases complete
 - **Progress bar:** `████░░` (67%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 5 Plan 05-03 Task 2.
-- Keep SDK prompt customization examples aligned to the canonical docs and implemented merge behavior.
+- Start Phase 5 Plan 05-03 Task 3.
+- Add the root README pointer to the canonical prompt customization guide and safety boundaries.
 - Keep prompt precedence work additive so existing advanced RAG callers preserve default behavior.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 58 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** The canonical prompt customization guide now exists, so the next dependency-ordered work item is updating SDK READMEs with matching override and precedence examples.
-- **Resume note:** State update: `phase=05`, `plan=05-03`, `task=1`, `status=implemented`; `docs/prompt-customization.md` now documents supported keys, defaults, precedence, aliasing, and code-level safety boundaries, and the next execution target is SDK doc alignment.
+- **Next command:** Implement Section 59 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** SDK docs are now aligned to the prompt customization contract, so the next dependency-ordered work item is adding the root README pointer and safety note.
+- **Resume note:** State update: `phase=05`, `plan=05-03`, `task=2`, `status=implemented`; `sdk/core/README.md` and `sdk/python/README.md` now document mutable prompt defaults, per-run overrides, merge precedence, and runtime safety boundaries, and the next execution target is the root README update.
