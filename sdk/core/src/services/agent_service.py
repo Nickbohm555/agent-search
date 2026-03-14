@@ -20,6 +20,7 @@ from agent_search.runtime.reducers import (
     merge_sub_qa,
     merge_sub_question_artifacts,
 )
+from agent_search.config import RuntimeConfig as RequestRuntimeConfig
 from agent_search.runtime.state import RAGState, from_rag_state, to_rag_state
 from schemas import (
     AgentGraphState,
@@ -51,7 +52,7 @@ from services.document_validation_service import (
     parse_retrieved_documents,
     validate_subquestion_documents,
 )
-from services.reranker_service import build_reranker_config_from_env, rerank_documents
+from services.reranker_service import RerankerConfig, build_reranker_config_from_env, rerank_documents
 from services.initial_answer_service import generate_final_synthesis_answer, generate_initial_answer
 from services.query_expansion_service import (
     QueryExpansionConfig,
@@ -1035,12 +1036,14 @@ def apply_rerank_node_output_to_graph_state(
 def run_answer_subquestion_node(
     *,
     node_input: AnswerSubquestionNodeInput,
+    prompt_template: str | None = None,
     callbacks: list[Any] | None = None,
 ) -> AnswerSubquestionNodeOutput:
     from agent_search.runtime.nodes.answer import run_answer_node as run_runtime_answer_node
 
     return run_runtime_answer_node(
         node_input=node_input,
+        prompt_template=prompt_template,
         callbacks=callbacks,
         no_support_fallback=_ANSWER_SUBQUESTION_NO_SUPPORT_FALLBACK,
         format_citation_rows_for_pipeline_fn=_format_citation_rows_for_pipeline,
@@ -1124,12 +1127,14 @@ def apply_answer_subquestion_node_output_to_graph_state(
 def run_synthesize_final_node(
     *,
     node_input: SynthesizeFinalNodeInput,
+    prompt_template: str | None = None,
     callbacks: list[Any] | None = None,
 ) -> SynthesizeFinalNodeOutput:
     from agent_search.runtime.nodes.synthesize import run_synthesize_node as run_runtime_synthesize_node
 
     return run_runtime_synthesize_node(
         node_input=node_input,
+        prompt_template=prompt_template,
         callbacks=callbacks,
         generate_final_synthesis_answer_fn=generate_final_synthesis_answer,
         extract_citation_indices_fn=_extract_citation_indices,
@@ -1165,6 +1170,81 @@ class _GraphLaneExecutionResult:
     search_output: SearchNodeOutput
     rerank_output: RerankNodeOutput
     answer_output: AnswerSubquestionNodeOutput
+
+
+@dataclass(frozen=True)
+class _ResolvedRuntimeExecutionConfig:
+    query_expansion_enabled: bool
+    query_expansion_config: QueryExpansionConfig
+    rerank_config: RerankerConfig
+    subanswer_prompt: str | None
+    synthesis_prompt: str | None
+
+
+def _resolve_request_runtime_config(payload: RuntimeAgentRunRequest) -> RequestRuntimeConfig:
+    runtime_config_payload: dict[str, Any] = {}
+    if payload.runtime_config is not None:
+        resolved_runtime_config_payload = payload.runtime_config.model_dump(exclude_none=True)
+        if isinstance(resolved_runtime_config_payload, dict):
+            runtime_config_payload.update(resolved_runtime_config_payload)
+    if payload.custom_prompts is not None:
+        custom_prompts_payload = payload.custom_prompts.model_dump(exclude_none=True)
+        if custom_prompts_payload:
+            runtime_config_payload["custom_prompts"] = custom_prompts_payload
+    return RequestRuntimeConfig.from_dict(runtime_config_payload)
+
+
+def _resolve_runtime_execution_config(payload: RuntimeAgentRunRequest) -> _ResolvedRuntimeExecutionConfig:
+    runtime_config = _resolve_request_runtime_config(payload)
+    return _ResolvedRuntimeExecutionConfig(
+        query_expansion_enabled=runtime_config.query_expansion.enabled,
+        query_expansion_config=QueryExpansionConfig(
+            model=_QUERY_EXPANSION_CONFIG.model,
+            temperature=_QUERY_EXPANSION_CONFIG.temperature,
+            max_queries=_QUERY_EXPANSION_CONFIG.max_queries,
+            max_query_length=_QUERY_EXPANSION_CONFIG.max_query_length,
+        ),
+        rerank_config=RerankerConfig(
+            enabled=runtime_config.rerank.enabled,
+            top_n=_RERANKER_CONFIG.top_n,
+            provider=_RERANKER_CONFIG.provider,
+            model_name=_RERANKER_CONFIG.model_name,
+            openai_model_name=_RERANKER_CONFIG.openai_model_name,
+            openai_temperature=_RERANKER_CONFIG.openai_temperature,
+        ),
+        subanswer_prompt=runtime_config.custom_prompts.subanswer,
+        synthesis_prompt=runtime_config.custom_prompts.synthesis,
+    )
+
+
+def _build_query_expansion_bypass_output(*, sub_question: str) -> ExpandNodeOutput:
+    logger.info("Expansion node bypassed by runtime config sub_question=%s", _truncate_query(sub_question))
+    return ExpandNodeOutput(expanded_queries=[sub_question])
+
+
+def _build_rerank_bypass_output(*, node_input: RerankNodeInput) -> RerankNodeOutput:
+    reranked_docs = [
+        CitationSourceRow(
+            citation_index=index,
+            rank=index,
+            title=row.title,
+            source=row.source,
+            content=row.content,
+            document_id=row.document_id,
+            score=None,
+        )
+        for index, row in enumerate(node_input.retrieved_docs, start=1)
+    ]
+    logger.info(
+        "Rerank node bypassed by runtime config sub_question=%s candidate_count=%s run_id=%s",
+        _truncate_query(node_input.sub_question),
+        len(reranked_docs),
+        node_input.run_metadata.run_id,
+    )
+    return RerankNodeOutput(
+        reranked_docs=reranked_docs,
+        citation_rows_by_index={row.citation_index: row for row in reranked_docs},
+    )
 
 
 def _emit_graph_state_snapshot(
@@ -1219,6 +1299,7 @@ def _run_graph_subquestion_lane(
     vector_store: Any,
     model: BaseChatModel | None,
     run_metadata: GraphRunMetadata,
+    runtime_execution_config: _ResolvedRuntimeExecutionConfig,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
 ) -> _GraphLaneExecutionResult:
@@ -1235,15 +1316,19 @@ def _run_graph_subquestion_lane(
         run_metadata.run_id,
     )
     try:
-        expand_output = run_expand_node(
-            node_input=ExpandNodeInput(
-                main_question=main_question,
-                sub_question=sub_question,
-                run_metadata=run_metadata,
-            ),
-            model=model,
-            callbacks=lane_callbacks,
-        )
+        if runtime_execution_config.query_expansion_enabled:
+            expand_output = run_expand_node(
+                node_input=ExpandNodeInput(
+                    main_question=main_question,
+                    sub_question=sub_question,
+                    run_metadata=run_metadata,
+                ),
+                model=model,
+                config=runtime_execution_config.query_expansion_config,
+                callbacks=lane_callbacks,
+            )
+        else:
+            expand_output = _build_query_expansion_bypass_output(sub_question=sub_question)
         search_output = run_search_node(
             node_input=SearchNodeInput(
                 sub_question=sub_question,
@@ -1253,19 +1338,23 @@ def _run_graph_subquestion_lane(
             vector_store=vector_store,
             k_fetch=_SEARCH_NODE_K_FETCH,
         )
-        rerank_output = run_rerank_node(
-            node_input=RerankNodeInput(
+        rerank_input = RerankNodeInput(
+            sub_question=sub_question,
+            expanded_query=_select_compat_expanded_query(
                 sub_question=sub_question,
-                expanded_query=_select_compat_expanded_query(
-                    sub_question=sub_question,
-                    expanded_queries=list(expand_output.expanded_queries),
-                ),
-                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
-                run_metadata=run_metadata,
+                expanded_queries=list(expand_output.expanded_queries),
             ),
-            config=_RERANKER_CONFIG,
-            callbacks=lane_callbacks,
+            retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+            run_metadata=run_metadata,
         )
+        if runtime_execution_config.rerank_config.enabled:
+            rerank_output = run_rerank_node(
+                node_input=rerank_input,
+                config=runtime_execution_config.rerank_config,
+                callbacks=lane_callbacks,
+            )
+        else:
+            rerank_output = _build_rerank_bypass_output(node_input=rerank_input)
         answer_input_rows = rerank_output.reranked_docs or search_output.retrieved_docs
         answer_citation_rows = rerank_output.citation_rows_by_index or search_output.citation_rows_by_index
         answer_output = run_answer_subquestion_node(
@@ -1277,6 +1366,7 @@ def _run_graph_subquestion_lane(
                 },
                 run_metadata=run_metadata,
             ),
+            prompt_template=runtime_execution_config.subanswer_prompt,
             callbacks=lane_callbacks,
         )
     finally:
@@ -1314,6 +1404,7 @@ def run_parallel_graph_runner(
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
+    resolved_runtime_execution_config = _resolve_runtime_execution_config(payload)
     state = build_agent_graph_state(
         main_question=payload.query,
         decomposition_sub_questions=[],
@@ -1378,6 +1469,7 @@ def run_parallel_graph_runner(
                         vector_store=vector_store,
                         model=model,
                         run_metadata=state.run_metadata,
+                        runtime_execution_config=resolved_runtime_execution_config,
                         callbacks=callbacks,
                         langfuse_callback=langfuse_callback,
                     ): lane_index
@@ -1458,6 +1550,7 @@ def run_parallel_graph_runner(
                 sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
                 run_metadata=state.run_metadata,
             ),
+            prompt_template=resolved_runtime_execution_config.synthesis_prompt,
             callbacks=resolved_callbacks,
         )
         state = apply_synthesize_final_node_output_to_graph_state(
@@ -1494,6 +1587,7 @@ def run_sequential_graph_runner(
 ) -> AgentGraphState:
     resolved_run_metadata = run_metadata or build_graph_run_metadata()
     resolved_initial_search_context = list(initial_search_context or [])
+    resolved_runtime_execution_config = _resolve_runtime_execution_config(payload)
     state = build_agent_graph_state(
         main_question=payload.query,
         decomposition_sub_questions=[],
@@ -1539,15 +1633,19 @@ def run_sequential_graph_runner(
                 _truncate_query(sub_question),
                 state.run_metadata.run_id,
             )
-            expand_output = run_expand_node(
-                node_input=ExpandNodeInput(
-                    main_question=payload.query,
-                    sub_question=sub_question,
-                    run_metadata=state.run_metadata,
-                ),
-                model=model,
-                callbacks=resolved_callbacks,
-            )
+            if resolved_runtime_execution_config.query_expansion_enabled:
+                expand_output = run_expand_node(
+                    node_input=ExpandNodeInput(
+                        main_question=payload.query,
+                        sub_question=sub_question,
+                        run_metadata=state.run_metadata,
+                    ),
+                    model=model,
+                    config=resolved_runtime_execution_config.query_expansion_config,
+                    callbacks=resolved_callbacks,
+                )
+            else:
+                expand_output = _build_query_expansion_bypass_output(sub_question=sub_question)
             state = apply_expand_node_output_to_graph_state(
                 state=state,
                 sub_question=sub_question,
@@ -1569,19 +1667,23 @@ def run_sequential_graph_runner(
                 node_output=search_output,
             )
 
-            rerank_output = run_rerank_node(
-                node_input=RerankNodeInput(
+            rerank_input = RerankNodeInput(
+                sub_question=sub_question,
+                expanded_query=_select_compat_expanded_query(
                     sub_question=sub_question,
-                    expanded_query=_select_compat_expanded_query(
-                        sub_question=sub_question,
-                        expanded_queries=list(expand_output.expanded_queries),
-                    ),
-                    retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
-                    run_metadata=state.run_metadata,
+                    expanded_queries=list(expand_output.expanded_queries),
                 ),
-                config=_RERANKER_CONFIG,
-                callbacks=resolved_callbacks,
+                retrieved_docs=[row.model_copy(deep=True) for row in search_output.retrieved_docs],
+                run_metadata=state.run_metadata,
             )
+            if resolved_runtime_execution_config.rerank_config.enabled:
+                rerank_output = run_rerank_node(
+                    node_input=rerank_input,
+                    config=resolved_runtime_execution_config.rerank_config,
+                    callbacks=resolved_callbacks,
+                )
+            else:
+                rerank_output = _build_rerank_bypass_output(node_input=rerank_input)
             state = apply_rerank_node_output_to_graph_state(
                 state=state,
                 sub_question=sub_question,
@@ -1599,6 +1701,7 @@ def run_sequential_graph_runner(
                     },
                     run_metadata=state.run_metadata,
                 ),
+                prompt_template=resolved_runtime_execution_config.subanswer_prompt,
                 callbacks=resolved_callbacks,
             )
             state = apply_answer_subquestion_node_output_to_graph_state(
@@ -1622,6 +1725,7 @@ def run_sequential_graph_runner(
                 sub_question_artifacts=[item.model_copy(deep=True) for item in state.sub_question_artifacts],
                 run_metadata=state.run_metadata,
             ),
+            prompt_template=resolved_runtime_execution_config.synthesis_prompt,
             callbacks=resolved_callbacks,
         )
         state = apply_synthesize_final_node_output_to_graph_state(

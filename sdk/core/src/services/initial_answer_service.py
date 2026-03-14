@@ -17,6 +17,20 @@ _INITIAL_ANSWER_MAX_CONTEXT_ITEMS = max(1, int(os.getenv("INITIAL_ANSWER_MAX_CON
 _INITIAL_ANSWER_MAX_SUBQAS = max(1, int(os.getenv("INITIAL_ANSWER_MAX_SUBQAS", "8")))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _CITATION_REF_PATTERN = re.compile(r"\[(\d+)\]")
+DEFAULT_INITIAL_ANSWER_PROMPT_INSTRUCTIONS = (
+    "You synthesize the initial answer for the user's question.\n"
+    "Use both sources of input:\n"
+    "1) Initial retrieval context from the original question.\n"
+    "2) Per-subquestion answers with verification status.\n\n"
+    "Requirements:\n"
+    "- Return a concise answer (2-5 sentences).\n"
+    "- Prefer answerable/verified sub-question answers when present.\n"
+    "- If evidence is partial, say what is uncertain.\n"
+    "- Preserve citation markers from sub-question answers exactly, e.g. [1], [2][3].\n"
+    "- Do not collapse cited evidence into an uncited summary.\n"
+    "- Include at least one source attribution in parentheses, e.g. (source: ...).\n"
+    "- If initial retrieval context is used, reference its source field explicitly."
+)
 
 
 def _format_initial_context(initial_search_context: list[dict[str, Any]]) -> str:
@@ -90,11 +104,28 @@ def _build_fallback_initial_answer(
     )
 
 
+def _build_initial_answer_prompt(
+    *,
+    main_question: str,
+    initial_context: str,
+    sub_qa_context: str,
+    prompt_template: str | None,
+) -> str:
+    instructions = (prompt_template or DEFAULT_INITIAL_ANSWER_PROMPT_INSTRUCTIONS).strip()
+    return (
+        f"{instructions}\n\n"
+        f"Main question:\n{main_question}\n\n"
+        f"Initial retrieval context:\n{initial_context}\n\n"
+        f"Sub-question answers:\n{sub_qa_context}\n"
+    )
+
+
 def generate_initial_answer(
     *,
     main_question: str,
     initial_search_context: list[dict[str, Any]],
     sub_qa: list[SubQuestionAnswer],
+    prompt_template: str | None = None,
     callbacks: list[Any] | None = None,
 ) -> str:
     logger.info(
@@ -123,22 +154,11 @@ def generate_initial_answer(
         logger.info("Initial answer generation using fallback; OPENAI_API_KEY is not set")
         return fallback_answer
 
-    prompt = (
-        "You synthesize the initial answer for the user's question.\n"
-        "Use both sources of input:\n"
-        "1) Initial retrieval context from the original question.\n"
-        "2) Per-subquestion answers with verification status.\n\n"
-        "Requirements:\n"
-        "- Return a concise answer (2-5 sentences).\n"
-        "- Prefer answerable/verified sub-question answers when present.\n"
-        "- If evidence is partial, say what is uncertain.\n"
-        "- Preserve citation markers from sub-question answers exactly, e.g. [1], [2][3].\n"
-        "- Do not collapse cited evidence into an uncited summary.\n"
-        "- Include at least one source attribution in parentheses, e.g. (source: ...).\n"
-        "- If initial retrieval context is used, reference its source field explicitly.\n\n"
-        f"Main question:\n{main_question}\n\n"
-        f"Initial retrieval context:\n{_format_initial_context(initial_search_context) or 'None'}\n\n"
-        f"Sub-question answers:\n{_format_sub_qa(sub_qa) or 'None'}\n"
+    prompt = _build_initial_answer_prompt(
+        main_question=main_question,
+        initial_context=_format_initial_context(initial_search_context) or "None",
+        sub_qa_context=_format_sub_qa(sub_qa) or "None",
+        prompt_template=prompt_template,
     )
 
     try:
@@ -169,6 +189,7 @@ def generate_final_synthesis_answer(
     *,
     main_question: str,
     sub_qa: list[SubQuestionAnswer],
+    prompt_template: str | None = None,
     callbacks: list[Any] | None = None,
 ) -> str:
     logger.info(
@@ -180,6 +201,7 @@ def generate_final_synthesis_answer(
         main_question=main_question,
         initial_search_context=[],
         sub_qa=sub_qa,
+        prompt_template=prompt_template,
         callbacks=callbacks,
     )
     logger.info(

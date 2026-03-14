@@ -10,7 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
-from schemas import CitationSourceRow, RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import CitationSourceRow, RuntimeAgentRunResponse
 
 
 class _CompatibleVectorStore:
@@ -22,7 +22,7 @@ def test_advanced_rag_signature_matches_clean_public_contract() -> None:
     signature = inspect.signature(public_api.advanced_rag)
     assert (
         str(signature)
-        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None, checkpoint_db_url: 'str | None' = None) -> 'RuntimeAgentRunResponse'"
+        == "(query: 'str', *, vector_store: 'Any', model: 'Any', rerank_enabled: 'bool | None' = None, query_expansion_enabled: 'bool | None' = None, config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None, checkpoint_db_url: 'str | None' = None) -> 'RuntimeAgentRunResponse'"
     )
     assert signature.parameters["query"].default is inspect._empty
     assert signature.parameters["vector_store"].default is inspect._empty
@@ -39,16 +39,8 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
         captured["callbacks"] = callbacks
         return RuntimeAgentRunResponse(
             main_question=payload.query,
-            sub_qa=[
-                SubQuestionAnswer(
-                    sub_question="Which lane completed?",
-                    sub_answer="The synthesis lane completed with grounded evidence.",
-                    tool_call_input='{"query":"Which lane completed?"}',
-                    expanded_query="Which orchestration lane completed under LangGraph?",
-                    sub_agent_response="The lane completed after retrieval and synthesis.",
-                    answerable=True,
-                    verification_reason="grounded_in_reranked_documents",
-                )
+            sub_items=[
+                ("Which lane completed?", "The synthesis lane completed with grounded evidence.")
             ],
             output="ok [2]",
             final_citations=[
@@ -79,7 +71,7 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
     assert isinstance(response, RuntimeAgentRunResponse)
     assert response.main_question == "sdk contract query"
     assert response.output == "ok [2]"
-    assert response.sub_answers == response.sub_qa
+    assert response.sub_items == [("Which lane completed?", "The synthesis lane completed with grounded evidence.")]
     assert response.final_citations[0].citation_index == 2
     assert captured == {
         "payload": {"query": "sdk contract query"},
@@ -95,7 +87,7 @@ def test_advanced_rag_builds_clean_runtime_payload(monkeypatch) -> None:
     def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
         _ = model, vector_store, callbacks
         captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_items=[], output="ok")
 
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
@@ -103,13 +95,12 @@ def test_advanced_rag_builds_clean_runtime_payload(monkeypatch) -> None:
         "sdk runtime config query",
         model=object(),
         vector_store=_CompatibleVectorStore(),
-        config={
-            "rerank": {"enabled": False},
-            "query_expansion": {"enabled": True},
-            "hitl": {"subquestions": {"enabled": True}},
-            "runtime_config": {
+            config={
                 "rerank": {"enabled": False},
                 "query_expansion": {"enabled": True},
+                "runtime_config": {
+                    "rerank": {"enabled": False},
+                    "query_expansion": {"enabled": True},
                 "custom_prompts": {"subanswer": "per-run subanswer prompt"},
             },
             "custom_prompts": {
@@ -125,7 +116,6 @@ def test_advanced_rag_builds_clean_runtime_payload(monkeypatch) -> None:
         "controls": {
             "rerank": {"enabled": False},
             "query_expansion": {"enabled": True},
-            "hitl": {"enabled": True, "subquestions": {"enabled": True}},
         },
         "runtime_config": {
             "rerank": {"enabled": False},
@@ -134,6 +124,35 @@ def test_advanced_rag_builds_clean_runtime_payload(monkeypatch) -> None:
         "custom_prompts": {
             "subanswer": "per-run subanswer prompt",
             "synthesis": "default synthesis prompt",
+        },
+    }
+
+
+def test_advanced_rag_explicit_step_parameters_override_runtime_config(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
+        _ = model, vector_store, callbacks
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    response = public_api.advanced_rag(
+        "sdk explicit step params",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        rerank_enabled=False,
+        query_expansion_enabled=False,
+        config={"runtime_config": {"rerank": {"enabled": True}, "query_expansion": {"enabled": True}}},
+    )
+
+    assert response.output == "ok"
+    assert captured["payload"] == {
+        "query": "sdk explicit step params",
+        "runtime_config": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": False},
         },
     }
 

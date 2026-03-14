@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Union
+from uuid import UUID
 
 from pydantic import AliasChoices
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,8 +30,6 @@ class RuntimeHitlControl(BaseModel):
     def normalize_enabled(self) -> "RuntimeHitlControl":
         if self.subquestions is not None and self.subquestions.enabled:
             self.enabled = True
-        elif self.enabled and self.subquestions is None:
-            self.subquestions = RuntimeSubquestionHitlControl(enabled=True)
         return self
 
 
@@ -54,6 +53,7 @@ class RuntimeCustomPrompts(BaseModel):
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
+    thread_id: str | None = None
     checkpoint_db_url: str | None = None
     controls: RuntimeAgentRunControls | None = None
     runtime_config: RuntimeAgentRunRuntimeConfig | None = None
@@ -61,6 +61,16 @@ class RuntimeAgentRunRequest(BaseModel):
         default=None,
         validation_alias=AliasChoices("custom_prompts", "custom-prompts"),
     )
+
+    @field_validator("thread_id")
+    @classmethod
+    def validate_thread_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        return str(UUID(normalized))
 
 
 class SubQuestionAnswer(BaseModel):
@@ -75,9 +85,29 @@ class SubQuestionAnswer(BaseModel):
 
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
+    thread_id: str | None = None
+    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunResponse":
+        if self.sub_items:
+            normalized = [SubQuestionAnswer(sub_question=item[0], sub_answer=item[1]) for item in self.sub_items]
+            if not self.sub_qa:
+                self.sub_qa = [item.model_copy(deep=True) for item in normalized]
+            if not self.sub_answers:
+                self.sub_answers = [item.model_copy(deep=True) for item in normalized]
+        elif self.sub_answers and not self.sub_qa:
+            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
+        elif self.sub_qa and not self.sub_answers:
+            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
+
+        if not self.sub_items and self.sub_qa:
+            self.sub_items = [(item.sub_question, item.sub_answer) for item in self.sub_qa]
+        return self
 
 
 class HitlResumeDecision(BaseModel):
@@ -225,18 +255,22 @@ class AgentRunStageMetadata(BaseModel):
 class RuntimeAgentRunAsyncStartResponse(BaseModel):
     job_id: str
     run_id: str
+    thread_id: str = ""
     status: str
 
 
 class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     job_id: str
     run_id: str = ""
+    thread_id: str = ""
     status: str
     message: str = ""
     stage: str = ""
     stages: list[AgentRunStageMetadata] = Field(default_factory=list)
     decomposition_sub_questions: list[str] = Field(default_factory=list)
     sub_question_artifacts: list["SubQuestionArtifacts"] = Field(default_factory=list)
+    sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
+    sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_items: list[tuple[str, str]] = Field(default_factory=list)
     output: str = ""
     result: RuntimeAgentRunResponse | None = None
@@ -259,6 +293,22 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
         if isinstance(value, Mapping):
             return HitlReview.from_interrupt_payload(value)
         return value
+
+    @model_validator(mode="after")
+    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunAsyncStatusResponse":
+        if self.sub_items:
+            normalized = [SubQuestionAnswer(sub_question=item[0], sub_answer=item[1]) for item in self.sub_items]
+            if not self.sub_qa:
+                self.sub_qa = [item.model_copy(deep=True) for item in normalized]
+            if not self.sub_answers:
+                self.sub_answers = [item.model_copy(deep=True) for item in normalized]
+        elif self.sub_answers and not self.sub_qa:
+            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
+        elif self.sub_qa and not self.sub_answers:
+            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
+        if not self.sub_items and self.sub_qa:
+            self.sub_items = [(item.sub_question, item.sub_answer) for item in self.sub_qa]
+        return self
 
 
 

@@ -17,7 +17,7 @@ _INITIAL_ANSWER_MAX_CONTEXT_ITEMS = max(1, int(os.getenv("INITIAL_ANSWER_MAX_CON
 _INITIAL_ANSWER_MAX_SUBQAS = max(1, int(os.getenv("INITIAL_ANSWER_MAX_SUBQAS", "8")))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _CITATION_REF_PATTERN = re.compile(r"\[(\d+)\]")
-DEFAULT_INITIAL_ANSWER_PROMPT_TEMPLATE = (
+DEFAULT_INITIAL_ANSWER_PROMPT_INSTRUCTIONS = (
     "You synthesize the initial answer for the user's question.\n"
     "Use both sources of input:\n"
     "1) Initial retrieval context from the original question.\n"
@@ -29,10 +29,7 @@ DEFAULT_INITIAL_ANSWER_PROMPT_TEMPLATE = (
     "- Preserve citation markers from sub-question answers exactly, e.g. [1], [2][3].\n"
     "- Do not collapse cited evidence into an uncited summary.\n"
     "- Include at least one source attribution in parentheses, e.g. (source: ...).\n"
-    "- If initial retrieval context is used, reference its source field explicitly.\n\n"
-    "Main question:\n{main_question}\n\n"
-    "Initial retrieval context:\n{initial_context}\n\n"
-    "Sub-question answers:\n{sub_qa_context}\n"
+    "- If initial retrieval context is used, reference its source field explicitly."
 )
 
 
@@ -107,6 +104,22 @@ def _build_fallback_initial_answer(
     )
 
 
+def _build_initial_answer_prompt(
+    *,
+    main_question: str,
+    initial_context: str,
+    sub_qa_context: str,
+    prompt_template: str | None,
+) -> str:
+    instructions = (prompt_template or DEFAULT_INITIAL_ANSWER_PROMPT_INSTRUCTIONS).strip()
+    return (
+        f"{instructions}\n\n"
+        f"Main question:\n{main_question}\n\n"
+        f"Initial retrieval context:\n{initial_context}\n\n"
+        f"Sub-question answers:\n{sub_qa_context}\n"
+    )
+
+
 def generate_initial_answer(
     *,
     main_question: str,
@@ -141,10 +154,11 @@ def generate_initial_answer(
         logger.info("Initial answer generation using fallback; OPENAI_API_KEY is not set")
         return fallback_answer
 
-    prompt = (prompt_template or DEFAULT_INITIAL_ANSWER_PROMPT_TEMPLATE).format(
+    prompt = _build_initial_answer_prompt(
         main_question=main_question,
         initial_context=_format_initial_context(initial_search_context) or "None",
         sub_qa_context=_format_sub_qa(sub_qa) or "None",
+        prompt_template=prompt_template,
     )
 
     try:

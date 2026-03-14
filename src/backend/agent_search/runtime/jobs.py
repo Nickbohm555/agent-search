@@ -132,7 +132,7 @@ def _build_job_lifecycle_event(
     error: str | None = None,
     decomposition_sub_questions: list[str] | None = None,
     sub_question_artifacts: list[SubQuestionArtifacts] | None = None,
-    sub_qa: list[SubQuestionAnswer] | None = None,
+    sub_items: list[tuple[str, str]] | None = None,
     output: str | None = None,
     result: RuntimeAgentRunResponse | None = None,
     interrupt_payload: Any | None = None,
@@ -151,7 +151,7 @@ def _build_job_lifecycle_event(
         error=error,
         decomposition_sub_questions=decomposition_sub_questions,
         sub_question_artifacts=sub_question_artifacts,
-        sub_qa=sub_qa,
+        sub_items=sub_items,
         output=output,
         result=result,
         interrupt_payload=interrupt_payload,
@@ -272,7 +272,7 @@ def start_agent_run_job(
         logger.error("Runtime async job rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
     job_id = str(uuid.uuid4())
-    run_metadata = build_graph_run_metadata(run_id=job_id)
+    run_metadata = build_graph_run_metadata(run_id=job_id, thread_id=payload.thread_id)
     normalized_request_payload = payload.model_dump(mode="json", exclude_none=True)
     status = AgentRunJobStatus(
         job_id=job_id,
@@ -435,7 +435,7 @@ def _run_agent_job(
                     status=snapshot.status,
                     decomposition_sub_questions=list(snapshot.decomposition_sub_questions),
                     sub_question_artifacts=[item.model_copy(deep=True) for item in snapshot.sub_question_artifacts],
-                    sub_qa=[item.model_copy(deep=True) for item in snapshot.sub_qa],
+                    sub_items=[(item.sub_question, item.sub_answer) for item in snapshot.sub_qa],
                     output=snapshot.output,
                     elapsed_ms=_elapsed_ms(current_job),
                 )
@@ -521,7 +521,7 @@ def _run_agent_job(
                         status="paused",
                         decomposition_sub_questions=list(current_job.decomposition_sub_questions),
                         sub_question_artifacts=[item.model_copy(deep=True) for item in current_job.sub_question_artifacts],
-                        sub_qa=[item.model_copy(deep=True) for item in current_job.sub_qa],
+                        sub_items=[(item.sub_question, item.sub_answer) for item in current_job.sub_qa],
                         output=current_job.output,
                         interrupt_payload=resolved_interrupt_payload,
                         checkpoint_id=outcome.checkpoint_id,
@@ -554,7 +554,7 @@ def _run_agent_job(
                 current_job.result = response
             current_job.interrupt_payload = None
             current_job.checkpoint_id = outcome.checkpoint_id
-            current_job.sub_qa = [item.model_copy(deep=True) for item in response.sub_qa]
+            current_job.sub_qa = [item.model_copy(deep=True) for item in rag_state["sub_qa"]]
             current_job.decomposition_sub_questions = list(rag_state["decomposition_sub_questions"])
             current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in rag_state["sub_question_artifacts"]]
             current_job.output = response.output
@@ -567,7 +567,7 @@ def _run_agent_job(
                     status=current_job.status,
                     decomposition_sub_questions=list(current_job.decomposition_sub_questions),
                     sub_question_artifacts=[item.model_copy(deep=True) for item in current_job.sub_question_artifacts],
-                    sub_qa=[item.model_copy(deep=True) for item in current_job.sub_qa],
+                    sub_items=[(item.sub_question, item.sub_answer) for item in current_job.sub_qa],
                     output=current_job.output,
                     result=current_job.result.model_copy(deep=True) if current_job.result is not None else None,
                     elapsed_ms=_elapsed_ms(current_job),
@@ -579,7 +579,7 @@ def _run_agent_job(
             job_id,
             run_id,
             current_job.status,
-            len(response.sub_qa),
+            len(response.sub_items),
             len(response.output),
         )
     except Exception as exc:  # noqa: BLE001

@@ -54,7 +54,7 @@ class _NoopExecutor:
 
 def test_run_async_signature_requires_query_vector_store_and_model() -> None:
     signature = inspect.signature(public_api.run_async)
-    assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, checkpoint_db_url: 'str | None' = None) -> 'RuntimeAgentRunAsyncStartResponse'"
+    assert str(signature) == "(query: 'str', *, vector_store: 'Any', model: 'Any', rerank_enabled: 'bool | None' = None, query_expansion_enabled: 'bool | None' = None, config: 'dict[str, Any] | None' = None, checkpoint_db_url: 'str | None' = None) -> 'RuntimeAgentRunAsyncStartResponse'"
     assert signature.parameters["query"].default is inspect._empty
     assert signature.parameters["vector_store"].default is inspect._empty
     assert signature.parameters["model"].default is inspect._empty
@@ -140,6 +140,7 @@ def test_run_async_propagates_explicit_controls_to_job_payload(monkeypatch) -> N
         "async controls query",
         vector_store=_CompatibleVectorStore(),
         model=object(),
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
         config={
             "thread_id": "550e8400-e29b-41d4-a716-446655440211",
             "rerank": {"enabled": False},
@@ -157,6 +158,7 @@ def test_run_async_propagates_explicit_controls_to_job_payload(monkeypatch) -> N
             "query_expansion": {"enabled": True},
             "hitl": {"enabled": True},
         },
+        "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
     }
 
 
@@ -199,6 +201,47 @@ def test_run_async_propagates_runtime_config_to_job_payload_without_breaking_leg
     }
 
 
+def test_run_async_explicit_step_parameters_override_runtime_config(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        _ = kwargs
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        return SimpleNamespace(
+            job_id="job-explicit-steps",
+            run_id="run-explicit-steps",
+            thread_id="550e8400-e29b-41d4-a716-446655440216",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "async explicit steps",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        rerank_enabled=False,
+        query_expansion_enabled=False,
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440216",
+            "runtime_config": {
+                "rerank": {"enabled": True},
+                "query_expansion": {"enabled": True},
+            },
+        },
+    )
+
+    assert response.job_id == "job-explicit-steps"
+    assert captured["payload"] == {
+        "query": "async explicit steps",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440216",
+        "runtime_config": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": False},
+        },
+    }
+
+
 def test_run_async_propagates_subquestion_hitl_enablement_to_job_payload(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -218,6 +261,7 @@ def test_run_async_propagates_subquestion_hitl_enablement_to_job_payload(monkeyp
         "async subquestion hitl query",
         vector_store=_CompatibleVectorStore(),
         model=object(),
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
         config={
             "thread_id": "550e8400-e29b-41d4-a716-446655440213",
             "hitl": {"subquestions": {"enabled": True}},
@@ -234,6 +278,7 @@ def test_run_async_propagates_subquestion_hitl_enablement_to_job_payload(monkeyp
                 "subquestions": {"enabled": True},
             }
         },
+        "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
     }
 
 
@@ -329,6 +374,7 @@ def test_run_async_passes_checkpoint_db_url_into_job_payload(monkeypatch) -> Non
         return SimpleNamespace(
             job_id="job-checkpoint-db",
             run_id="run-checkpoint-db",
+            thread_id="",
             status="running",
         )
 
@@ -482,6 +528,7 @@ def test_run_async_persists_normalized_request_payload(monkeypatch) -> None:
         "Persist the normalized request",
         vector_store=_CompatibleVectorStore(),
         model=object(),
+        checkpoint_db_url="postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
         config={
             "thread_id": thread_id,
             "rerank": {"enabled": False},
@@ -502,6 +549,7 @@ def test_run_async_persists_normalized_request_payload(monkeypatch) -> None:
             "query_expansion": {"enabled": True},
             "hitl": {"enabled": True},
         },
+        "checkpoint_db_url": "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search",
     }
 
 
@@ -548,15 +596,7 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
             result=RuntimeAgentRunResponse(
                 main_question="What is NATO?",
                 thread_id="550e8400-e29b-41d4-a716-446655440000",
-                sub_qa=[
-                    SubQuestionAnswer(
-                        sub_question="What is NATO?",
-                        sub_answer="An alliance.",
-                        expanded_query="What is NATO and how is it structured?",
-                        answerable=True,
-                        verification_reason="grounded_in_reranked_documents",
-                    )
-                ],
+                sub_items=[("What is NATO?", "An alliance.")],
                 output="NATO is an alliance. [1]",
                 final_citations=[
                     CitationSourceRow(
@@ -589,10 +629,8 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
     assert payload["stage"] == "completed"
     assert payload["elapsed_ms"] == 1500
     assert [stage["stage"] for stage in payload["stages"]] == ["subquestions_ready", "synthesize"]
-    assert payload["sub_qa"][0]["answerable"] is True
-    assert payload["sub_qa"][0]["verification_reason"] == "grounded_in_reranked_documents"
-    assert payload["sub_answers"][0]["sub_question"] == "What is NATO?"
-    assert payload["sub_answers"][0]["sub_answer"] == "An alliance."
+    assert payload["sub_items"][0][0] == "What is NATO?"
+    assert payload["sub_items"][0][1] == "An alliance."
     assert payload["result"]["main_question"] == "What is NATO?"
     assert payload["result"]["thread_id"] == "550e8400-e29b-41d4-a716-446655440000"
     assert payload["result"]["output"] == "NATO is an alliance. [1]"
@@ -618,12 +656,7 @@ def test_async_status_keeps_decomposition_questions_separate_from_subanswer_rows
             "Which runtime path completed the request?",
             "What evidence supported the result?",
         ],
-        sub_qa=[
-            SubQuestionAnswer(
-                sub_question="Which runtime path completed the request?",
-                sub_answer="The LangGraph runtime path completed the request.",
-            )
-        ],
+        sub_items=[("Which runtime path completed the request?", "The LangGraph runtime path completed the request.")],
         output="The LangGraph runtime path completed the request.",
     )
 
@@ -631,9 +664,9 @@ def test_async_status_keeps_decomposition_questions_separate_from_subanswer_rows
         "Which runtime path completed the request?",
         "What evidence supported the result?",
     ]
-    assert len(status.sub_answers) == 1
-    assert status.sub_answers[0].sub_question == "Which runtime path completed the request?"
-    assert status.sub_answers[0].sub_answer == "The LangGraph runtime path completed the request."
+    assert len(status.sub_items) == 1
+    assert status.sub_items[0][0] == "Which runtime path completed the request?"
+    assert status.sub_items[0][1] == "The LangGraph runtime path completed the request."
 
 
 def test_get_run_status_raises_configuration_error_for_missing_job(monkeypatch) -> None:
@@ -797,7 +830,7 @@ def test_resume_run_reconstructs_full_request_payload(monkeypatch) -> None:
             response=RuntimeAgentRunResponse(
                 main_question=payload.query,
                 thread_id=thread_id,
-                sub_qa=[],
+                sub_items=[],
                 output="Resumed with controls intact.",
             ),
             interrupt_payload=None,

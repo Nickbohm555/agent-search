@@ -25,6 +25,7 @@ from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
     RuntimeHitlControl,
+    RuntimeAgentRunRuntimeConfig,
     RuntimeSubquestionHitlControl,
 )
 from schemas.agent import (
@@ -82,11 +83,36 @@ def _build_effective_custom_prompts(config: Mapping[str, Any] | None) -> dict[st
     return merged_prompts
 
 
+def _apply_optional_step_overrides(
+    config: Mapping[str, Any] | None,
+    *,
+    rerank_enabled: bool | None,
+    query_expansion_enabled: bool | None,
+) -> dict[str, Any] | None:
+    if not isinstance(config, Mapping) and rerank_enabled is None and query_expansion_enabled is None:
+        return None
+
+    resolved: dict[str, Any] = dict(config or {})
+    runtime_config = dict(_get_nested_mapping(config, "runtime_config") or {})
+    if rerank_enabled is not None:
+        runtime_config["rerank"] = {"enabled": rerank_enabled}
+    if query_expansion_enabled is not None:
+        runtime_config["query_expansion"] = {"enabled": query_expansion_enabled}
+    if runtime_config:
+        resolved["runtime_config"] = runtime_config
+    return resolved
+
+
 def _resolve_runtime_config_input(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
     if not isinstance(config, Mapping):
         return None
 
     resolved: dict[str, Any] = dict(config)
+    nested_runtime_config = _get_nested_mapping(config, "runtime_config")
+    if nested_runtime_config is not None:
+        for key in ("timeout", "retrieval", "rerank", "query_expansion", "hitl"):
+            if key in nested_runtime_config:
+                resolved[key] = nested_runtime_config[key]
     effective_custom_prompts = _build_effective_custom_prompts(config)
     if effective_custom_prompts is not None:
         resolved["custom_prompts"] = effective_custom_prompts
@@ -119,8 +145,14 @@ def _build_runtime_request_payload(
         )
     return RuntimeAgentRunRequest(
         query=query,
+        thread_id=(str(config.get("thread_id")).strip() if isinstance(config, Mapping) and config.get("thread_id") is not None else None),
         checkpoint_db_url=checkpoint_db_url,
         controls=controls,
+        runtime_config=(
+            RuntimeAgentRunRuntimeConfig.model_validate(config.get("runtime_config"))
+            if isinstance(config, Mapping) and isinstance(config.get("runtime_config"), Mapping)
+            else None
+        ),
         custom_prompts=(
             custom_prompts_payload
             if custom_prompts_payload
@@ -333,22 +365,31 @@ def advanced_rag(
     vector_store: Any,
     model: Any,
     hitl_subquestions: bool = False,
+    rerank_enabled: bool | None = None,
+    query_expansion_enabled: bool | None = None,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     resume: Any | None = None,
     checkpoint_db_url: str | None = None,
     checkpointer: BaseCheckpointSaver | None = None,
 ) -> RuntimeAgentRunResponse | RuntimeAgentRunResult:
+    resolved_config = _apply_optional_step_overrides(
+        config,
+        rerank_enabled=rerank_enabled,
+        query_expansion_enabled=query_expansion_enabled,
+    )
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s has_config=%s has_callbacks=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s has_config=%s has_callbacks=%s rerank_enabled_override=%s query_expansion_enabled_override=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
         hitl_subquestions,
-        config is not None,
+        resolved_config is not None,
         bool(callbacks),
+        rerank_enabled,
+        query_expansion_enabled,
     )
-    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
+    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(resolved_config))
     logger.info(
         "SDK sync runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
         runtime_config.retrieval.initial_search_context_k,
@@ -370,7 +411,7 @@ def advanced_rag(
         resolved_callbacks = list(callbacks or [])
         request_payload = _build_runtime_request_payload(
             query,
-            config=config,
+            config=resolved_config,
             runtime_config=runtime_config,
             hitl_subquestions=hitl_subquestions,
             resume=resume,

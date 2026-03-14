@@ -15,7 +15,7 @@ _SUBANSWER_MODEL = os.getenv("SUBANSWER_MODEL", "gpt-4.1-mini")
 _SUBANSWER_TEMPERATURE = float(os.getenv("SUBANSWER_TEMPERATURE", "0"))
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 _CITATION_PATTERN = re.compile(r"\[\d+\]")
-DEFAULT_SUBANSWER_PROMPT_TEMPLATE = (
+DEFAULT_SUBANSWER_PROMPT_INSTRUCTIONS = (
     "You answer one sub-question using the full reranked evidence list below.\n"
     "Requirements:\n"
     "- Use only the evidence provided below.\n"
@@ -23,9 +23,7 @@ DEFAULT_SUBANSWER_PROMPT_TEMPLATE = (
     "- Keep citation indices from the provided evidence lines; do not invent new indices.\n"
     "- Keep it to 1-3 sentences.\n"
     "- Do not summarize the evidence list; directly answer the sub-question using cited evidence.\n"
-    "- If evidence is insufficient, explicitly say so.\n\n"
-    "Sub-question:\n{sub_question}\n\n"
-    "Reranked evidence:\n{context_block}\n"
+    "- If evidence is insufficient, explicitly say so."
 )
 
 
@@ -43,6 +41,20 @@ def _build_fallback_subanswer(*, sub_question: str, documents: list[RetrievedDoc
         return "No relevant evidence found in reranked documents."
     top_doc = documents[0]
     return f"{top_doc.content} (source: {top_doc.source})"
+
+
+def _build_subanswer_prompt(
+    *,
+    sub_question: str,
+    context_block: str,
+    prompt_template: str | None,
+) -> str:
+    instructions = (prompt_template or DEFAULT_SUBANSWER_PROMPT_INSTRUCTIONS).strip()
+    return (
+        f"{instructions}\n\n"
+        f"Sub-question:\n{sub_question}\n\n"
+        f"Reranked evidence:\n{context_block}\n"
+    )
 
 
 def generate_subanswer(
@@ -82,9 +94,10 @@ def generate_subanswer(
 
     try:
         llm = ChatOpenAI(model=_SUBANSWER_MODEL, temperature=_SUBANSWER_TEMPERATURE)
-        prompt = (prompt_template or DEFAULT_SUBANSWER_PROMPT_TEMPLATE).format(
+        prompt = _build_subanswer_prompt(
             sub_question=sub_question,
             context_block=context_block,
+            prompt_template=prompt_template,
         )
         invoke_config = {"callbacks": callbacks} if callbacks else None
         response = llm.invoke(prompt, config=invoke_config) if invoke_config else llm.invoke(prompt)

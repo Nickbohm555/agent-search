@@ -84,6 +84,26 @@ def _build_effective_custom_prompts(config: Mapping[str, Any] | None) -> dict[st
     return merged_prompts
 
 
+def _apply_optional_step_overrides(
+    config: Mapping[str, Any] | None,
+    *,
+    rerank_enabled: bool | None,
+    query_expansion_enabled: bool | None,
+) -> dict[str, Any] | None:
+    if not isinstance(config, Mapping) and rerank_enabled is None and query_expansion_enabled is None:
+        return None
+
+    resolved: dict[str, Any] = dict(config or {})
+    runtime_config = dict(_get_nested_mapping(config, "runtime_config") or {})
+    if rerank_enabled is not None:
+        runtime_config["rerank"] = {"enabled": rerank_enabled}
+    if query_expansion_enabled is not None:
+        runtime_config["query_expansion"] = {"enabled": query_expansion_enabled}
+    if runtime_config:
+        resolved["runtime_config"] = runtime_config
+    return resolved
+
+
 def _resolve_runtime_config_input(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
     if not isinstance(config, Mapping):
         return None
@@ -135,6 +155,7 @@ def _build_runtime_request_payload(
     }
     return RuntimeAgentRunRequest(
         query=query,
+        thread_id=(str(config.get("thread_id")).strip() if isinstance(config, Mapping) and config.get("thread_id") is not None else None),
         controls=_build_request_controls(config, runtime_config=runtime_config),
         runtime_config=(
             RuntimeAgentRunRuntimeConfig.model_validate(runtime_config_payload)
@@ -198,19 +219,28 @@ def advanced_rag(
     *,
     vector_store: Any,
     model: Any,
+    rerank_enabled: bool | None = None,
+    query_expansion_enabled: bool | None = None,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunResponse:
+    resolved_config = _apply_optional_step_overrides(
+        config,
+        rerank_enabled=rerank_enabled,
+        query_expansion_enabled=query_expansion_enabled,
+    )
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s rerank_enabled_override=%s query_expansion_enabled_override=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
-        config is not None,
+        resolved_config is not None,
         bool(callbacks),
+        rerank_enabled,
+        query_expansion_enabled,
     )
-    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
+    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(resolved_config))
     logger.info(
         "SDK sync runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
         runtime_config.retrieval.initial_search_context_k,
@@ -231,7 +261,7 @@ def advanced_rag(
     try:
         payload = _build_runtime_request_payload(
             query,
-            config=config,
+            config=resolved_config,
             runtime_config=runtime_config,
         ).model_copy(update={"checkpoint_db_url": checkpoint_db_url})
         _ensure_checkpoint_db_url(payload)
@@ -251,7 +281,7 @@ def advanced_rag(
         raise mapped from exc
     logger.info(
         "SDK advanced_rag completed sub_qa_count=%s output_len=%s",
-        len(response.sub_qa),
+        len(response.sub_items),
         len(response.output),
     )
     return response
@@ -263,6 +293,8 @@ def _run_sync_operation(
     *,
     vector_store: Any,
     model: Any,
+    rerank_enabled: bool | None = None,
+    query_expansion_enabled: bool | None = None,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
 ) -> RuntimeAgentRunResponse:
@@ -271,6 +303,8 @@ def _run_sync_operation(
             query,
             vector_store=vector_store,
             model=model,
+            rerank_enabled=rerank_enabled,
+            query_expansion_enabled=query_expansion_enabled,
             config=config,
             callbacks=callbacks,
         )
@@ -286,6 +320,8 @@ def run(
     *,
     vector_store: Any,
     model: Any,
+    rerank_enabled: bool | None = None,
+    query_expansion_enabled: bool | None = None,
     config: dict[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.warning("SDK run() is deprecated; use advanced_rag()")
@@ -294,6 +330,8 @@ def run(
         query,
         vector_store=vector_store,
         model=model,
+        rerank_enabled=rerank_enabled,
+        query_expansion_enabled=query_expansion_enabled,
         config=config,
     )
 
@@ -303,17 +341,26 @@ def run_async(
     *,
     vector_store: Any,
     model: Any,
+    rerank_enabled: bool | None = None,
+    query_expansion_enabled: bool | None = None,
     config: dict[str, Any] | None = None,
     checkpoint_db_url: str | None = None,
 ) -> RuntimeAgentRunAsyncStartResponse:
+    resolved_config = _apply_optional_step_overrides(
+        config,
+        rerank_enabled=rerank_enabled,
+        query_expansion_enabled=query_expansion_enabled,
+    )
     logger.info(
-        "SDK async run requested query_len=%s vector_store_type=%s model_type=%s has_config=%s",
+        "SDK async run requested query_len=%s vector_store_type=%s model_type=%s has_config=%s rerank_enabled_override=%s query_expansion_enabled_override=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
-        config is not None,
+        resolved_config is not None,
+        rerank_enabled,
+        query_expansion_enabled,
     )
-    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
+    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(resolved_config))
     logger.info(
         "SDK async runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
         runtime_config.retrieval.initial_search_context_k,
@@ -335,7 +382,7 @@ def run_async(
     try:
         payload = _build_runtime_request_payload(
             query,
-            config=config,
+            config=resolved_config,
             runtime_config=runtime_config,
         ).model_copy(update={"checkpoint_db_url": checkpoint_db_url})
         _ensure_checkpoint_db_url(payload)
@@ -356,6 +403,7 @@ def run_async(
     response = RuntimeAgentRunAsyncStartResponse(
         job_id=job.job_id,
         run_id=job.run_id,
+        thread_id=getattr(job, "thread_id", payload.thread_id or ""),
         status=job.status,
     )
     logger.info(
@@ -394,13 +442,14 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
     response = RuntimeAgentRunAsyncStatusResponse(
         job_id=job.job_id,
         run_id=job.run_id,
+        thread_id=job.thread_id,
         status=job.status,
         message=job.message,
         stage=job.stage,
         stages=list(job.stages),
         decomposition_sub_questions=list(job.decomposition_sub_questions),
         sub_question_artifacts=[item.model_copy(deep=True) for item in job.sub_question_artifacts],
-        sub_qa=[item.model_copy(deep=True) for item in job.sub_qa],
+        sub_items=[(item.sub_question, item.sub_answer) for item in job.sub_qa],
         output=job.output,
         result=job.result.model_copy(deep=True) if job.result is not None else None,
         error=job.error,
