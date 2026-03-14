@@ -107,67 +107,20 @@ response = advanced_rag(
 print(response.output)
 ```
 
-**Contract Notes For 1.0.17**
+**Included Features**
 
-Use these canonical names in new `config` payloads:
+- Multi-step agentic retrieval: Breaks a main question into subquestions, runs retrieval across parallel lanes, and synthesizes a final answer from the collected evidence.
+- Subquestion HITL review: Supports one optional human-in-the-loop checkpoint after decomposition so operators can review or edit subquestions before execution continues.
+- Optional query expansion: Lets you turn query expansion on or off per run to broaden retrieval coverage when the question benefits from wider search terms.
+- Optional reranking: Lets you turn reranking on or off per run to reorder retrieved evidence before subanswers are generated.
+- Checkpointed resume flows: Supports resumable HITL runs through checkpoint persistence so paused work can continue without restarting the full graph.
+- Flexible checkpoint ownership: Works with either an SDK-managed `checkpoint_db_url` or an injected `checkpointer`, depending on whether you want the SDK or your app to own checkpoint storage.
+- Runtime controls via config: Exposes `runtime_config` and related config controls so callers can adjust runtime behavior without changing application code.
+- Prompt overrides: Exposes `custom_prompts.subanswer` and `custom_prompts.synthesis` so teams can customize answer-generation behavior while preserving runtime-supplied question and evidence inputs.
+- SDK-friendly pause/resume contract: Returns a normalized `review` object on pauses and uses SDK-owned resume helpers instead of requiring callers to construct raw backend payloads.
+- Callback integration: Accepts LangChain-compatible callbacks so application telemetry or orchestration hooks can observe the run lifecycle.
 
-- `custom_prompts`
-- `runtime_config`
-
-Compatibility notes:
-
-- `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
-- `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
-- For HITL flows, use the checkpointed runtime runner described below.
-- Langfuse tracing is no longer supported in the SDK/runtime.
-
-**Human-In-The-Loop (HITL)**
-
-`agent-search-core` supports one opt-in review stage on `advanced_rag(...)`:
-
-- `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
-- Subquestion review is the only HITL checkpoint in the SDK.
-- Query expansion no longer has a separate review checkpoint.
-
-The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
-
-HITL checkpoint persistence is optional overall because non-HITL runs do not need it. For HITL or resume flows, provide one of these options and do not pass both at once:
-
-- `checkpoint_db_url="postgresql+psycopg://..."` when you want the SDK to create and own the LangGraph Postgres checkpointer for the call.
-- `checkpointer=existing_checkpointer` when you already manage a ready-to-use LangGraph checkpoint saver instance.
-
-Do not pass both at once.
-
-When you use `checkpoint_db_url`, the caller must provide the checkpoint Postgres database explicitly on every checkpointed call:
-
-- Provision a reachable Postgres database for LangGraph checkpoints before enabling HITL.
-- Pass `checkpoint_db_url="postgresql+psycopg://..."` to every HITL or resume call; the runtime uses that DB for checkpoint persistence and bootstraps tables on first use if missing.
-
-If you inject `checkpointer`, that saver is used as-is and the SDK does not create or bootstrap a new one for you.
-
-**Optional Parameters**
-
-`advanced_rag(...)` supports these optional keyword parameters:
-
-- `rerank_enabled`: explicit per-call override for whether the rerank node runs.
-- `query_expansion_enabled`: explicit per-call override for whether the query-expansion node runs.
-- `config`: runtime controls and prompt overrides for `rerank`, `query_expansion`, `hitl`, `runtime_config`, and `custom_prompts`.
-- `callbacks`: LangChain-compatible callbacks that should observe the run.
-- `hitl_subquestions`: enable the SDK HITL pause after decomposition.
-- `resume`: resume payload for a paused HITL run.
-- `checkpoint_db_url`: optional for normal runs, required only for HITL/resume flows if you are not passing `checkpointer`.
-- `checkpointer`: injected LangGraph checkpoint saver; use this instead of `checkpoint_db_url` when you already manage a ready-to-use saver instance.
-
-Normal non-HITL runs can omit both `checkpoint_db_url` and `checkpointer`.
-
-**Prompt Customization**
-
-The SDK currently exposes two prompt override keys:
-
-- `custom_prompts.subanswer`
-- `custom_prompts.synthesis`
-
-If you do not override them, the runtime uses built-in defaults. Overrides replace the instruction block only. The SDK always appends the live `main_question`, `sub_question`, and evidence sections itself, so caller-provided prompt text cannot replace runtime inputs. For broader runtime and prompt behavior details, see `docs/application-document.html`.
+For broader runtime and prompt behavior details, see `docs/application-document.html`.
 
 **Example Flow**
 
