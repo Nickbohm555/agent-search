@@ -19,19 +19,31 @@ Live architecture blog (GitHub Pages): `https://nickbohm.github.io/agent-search/
 ```mermaid
 flowchart TD
     Q["Main question"] --> D["Decompose"]
-    D --> SQ["Subquestions"]
+    D --> HITL{"Subquestion HITL?"}
+    HITL -->|On| REV["Review / edit subquestions"]
+    HITL -->|Off| SQ["Subquestions"]
+    REV --> SQ
 
     SQ --> S1["Subquestion 1"]
     SQ --> S2["Subquestion 2"]
     SQ --> S3["Subquestion N"]
 
-    S1 --> A1["Answer + citations 1"]
-    S2 --> A2["Answer + citations 2"]
-    S3 --> A3["Answer + citations N"]
+    S1 --> QE{"Subquery expansion?"}
+    S2 --> QE
+    S3 --> QE
+    QE -->|On| EXP["Expand query"]
+    QE -->|Off| RET["Retrieve evidence"]
+    EXP --> RET
 
-    A1 --> SYN["Final synthesis"]
-    A2 --> SYN
-    A3 --> SYN
+    RET --> RR{"Rerank?"}
+    RR -->|On| RERANK["Rerank results"]
+    RR -->|Off| ANS["Answer subquestion"]
+    RERANK --> ANS
+    CP1["Custom prompt: subquestion answers"] -.-> ANS
+    ANS --> SA["Sub-answer + citations"]
+
+    SA --> SYN["Final synthesis"]
+    CP2["Custom prompt: synthesis"] -.-> SYN
     SYN --> OUT["Final answer"]
 ```
 
