@@ -13,7 +13,14 @@ from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
 from agent_search.runtime import jobs as runtime_jobs
 from agent_search.runtime import runner as runtime_runner
-from schemas import AgentRunStageMetadata, CitationSourceRow, GraphStageSnapshot, RuntimeAgentRunResponse, SubQuestionAnswer
+from schemas import (
+    AgentRunStageMetadata,
+    CitationSourceRow,
+    GraphStageSnapshot,
+    RuntimeAgentRunAsyncStatusResponse,
+    RuntimeAgentRunResponse,
+    SubQuestionAnswer,
+)
 from schemas import RuntimeSubquestionResumeEnvelope
 from services import agent_service
 
@@ -543,6 +550,8 @@ def test_get_run_status_returns_runtime_status_shape_with_timing(monkeypatch) ->
     assert [stage["stage"] for stage in payload["stages"]] == ["subquestions_ready", "synthesize"]
     assert payload["sub_qa"][0]["answerable"] is True
     assert payload["sub_qa"][0]["verification_reason"] == "grounded_in_reranked_documents"
+    assert payload["sub_answers"][0]["sub_question"] == "What is NATO?"
+    assert payload["sub_answers"][0]["sub_answer"] == "An alliance."
     assert payload["result"]["main_question"] == "What is NATO?"
     assert payload["result"]["thread_id"] == "550e8400-e29b-41d4-a716-446655440000"
     assert payload["result"]["output"] == "NATO is an alliance. [1]"
@@ -558,6 +567,32 @@ def test_cancel_run_returns_success_shape(monkeypatch) -> None:
     response = public_api.cancel_run("job-123")
 
     assert response.model_dump() == {"status": "success", "message": "Cancellation requested."}
+
+
+def test_async_status_keeps_decomposition_questions_separate_from_subanswer_rows() -> None:
+    status = RuntimeAgentRunAsyncStatusResponse(
+        job_id="job-questions",
+        status="success",
+        decomposition_sub_questions=[
+            "Which runtime path completed the request?",
+            "What evidence supported the result?",
+        ],
+        sub_qa=[
+            SubQuestionAnswer(
+                sub_question="Which runtime path completed the request?",
+                sub_answer="The LangGraph runtime path completed the request.",
+            )
+        ],
+        output="The LangGraph runtime path completed the request.",
+    )
+
+    assert status.decomposition_sub_questions == [
+        "Which runtime path completed the request?",
+        "What evidence supported the result?",
+    ]
+    assert len(status.sub_answers) == 1
+    assert status.sub_answers[0].sub_question == "Which runtime path completed the request?"
+    assert status.sub_answers[0].sub_answer == "The LangGraph runtime path completed the request."
 
 
 def test_get_run_status_raises_configuration_error_for_missing_job(monkeypatch) -> None:

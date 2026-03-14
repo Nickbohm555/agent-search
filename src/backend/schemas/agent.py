@@ -101,6 +101,14 @@ class RuntimeAgentRunResponse(BaseModel):
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunResponse":
+        if self.sub_answers and not self.sub_qa:
+            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
+        elif self.sub_qa and not self.sub_answers:
+            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
+        return self
+
 
 class AgentRunStageMetadata(BaseModel):
     stage: str
@@ -139,6 +147,14 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     started_at: float | None = None
     finished_at: float | None = None
     elapsed_ms: int | None = None
+
+    @model_validator(mode="after")
+    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunAsyncStatusResponse":
+        if self.sub_answers and not self.sub_qa:
+            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
+        elif self.sub_qa and not self.sub_answers:
+            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
+        return self
 
 
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):

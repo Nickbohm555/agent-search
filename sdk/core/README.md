@@ -331,15 +331,34 @@ RuntimeAgentRunResponse(
 )
 ```
 
-Read additive sub-answer fields with a compatibility fallback:
+`sub_answers` and `sub_qa` are answer rows. Each item contains both the sub-question text and the corresponding sub-answer text.
+
+Read additive sub-answer fields like this:
 
 ```python
-sub_answers = response.sub_answers or response.sub_qa
-for item in sub_answers:
+for item in response.sub_answers:
     print(item.sub_question, item.sub_answer)
 ```
 
-`sub_answers` is the canonical additive field for new reads. `sub_qa` remains available for compatibility.
+`sub_answers` is the canonical additive field for new reads. `sub_qa` remains available as the compatibility alias, and the SDK backfills whichever one is omitted so both fields resolve to the same answer rows.
+
+If you need the plain decomposed question list without answers, read `decomposition_sub_questions` from the async status payload instead of `RuntimeAgentRunResponse`:
+
+```python
+status = client.get_run_status(job_id)
+
+for sub_question in status.decomposition_sub_questions:
+    print(sub_question)
+
+for item in status.sub_answers:
+    print(item.sub_question, item.sub_answer)
+```
+
+Those fields are intentionally separate:
+
+- `decomposition_sub_questions`: `list[str]` of generated sub-questions only.
+- `sub_answers`: `list[SubQuestionAnswer]` with question-and-answer pairs.
+- `sub_qa`: compatibility alias for `sub_answers`.
 
 ## Vector store compatibility
 

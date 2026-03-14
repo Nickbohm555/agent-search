@@ -85,6 +85,8 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
     assert response.output == "ok [2]"
     assert response.sub_qa[0].answerable is True
     assert response.sub_qa[0].verification_reason == "grounded_in_reranked_documents"
+    assert response.sub_answers[0].sub_question == "Which lane completed?"
+    assert response.sub_answers[0].sub_answer == "The synthesis lane completed with grounded evidence."
     assert response.final_citations[0].citation_index == 2
     assert response.final_citations[0].title == "Lifecycle evidence"
     assert captured == {
@@ -94,6 +96,24 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
         "callbacks": [callback_marker],
         "langfuse_callback": None,
     }
+
+
+def test_runtime_response_backfills_subanswer_aliases_without_changing_question_shape() -> None:
+    response = RuntimeAgentRunResponse(
+        main_question="What changed?",
+        thread_id="550e8400-e29b-41d4-a716-446655440240",
+        sub_qa=[
+            SubQuestionAnswer(
+                sub_question="Which runtime path completed the request?",
+                sub_answer="The LangGraph runtime path completed the request.",
+            )
+        ],
+        output="The LangGraph runtime path completed the request.",
+    )
+
+    assert response.sub_answers == response.sub_qa
+    assert isinstance(response.sub_answers[0].sub_question, str)
+    assert isinstance(response.sub_answers[0].sub_answer, str)
 
 
 def test_advanced_rag_propagates_explicit_controls_without_mutation(monkeypatch) -> None:

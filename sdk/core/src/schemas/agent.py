@@ -103,6 +103,14 @@ class RuntimeAgentRunResponse(BaseModel):
     output: str
     final_citations: list["CitationSourceRow"] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunResponse":
+        if self.sub_answers and not self.sub_qa:
+            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
+        elif self.sub_qa and not self.sub_answers:
+            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
+        return self
+
 
 class HitlResumeDecision(BaseModel):
     item_id: str = Field(min_length=1)
@@ -287,6 +295,14 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
         if isinstance(value, Mapping):
             return HitlReview.from_interrupt_payload(value)
         return value
+
+    @model_validator(mode="after")
+    def normalize_subanswer_aliases(self) -> "RuntimeAgentRunAsyncStatusResponse":
+        if self.sub_answers and not self.sub_qa:
+            self.sub_qa = [item.model_copy(deep=True) for item in self.sub_answers]
+        elif self.sub_qa and not self.sub_answers:
+            self.sub_answers = [item.model_copy(deep=True) for item in self.sub_qa]
+        return self
 
 
 class RuntimeAgentRunAsyncCancelResponse(BaseModel):
