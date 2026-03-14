@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-03
-- **Status:** Phase 6 Plan 06-02 Summary implemented; Plan 06-03 Task 1 is next
+- **Status:** Phase 6 Plan 06-03 Task 1 implemented; Plan 06-03 Task 2 is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Execute Phase 6 Plan 06-03 Task 1.
+- Execute Phase 6 Plan 06-03 Task 2.
 - Decide whether Phase 6 can be marked complete after Plans 06-02 and 06-03 finish.
 
 ### Blockers
@@ -38,6 +38,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 75 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 06-02 summary is complete, so the dependency-ordered follow-up is Phase 6 Plan 06-03 Task 1.
-- **Resume note:** State update: `phase=06`, `plan=06-02`, `task=summary`, `status=implemented`; `06-02-SUMMARY.md` captures the `1.0.3` version cut, trusted-publishing artifact flow, and clean-environment install/import proof.
+- **Next command:** Implement Section 76 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 6 Plan 06-03 Task 1 is complete, so the dependency-ordered follow-up is Task 2.
+- **Resume note:** State update: `phase=06`, `plan=06-03`, `task=1`, `status=implemented`; `docs/migration-guide.md` now captures canonical request/response fields, accepted aliases, HITL resume guidance, and additive `sub_answers` compatibility with `sub_qa`.
