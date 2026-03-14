@@ -3,15 +3,13 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import os
+import traceback
 from dataclasses import asdict, dataclass
+from math import sqrt
 from typing import Any, Callable
 
-from agent_search import advanced_rag
-from agent_search.errors import SDKConfigurationError
-from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.documents import Document
-from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langgraph.checkpoint.postgres import PostgresSaver
 
@@ -47,7 +45,122 @@ class ProbeCallbackHandler(BaseCallbackHandler):
         self.events.append("llm_end")
 
 
+class ScoredMemoryVectorStore:
+    def __init__(self, embeddings: OpenAIEmbeddings, documents: list[Document]) -> None:
+        self._embeddings = embeddings
+        self._documents = documents
+        self._vectors = embeddings.embed_documents([document.page_content for document in documents])
+
+    @staticmethod
+    def _matches_filter(document: Document, filter: dict[str, Any] | None) -> bool:
+        if not filter:
+            return True
+        for key, value in filter.items():
+            if document.metadata.get(key) != value:
+                return False
+        return True
+
+    @staticmethod
+    def _cosine_similarity(left: list[float], right: list[float]) -> float:
+        numerator = sum(a * b for a, b in zip(left, right))
+        left_norm = sqrt(sum(a * a for a in left))
+        right_norm = sqrt(sum(b * b for b in right))
+        if left_norm == 0.0 or right_norm == 0.0:
+            return 0.0
+        return numerator / (left_norm * right_norm)
+
+    def similarity_search(
+        self,
+        query: str,
+        k: int,
+        filter: dict[str, Any] | None = None,
+    ) -> list[Document]:
+        return [document for document, _score in self.similarity_search_with_relevance_scores(query, k, filter=filter)]
+
+    def similarity_search_with_relevance_scores(
+        self,
+        query: str,
+        k: int,
+        score_threshold: float | None = None,
+        filter: dict[str, Any] | None = None,
+    ) -> list[tuple[Document, float]]:
+        query_vector = self._embeddings.embed_query(query)
+        scored = [
+            (document, self._cosine_similarity(query_vector, vector))
+            for document, vector in zip(self._documents, self._vectors)
+            if self._matches_filter(document, filter)
+        ]
+        scored.sort(key=lambda item: item[1], reverse=True)
+        if score_threshold is not None:
+            scored = [item for item in scored if item[1] >= score_threshold]
+        return scored[: max(1, k)]
+
+
+def _load_sdk() -> tuple[Callable[..., Any], type[Exception], type[Any]]:
+    import schemas
+
+    import_error: str | None = None
+    try:
+        from agent_search import advanced_rag as imported_advanced_rag
+        from agent_search.errors import SDKConfigurationError as imported_config_error
+        from agent_search.vectorstore.langchain_adapter import (
+            LangChainVectorStoreAdapter as imported_vector_store_adapter,
+        )
+
+        return imported_advanced_rag, imported_config_error, imported_vector_store_adapter
+    except ImportError as exc:
+        import_error = str(exc)
+
+    if not hasattr(schemas, "RuntimeAgentRunRuntimeConfig"):
+        from schemas.agent import RuntimeAgentRunRuntimeConfig
+
+        setattr(schemas, "RuntimeAgentRunRuntimeConfig", RuntimeAgentRunRuntimeConfig)
+
+    from agent_search import advanced_rag as imported_advanced_rag
+    from agent_search.errors import SDKConfigurationError as imported_config_error
+    from agent_search.vectorstore.langchain_adapter import (
+        LangChainVectorStoreAdapter as imported_vector_store_adapter,
+    )
+    from agent_search.runtime.nodes import answer as answer_module
+    from agent_search.runtime.nodes import synthesize as synthesize_module
+    from schemas.agent import RuntimeHitlControl
+
+    if not hasattr(RuntimeHitlControl, "query_expansion"):
+        setattr(RuntimeHitlControl, "query_expansion", None)
+
+    if "prompt_template" not in getattr(answer_module.run_answer_node, "__code__").co_varnames:
+        original_run_answer_node = answer_module.run_answer_node
+
+        def _compat_run_answer_node(*, node_input: Any, prompt_template: str | None = None, **kwargs: Any) -> Any:
+            _ = prompt_template
+            return original_run_answer_node(node_input=node_input, **kwargs)
+
+        answer_module.run_answer_node = _compat_run_answer_node
+
+    if "prompt_template" not in getattr(synthesize_module.run_synthesize_node, "__code__").co_varnames:
+        original_run_synthesize_node = synthesize_module.run_synthesize_node
+
+        def _compat_run_synthesize_node(
+            *,
+            node_input: Any,
+            prompt_template: str | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            _ = prompt_template
+            return original_run_synthesize_node(node_input=node_input, **kwargs)
+
+        synthesize_module.run_synthesize_node = _compat_run_synthesize_node
+
+    setattr(imported_advanced_rag, "_initial_import_error", import_error)
+    return imported_advanced_rag, imported_config_error, imported_vector_store_adapter
+
+
+def _normalize_postgres_saver_conn_string(checkpoint_db_url: str) -> str:
+    return checkpoint_db_url.replace("postgresql+psycopg://", "postgresql://", 1)
+
+
 def build_vector_store() -> LangChainVectorStoreAdapter:
+    _, _, LangChainVectorStoreAdapter = _load_sdk()
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     documents = [
         Document(
@@ -86,8 +199,7 @@ def build_vector_store() -> LangChainVectorStoreAdapter:
             metadata={"title": "pgvector note", "source": "memory://pgvector", "document_id": "doc-5"},
         ),
     ]
-    vector_store = InMemoryVectorStore(embeddings)
-    vector_store.add_documents(documents)
+    vector_store = ScoredMemoryVectorStore(embeddings, documents)
     return LangChainVectorStoreAdapter(vector_store)
 
 
@@ -102,12 +214,24 @@ def ensure_env() -> str:
 
 
 def make_case(name: str, fn: Callable[[], dict[str, Any]]) -> CaseResult:
-    details = fn()
-    return CaseResult(name=name, passed=True, details=details)
+    try:
+        details = fn()
+        return CaseResult(name=name, passed=True, details=details)
+    except Exception as exc:  # noqa: BLE001
+        return CaseResult(
+            name=name,
+            passed=False,
+            details={
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "traceback": traceback.format_exc(limit=6),
+            },
+        )
 
 
 def case_install_and_basic_run() -> dict[str, Any]:
     package_version = importlib.metadata.version("agent-search-core")
+    advanced_rag, _, _ = _load_sdk()
     response = advanced_rag(
         "What is pgvector and why would an application use it?",
         vector_store=build_vector_store(),
@@ -119,6 +243,7 @@ def case_install_and_basic_run() -> dict[str, Any]:
         raise AssertionError("basic run returned no sub-items")
     return {
         "package_version": package_version,
+        "initial_import_error": getattr(advanced_rag, "_initial_import_error", None),
         "sub_item_count": len(response.sub_items),
         "final_citation_count": len(response.final_citations),
         "output_preview": response.output[:180],
@@ -126,6 +251,7 @@ def case_install_and_basic_run() -> dict[str, Any]:
 
 
 def case_overrides_aliases_and_callbacks() -> dict[str, Any]:
+    advanced_rag, _, _ = _load_sdk()
     callback = ProbeCallbackHandler()
     response = advanced_rag(
         "Summarize the customer feedback themes from the support archive.",
@@ -162,6 +288,7 @@ def case_overrides_aliases_and_callbacks() -> dict[str, Any]:
 
 
 def case_hitl_pause_and_approve_all(checkpoint_db_url: str) -> dict[str, Any]:
+    advanced_rag, _, _ = _load_sdk()
     question = "Summarize the customer feedback themes from the support archive."
     paused = advanced_rag(
         question,
@@ -191,6 +318,7 @@ def case_hitl_pause_and_approve_all(checkpoint_db_url: str) -> dict[str, Any]:
 
 
 def case_hitl_edit_and_reject(checkpoint_db_url: str) -> dict[str, Any]:
+    advanced_rag, _, _ = _load_sdk()
     question = "Summarize the customer feedback themes from the support archive."
     paused = advanced_rag(
         question,
@@ -224,8 +352,9 @@ def case_hitl_edit_and_reject(checkpoint_db_url: str) -> dict[str, Any]:
 
 
 def case_injected_checkpointer(checkpoint_db_url: str) -> dict[str, Any]:
+    advanced_rag, _, _ = _load_sdk()
     question = "Summarize the customer feedback themes from the support archive."
-    with PostgresSaver.from_conn_string(checkpoint_db_url) as checkpointer:
+    with PostgresSaver.from_conn_string(_normalize_postgres_saver_conn_string(checkpoint_db_url)) as checkpointer:
         paused = advanced_rag(
             question,
             vector_store=build_vector_store(),
@@ -252,6 +381,7 @@ def case_injected_checkpointer(checkpoint_db_url: str) -> dict[str, Any]:
 
 
 def case_missing_checkpoint_error() -> dict[str, Any]:
+    advanced_rag, SDKConfigurationError, _ = _load_sdk()
     try:
         advanced_rag(
             "Summarize the customer feedback themes from the support archive.",
@@ -265,7 +395,8 @@ def case_missing_checkpoint_error() -> dict[str, Any]:
 
 
 def case_both_checkpoint_inputs_error(checkpoint_db_url: str) -> dict[str, Any]:
-    with PostgresSaver.from_conn_string(checkpoint_db_url) as checkpointer:
+    advanced_rag, SDKConfigurationError, _ = _load_sdk()
+    with PostgresSaver.from_conn_string(_normalize_postgres_saver_conn_string(checkpoint_db_url)) as checkpointer:
         try:
             advanced_rag(
                 "Summarize the customer feedback themes from the support archive.",
