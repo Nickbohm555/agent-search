@@ -48,7 +48,6 @@ class _LegacyCompiledGraph:
         model: Any,
         run_metadata: Any,
         callbacks: list[Any] | None,
-        langfuse_callback: Any | None,
         initial_search_context: list[dict[str, Any]],
         snapshot_callback: Any | None,
     ) -> None:
@@ -57,7 +56,6 @@ class _LegacyCompiledGraph:
         self._model = model
         self._run_metadata = run_metadata
         self._callbacks = callbacks
-        self._langfuse_callback = langfuse_callback
         self._initial_search_context = initial_search_context
         self._snapshot_callback = snapshot_callback
 
@@ -79,7 +77,6 @@ class _LegacyCompiledGraph:
                 run_metadata=self._run_metadata,
                 initial_search_context=self._initial_search_context,
                 callbacks=self._callbacks,
-                langfuse_callback=self._langfuse_callback,
                 snapshot_callback=self._snapshot_callback,
             )
             response = legacy_service.map_graph_state_to_runtime_response(state)
@@ -113,7 +110,6 @@ class _LegacyCompiledGraph:
             run_metadata=self._run_metadata,
             initial_search_context=self._initial_search_context,
             callbacks=self._callbacks,
-            langfuse_callback=self._langfuse_callback,
             snapshot_callback=self._snapshot_callback,
         )
         response = legacy_service.map_graph_state_to_runtime_response(state)
@@ -238,7 +234,6 @@ def _run_subquestion_checkpointed_graph(
     vector_store: Any,
     run_metadata: Any,
     callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
     lifecycle_callback: Callable[[RuntimeLifecycleEvent], None] | None = None,
     initial_search_context: list[dict[str, Any]] | None = None,
     snapshot_callback: Any | None = None,
@@ -251,11 +246,15 @@ def _run_subquestion_checkpointed_graph(
         model=model,
         vector_store=vector_store,
         callbacks=list(callbacks or []),
-        langfuse_callback=langfuse_callback,
         initial_search_context=list(initial_search_context or []),
     )
     builder = _CheckpointedRuntimeGraphBuilder(context=context)
-    config = {"configurable": {"thread_id": run_metadata.thread_id}}
+    config = {
+        "configurable": {
+            "thread_id": run_metadata.thread_id,
+            "checkpoint_id": run_metadata.thread_id,
+        }
+    }
     graph_input: RuntimeAgentRunRequest | Command | dict[str, Any]
     if resume is None:
         graph_input = to_runtime_graph_state(
@@ -272,7 +271,7 @@ def _run_subquestion_checkpointed_graph(
     interrupt_payload: Any | None = None
     terminal_state: Any | None = None
 
-    with compile_graph_with_checkpointer(builder) as graph:
+    with compile_graph_with_checkpointer(builder, checkpoint_db_url=payload.checkpoint_db_url) as graph:
         try:
             if lifecycle_builder is not None:
                 if resume is None:
@@ -336,7 +335,6 @@ def run_checkpointed_agent(
     vector_store: Any,
     run_metadata: Any,
     callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
     lifecycle_callback: Callable[[RuntimeLifecycleEvent], None] | None = None,
     initial_search_context: list[dict[str, Any]] | None = None,
     snapshot_callback: Any | None = None,
@@ -351,7 +349,6 @@ def run_checkpointed_agent(
             vector_store=vector_store,
             run_metadata=run_metadata,
             callbacks=callbacks,
-            langfuse_callback=langfuse_callback,
             lifecycle_callback=lifecycle_callback,
             initial_search_context=initial_search_context,
             snapshot_callback=snapshot_callback,
@@ -365,17 +362,21 @@ def run_checkpointed_agent(
         model=model,
         run_metadata=run_metadata,
         callbacks=callbacks,
-        langfuse_callback=langfuse_callback,
         initial_search_context=list(initial_search_context or []),
         snapshot_callback=snapshot_callback,
     )
     builder = _LegacyGraphBuilder(compiled_graph)
-    config = {"configurable": {"thread_id": run_metadata.thread_id}}
+    config = {
+        "configurable": {
+            "thread_id": run_metadata.thread_id,
+            "checkpoint_id": run_metadata.thread_id,
+        }
+    }
     graph_input: RuntimeAgentRunRequest | Command = payload
     if resume is not None:
         graph_input = build_resume_command(resume)
     lifecycle_builder = LifecycleEventBuilder(run_metadata=run_metadata) if lifecycle_callback is not None else None
-    with compile_graph_with_checkpointer(builder) as graph:
+    with compile_graph_with_checkpointer(builder, checkpoint_db_url=payload.checkpoint_db_url) as graph:
         try:
             if lifecycle_builder is not None:
                 lifecycle_callback(lifecycle_builder.emit_recovery_started())
@@ -410,7 +411,7 @@ def run_runtime_agent(
     if vector_store is None:
         logger.error("Runtime core run rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
-    run_metadata = legacy_service.build_graph_run_metadata()
+    run_metadata = legacy_service.build_graph_run_metadata(thread_id=payload.thread_id)
     logger.info(
         "Runtime core run start query=%s query_length=%s provided_model=%s provided_vector_store=%s run_id=%s trace_id=%s correlation_id=%s",
         legacy_service._truncate_query(payload.query),
@@ -433,6 +434,12 @@ def run_runtime_agent(
     )
 
     try:
+        config = {
+            "configurable": {
+                "thread_id": run_metadata.thread_id,
+                "checkpoint_id": run_metadata.thread_id,
+            }
+        }
         state = execute_runtime_graph(
             context=RuntimeGraphContext(
                 payload=payload,
@@ -442,6 +449,7 @@ def run_runtime_agent(
                 initial_search_context=initial_search_context,
             ),
             run_metadata=run_metadata,
+            config=config,
             lifecycle_callback=lifecycle_callback,
         )
     except Exception:

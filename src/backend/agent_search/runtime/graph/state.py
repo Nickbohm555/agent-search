@@ -60,7 +60,6 @@ class RuntimeGraphContext:
     model: Any | None = None
     vector_store: Any | None = None
     callbacks: list[Any] = field(default_factory=list)
-    langfuse_callback: Any | None = None
     initial_search_context: list[dict[str, Any]] = field(default_factory=list)
 
 

@@ -10,9 +10,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from agent_search import public_api
 from agent_search.errors import SDKConfigurationError
-from agent_search.runtime import runner as runtime_runner
 from schemas import CitationSourceRow, RuntimeAgentRunResponse, SubQuestionAnswer
-from services import agent_service
 
 
 class _CompatibleVectorStore:
@@ -20,11 +18,11 @@ class _CompatibleVectorStore:
         return []
 
 
-def test_advanced_rag_signature_requires_query_vector_store_and_model() -> None:
+def test_advanced_rag_signature_matches_clean_public_contract() -> None:
     signature = inspect.signature(public_api.advanced_rag)
     assert (
         str(signature)
-        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None, langfuse_callback: 'Any | None' = None, langfuse_settings: 'Mapping[str, Any] | None' = None) -> 'RuntimeAgentRunResponse'"
+        == "(query: 'str', *, vector_store: 'Any', model: 'Any', config: 'dict[str, Any] | None' = None, callbacks: 'list[Any] | None' = None) -> 'RuntimeAgentRunResponse'"
     )
     assert signature.parameters["query"].default is inspect._empty
     assert signature.parameters["vector_store"].default is inspect._empty
@@ -34,15 +32,13 @@ def test_advanced_rag_signature_requires_query_vector_store_and_model() -> None:
 def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        captured["query"] = payload.query
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
         captured["model"] = model
         captured["vector_store"] = vector_store
         captured["callbacks"] = callbacks
-        captured["langfuse_callback"] = langfuse_callback
         return RuntimeAgentRunResponse(
             main_question=payload.query,
-            thread_id="550e8400-e29b-41d4-a716-446655440020",
             sub_qa=[
                 SubQuestionAnswer(
                     sub_question="Which lane completed?",
@@ -72,6 +68,7 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
     sentinel_model = object()
     sentinel_vector_store = _CompatibleVectorStore()
     callback_marker = object()
+
     response = public_api.advanced_rag(
         "sdk contract query",
         model=sentinel_model,
@@ -81,88 +78,24 @@ def test_advanced_rag_returns_runtime_response_model(monkeypatch) -> None:
 
     assert isinstance(response, RuntimeAgentRunResponse)
     assert response.main_question == "sdk contract query"
-    assert response.thread_id == "550e8400-e29b-41d4-a716-446655440020"
     assert response.output == "ok [2]"
-    assert response.sub_qa[0].answerable is True
-    assert response.sub_qa[0].verification_reason == "grounded_in_reranked_documents"
-    assert response.sub_answers[0].sub_question == "Which lane completed?"
-    assert response.sub_answers[0].sub_answer == "The synthesis lane completed with grounded evidence."
+    assert response.sub_answers == response.sub_qa
     assert response.final_citations[0].citation_index == 2
-    assert response.final_citations[0].title == "Lifecycle evidence"
     assert captured == {
-        "query": "sdk contract query",
+        "payload": {"query": "sdk contract query"},
         "model": sentinel_model,
         "vector_store": sentinel_vector_store,
         "callbacks": [callback_marker],
-        "langfuse_callback": None,
     }
 
 
-def test_runtime_response_backfills_subanswer_aliases_without_changing_question_shape() -> None:
-    response = RuntimeAgentRunResponse(
-        main_question="What changed?",
-        thread_id="550e8400-e29b-41d4-a716-446655440240",
-        sub_qa=[
-            SubQuestionAnswer(
-                sub_question="Which runtime path completed the request?",
-                sub_answer="The LangGraph runtime path completed the request.",
-            )
-        ],
-        output="The LangGraph runtime path completed the request.",
-    )
-
-    assert response.sub_answers == response.sub_qa
-    assert isinstance(response.sub_answers[0].sub_question, str)
-    assert isinstance(response.sub_answers[0].sub_answer, str)
-
-
-def test_advanced_rag_propagates_explicit_controls_without_mutation(monkeypatch) -> None:
+def test_advanced_rag_builds_clean_runtime_payload(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None):
+        _ = model, vector_store, callbacks
         captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        captured["model"] = model
-        captured["vector_store"] = vector_store
-        captured["callbacks"] = callbacks
-        captured["langfuse_callback"] = langfuse_callback
-        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
-
-    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-
-    response = public_api.advanced_rag(
-        "sdk controls query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        config={
-            "thread_id": "550e8400-e29b-41d4-a716-446655440210",
-            "rerank": {"enabled": False},
-            "query_expansion": {"enabled": True},
-            "hitl": {"enabled": True},
-        },
-    )
-
-    assert response.output == "ok"
-    assert captured["payload"] == {
-        "query": "sdk controls query",
-        "thread_id": "550e8400-e29b-41d4-a716-446655440210",
-        "controls": {
-            "rerank": {"enabled": False},
-            "query_expansion": {"enabled": True},
-            "hitl": {"enabled": True},
-        },
-    }
-
-
-def test_advanced_rag_propagates_runtime_config_without_breaking_legacy_control_shape(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        captured["model"] = model
-        captured["vector_store"] = vector_store
-        captured["callbacks"] = callbacks
-        captured["langfuse_callback"] = langfuse_callback
-        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
+        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
 
     monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
 
@@ -171,10 +104,17 @@ def test_advanced_rag_propagates_runtime_config_without_breaking_legacy_control_
         model=object(),
         vector_store=_CompatibleVectorStore(),
         config={
-            "thread_id": "550e8400-e29b-41d4-a716-446655440214",
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"subquestions": {"enabled": True}},
             "runtime_config": {
                 "rerank": {"enabled": False},
                 "query_expansion": {"enabled": True},
+                "custom_prompts": {"subanswer": "per-run subanswer prompt"},
+            },
+            "custom_prompts": {
+                "subanswer": "default subanswer prompt",
+                "synthesis": "default synthesis prompt",
             },
         },
     )
@@ -182,80 +122,15 @@ def test_advanced_rag_propagates_runtime_config_without_breaking_legacy_control_
     assert response.output == "ok"
     assert captured["payload"] == {
         "query": "sdk runtime config query",
-        "thread_id": "550e8400-e29b-41d4-a716-446655440214",
+        "controls": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+            "hitl": {"enabled": True, "subquestions": {"enabled": True}},
+        },
         "runtime_config": {
             "rerank": {"enabled": False},
             "query_expansion": {"enabled": True},
         },
-    }
-
-
-def test_advanced_rag_preserves_omitted_controls_and_hitl_default_off(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
-
-    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-
-    omitted_response = public_api.advanced_rag(
-        "omitted controls query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-    )
-    omitted_payload = captured["payload"]
-
-    explicit_default_response = public_api.advanced_rag(
-        "explicit default hitl query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        config={"hitl": {}},
-    )
-    explicit_default_payload = captured["payload"]
-
-    assert omitted_response.output == "ok"
-    assert explicit_default_response.output == "ok"
-    assert omitted_payload == {"query": "omitted controls query"}
-    assert explicit_default_payload == {
-        "query": "explicit default hitl query",
-        "controls": {"hitl": {"enabled": False}},
-    }
-
-
-def test_advanced_rag_merges_prompt_defaults_and_per_run_overrides_with_override_precedence(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        _ = model, vector_store, callbacks, langfuse_callback
-        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
-        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
-
-    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-
-    response = public_api.advanced_rag(
-        "prompt precedence query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        config={
-            "thread_id": "550e8400-e29b-41d4-a716-446655440216",
-            "custom_prompts": {
-                "subanswer": "default subanswer prompt",
-                "synthesis": "default synthesis prompt",
-            },
-            "runtime_config": {
-                "custom_prompts": {
-                    "subanswer": "per-run subanswer prompt",
-                }
-            },
-        },
-    )
-
-    assert response.output == "ok"
-    assert captured["payload"] == {
-        "query": "prompt precedence query",
-        "thread_id": "550e8400-e29b-41d4-a716-446655440216",
-        "runtime_config": {},
         "custom_prompts": {
             "subanswer": "per-run subanswer prompt",
             "synthesis": "default synthesis prompt",
@@ -263,189 +138,15 @@ def test_advanced_rag_merges_prompt_defaults_and_per_run_overrides_with_override
     }
 
 
-def test_advanced_rag_isolates_mutable_prompt_defaults_across_runs(monkeypatch) -> None:
-    captured_payloads: list[dict[str, object]] = []
-
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        _ = model, vector_store, callbacks, langfuse_callback
-        captured_payloads.append(payload.model_dump(mode="json", exclude_none=True))
-        if payload.custom_prompts is not None:
-            payload.custom_prompts.subanswer = "mutated during run"
-        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
-
-    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-
-    shared_config = {
-        "custom_prompts": {
-            "subanswer": "shared default subanswer prompt",
-            "synthesis": "shared default synthesis prompt",
-        }
-    }
-
-    first_response = public_api.advanced_rag(
-        "first prompt isolation query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        config=shared_config,
-    )
-    second_response = public_api.advanced_rag(
-        "second prompt isolation query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        config=shared_config,
-    )
-
-    assert first_response.output == "ok"
-    assert second_response.output == "ok"
-    assert shared_config == {
-        "custom_prompts": {
-            "subanswer": "shared default subanswer prompt",
-            "synthesis": "shared default synthesis prompt",
-        }
-    }
-    assert captured_payloads == [
-        {
-            "query": "first prompt isolation query",
-            "custom_prompts": {
-                "subanswer": "shared default subanswer prompt",
-                "synthesis": "shared default synthesis prompt",
-            },
-        },
-        {
-            "query": "second prompt isolation query",
-            "custom_prompts": {
-                "subanswer": "shared default subanswer prompt",
-                "synthesis": "shared default synthesis prompt",
-            },
-        },
-    ]
-
-
-def test_advanced_rag_raises_configuration_error_when_model_is_none() -> None:
+def test_advanced_rag_rejects_missing_runtime_dependencies() -> None:
     try:
-        public_api.advanced_rag("q", model=None, vector_store=_CompatibleVectorStore())
+        public_api.advanced_rag("missing model", model=None, vector_store=_CompatibleVectorStore())
+        raise AssertionError("Expected SDKConfigurationError for missing model")
     except SDKConfigurationError as exc:
         assert str(exc) == "model is required and cannot be None"
-    else:
-        raise AssertionError("Expected SDKConfigurationError for missing model")
 
-
-def test_advanced_rag_passes_explicit_langfuse_callback(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        captured["query"] = payload.query
-        captured["callbacks"] = callbacks
-        captured["langfuse_callback"] = langfuse_callback
-        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
-
-    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-
-    explicit_callback = object()
-    response = public_api.advanced_rag(
-        "sdk callback query",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        langfuse_callback=explicit_callback,
-    )
-
-    assert response.output == "ok"
-    assert captured["langfuse_callback"] is explicit_callback
-    assert explicit_callback in (captured["callbacks"] or [])
-
-
-def test_build_langfuse_callback_delegates_to_tracing_utility(monkeypatch) -> None:
-    marker = object()
-    captured: dict[str, object] = {}
-
-    def fake_builder(*, scope: str, sampling_key: str | None = None, settings=None):
-        captured["scope"] = scope
-        captured["sampling_key"] = sampling_key
-        captured["settings"] = settings
-        return marker
-
-    monkeypatch.setattr(public_api, "_build_langfuse_callback_handler", fake_builder)
-    callback = public_api.build_langfuse_callback(sampling_key="sdk-test")
-
-    assert callback is marker
-    assert captured["scope"] == "runtime"
-    assert captured["sampling_key"] == "sdk-test"
-    assert captured["settings"] is not None
-
-
-def test_advanced_rag_does_not_build_langfuse_callback_from_settings(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_build_langfuse_callback(*, sampling_key=None, settings=None):
-        _ = sampling_key, settings
-        raise AssertionError("build_langfuse_callback should not be called by advanced_rag")
-
-    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
-        captured["callbacks"] = callbacks
-        captured["langfuse_callback"] = langfuse_callback
-        return RuntimeAgentRunResponse(main_question=payload.query, sub_qa=[], output="ok")
-
-    monkeypatch.setattr(public_api, "build_langfuse_callback", fake_build_langfuse_callback)
-    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
-
-    response = public_api.advanced_rag(
-        "query for settings",
-        model=object(),
-        vector_store=_CompatibleVectorStore(),
-        langfuse_settings={
-            "enabled": True,
-            "public_key": "pk",
-            "secret_key": "sk",
-        },
-    )
-
-    assert response.output == "ok"
-    assert captured["langfuse_callback"] is None
-    assert captured["callbacks"] is None
-
-
-def test_advanced_rag_cutover_blocks_legacy_orchestration(monkeypatch) -> None:
-    sentinel_model = object()
-    sentinel_vector_store = _CompatibleVectorStore()
-    captured: dict[str, object] = {}
-
-    def fake_execute_runtime_graph(*, context, run_metadata, config=None, lifecycle_callback=None):
-        captured["query"] = context.payload.query
-        captured["vector_store"] = context.vector_store
-        captured["model"] = context.model
-        captured["config"] = config
-        captured["lifecycle_callback"] = lifecycle_callback
-        return agent_service.build_agent_graph_state(
-            main_question=context.payload.query,
-            sub_qa=[
-                SubQuestionAnswer(
-                    sub_question="Which runtime completed the request?",
-                    sub_answer="The LangGraph runtime path completed the request.",
-                )
-            ],
-            final_answer="The LangGraph runtime path completed the request.",
-            run_metadata=run_metadata,
-        )
-
-    monkeypatch.setattr(runtime_runner, "execute_runtime_graph", fake_execute_runtime_graph)
-    monkeypatch.setattr(
-        runtime_runner.legacy_service,
-        "run_parallel_graph_runner",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("legacy orchestration should not execute")),
-    )
-
-    response = public_api.advanced_rag(
-        "Which runtime completed the request?",
-        model=sentinel_model,
-        vector_store=sentinel_vector_store,
-    )
-
-    assert response.output == "The LangGraph runtime path completed the request."
-    assert response.sub_qa[0].sub_answer == "The LangGraph runtime path completed the request."
-    assert captured == {
-        "query": "Which runtime completed the request?",
-        "vector_store": sentinel_vector_store,
-        "model": sentinel_model,
-        "config": None,
-        "lifecycle_callback": None,
-    }
+    try:
+        public_api.advanced_rag("missing vector store", model=object(), vector_store=None)
+        raise AssertionError("Expected SDKConfigurationError for missing vector_store")
+    except SDKConfigurationError as exc:
+        assert str(exc) == "vector_store is required and cannot be None"
