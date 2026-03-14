@@ -86,6 +86,7 @@ export interface SubQuestionArtifact {
   retrieved_docs: SearchCandidateRow[];
   retrieval_provenance: SearchRetrievalProvenanceRow[];
   reranked_docs: SearchCandidateRow[];
+  citation_rows_by_index: Record<number, SearchCandidateRow>;
 }
 
 export interface RerankProvenanceRow {
@@ -666,15 +667,18 @@ function isSubQuestionArtifact(value: unknown): value is SubQuestionArtifact {
   if (value.retrieved_docs === undefined) value.retrieved_docs = [];
   if (value.retrieval_provenance === undefined) value.retrieval_provenance = [];
   if (value.reranked_docs === undefined) value.reranked_docs = [];
+  if (value.citation_rows_by_index === undefined) value.citation_rows_by_index = {};
   const retrievedDocs = value.retrieved_docs;
   const retrievalProvenance = value.retrieval_provenance;
   const rerankedDocs = value.reranked_docs;
+  const citationRowsByIndex = value.citation_rows_by_index;
   return (
     typeof value.sub_question === "string" &&
     Array.isArray(expandedQueries) &&
     expandedQueries.every((item) => typeof item === "string") &&
     (retrievedDocs === undefined || (Array.isArray(retrievedDocs) && retrievedDocs.every(isSearchCandidateRow))) &&
     (rerankedDocs === undefined || (Array.isArray(rerankedDocs) && rerankedDocs.every(isSearchCandidateRow))) &&
+    (isObject(citationRowsByIndex) && Object.values(citationRowsByIndex).every(isSearchCandidateRow)) &&
     (retrievalProvenance === undefined ||
       (Array.isArray(retrievalProvenance) && retrievalProvenance.every(isSearchRetrievalProvenanceRow)))
   );

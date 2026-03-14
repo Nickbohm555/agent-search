@@ -2060,6 +2060,67 @@ describe("App run query flow", () => {
     expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
   });
 
+  it("derives final citations from final-stage snapshot artifacts when terminal result omits them", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-final-citations", run_id: "run-final-citations", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "What is NATO?" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const eventSource = await findLatestEventSource();
+    eventSource.emit({
+      event_type: "stage.snapshot",
+      event_id: "run-final-citations:000002",
+      run_id: "run-final-citations",
+      stage: "synthesize_final",
+      status: "completed",
+      output: "NATO is an alliance [1].",
+      sub_items: [["What is NATO?", "NATO is an alliance [1]."]],
+      sub_question_artifacts: [
+        {
+          sub_question: "What is NATO?",
+          expanded_queries: ["What is NATO?"],
+          retrieved_docs: [],
+          retrieval_provenance: [],
+          reranked_docs: [],
+          citation_rows_by_index: {
+            1: {
+              citation_index: 1,
+              rank: 1,
+              title: "NATO",
+              source: "https://en.wikipedia.org/wiki/NATO",
+              content: "NATO reference content.",
+              document_id: "doc-nato",
+              score: 0.9,
+            },
+          },
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Citation coverage: 1/1 subanswers with citations (1 total citations)")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: "https://en.wikipedia.org/wiki/NATO" })).toBeInTheDocument();
+    expect(screen.getByText("NATO reference content.")).toBeInTheDocument();
+  });
+
   it("shows an error message when run request fails", async () => {
     const fetchMock = vi
       .fn()

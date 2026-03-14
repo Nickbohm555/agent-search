@@ -1332,12 +1332,10 @@ function applyRunEventData(args: {
   });
 
   if (lifecycleEvent.event_type === "run.completed" || isSuccessfulFinalSnapshot(lifecycleEvent)) {
-    const response = lifecycleEvent.result ?? {
-      main_question: submittedQuery,
-      sub_items: lifecycleEvent.sub_items ?? [],
-      output: lifecycleEvent.output ?? "",
-      final_citations: [],
-    };
+    const response = buildFinalSynthesisResponse({
+      lifecycleEvent,
+      submittedQuery,
+    });
     const completedStage = mapBackendStageToCanonical(lifecycleEvent.stage);
     if (completedStage === "final") {
       setLastSuccessfulSynthesis(response);
@@ -1364,6 +1362,27 @@ function applyRunEventData(args: {
       outputLength: response.output.length,
     });
   }
+}
+
+function buildFinalSynthesisResponse(args: {
+  lifecycleEvent: RuntimeLifecycleEvent;
+  submittedQuery: string;
+}): RuntimeAgentRunResponse {
+  const { lifecycleEvent, submittedQuery } = args;
+  const output = lifecycleEvent.result?.output ?? lifecycleEvent.output ?? "";
+  const subItems = lifecycleEvent.result?.sub_items ?? lifecycleEvent.sub_items ?? [];
+  const explicitFinalCitations = lifecycleEvent.result?.final_citations ?? [];
+  const finalCitations =
+    explicitFinalCitations.length > 0
+      ? explicitFinalCitations
+      : deriveFinalCitationsFromArtifacts(lifecycleEvent.sub_question_artifacts ?? [], output);
+
+  return {
+    main_question: lifecycleEvent.result?.main_question ?? submittedQuery,
+    sub_items: subItems,
+    output,
+    final_citations: finalCitations,
+  };
 }
 
 function toDisplayStageName(stage: string): string {
@@ -1457,6 +1476,28 @@ function buildFinalCitationMap(citations: SearchCandidateRow[]): Map<number, Sea
     map.set(item.citation_index, item);
   });
   return map;
+}
+
+function deriveFinalCitationsFromArtifacts(
+  artifacts: SubQuestionArtifact[],
+  finalAnswer: string,
+): SearchCandidateRow[] {
+  if (artifacts.length === 0 || !finalAnswer.trim()) {
+    return [];
+  }
+
+  const citationMap = new Map<number, SearchCandidateRow>();
+  artifacts.forEach((artifact) => {
+    Object.values(artifact.citation_rows_by_index ?? {}).forEach((row) => {
+      if (!citationMap.has(row.citation_index)) {
+        citationMap.set(row.citation_index, row);
+      }
+    });
+  });
+
+  return extractCitationIndices(finalAnswer)
+    .map((citationIndex) => citationMap.get(citationIndex))
+    .filter((row): row is SearchCandidateRow => row !== undefined);
 }
 
 function renderAnswerWithCitations(
