@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.15
+## Contract notes for 1.0.16
 
 Use these canonical names in new `config` payloads:
 
@@ -407,6 +407,69 @@ Runtime SDK expects `similarity_search(query, k, filter=None)`.
 For LangChain-backed stores, use:
 
 - `agent_search.vectorstore.langchain_adapter.LangChainVectorStoreAdapter`
+
+## Citation metadata
+
+`final_citations` and the per-subquestion citation rows come from the metadata attached to the retrieved `Document` objects returned by your vector store.
+
+For pgvector-backed stores, this means the citation fields must be present in the document metadata payload stored alongside each chunk. The SDK’s preferred metadata keys are:
+
+- `citation_title`
+- `citation_source`
+- `document_id`
+
+When those keys are present, retrieval maps them into citation rows like:
+
+- `title <- metadata["citation_title"]`
+- `source <- metadata["citation_source"]`
+- `document_id <- metadata["document_id"]`
+- `content <- document.page_content`
+
+The SDK keeps a small fallback chain for older payloads:
+
+- title fallback: `title`, then `wiki_page`
+- source fallback: `source`, then `wiki_url`
+- document id fallback: `Document.id`
+
+If you are writing chunks into pgvector yourself, put those values in the metadata column under those exact names. A minimal chunk should look like:
+
+```python
+from langchain_core.documents import Document
+
+doc = Document(
+    page_content="pgvector stores and searches embedding vectors inside Postgres.",
+    metadata={
+        "citation_title": "pgvector README",
+        "citation_source": "https://github.com/pgvector/pgvector",
+        "document_id": "pgvector-readme",
+    },
+)
+```
+
+Then add documents through the adapter-backed store:
+
+```python
+from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
+from agent_search import advanced_rag
+
+vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
+
+response = advanced_rag(
+    "What is pgvector?",
+    vector_store=vector_store,
+    model=model,
+)
+
+for citation in response.final_citations:
+    print(citation.title, citation.source, citation.document_id)
+```
+
+Why this matters:
+
+- Missing `citation_title` or its fallbacks leads to blank citation titles.
+- Missing `citation_source` or its fallbacks leads to blank or weak source attribution.
+- Missing `document_id` makes deduplication less stable because the runtime falls back to source-plus-content identity.
+- `page_content` is required because citation snippets and answer grounding come from the chunk text itself.
 
 ## Notes
 
