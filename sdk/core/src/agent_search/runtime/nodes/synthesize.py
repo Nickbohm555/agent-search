@@ -140,6 +140,7 @@ def run_synthesize_node(
     *,
     node_input: SynthesizeFinalNodeInput,
     callbacks: list[Any] | None = None,
+    prompt_template: str | None = None,
     generate_final_synthesis_answer_fn: Callable[..., str] = generate_final_synthesis_answer,
     extract_citation_indices_fn: Callable[[str], list[int]] = _extract_citation_indices,
     build_initial_answer_timeout_fallback_fn: Callable[[list[SubQuestionAnswer]], str] = _build_initial_answer_timeout_fallback,
@@ -157,6 +158,7 @@ def run_synthesize_node(
     generated_final_answer = generate_final_synthesis_answer_fn(
         main_question=node_input.main_question,
         sub_qa=node_input.sub_qa,
+        prompt_template=prompt_template,
         callbacks=callbacks,
     )
     final_answer = _enforce_final_synthesis_citation_contract(
