@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
-from typing import Any, Literal, TypeAlias, Union
+from typing import Any, Literal, Union
 
 from pydantic import AliasChoices
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,9 +41,6 @@ class RuntimeHitlControl(BaseModel):
         elif self.enabled and self.subquestions is None and self.query_expansion is None:
             self.subquestions = RuntimeSubquestionHitlControl(enabled=True)
         return self
-
-
-RuntimeAgentRunHitlInput: TypeAlias = bool | Literal["strategic"] | RuntimeHitlControl
 
 
 class RuntimeAgentRunControls(BaseModel):

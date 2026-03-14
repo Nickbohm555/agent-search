@@ -21,10 +21,10 @@ from agent_search.vectorstore.protocol import assert_vector_store_compatible
 from pydantic import ValidationError
 from schemas import (
     RuntimeAgentRunControls,
-    RuntimeAgentRunHitlInput,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
     RuntimeHitlControl,
+    RuntimeQueryExpansionHitlControl,
     RuntimeSubquestionHitlControl,
 )
 from schemas.agent import (
@@ -109,7 +109,8 @@ def _build_runtime_request_payload(
     *,
     config: Mapping[str, Any] | None,
     runtime_config: RuntimeConfig,
-    hitl: RuntimeAgentRunHitlInput | None = None,
+    hitl_subquestions: bool = False,
+    hitl_query_expansion: bool = False,
     resume: Any | None = None,
 ) -> RuntimeAgentRunRequest:
     custom_prompts_payload = {
@@ -122,8 +123,12 @@ def _build_runtime_request_payload(
         if isinstance(config, Mapping) and isinstance(config.get("controls"), Mapping)
         else None
     )
-    if hitl is not None:
-        controls = _apply_public_hitl_input(hitl=hitl, controls=controls)
+    if hitl_subquestions or hitl_query_expansion:
+        controls = _apply_public_hitl_input(
+            hitl_subquestions=hitl_subquestions,
+            hitl_query_expansion=hitl_query_expansion,
+            controls=controls,
+        )
     return RuntimeAgentRunRequest(
         query=query,
         thread_id=_resolve_request_thread_id(config) or _resolve_resume_checkpoint_id(resume),
@@ -142,27 +147,26 @@ def _hitl_requested(payload: RuntimeAgentRunRequest, *, resume: Any | None = Non
     return bool(payload.controls and payload.controls.hitl and payload.controls.hitl.enabled)
 
 
-def _normalize_public_hitl_input(hitl: RuntimeAgentRunHitlInput) -> RuntimeHitlControl:
-    if isinstance(hitl, RuntimeHitlControl):
-        return hitl
-    if isinstance(hitl, bool):
-        return (
-            RuntimeHitlControl(subquestions=RuntimeSubquestionHitlControl(enabled=True))
-            if hitl
-            else RuntimeHitlControl(enabled=False)
-        )
-    normalized_mode = hitl.strip().lower()
-    if normalized_mode == "strategic":
-        return RuntimeHitlControl(subquestions=RuntimeSubquestionHitlControl(enabled=True))
-    raise SDKConfigurationError("hitl must be True, False, \"strategic\", or a RuntimeHitlControl.")
-
-
 def _apply_public_hitl_input(
     *,
-    hitl: RuntimeAgentRunHitlInput,
+    hitl_subquestions: bool,
+    hitl_query_expansion: bool,
     controls: RuntimeAgentRunControls | None,
 ) -> RuntimeAgentRunControls:
-    resolved_hitl = _normalize_public_hitl_input(hitl)
+    existing_hitl = controls.hitl if controls is not None else None
+    resolved_hitl = RuntimeHitlControl(
+        enabled=existing_hitl.enabled if existing_hitl is not None else False,
+        subquestions=(
+            RuntimeSubquestionHitlControl(enabled=True)
+            if hitl_subquestions
+            else existing_hitl.subquestions if existing_hitl is not None else None
+        ),
+        query_expansion=(
+            RuntimeQueryExpansionHitlControl(enabled=True)
+            if hitl_query_expansion
+            else existing_hitl.query_expansion if existing_hitl is not None else None
+        ),
+    )
     if controls is None:
         return RuntimeAgentRunControls(hitl=resolved_hitl)
     return controls.model_copy(update={"hitl": resolved_hitl})
@@ -332,7 +336,8 @@ def advanced_rag(
     *,
     vector_store: Any,
     model: Any,
-    hitl: RuntimeAgentRunHitlInput | None = None,
+    hitl_subquestions: bool = False,
+    hitl_query_expansion: bool = False,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
     langfuse_callback: Any | None = None,
@@ -340,11 +345,12 @@ def advanced_rag(
     resume: Any | None = None,
 ) -> RuntimeAgentRunResponse | RuntimeAgentRunResult:
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_hitl=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s hitl_query_expansion=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
-        hitl is not None,
+        hitl_subquestions,
+        hitl_query_expansion,
         config is not None,
         bool(callbacks),
         langfuse_callback is not None,
@@ -382,7 +388,8 @@ def advanced_rag(
             query,
             config=config,
             runtime_config=runtime_config,
-            hitl=hitl,
+            hitl_subquestions=hitl_subquestions,
+            hitl_query_expansion=hitl_query_expansion,
             resume=resume,
         )
         if _hitl_requested(request_payload, resume=resume):
