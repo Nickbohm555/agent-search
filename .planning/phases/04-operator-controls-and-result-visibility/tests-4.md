@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Phase 4 UAT coverage for operator controls and result visibility, derived from delivered outcomes in the phase summaries. Test 1 is now recorded as passing.
+Phase 4 UAT coverage for operator controls and result visibility, derived from delivered outcomes in the phase summaries. Tests 1 and 2 are now recorded as passing.
 
 ## Information Needed from the Summary
 
@@ -57,6 +57,7 @@ Phase 4 UAT coverage for operator controls and result visibility, derived from d
    - Given two consecutive runs with the same query
    - When run A sets `runtime_config.query_expansion.enabled=false` and run B omits `runtime_config`
    - Then run A uses disabled expansion behavior, and run B returns to default behavior (no cross-run mutation).
+   - result: Pass on 2026-03-14. `docker compose exec backend uv run pytest tests/services/test_agent_service.py::test_run_sequential_graph_runner_disables_query_expansion_per_run_without_mutating_defaults` passed, confirming a run with `query_expansion.enabled=false` skips expand-node execution and searches only the original sub-question, while the immediately following default run restores expand-node behavior and expanded query fanout without cross-run mutation.
 
 3. **UAT-4.3 Per-run rerank control affects only that run**
    - Given two consecutive runs with the same query
@@ -75,10 +76,10 @@ Phase 4 UAT coverage for operator controls and result visibility, derived from d
 
 ## Summary
 
-Phase 4 delivered run-scoped retrieval controls (query expansion and rerank) that are configurable through API, SDK, and frontend surfaces, while maintaining backward compatibility and preserving sub-answer visibility in streamed and final outputs. UAT-4.1 passed on 2026-03-14. The tests above validate observable user-facing outcomes rather than internal implementation details.
+Phase 4 delivered run-scoped retrieval controls (query expansion and rerank) that are configurable through API, SDK, and frontend surfaces, while maintaining backward compatibility and preserving sub-answer visibility in streamed and final outputs. UAT-4.1 and UAT-4.2 passed on 2026-03-14. The tests above validate observable user-facing outcomes rather than internal implementation details.
 
 ## Gaps
 
 [
-  "UAT-4.1 recorded as passing on 2026-03-14; UAT-4.2 through UAT-4.5 remain to be executed."
+  "UAT-4.1 and UAT-4.2 recorded as passing on 2026-03-14; UAT-4.3 through UAT-4.5 remain to be executed."
 ]

@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 19. (move +1 after each turn)
+Current section to work on: section 20. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -440,7 +440,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/services/test_agent_service.py::test_run_sequential_graph_runner_disables_query_expansion_per_run_without_mutating_defaults` passed, confirming a run with `runtime_config.query_expansion.enabled=false` skips expand-node execution and searches only the original sub-question, while the next run with omitted `runtime_config` restores default expansion behavior without cross-run mutation.
 
 ## Section 20 — 04-operator-controls-and-result-visibility — tests-4 — Test 3 (Validation)
 - Source test markdown: `.planning/phases/04-operator-controls-and-result-visibility/tests-4.md`
