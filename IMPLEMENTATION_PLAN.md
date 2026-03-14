@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 31. (move +1 after each turn)
+Current section to work on: section 32. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -708,7 +708,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `RELEASE_TAG=agent-search-core-v1.0.3 ./scripts/release_sdk.sh` completed the local release preflight, building `agent_search_core-1.0.3.tar.gz` and `agent_search_core-1.0.3-py3-none-any.whl`, passing filename, wheel-content, and `twine check` validation before the dry-run upload skip; `RELEASE_TAG=agent-search-core-v0.0.0 ./scripts/release_sdk.sh` failed immediately with `release tag mismatch expected=agent-search-core-v1.0.3 actual=agent-search-core-v0.0.0`, confirming the guard blocks publish on version-tag mismatch.
 
 ## Section 32 — 06-sdk-contract-parity-and-pypi-release — tests-6 — Test 4 (Validation)
 - Source test markdown: `.planning/phases/06-sdk-contract-parity-and-pypi-release/tests-6.md`

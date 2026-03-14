@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 3: Release guard blocks mismatched release tag before publish.
+Test 4: CI workflow publishes only validated uploaded artifacts.
 
 ## Information Needed from the Summary
 
@@ -87,6 +87,10 @@ Test 3: Release guard blocks mismatched release tag before publish.
 
 ### Test 3: Release guard blocks mismatched release tag before publish
 - Type: UAT release safety guard
+- result: pass - `RELEASE_TAG=agent-search-core-v1.0.3 ./scripts/release_sdk.sh` passed on 2026-03-14, building `agent_search_core-1.0.3.tar.gz` and `agent_search_core-1.0.3-py3-none-any.whl`, passing filename checks, wheel-content validation, and `twine check`, then exiting before upload; `RELEASE_TAG=agent-search-core-v0.0.0 ./scripts/release_sdk.sh` failed immediately with `release tag mismatch expected=agent-search-core-v1.0.3 actual=agent-search-core-v0.0.0`.
+- reported: the release script enforces exact tag-to-package version parity and blocks the publish path before any upload logic is reachable when the tag does not match `sdk/core/pyproject.toml`.
+- severity: none
+- reason: observed dry-run and mismatch behavior match the Phase 6 release safety requirement for fail-fast tag validation ahead of publish.
 - Preconditions:
   - `sdk/core/pyproject.toml` version is set to the Phase 6 release version.
 - Steps:
@@ -125,7 +129,7 @@ Test 3: Release guard blocks mismatched release tag before publish.
 
 ## Summary
 
-Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged.
+Phase 6 test coverage now validates five observable outcomes: runtime contract compatibility, OpenAPI/SDK parity, release-tag safety gating, CI artifact publish integrity, and end-user documentation adoption flow for `1.0.3`. Test 1 passed on 2026-03-14 using the targeted backend API contract tests for canonical control normalization plus additive and legacy response field serialization. Test 2 failed on 2026-03-14 because `./scripts/validate_openapi.sh` detected committed generated SDK drift in `sdk/python/README.md` even though `openapi.json` matched the runtime export and regenerated request/response models remained unchanged. Test 3 passed on 2026-03-14 because the matching `agent-search-core-v1.0.3` dry run completed local build and artifact checks without uploading, while a mismatched `agent-search-core-v0.0.0` tag was rejected before publish logic.
 
 ## Gaps
 
