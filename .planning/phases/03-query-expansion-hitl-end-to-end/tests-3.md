@@ -1,5 +1,5 @@
 ---
-status: ready
+status: completed
 phase: "03-query-expansion-hitl-end-to-end"
 source:
   - 03-01-SUMMARY.md
@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 6 - Frontend review UX renders actionable controls and resumes stream.
+Completed.
 
 ## Information Needed from the Summary
 
@@ -174,10 +174,14 @@ testing_notes:
 - Query-expansion pause is displayed as an actionable state, not as failure.
 - Resume request includes `job_id` + `checkpoint_id` and typed decision envelope.
 - Stream resumes and UI ends in completion view.
+- result: pass - `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The frontend rendered the query-expansion pause as actionable review state, submitted a checkpoint-bound typed resume payload with approve/edit/deny decisions to `/api/agents/run-resume/job-qe-hitl`, then resumed the same streamed run through `search` to `run.completed` without treating the pause as a failure.
 
 ## Summary
 
-Tests 1-5 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
+Tests 1-6 passed through 2026-03-14. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
 
 ## Gaps
 

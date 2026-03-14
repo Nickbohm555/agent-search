@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 17. (move +1 after each turn)
+Current section to work on: section 18. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -394,7 +394,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed, confirming the UI renders the query-expansion pause as actionable review state, submits a checkpoint-bound typed resume payload with approve/edit/deny decisions, and resumes the same event stream through `search` to terminal completion.
 
 Next: update .planning/STATE.md after executing this phase's testing sections.
 
