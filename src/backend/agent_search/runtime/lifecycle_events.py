@@ -6,20 +6,22 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
-from schemas import GraphRunMetadata, RuntimeAgentRunResponse, SubQuestionAnswer, SubQuestionArtifacts
+from schemas import GraphRunMetadata, RuntimeAgentRunResponse, SubQuestionArtifacts
 
 
 class RuntimeLifecycleEvent(BaseModel):
     event_type: str
     event_id: str
     run_id: str
+    thread_id: str
+    trace_id: str
     stage: str
     status: str
     emitted_at: str
     error: str | None = None
     decomposition_sub_questions: list[str] | None = None
     sub_question_artifacts: list[SubQuestionArtifacts] | None = None
-    sub_qa: list[SubQuestionAnswer] | None = None
+    sub_items: list[tuple[str, str]] | None = None
     output: str | None = None
     result: RuntimeAgentRunResponse | None = None
     interrupt_payload: Any | None = None
@@ -157,7 +159,7 @@ class LifecycleEventBuilder:
         error: str | None = None,
         decomposition_sub_questions: list[str] | None = None,
         sub_question_artifacts: list[SubQuestionArtifacts] | None = None,
-        sub_qa: list[SubQuestionAnswer] | None = None,
+        sub_items: list[tuple[str, str]] | None = None,
         output: str | None = None,
         result: RuntimeAgentRunResponse | None = None,
         interrupt_payload: Any | None = None,
@@ -170,13 +172,15 @@ class LifecycleEventBuilder:
             event_type=event_type,
             event_id=f"{self._run_metadata.run_id}:{self._sequence:06d}",
             run_id=self._run_metadata.run_id,
+            thread_id=self._run_metadata.thread_id,
+            trace_id=self._run_metadata.trace_id,
             stage=stage,
             status=status,
             emitted_at=emitted_at,
             error=error,
             decomposition_sub_questions=decomposition_sub_questions,
             sub_question_artifacts=sub_question_artifacts,
-            sub_qa=sub_qa,
+            sub_items=sub_items,
             output=output,
             result=result,
             interrupt_payload=interrupt_payload,

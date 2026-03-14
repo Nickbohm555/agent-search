@@ -76,6 +76,19 @@ def _build_run_config(payload: RuntimeAgentRunRequest) -> dict[str, Any] | None:
     return config or None
 
 
+def _resolve_checkpoint_db_url(payload: RuntimeAgentRunRequest) -> str | None:
+    if payload.checkpoint_db_url is not None and payload.checkpoint_db_url.strip():
+        return payload.checkpoint_db_url
+
+    controls = payload.controls
+    if controls is None or controls.hitl is None or not controls.hitl.enabled:
+        return None
+
+    # The app runs against the local Postgres service, so enable checkpointed HITL
+    # automatically at the HTTP layer without changing the SDK contract.
+    return DATABASE_URL
+
+
 def _encode_sse_event(event: object) -> str:
     payload = json.dumps(event.model_dump(mode="json"), separators=(",", ":"))
     return f"id: {event.event_id}\nevent: {event.event_type}\ndata: {payload}\n\n"
@@ -94,7 +107,7 @@ def runtime_agent_run(
         vector_store=vector_store,
         model=model,
         config=_build_run_config(payload),
-        checkpoint_db_url=payload.checkpoint_db_url,
+        checkpoint_db_url=_resolve_checkpoint_db_url(payload),
     )
 
 
@@ -107,7 +120,7 @@ def runtime_agent_run_async(payload: RuntimeAgentRunRequest) -> RuntimeAgentRunA
         vector_store=vector_store,
         model=model,
         config=_build_run_config(payload),
-        checkpoint_db_url=payload.checkpoint_db_url,
+        checkpoint_db_url=_resolve_checkpoint_db_url(payload),
     )
 
 

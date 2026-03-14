@@ -63,6 +63,8 @@ def test_lifecycle_event_builder_emits_monotonic_ids_from_langgraph_signals() ->
         "run-123:000006",
     ]
     assert all(event.run_id == "run-123" for event in events)
+    assert all(event.thread_id == "550e8400-e29b-41d4-a716-446655440000" for event in events)
+    assert all(event.trace_id == "trace-123" for event in events)
     assert all(event.stage for event in events)
 
 

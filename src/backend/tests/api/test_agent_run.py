@@ -17,7 +17,6 @@ from schemas import (
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
-    SubQuestionAnswer,
 )
 
 
@@ -57,16 +56,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
         captured["checkpoint_db_url"] = checkpoint_db_url
         return RuntimeAgentRunResponse(
             main_question=query,
-            sub_qa=[
-                SubQuestionAnswer(
-                    sub_question="What changed in policy X?",
-                    sub_answer="Policy X was revised in January 2026.",
-                    tool_call_input='{"query":"What changed in policy X?"}',
-                    sub_agent_response="I reviewed the latest policy notes and summarized the change.",
-                    answerable=True,
-                    verification_reason="grounded_in_reranked_documents",
-                )
-            ],
+            sub_items=[("What changed in policy X?", "Policy X was revised in January 2026.")],
             output=f"Echo: {query}",
         )
 
@@ -92,28 +82,7 @@ def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None
     assert response.json() == {
         "main_question": "Find Hormuz risks",
         "thread_id": None,
-        "sub_qa": [
-            {
-                "sub_question": "What changed in policy X?",
-                "sub_answer": "Policy X was revised in January 2026.",
-                "tool_call_input": '{"query":"What changed in policy X?"}',
-                "expanded_query": "",
-                "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
-                "answerable": True,
-                "verification_reason": "grounded_in_reranked_documents",
-            }
-        ],
-        "sub_answers": [
-            {
-                "sub_question": "What changed in policy X?",
-                "sub_answer": "Policy X was revised in January 2026.",
-                "tool_call_input": '{"query":"What changed in policy X?"}',
-                "expanded_query": "",
-                "sub_agent_response": "I reviewed the latest policy notes and summarized the change.",
-                "answerable": True,
-                "verification_reason": "grounded_in_reranked_documents",
-            }
-        ],
+        "sub_items": [["What changed in policy X?", "Policy X was revised in January 2026."]],
         "output": "Echo: Find Hormuz risks",
         "final_citations": [],
     }
@@ -167,11 +136,54 @@ def test_post_run_async_returns_start_response(monkeypatch) -> None:
     assert response.json() == {
         "job_id": "job-123",
         "run_id": "run-123",
+        "thread_id": "",
         "status": "running",
     }
     assert captured["query"] == "Show me async flow"
     assert captured["config"] == {"hitl": {"enabled": True, "subquestions": {"enabled": True}}}
     assert captured["checkpoint_db_url"] == "postgresql+psycopg://agent_user:agent_pass@db:5432/agent_search"
+
+
+def test_post_run_async_uses_app_database_url_for_hitl_when_checkpoint_db_url_omitted(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    captured: dict[str, object] = {}
+
+    def fake_run_async(query, *, vector_store, model, config=None, checkpoint_db_url=None):
+        captured["query"] = query
+        captured["config"] = config
+        captured["checkpoint_db_url"] = checkpoint_db_url
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-hitl-default",
+            run_id="run-hitl-default",
+            status="running",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_run_async)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-async",
+        json={
+            "query": "Use app checkpoint default",
+            "controls": {"hitl": {"subquestions": {"enabled": True}}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "job_id": "job-hitl-default",
+        "run_id": "run-hitl-default",
+        "thread_id": "",
+        "status": "running",
+    }
+    assert captured["query"] == "Use app checkpoint default"
+    assert captured["config"] == {"hitl": {"enabled": True, "subquestions": {"enabled": True}}}
+    assert captured["checkpoint_db_url"] == agent_router_module.DATABASE_URL
 
 
 def test_status_and_resume_routes_map_sdk_configuration_errors(monkeypatch) -> None:
@@ -217,7 +229,7 @@ def test_status_route_returns_async_status_shape(monkeypatch) -> None:
             result=RuntimeAgentRunResponse(
                 main_question="done",
                 thread_id="550e8400-e29b-41d4-a716-446655440017",
-                sub_qa=[],
+                sub_items=[],
                 output="done",
             ),
         ),
