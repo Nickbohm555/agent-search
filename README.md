@@ -10,9 +10,7 @@ Onyx builds AI search and knowledge experiences for teams that need dependable, 
 
 ## Why It Is Built This Way
 
-If you want more about the motivations behind the system, the tradeoffs in the runtime, and why certain design choices are opinionated, start with `docs/application-document.html`.
-
-Live architecture blog (GitHub Pages): [https://nickbohm555.github.io/agent-search/architecture.html](https://nickbohm555.github.io/agent-search/architecture.html).
+If you want more about the motivations behind the system, the runtime tradeoffs, and why certain design choices are opinionated, start with the live GitHub Pages essay: [https://nickbohm555.github.io/agent-search/architecture.html](https://nickbohm555.github.io/agent-search/architecture.html).
 
 ## Data Flow Diagram
 
