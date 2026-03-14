@@ -50,13 +50,89 @@ Compatibility notes:
 
 - `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
 - `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
-- If you need REST-shaped `controls`, `/run-async`, or typed HITL resume envelopes, use the generated HTTP SDK in [`sdk/python`](../python/README.md).
+- For HITL flows, use the checkpointed runtime runner described below.
 
 ## Human-in-the-loop (HITL)
 
-`agent-search-core` is a synchronous, in-process SDK. It does not expose HITL review or resume flows.
+`agent-search-core` supports HITL review/resume for subquestion decomposition via the checkpointed runtime runner.
+Use `run_checkpointed_agent(...)` with HITL controls to pause, inspect the interrupt payload, then resume with typed decisions.
 
-For subquestion HITL (pause, review, resume with typed decisions), use the generated HTTP SDK and the `/api/agents/run-async` + `/api/agents/run-resume` endpoints documented in [`sdk/python`](../python/README.md).
+Start a run with HITL enabled:
+
+```python
+from langchain_openai import ChatOpenAI
+from agent_search.vectorstore.langchain_adapter import LangChainVectorStoreAdapter
+from agent_search.runtime.runner import run_checkpointed_agent
+from services.agent_service import build_graph_run_metadata
+from schemas import (
+    RuntimeAgentRunControls,
+    RuntimeAgentRunRequest,
+    RuntimeHitlControl,
+    RuntimeSubquestionHitlControl,
+)
+
+vector_store = LangChainVectorStoreAdapter(your_langchain_vector_store)
+model = ChatOpenAI(model="gpt-4.1-mini", temperature=0.0)
+run_metadata = build_graph_run_metadata(thread_id="550e8400-e29b-41d4-a716-446655440000")
+
+payload = RuntimeAgentRunRequest(
+    query="Summarize the customer feedback themes.",
+    thread_id=run_metadata.thread_id,
+    controls=RuntimeAgentRunControls(
+        hitl=RuntimeHitlControl(subquestions=RuntimeSubquestionHitlControl(enabled=True))
+    ),
+)
+
+outcome = run_checkpointed_agent(
+    payload,
+    model=model,
+    vector_store=vector_store,
+    run_metadata=run_metadata,
+)
+```
+
+Example pause payload (the run pauses at `subquestions_ready`):
+
+```python
+print(outcome.status)  # "paused"
+print(outcome.interrupt_payload)
+# {
+#   "kind": "subquestion_review",
+#   "stage": "subquestions_ready",
+#   "checkpoint_id": "550e8400-e29b-41d4-a716-446655440000",
+#   "subquestions": [
+#     {"subquestion_id": "sq-1", "sub_question": "Theme 1?", "index": 0},
+#     {"subquestion_id": "sq-2", "sub_question": "Theme 2?", "index": 1},
+#   ],
+# }
+```
+
+Resume with typed decisions (approve, edit, deny, skip):
+
+```python
+from schemas import RuntimeSubquestionDecision, RuntimeSubquestionResumeEnvelope
+
+resume = RuntimeSubquestionResumeEnvelope(
+    checkpoint_id=outcome.checkpoint_id,
+    decisions=[
+        RuntimeSubquestionDecision(subquestion_id="sq-1", action="approve"),
+        RuntimeSubquestionDecision(
+            subquestion_id="sq-2",
+            action="edit",
+            edited_text="Theme 2 (billing and invoices)",
+        ),
+    ],
+)
+
+resumed = run_checkpointed_agent(
+    payload,
+    model=model,
+    vector_store=vector_store,
+    run_metadata=run_metadata,
+    resume=resume,
+)
+print(resumed.response.output)
+```
 
 ## Prompt customization
 
