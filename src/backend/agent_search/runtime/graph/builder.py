@@ -499,7 +499,11 @@ def build_runtime_graph(
     builder.add_node("answer", _build_answer_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_node("synthesize", _build_synthesize_node(resolved_context), retry_policy=_RETRY_POLICY)
     builder.add_edge(START, "decompose")
-    builder.add_conditional_edges("decompose", route_post_decompose, {"synthesize": "synthesize"})
+    builder.add_conditional_edges(
+        "decompose",
+        route_post_decompose,
+        {"synthesize": "synthesize", "subquestion_checkpoint": "subquestion_checkpoint"},
+    )
     builder.add_conditional_edges("subquestion_checkpoint", route_subquestion_lanes)
     builder.add_edge("lane_pipeline", "synthesize")
     builder.add_edge("expand", "search")

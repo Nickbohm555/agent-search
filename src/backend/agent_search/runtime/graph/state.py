@@ -48,9 +48,10 @@ def _merge_stable_initial_search_context(
 
 
 def _merge_stable_bool(current: bool, update: bool) -> bool:
-    if current != update:
-        raise ValueError(f"boolean channel must remain stable across graph lanes: {current!r} != {update!r}")
-    return update
+    if current == update:
+        return update
+    # Prefer truthy to keep HITL toggles stable across parallel lanes.
+    return current or update
 
 
 @dataclass(slots=True)
