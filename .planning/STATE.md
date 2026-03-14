@@ -4,15 +4,15 @@
 
 - **Core value:** Users can safely control and customize how the agent thinks (subquestions/query expansion/prompting) without breaking the existing advanced RAG experience.
 - **Current milestone roadmap:** `.planning/ROADMAP.md`
-- **Current focus:** Phase 5 - Prompt Customization and Guidance
+- **Current focus:** Phase 6 - SDK Contract Parity and PyPI Release
 
 ## Current Position
 
-- **Current phase:** 5
-- **Current plan:** 05-05
-- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-05 Task 2 implemented
-- **Progress:** 4/6 phases complete
-- **Progress bar:** `████░░` (67%)
+- **Current phase:** 6
+- **Current plan:** 06-01
+- **Status:** Phase 5 completed via Plan 05-05 summary; Phase 6 Plan 06-01 is next
+- **Progress:** 5/6 phases complete
+- **Progress bar:** `█████░` (83%)
 
 ## Performance Metrics
 
@@ -30,14 +30,14 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Create the Phase 5 Plan 05-05 summary.
-- Capture Task 1 and Task 2 verification evidence in the summary.
+- Start Phase 6 Plan 06-01 Task 1.
+- Lock SDK contract parity for HITL, controls, prompt fields, and additive `sub_answers`.
 
 ### Blockers
 - None currently.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 66 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 05-05 Task 2 is complete, so the next dependency-ordered work item is the Plan 05-05 summary.
-- **Resume note:** State update: `phase=05`, `plan=05-05`, `task=2`, `status=implemented`; sync and async SDK regression tests now cover prompt precedence ordering and mutable default isolation, and the next target is the Plan 05-05 summary.
+- **Next command:** Implement Section 67 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 5 is complete, so the next dependency-ordered work item is Plan 06-01 Task 1 for SDK/backend contract parity before release.
+- **Resume note:** State update: `phase=05`, `plan=05-05`, `task=summary`, `status=implemented`; prompt customization now has contract, docs, runtime wiring, and SDK precedence coverage, and the next target is Phase 6 Plan 06-01 Task 1.
