@@ -10,7 +10,7 @@
 
 - **Current phase:** 4
 - **Current plan:** 04-01
-- **Status:** Phase 4 Plan 04-01 Task 1 implemented; Phase 4 Plan 04-01 Task 2 queued
+- **Status:** Phase 4 Plan 04-01 Task 2 implemented; Phase 4 Plan 04-01 Task 3 queued
 - **Progress:** 3/6 phases complete
 - **Progress bar:** `███░░░` (50%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 4 Plan 04-01 Task 2.
-- Continue Phase 4 in dependency order after Task 1.
+- Start Phase 4 Plan 04-01 Task 3.
+- Continue Phase 4 in dependency order after Task 2.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 39 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 Plan 04-01 Task 1 is complete, and the next dependency-ordered work item is Task 2 router/SDK forwarding.
-- **Resume note:** State update: `phase=04`, `plan=04-01`, `task=1`, `status=implemented`; the request contract now accepts additive `runtime_config`, and the next work forwards that nested config through router and SDK entrypoints.
+- **Next command:** Implement Section 40 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 4 Plan 04-01 Task 2 is complete, and the next dependency-ordered work item is Task 3 regression coverage for additive runtime config forwarding.
+- **Resume note:** State update: `phase=04`, `plan=04-01`, `task=2`, `status=implemented`; router and SDK sync/async entrypoints now forward nested `runtime_config` alongside `thread_id`, and the next work adds focused API/SDK regression coverage.

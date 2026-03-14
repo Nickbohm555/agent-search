@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from utils.langfuse_tracing import build_langfuse_callback_handler as _build_langfuse_callback_handler
 from schemas import (
     RuntimeAgentRunControls,
+    RuntimeAgentRunRuntimeConfig,
     RuntimeHitlControl,
     RuntimeAgentRunRequest,
     RuntimeAgentRunAsyncCancelResponse,
@@ -68,6 +69,21 @@ def _read_enabled_flag(config: Mapping[str, Any] | None, *, default: bool = Fals
     return default
 
 
+def _resolve_runtime_config_input(config: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
+    if not isinstance(config, Mapping):
+        return None
+
+    nested_runtime_config = _get_nested_mapping(config, "runtime_config")
+    if nested_runtime_config is None:
+        return config
+
+    resolved: dict[str, Any] = dict(config)
+    for key in ("timeout", "retrieval", "rerank", "query_expansion", "hitl"):
+        if key in nested_runtime_config:
+            resolved[key] = nested_runtime_config[key]
+    return resolved
+
+
 def _build_request_controls(
     config: Mapping[str, Any] | None,
     *,
@@ -97,10 +113,16 @@ def _build_runtime_request_payload(
     config: Mapping[str, Any] | None,
     runtime_config: RuntimeConfig,
 ) -> RuntimeAgentRunRequest:
+    runtime_config_payload = _get_nested_mapping(config, "runtime_config")
     return RuntimeAgentRunRequest(
         query=query,
         thread_id=_resolve_request_thread_id(config),
         controls=_build_request_controls(config, runtime_config=runtime_config),
+        runtime_config=(
+            RuntimeAgentRunRuntimeConfig.model_validate(runtime_config_payload)
+            if runtime_config_payload is not None
+            else None
+        ),
     )
 
 
@@ -188,7 +210,7 @@ def advanced_rag(
         langfuse_callback is not None,
         langfuse_settings is not None,
     )
-    runtime_config = RuntimeConfig.from_dict(config)
+    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
     logger.info(
         "SDK sync runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
         runtime_config.retrieval.initial_search_context_k,
@@ -299,7 +321,7 @@ def run_async(
         type(model).__name__,
         config is not None,
     )
-    runtime_config = RuntimeConfig.from_dict(config)
+    runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
     logger.info(
         "SDK async runtime config resolved initial_k=%s rerank_enabled=%s rerank_provider=%s",
         runtime_config.retrieval.initial_search_context_k,
