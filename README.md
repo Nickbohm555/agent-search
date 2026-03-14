@@ -12,6 +12,8 @@ Onyx builds AI search and knowledge experiences for teams that need dependable, 
 
 The consolidated project reference is available at `docs/application-documentation.html`. It is the agent-search-specific HTML source of truth for architecture, concerns, conventions, integrations, stack, structure, testing, runtime flow, and key tradeoffs, including the current no-timeout-guardrails runtime behavior.
 
+Live architecture blog (GitHub Pages): `https://nickbohm.github.io/agent-search/architecture.html`.
+
 ## Data Flow Diagram
 
 ```mermaid
