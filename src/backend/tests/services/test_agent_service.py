@@ -1601,6 +1601,207 @@ def test_run_sequential_graph_runner_is_deterministic_across_repeat_runs(monkeyp
     ]
 
 
+def test_run_sequential_graph_runner_disables_query_expansion_per_run_without_mutating_defaults(monkeypatch) -> None:
+    expand_calls: list[str] = []
+    search_queries: list[list[str]] = []
+
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(decomposition_sub_questions=["Sub-question A?"])
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        expand_calls.append(node_input.sub_question)
+        return agent_service.ExpandNodeOutput(
+            expanded_queries=[node_input.sub_question, f"{node_input.sub_question} alt"]
+        )
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        search_queries.append(list(node_input.expanded_queries))
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Doc for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Evidence for {node_input.sub_question}",
+            document_id=f"doc-{node_input.sub_question}",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.expanded_queries[0], "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = config, callbacks
+        return agent_service._build_rerank_bypass_output(node_input=node_input)
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer=f"Answer for {node_input.sub_question} [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: node_input.citation_rows_by_index[1].model_copy(deep=True)},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.SynthesizeFinalNodeOutput(
+            final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
+        )
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+    monkeypatch.setattr(agent_service, "flush_langfuse_callback_handler", lambda handler: handler)
+
+    disabled_state = agent_service.run_sequential_graph_runner(
+        payload=RuntimeAgentRunRequest(
+            query="Main question?",
+            runtime_config={"query_expansion": {"enabled": False}},
+        ),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-query-expansion-disabled"),
+    )
+
+    assert expand_calls == []
+    assert search_queries == [["Sub-question A?"]]
+    assert disabled_state.sub_question_artifacts[0].expanded_queries == ["Sub-question A?"]
+
+    search_queries.clear()
+
+    default_state = agent_service.run_sequential_graph_runner(
+        payload=RuntimeAgentRunRequest(query="Main question?"),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-query-expansion-default"),
+    )
+
+    assert expand_calls == ["Sub-question A?"]
+    assert search_queries == [["Sub-question A?", "Sub-question A? alt"]]
+    assert default_state.sub_question_artifacts[0].expanded_queries == [
+        "Sub-question A?",
+        "Sub-question A? alt",
+    ]
+
+
+def test_run_parallel_graph_runner_disables_rerank_per_run_without_mutating_defaults(monkeypatch) -> None:
+    rerank_calls: list[bool] = []
+    original_reranker_config = agent_service._RERANKER_CONFIG
+
+    monkeypatch.setattr(
+        agent_service,
+        "_RERANKER_CONFIG",
+        agent_service.RerankerConfig(
+            enabled=True,
+            top_n=original_reranker_config.top_n,
+            provider=original_reranker_config.provider,
+            model_name=original_reranker_config.model_name,
+            openai_model_name=original_reranker_config.openai_model_name,
+            openai_temperature=original_reranker_config.openai_temperature,
+        ),
+    )
+
+    def fake_run_decomposition_node(*, node_input, model=None, timeout_s=None, callbacks=None):
+        _ = node_input, model, timeout_s, callbacks
+        return agent_service.DecomposeNodeOutput(decomposition_sub_questions=["Sub-question A?"])
+
+    def fake_run_expand_node(*, node_input, model=None, config=None, callbacks=None):
+        _ = model, config, callbacks
+        return agent_service.ExpandNodeOutput(
+            expanded_queries=[node_input.sub_question, f"{node_input.sub_question} alt"]
+        )
+
+    def fake_run_search_node(*, node_input, vector_store, k_fetch=None):
+        _ = vector_store, k_fetch
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Search result for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Evidence for {node_input.sub_question}",
+            document_id=f"doc-{node_input.sub_question}",
+        )
+        return agent_service.SearchNodeOutput(
+            retrieved_docs=[row],
+            retrieval_provenance=[{"query": node_input.sub_question, "deduped": False}],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_rerank_node(*, node_input, config=None, callbacks=None):
+        _ = callbacks
+        rerank_calls.append(config.enabled)
+        row = agent_service.CitationSourceRow(
+            citation_index=1,
+            rank=1,
+            title=f"Reranked result for {node_input.sub_question}",
+            source="wiki://doc",
+            content=f"Reranked evidence for {node_input.sub_question}",
+            document_id=f"reranked-{node_input.sub_question}",
+            score=0.8,
+        )
+        return agent_service.RerankNodeOutput(
+            reranked_docs=[row],
+            citation_rows_by_index={1: row},
+        )
+
+    def fake_run_answer_subquestion_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.AnswerSubquestionNodeOutput(
+            sub_answer=f"Answer from {node_input.reranked_docs[0].title} [1].",
+            citation_indices_used=[1],
+            answerable=True,
+            verification_reason="grounded_in_reranked_documents",
+            citation_rows_by_index={1: node_input.citation_rows_by_index[1].model_copy(deep=True)},
+        )
+
+    def fake_run_synthesize_final_node(*, node_input, callbacks=None):
+        _ = callbacks
+        return agent_service.SynthesizeFinalNodeOutput(
+            final_answer=f"Final from {len(node_input.sub_qa)} subanswers."
+        )
+
+    monkeypatch.setattr(agent_service, "run_decomposition_node", fake_run_decomposition_node)
+    monkeypatch.setattr(agent_service, "run_expand_node", fake_run_expand_node)
+    monkeypatch.setattr(agent_service, "run_search_node", fake_run_search_node)
+    monkeypatch.setattr(agent_service, "run_rerank_node", fake_run_rerank_node)
+    monkeypatch.setattr(agent_service, "run_answer_subquestion_node", fake_run_answer_subquestion_node)
+    monkeypatch.setattr(agent_service, "run_synthesize_final_node", fake_run_synthesize_final_node)
+    monkeypatch.setattr(agent_service, "flush_langfuse_callback_handler", lambda handler: handler)
+
+    disabled_state = agent_service.run_parallel_graph_runner(
+        payload=RuntimeAgentRunRequest(
+            query="Main question?",
+            runtime_config={"rerank": {"enabled": False}},
+        ),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-rerank-disabled"),
+    )
+
+    assert rerank_calls == []
+    assert disabled_state.sub_question_artifacts[0].reranked_docs[0].title == "Search result for Sub-question A?"
+    assert agent_service._RERANKER_CONFIG.enabled is True
+
+    default_state = agent_service.run_parallel_graph_runner(
+        payload=RuntimeAgentRunRequest(query="Main question?"),
+        vector_store="fake-store",
+        initial_search_context=[{"rank": 1, "title": "Initial context"}],
+        run_metadata=agent_service.build_graph_run_metadata(run_id="run-rerank-default"),
+    )
+
+    assert rerank_calls == [True]
+    assert default_state.sub_question_artifacts[0].reranked_docs[0].title == "Reranked result for Sub-question A?"
+    assert agent_service._RERANKER_CONFIG.enabled is True
+
+
 def test_runtime_runner_executes_without_db_dependency(monkeypatch) -> None:
     from schemas import RuntimeAgentRunResponse, SubQuestionAnswer
 
