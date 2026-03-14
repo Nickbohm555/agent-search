@@ -15,14 +15,13 @@ If you are adopting the LangGraph-native `1.0.0` release, start here before wiri
 Recommended action:
 
 - Use `advanced_rag(...)` as the primary sync entrypoint for new integrations.
-- Move tracing setup to `build_langfuse_callback(...)` plus `langfuse_callback=...` instead of relying on `langfuse_settings` alone.
-- Use `hitl_subquestions=True` and `hitl_query_expansion=True` for user-review checkpoints instead of raw `config["controls"]["hitl"]` in new code.
+- Use `hitl_subquestions=True` for user-review checkpoints instead of raw `config["controls"]["hitl"]` in new code.
 
 ## Primary SDK: `agent_search` (in-process)
 
 Public functions:
 
-- `advanced_rag(query, *, vector_store, model, config=None, hitl_subquestions=False, hitl_query_expansion=False, ...)`
+- `advanced_rag(query, *, vector_store, model, config=None, hitl_subquestions=False, ...)`
 
 Return contract:
 

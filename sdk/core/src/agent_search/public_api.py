@@ -24,15 +24,12 @@ from schemas import (
     RuntimeAgentRunRequest,
     RuntimeAgentRunResponse,
     RuntimeHitlControl,
-    RuntimeQueryExpansionHitlControl,
     RuntimeSubquestionHitlControl,
 )
 from schemas.agent import (
     HitlResumeRequest,
     HitlReview,
     RuntimeAgentRunResult,
-    RuntimeQueryExpansionDecision,
-    RuntimeQueryExpansionResumeEnvelope,
     RuntimeSubquestionDecision,
     RuntimeSubquestionResumeEnvelope,
 )
@@ -40,15 +37,6 @@ from services import agent_service as legacy_service
 
 logger = logging.getLogger(__name__)
 _CUSTOM_PROMPT_KEYS = ("subanswer", "synthesis")
-
-
-def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str | None:
-    if not isinstance(config, Mapping):
-        return None
-    thread_id = config.get("thread_id")
-    if thread_id is None:
-        return None
-    return str(thread_id)
 
 
 def _resolve_resume_checkpoint_id(resume: Any | None = None) -> str | None:
@@ -110,7 +98,6 @@ def _build_runtime_request_payload(
     config: Mapping[str, Any] | None,
     runtime_config: RuntimeConfig,
     hitl_subquestions: bool = False,
-    hitl_query_expansion: bool = False,
     resume: Any | None = None,
 ) -> RuntimeAgentRunRequest:
     custom_prompts_payload = {
@@ -123,15 +110,13 @@ def _build_runtime_request_payload(
         if isinstance(config, Mapping) and isinstance(config.get("controls"), Mapping)
         else None
     )
-    if hitl_subquestions or hitl_query_expansion:
+    if hitl_subquestions:
         controls = _apply_public_hitl_input(
             hitl_subquestions=hitl_subquestions,
-            hitl_query_expansion=hitl_query_expansion,
             controls=controls,
         )
     return RuntimeAgentRunRequest(
         query=query,
-        thread_id=_resolve_request_thread_id(config) or _resolve_resume_checkpoint_id(resume),
         controls=controls,
         custom_prompts=(
             custom_prompts_payload
@@ -150,7 +135,6 @@ def _hitl_requested(payload: RuntimeAgentRunRequest, *, resume: Any | None = Non
 def _apply_public_hitl_input(
     *,
     hitl_subquestions: bool,
-    hitl_query_expansion: bool,
     controls: RuntimeAgentRunControls | None,
 ) -> RuntimeAgentRunControls:
     existing_hitl = controls.hitl if controls is not None else None
@@ -160,11 +144,6 @@ def _apply_public_hitl_input(
             RuntimeSubquestionHitlControl(enabled=True)
             if hitl_subquestions
             else existing_hitl.subquestions if existing_hitl is not None else None
-        ),
-        query_expansion=(
-            RuntimeQueryExpansionHitlControl(enabled=True)
-            if hitl_query_expansion
-            else existing_hitl.query_expansion if existing_hitl is not None else None
         ),
     )
     if controls is None:
@@ -228,18 +207,6 @@ def _translate_sdk_resume(resume: Any | None) -> Any | None:
                 for decision in resume.decisions
             ],
         )
-    if resume.review_kind == "query_expansion_review":
-        return RuntimeQueryExpansionResumeEnvelope(
-            checkpoint_id=resume.checkpoint_id,
-            decisions=[
-                RuntimeQueryExpansionDecision(
-                    expansion_id=decision.item_id,
-                    action="deny" if decision.action == "reject" else decision.action,
-                    edited_query=decision.replacement_text,
-                )
-                for decision in resume.decisions
-            ],
-        )
     raise SDKConfigurationError(f"Unsupported HITL review kind '{resume.review_kind}'.")
 
 
@@ -257,17 +224,15 @@ def _run_hitl_runtime_agent(
     model: Any,
     vector_store: Any,
     callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
     resume: Any | None = None,
 ) -> RuntimeAgentRunResult:
     translated_resume = _translate_sdk_resume(resume)
-    run_metadata = legacy_service.build_graph_run_metadata(thread_id=payload.thread_id)
+    run_metadata = legacy_service.build_graph_run_metadata()
     context = RuntimeGraphContext(
         payload=payload,
         model=model,
         vector_store=vector_store,
         callbacks=list(callbacks or []),
-        langfuse_callback=langfuse_callback,
         initial_search_context=[],
     )
     builder = _RuntimeGraphBuilder(context=context)
@@ -297,7 +262,6 @@ def _run_hitl_runtime_agent(
         if interrupt_payload is not None:
             return RuntimeAgentRunResult(
                 status="paused",
-                thread_id=run_metadata.thread_id,
                 checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
                 review=_normalize_hitl_review(interrupt_payload),
             )
@@ -306,7 +270,6 @@ def _run_hitl_runtime_agent(
     response = legacy_service.map_graph_state_to_runtime_response(terminal_state)
     return RuntimeAgentRunResult(
         status="completed",
-        thread_id=run_metadata.thread_id,
         checkpoint_id=latest_checkpoint_id or run_metadata.thread_id,
         response=response,
     )
@@ -337,24 +300,18 @@ def advanced_rag(
     vector_store: Any,
     model: Any,
     hitl_subquestions: bool = False,
-    hitl_query_expansion: bool = False,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
-    langfuse_settings: Mapping[str, Any] | None = None,
     resume: Any | None = None,
 ) -> RuntimeAgentRunResponse | RuntimeAgentRunResult:
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s hitl_query_expansion=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s hitl_subquestions=%s has_config=%s has_callbacks=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
         hitl_subquestions,
-        hitl_query_expansion,
         config is not None,
         bool(callbacks),
-        langfuse_callback is not None,
-        langfuse_settings is not None,
     )
     runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
     logger.info(
@@ -374,22 +331,13 @@ def advanced_rag(
         "SDK sync run vector_store validated vector_store_type=%s",
         type(compatible_vector_store).__name__,
     )
-    if langfuse_settings is not None and langfuse_callback is None:
-        logger.warning(
-            "SDK advanced_rag received langfuse_settings without langfuse_callback; "
-            "settings are ignored and tracing remains disabled"
-        )
-
     try:
         resolved_callbacks = list(callbacks or [])
-        if langfuse_callback is not None:
-            resolved_callbacks.append(langfuse_callback)
         request_payload = _build_runtime_request_payload(
             query,
             config=config,
             runtime_config=runtime_config,
             hitl_subquestions=hitl_subquestions,
-            hitl_query_expansion=hitl_query_expansion,
             resume=resume,
         )
         if _hitl_requested(request_payload, resume=resume):
@@ -398,7 +346,6 @@ def advanced_rag(
                 model=model,
                 vector_store=compatible_vector_store,
                 callbacks=resolved_callbacks or None,
-                langfuse_callback=langfuse_callback,
                 resume=resume,
             )
         else:
@@ -407,7 +354,6 @@ def advanced_rag(
                 model=model,
                 vector_store=compatible_vector_store,
                 callbacks=resolved_callbacks or None,
-                langfuse_callback=langfuse_callback,
             )
     except Exception as exc:  # noqa: BLE001
         mapped = _map_sdk_error(operation="advanced_rag", exc=exc)

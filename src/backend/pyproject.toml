@@ -1,7 +1,7 @@
 [project]
 name = "agent-search-backend"
 version = "0.1.0"
-description = "FastAPI backend for agent-search with optional callback-driven Langfuse tracing"
+description = "FastAPI backend for agent-search"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "fastapi==0.115.12",
@@ -15,7 +15,6 @@ dependencies = [
   "langchain-classic>=1.0.0",
   "langchain-community==0.3.31",
   "langchain-openai>=0.3.0",
-  "langfuse>=3.0.0",
   "wikipedia>=1.4.0",
   "langchain-text-splitters>=1.1.1",
   "langgraph>=1.0.10",

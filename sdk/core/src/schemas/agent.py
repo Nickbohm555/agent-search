@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal, Union
 
 from pydantic import AliasChoices
 from pydantic import BaseModel, ConfigDict, Field
-from pydantic import field_validator
 from pydantic import model_validator
 
 
@@ -22,23 +20,15 @@ class RuntimeSubquestionHitlControl(BaseModel):
     enabled: bool = False
 
 
-class RuntimeQueryExpansionHitlControl(BaseModel):
-    enabled: bool = False
-
-
 class RuntimeHitlControl(BaseModel):
     enabled: bool = False
     subquestions: RuntimeSubquestionHitlControl | None = None
-    query_expansion: RuntimeQueryExpansionHitlControl | None = None
 
     @model_validator(mode="after")
     def normalize_enabled(self) -> "RuntimeHitlControl":
-        if (
-            (self.subquestions is not None and self.subquestions.enabled)
-            or (self.query_expansion is not None and self.query_expansion.enabled)
-        ):
+        if self.subquestions is not None and self.subquestions.enabled:
             self.enabled = True
-        elif self.enabled and self.subquestions is None and self.query_expansion is None:
+        elif self.enabled and self.subquestions is None:
             self.subquestions = RuntimeSubquestionHitlControl(enabled=True)
         return self
 
@@ -63,26 +53,12 @@ class RuntimeCustomPrompts(BaseModel):
 
 class RuntimeAgentRunRequest(BaseModel):
     query: str = Field(min_length=1)
-    thread_id: str | None = None
     controls: RuntimeAgentRunControls | None = None
     runtime_config: RuntimeAgentRunRuntimeConfig | None = None
     custom_prompts: RuntimeCustomPrompts | None = Field(
         default=None,
         validation_alias=AliasChoices("custom_prompts", "custom-prompts"),
     )
-
-    @field_validator("thread_id")
-    @classmethod
-    def validate_thread_id(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized_value = value.strip()
-        if not normalized_value:
-            raise ValueError("thread_id must be a non-empty UUID string.")
-        try:
-            return str(uuid.UUID(normalized_value))
-        except ValueError as exc:
-            raise ValueError("thread_id must be a valid UUID string.") from exc
 
 
 class SubQuestionAnswer(BaseModel):
@@ -97,7 +73,6 @@ class SubQuestionAnswer(BaseModel):
 
 class RuntimeAgentRunResponse(BaseModel):
     main_question: str = ""
-    thread_id: str = ""
     sub_qa: list[SubQuestionAnswer] = Field(default_factory=list)
     sub_answers: list[SubQuestionAnswer] = Field(default_factory=list)
     output: str
@@ -145,7 +120,7 @@ class HitlReviewItem(BaseModel):
 
 
 class HitlReview(BaseModel):
-    kind: Literal["subquestion_review", "query_expansion_review"]
+    kind: Literal["subquestion_review"]
     stage: str = ""
     checkpoint_id: str = Field(min_length=1)
     items: list[HitlReviewItem] = Field(default_factory=list)
@@ -158,7 +133,7 @@ class HitlReview(BaseModel):
         checkpoint_id = str(payload.get("checkpoint_id") or "").strip()
         if not kind:
             raise ValueError("HITL interrupt payload is missing kind.")
-        if kind not in {"subquestion_review", "query_expansion_review"}:
+        if kind != "subquestion_review":
             raise ValueError(f"Unsupported HITL review kind '{kind}'.")
         if not checkpoint_id:
             raise ValueError("HITL interrupt payload is missing checkpoint_id.")
@@ -171,12 +146,12 @@ class HitlReview(BaseModel):
 
     @staticmethod
     def _normalize_items(*, kind: str, payload: Mapping[str, Any]) -> list[HitlReviewItem]:
-        raw_items_key = "subquestions" if kind == "subquestion_review" else "expansions"
+        raw_items_key = "subquestions"
         raw_items = payload.get(raw_items_key)
         if not isinstance(raw_items, Sequence) or isinstance(raw_items, (str, bytes, bytearray)):
             return []
-        item_id_key = "subquestion_id" if kind == "subquestion_review" else "expansion_id"
-        text_key = "sub_question" if kind == "subquestion_review" else "query"
+        item_id_key = "subquestion_id"
+        text_key = "sub_question"
         items: list[HitlReviewItem] = []
         for index, raw_item in enumerate(raw_items):
             if not isinstance(raw_item, Mapping):
@@ -208,7 +183,7 @@ class HitlReview(BaseModel):
 
 class HitlResumeRequest(BaseModel):
     checkpoint_id: str = Field(min_length=1)
-    review_kind: Literal["subquestion_review", "query_expansion_review"]
+    review_kind: Literal["subquestion_review"]
     decisions: list[HitlResumeDecision] = Field(min_length=1)
 
     @classmethod
@@ -228,7 +203,6 @@ class HitlResumeRequest(BaseModel):
 
 class RuntimeAgentRunResult(BaseModel):
     status: Literal["completed", "paused"]
-    thread_id: str = ""
     checkpoint_id: str | None = None
     review: HitlReview | None = Field(
         default=None,
@@ -258,14 +232,12 @@ class AgentRunStageMetadata(BaseModel):
 class RuntimeAgentRunAsyncStartResponse(BaseModel):
     job_id: str
     run_id: str
-    thread_id: str = ""
     status: str
 
 
 class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     job_id: str
     run_id: str = ""
-    thread_id: str = ""
     status: str
     message: str = ""
     stage: str = ""
@@ -330,33 +302,12 @@ class RuntimeSubquestionResumeEnvelope(BaseModel):
     decisions: list[RuntimeSubquestionDecision] = Field(min_length=1)
 
 
-class RuntimeQueryExpansionDecision(BaseModel):
-    expansion_id: str = Field(min_length=1)
-    action: Literal["approve", "edit", "deny", "skip"]
-    edited_query: str | None = None
-
-    @model_validator(mode="after")
-    def validate_edit_payload(self) -> "RuntimeQueryExpansionDecision":
-        if self.action == "edit":
-            if self.edited_query is None or not self.edited_query.strip():
-                raise ValueError("edited_query is required when action='edit'.")
-        elif self.edited_query is not None:
-            self.edited_query = self.edited_query.strip() or None
-        return self
-
-
-class RuntimeQueryExpansionResumeEnvelope(BaseModel):
-    checkpoint_id: str = Field(min_length=1)
-    decisions: list[RuntimeQueryExpansionDecision] = Field(min_length=1)
-
-
 class RuntimeAgentRunResumeRequest(BaseModel):
     resume: Union[
         bool,
         HitlResumeRequest,
         dict[str, Any],
         RuntimeSubquestionResumeEnvelope,
-        RuntimeQueryExpansionResumeEnvelope,
     ] = True
 
     @field_validator("resume", mode="before")
@@ -373,13 +324,6 @@ class RuntimeAgentRunResumeRequest(BaseModel):
         if "review_kind" in value and "checkpoint_id" in value and "decisions" in value:
             return HitlResumeRequest.model_validate(value)
         if "checkpoint_id" in value or "decisions" in value:
-            decisions = value.get("decisions")
-            if isinstance(decisions, list):
-                for decision in decisions:
-                    if isinstance(decision, dict) and (
-                        "expansion_id" in decision or "edited_query" in decision
-                    ):
-                        return RuntimeQueryExpansionResumeEnvelope.model_validate(value)
             return RuntimeSubquestionResumeEnvelope.model_validate(value)
         return value
 

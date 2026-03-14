@@ -97,17 +97,13 @@ print(response.output)
 
 Optional add-ons:
 
-- `config={"thread_id": "..."}` for stable execution identity.
 - `config={"custom_prompts": {"subanswer": "...", "synthesis": "..."}}` for prompt overrides.
 - `config={"runtime_config": {"custom_prompts": {"synthesis": "..."}}}` for per-run prompt overrides.
-- `langfuse_callback=...` to include Langfuse tracing in the runtime callbacks.
-- `langfuse_settings=...` is accepted for compatibility but ignored unless you provide `langfuse_callback=...`.
 
 **Contract Notes For 1.0.7**
 
 Use these canonical names in new `config` payloads:
 
-- `thread_id`
 - `custom_prompts`
 - `runtime_config`
 
@@ -122,7 +118,7 @@ Compatibility notes:
 `agent-search-core` supports two opt-in review stages on `advanced_rag(...)`:
 
 - `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
-- `hitl_query_expansion=True` pauses before search expansion execution so the caller can review or edit expanded queries.
+- `hitl_subquestions=True` is the only HITL entrypoint; query expansion no longer has a separate review checkpoint.
 
 You can enable either stage or both. The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
@@ -137,7 +133,6 @@ Response schema from `advanced_rag(...)` when HITL is disabled:
 ```python
 RuntimeAgentRunResponse(
   main_question: str,
-  thread_id: str,
   sub_answers: list[SubQuestionAnswer],
   sub_qa: list[SubQuestionAnswer],
   output: str,
@@ -150,7 +145,6 @@ When HITL is enabled, `advanced_rag(...)` returns a pause-aware result:
 ```python
 RuntimeAgentRunResult(
   status: Literal["completed", "paused"],
-  thread_id: str,
   checkpoint_id: str | None,
   review: HitlReview | None,
   response: RuntimeAgentRunResponse | None,
@@ -197,7 +191,7 @@ Document(
 flowchart TD
     A["SDK caller"] --> B["advanced_rag / run / run_async"]
     B --> C["Validate inputs<br/>model + vector_store required"]
-    C --> D["Build runtime config<br/>callbacks + optional Langfuse callback"]
+    C --> D["Build runtime config<br/>callbacks"]
     D --> E["run_runtime_agent(query, deps)"]
     E --> F["Decompose Node"]
     F -->|LLM call #1<br/>Structured decomposition plan| G["sub-questions list"]
@@ -217,25 +211,10 @@ flowchart TD
     SQ3 --> EX3["Expand Node"]
     SQN --> EXN["Expand Node"]
 
-    EX1 -->|LLM call #2 per lane<br/>query expansion| HITL2{"HITL Query Expansion Review?"}
-    EX2 -->|LLM call #2 per lane<br/>query expansion| HITL3{"HITL Query Expansion Review?"}
-    EX3 -->|LLM call #2 per lane<br/>query expansion| HITL4{"HITL Query Expansion Review?"}
-    EXN -->|LLM call #2 per lane<br/>query expansion| HITL5{"HITL Query Expansion Review?"}
-
-    HITL2 -->|Enabled| H2["Human review + edits"]
-    HITL3 -->|Enabled| H3["Human review + edits"]
-    HITL4 -->|Enabled| H4["Human review + edits"]
-    HITL5 -->|Enabled| H5["Human review + edits"]
-
-    HITL2 -->|Disabled| SR1["Search Node"]
-    HITL3 -->|Disabled| SR2["Search Node"]
-    HITL4 -->|Disabled| SR3["Search Node"]
-    HITL5 -->|Disabled| SRN["Search Node"]
-
-    H2 --> SR1
-    H3 --> SR2
-    H4 --> SR3
-    H5 --> SRN
+    EX1 -->|LLM call #2 per lane<br/>query expansion| SR1["Search Node"]
+    EX2 -->|LLM call #2 per lane<br/>query expansion| SR2["Search Node"]
+    EX3 -->|LLM call #2 per lane<br/>query expansion| SR3["Search Node"]
+    EXN -->|LLM call #2 per lane<br/>query expansion| SRN["Search Node"]
 
     SR1 --> RR1["Rerank Node"]
     SR2 --> RR2["Rerank Node"]

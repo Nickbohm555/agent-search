@@ -51,7 +51,6 @@ with openapi_client.ApiClient(configuration) as api_client:
     response = api.runtime_agent_run_api_agents_run_post(
         RuntimeAgentRunRequest(
             query="What changed in the runtime?",
-            thread_id="550e8400-e29b-41d4-a716-446655440320",
             controls=RuntimeAgentRunControls(
                 rerank=RuntimeRerankControl(enabled=True),
                 query_expansion=RuntimeQueryExpansionControl(enabled=True),
@@ -214,5 +213,4 @@ Endpoints do not require authorization.
 
 
 ## Author
-
 

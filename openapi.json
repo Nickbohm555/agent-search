@@ -342,11 +342,6 @@
           "status": {
             "title": "Status",
             "type": "string"
-          },
-          "thread_id": {
-            "default": "",
-            "title": "Thread Id",
-            "type": "string"
           }
         },
         "required": [
@@ -500,11 +495,6 @@
             },
             "title": "Sub Question Artifacts",
             "type": "array"
-          },
-          "thread_id": {
-            "default": "",
-            "title": "Thread Id",
-            "type": "string"
           }
         },
         "required": [
@@ -586,17 +576,6 @@
                 "type": "null"
               }
             ]
-          },
-          "thread_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Thread Id"
           }
         },
         "required": [
@@ -636,11 +615,6 @@
             },
             "title": "Sub Qa",
             "type": "array"
-          },
-          "thread_id": {
-            "default": "",
-            "title": "Thread Id",
-            "type": "string"
           }
         },
         "required": [
@@ -661,9 +635,6 @@
               },
               {
                 "$ref": "#/components/schemas/RuntimeSubquestionResumeEnvelope"
-              },
-              {
-                "$ref": "#/components/schemas/RuntimeQueryExpansionResumeEnvelope"
               }
             ],
             "default": true,
@@ -734,16 +705,6 @@
             "title": "Enabled",
             "type": "boolean"
           },
-          "query_expansion": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuntimeQueryExpansionHitlControl"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "subquestions": {
             "anyOf": [
               {
@@ -773,76 +734,6 @@
           }
         },
         "title": "RuntimeQueryExpansionControl",
-        "type": "object"
-      },
-      "RuntimeQueryExpansionDecision": {
-        "properties": {
-          "action": {
-            "enum": [
-              "approve",
-              "edit",
-              "deny",
-              "skip"
-            ],
-            "title": "Action",
-            "type": "string"
-          },
-          "edited_query": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edited Query"
-          },
-          "expansion_id": {
-            "minLength": 1,
-            "title": "Expansion Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "expansion_id",
-          "action"
-        ],
-        "title": "RuntimeQueryExpansionDecision",
-        "type": "object"
-      },
-      "RuntimeQueryExpansionHitlControl": {
-        "properties": {
-          "enabled": {
-            "default": false,
-            "title": "Enabled",
-            "type": "boolean"
-          }
-        },
-        "title": "RuntimeQueryExpansionHitlControl",
-        "type": "object"
-      },
-      "RuntimeQueryExpansionResumeEnvelope": {
-        "properties": {
-          "checkpoint_id": {
-            "minLength": 1,
-            "title": "Checkpoint Id",
-            "type": "string"
-          },
-          "decisions": {
-            "items": {
-              "$ref": "#/components/schemas/RuntimeQueryExpansionDecision"
-            },
-            "minItems": 1,
-            "title": "Decisions",
-            "type": "array"
-          }
-        },
-        "required": [
-          "checkpoint_id",
-          "decisions"
-        ],
-        "title": "RuntimeQueryExpansionResumeEnvelope",
         "type": "object"
       },
       "RuntimeRerankControl": {

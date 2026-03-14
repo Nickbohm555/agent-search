@@ -16,9 +16,7 @@ from agent_search.errors import (
 from agent_search.runtime.jobs import cancel_agent_run_job, get_agent_run_job, resume_agent_run_job, start_agent_run_job
 from agent_search.runtime.runner import run_runtime_agent
 from agent_search.vectorstore.protocol import assert_vector_store_compatible
-from config import LangfuseSettings
 from pydantic import ValidationError
-from utils.langfuse_tracing import build_langfuse_callback_handler as _build_langfuse_callback_handler
 from schemas import (
     RuntimeAgentRunControls,
     RuntimeAgentRunRuntimeConfig,
@@ -28,7 +26,6 @@ from schemas import (
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeQueryExpansionControl,
-    RuntimeQueryExpansionHitlControl,
     RuntimeRerankControl,
     RuntimeAgentRunResponse,
     RuntimeAgentRunResumeRequest,
@@ -37,15 +34,6 @@ from schemas import (
 
 logger = logging.getLogger(__name__)
 _CUSTOM_PROMPT_KEYS = ("subanswer", "synthesis")
-
-
-def _resolve_request_thread_id(config: Mapping[str, Any] | None = None) -> str | None:
-    if not isinstance(config, Mapping):
-        return None
-    thread_id = config.get("thread_id")
-    if thread_id is None:
-        return None
-    return str(thread_id)
 
 
 def _has_mapping_key(config: Mapping[str, Any] | None, key: str) -> bool:
@@ -129,10 +117,6 @@ def _build_request_controls(
         hitl_config = _get_nested_mapping(config, "hitl")
         if _has_mapping_key(hitl_config, "subquestions"):
             hitl.subquestions = RuntimeSubquestionHitlControl(enabled=runtime_config.hitl.subquestions_enabled)
-        if _has_mapping_key(hitl_config, "query_expansion"):
-            hitl.query_expansion = RuntimeQueryExpansionHitlControl(
-                enabled=_read_enabled_flag(_get_nested_mapping(hitl_config, "query_expansion")),
-            )
         controls.hitl = hitl
     return controls if controls.model_fields_set else None
 
@@ -151,7 +135,6 @@ def _build_runtime_request_payload(
     }
     return RuntimeAgentRunRequest(
         query=query,
-        thread_id=_resolve_request_thread_id(config),
         controls=_build_request_controls(config, runtime_config=runtime_config),
         runtime_config=(
             RuntimeAgentRunRuntimeConfig.model_validate(runtime_config_payload)
@@ -168,35 +151,6 @@ def _build_runtime_request_payload(
 
 def _normalize_resume_payload(resume: Any) -> Any:
     return RuntimeAgentRunResumeRequest.model_validate({"resume": resume}).resume
-
-
-def _resolve_langfuse_settings(settings: Mapping[str, Any] | None = None) -> LangfuseSettings:
-    if settings is None:
-        return LangfuseSettings.from_env()
-    base = LangfuseSettings.from_env()
-    values = dict(settings)
-    return LangfuseSettings(
-        enabled=bool(values.get("enabled", base.enabled)),
-        host=str(values.get("host", base.host)),
-        public_key=str(values.get("public_key", base.public_key)),
-        secret_key=str(values.get("secret_key", base.secret_key)),
-        environment=str(values.get("environment", base.environment)),
-        release=str(values.get("release", base.release)),
-        runtime_sample_rate=float(values.get("runtime_sample_rate", base.runtime_sample_rate)),
-    )
-
-
-def build_langfuse_callback(
-    *,
-    sampling_key: str | None = None,
-    settings: Mapping[str, Any] | None = None,
-) -> Any | None:
-    resolved_settings = _resolve_langfuse_settings(settings)
-    return _build_langfuse_callback_handler(
-        scope="runtime",
-        sampling_key=sampling_key,
-        settings=resolved_settings,
-    )
 
 
 def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
@@ -218,18 +172,6 @@ def _map_sdk_error(*, operation: str, exc: Exception) -> SDKError:
     return SDKError(f"{operation} failed.")
 
 
-def _build_sync_callbacks(
-    *,
-    callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
-) -> tuple[list[Any] | None, Any | None]:
-    resolved_callbacks = list(callbacks or [])
-    resolved_langfuse_callback = langfuse_callback
-    if resolved_langfuse_callback is not None:
-        resolved_callbacks.append(resolved_langfuse_callback)
-    return (resolved_callbacks if resolved_callbacks else None), resolved_langfuse_callback
-
-
 def advanced_rag(
     query: str,
     *,
@@ -237,18 +179,14 @@ def advanced_rag(
     model: Any,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
-    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     logger.info(
-        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s has_langfuse_callback=%s has_langfuse_settings=%s",
+        "SDK advanced_rag requested query_len=%s vector_store_type=%s model_type=%s has_config=%s has_callbacks=%s",
         len(query),
         type(vector_store).__name__,
         type(model).__name__,
         config is not None,
         bool(callbacks),
-        langfuse_callback is not None,
-        langfuse_settings is not None,
     )
     runtime_config = RuntimeConfig.from_dict(_resolve_runtime_config_input(config))
     logger.info(
@@ -268,23 +206,12 @@ def advanced_rag(
         "SDK sync run vector_store validated vector_store_type=%s",
         type(compatible_vector_store).__name__,
     )
-    if langfuse_settings is not None and langfuse_callback is None:
-        logger.warning(
-            "SDK advanced_rag received langfuse_settings without langfuse_callback; "
-            "settings are ignored and tracing remains disabled"
-        )
-
     try:
-        resolved_callbacks, resolved_langfuse_callback = _build_sync_callbacks(
-            callbacks=callbacks,
-            langfuse_callback=langfuse_callback,
-        )
         response = run_runtime_agent(
             _build_runtime_request_payload(query, config=config, runtime_config=runtime_config),
             model=model,
             vector_store=compatible_vector_store,
-            callbacks=resolved_callbacks,
-            langfuse_callback=resolved_langfuse_callback,
+            callbacks=list(callbacks or []) or None,
         )
     except Exception as exc:  # noqa: BLE001
         mapped = _map_sdk_error(operation="advanced_rag", exc=exc)
@@ -310,8 +237,6 @@ def _run_sync_operation(
     model: Any,
     config: dict[str, Any] | None = None,
     callbacks: list[Any] | None = None,
-    langfuse_callback: Any | None = None,
-    langfuse_settings: Mapping[str, Any] | None = None,
 ) -> RuntimeAgentRunResponse:
     try:
         return advanced_rag(
@@ -320,8 +245,6 @@ def _run_sync_operation(
             model=model,
             config=config,
             callbacks=callbacks,
-            langfuse_callback=langfuse_callback,
-            langfuse_settings=langfuse_settings,
         )
     except SDKError as exc:
         if operation == "advanced_rag":
@@ -398,7 +321,6 @@ def run_async(
     response = RuntimeAgentRunAsyncStartResponse(
         job_id=job.job_id,
         run_id=job.run_id,
-        thread_id=job.thread_id,
         status=job.status,
     )
     logger.info(
@@ -437,7 +359,6 @@ def get_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
     response = RuntimeAgentRunAsyncStatusResponse(
         job_id=job.job_id,
         run_id=job.run_id,
-        thread_id=getattr(job, "thread_id", ""),
         status=job.status,
         message=job.message,
         stage=job.stage,

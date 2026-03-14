@@ -202,7 +202,7 @@ def start_agent_run_job(
         logger.error("Runtime async job rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
     job_id = str(uuid.uuid4())
-    run_metadata = build_graph_run_metadata(run_id=job_id, thread_id=payload.thread_id)
+    run_metadata = build_graph_run_metadata(run_id=job_id)
     status = AgentRunJobStatus(
         job_id=job_id,
         run_id=run_metadata.run_id,
@@ -264,7 +264,7 @@ def resume_agent_run_job(job_id: str, *, resume: Any = True) -> AgentRunJobStatu
         job.stage = "resuming"
         job.interrupt_payload = None
         job.finished_at = None
-        payload = RuntimeAgentRunRequest(query=job.query, thread_id=job.thread_id)
+        payload = RuntimeAgentRunRequest(query=job.query)
         model = job.runtime_model
         vector_store = job.runtime_vector_store
     _persist_job_status(job)

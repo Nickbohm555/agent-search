@@ -145,8 +145,6 @@ def _build_job_lifecycle_event(
         event_type=event_type,
         event_id=f"{job.run_id}:{next_sequence:06d}",
         run_id=job.run_id,
-        thread_id=job.thread_id,
-        trace_id=job.trace_id,
         stage=stage,
         status=status,
         emitted_at=datetime.now(timezone.utc).isoformat(),
@@ -274,7 +272,7 @@ def start_agent_run_job(
         logger.error("Runtime async job rejected missing vector_store")
         raise SDKConfigurationError("vector_store is required and cannot be None")
     job_id = str(uuid.uuid4())
-    run_metadata = build_graph_run_metadata(run_id=job_id, thread_id=payload.thread_id)
+    run_metadata = build_graph_run_metadata(run_id=job_id)
     normalized_request_payload = payload.model_dump(mode="json", exclude_none=True)
     status = AgentRunJobStatus(
         job_id=job_id,
@@ -345,7 +343,7 @@ def resume_agent_run_job(job_id: str, *, resume: Any = True) -> AgentRunJobStatu
         job.finished_at = None
         request_payload = dict(job.request_payload)
         if not request_payload:
-            request_payload = {"query": job.query, "thread_id": job.thread_id}
+            request_payload = {"query": job.query}
         payload = RuntimeAgentRunRequest.model_validate(request_payload)
         model = job.runtime_model
         vector_store = job.runtime_vector_store
