@@ -20,16 +20,16 @@ Prompt edits change generation instructions only. Citation validation and fallba
 
 ## Current Release Guidance
 
-Integrators adopting the current contract-parity release should start with:
+Integrators adopting the current SDK contract should start with:
 
-- [1.0.3 release notes](docs/releases/1.0.3-sdk-contract-parity.md)
+- [SDK contract-parity release notes](docs/releases/1.0.3-sdk-contract-parity.md)
 - [Migration guide](docs/migration-guide.md)
 - [1.0.0 release notes](docs/releases/1.0.0-langgraph-migration.md)
 - [Deprecation map](docs/deprecation-map.md)
 
 Compatibility checklist:
 
-- Install `agent-search-core==1.0.3` when you want the documented Phase 6 SDK contract surface.
+- Install `agent-search-core==1.0.10` for the current documented SDK surface.
 - Keep `controls`, `runtime_config`, and HITL fields omitted unless you explicitly want those behaviors; new controls stay default-off.
 - Send `custom_prompts` in new payloads. The `custom-prompts` alias remains compatibility-only.
 - Read `sub_answers` in new code, but keep `sub_qa` fallback handling during the compatibility window.
@@ -100,7 +100,7 @@ Optional add-ons:
 - `config={"custom_prompts": {"subanswer": "...", "synthesis": "..."}}` for prompt overrides.
 - `config={"runtime_config": {"custom_prompts": {"synthesis": "..."}}}` for per-run prompt overrides.
 
-**Contract Notes For 1.0.7**
+**Contract Notes For 1.0.10**
 
 Use these canonical names in new `config` payloads:
 
@@ -115,12 +115,12 @@ Compatibility notes:
 
 **Human-In-The-Loop (HITL)**
 
-`agent-search-core` supports two opt-in review stages on `advanced_rag(...)`:
+`agent-search-core` supports one opt-in review stage on `advanced_rag(...)`:
 
 - `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
-- `hitl_subquestions=True` is the only HITL entrypoint; query expansion no longer has a separate review checkpoint.
+- Subquestion review is the only HITL entrypoint; query expansion no longer has a separate review checkpoint.
 
-You can enable either stage or both. The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
+The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
 HITL does require checkpoint persistence. `advanced_rag(...)` creates a LangGraph `PostgresSaver` internally and resumes from stored checkpoint IDs, which means:
 

@@ -38,7 +38,7 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.9
+## Contract notes for 1.0.10
 
 Use these canonical names in new `config` payloads:
 
@@ -56,6 +56,7 @@ Compatibility notes:
 `agent-search-core` supports one opt-in review stage on `advanced_rag(...)`:
 
 - `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
+- Query expansion no longer has a separate review checkpoint.
 
 The SDK returns a normalized `review` object when a run pauses, and resume calls use SDK-owned decision helpers instead of raw backend payloads.
 
