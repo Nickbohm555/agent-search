@@ -23,29 +23,15 @@ flowchart TD
 
     SQ --> S1["Subquestion 1"]
     SQ --> S2["Subquestion 2"]
-    SQ --> SN["Subquestion N"]
+    SQ --> S3["Subquestion N"]
 
-    subgraph L1["Lane 1"]
-        direction TD
-        S1 --> R1["Retrieve evidence"]
-        R1 --> A1["Sub-answer + citations"]
-    end
-
-    subgraph L2["Lane 2"]
-        direction TD
-        S2 --> R2["Retrieve evidence"]
-        R2 --> A2["Sub-answer + citations"]
-    end
-
-    subgraph L3["Lane N"]
-        direction TD
-        SN --> RN["Retrieve evidence"]
-        RN --> AN["Sub-answer + citations"]
-    end
+    S1 --> A1["Answer + citations 1"]
+    S2 --> A2["Answer + citations 2"]
+    S3 --> A3["Answer + citations N"]
 
     A1 --> SYN["Final synthesis"]
     A2 --> SYN
-    AN --> SYN
+    A3 --> SYN
     SYN --> OUT["Final answer"]
 ```
 
