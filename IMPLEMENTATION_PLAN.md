@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 16. (move +1 after each turn)
+Current section to work on: section 17. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -372,7 +372,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_resume_accepts_typed_query_expansion_decision_envelope tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_resume_applies_typed_decisions_before_search` passed, confirming checkpoint-bound typed query-expansion resume envelopes accept both `deny` and `skip` and the runtime deterministically removes denied expansions while preserving skipped expansions before `search`; `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "skips paused query expansion review with skip decisions and resumes to completion|shows paused query expansion review and resumes to completion with typed decisions"` also passed, confirming the UI supports both the mixed typed-decision review flow and the explicit skip-review path without breaking stream handling or terminal completion.
 
 ## Section 17 — 03-query-expansion-hitl-end-to-end — tests-3 — Test 6 (Validation)
 - Source test markdown: `.planning/phases/03-query-expansion-hitl-end-to-end/tests-3.md`

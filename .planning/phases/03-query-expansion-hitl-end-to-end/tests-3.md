@@ -11,7 +11,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 5 - Deny and skip paths are supported and deterministic.
+Test 6 - Frontend review UX renders actionable controls and resumes stream.
 
 ## Information Needed from the Summary
 
@@ -153,6 +153,10 @@ testing_notes:
 - Both resume requests are accepted when checkpoint-bound.
 - Each path follows deterministic behavior for decision semantics.
 - Neither path breaks stream handling or causes malformed terminal state.
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_resume_accepts_typed_query_expansion_decision_envelope tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_resume_applies_typed_decisions_before_search` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "skips paused query expansion review with skip decisions and resumes to completion|shows paused query expansion review and resumes to completion with typed decisions"` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The API accepted checkpoint-bound typed query-expansion resume envelopes that include both `deny` and `skip`, the runtime deterministically removed denied expansions while preserving skipped expansions before `search`, and the frontend completed both the mixed typed-decision review flow and the explicit skip-review flow without breaking paused-state streaming or terminal completion.
 
 ### Test 6 - Frontend review UX renders actionable controls and resumes stream
 **Goal:** Confirm UI presents review state and sends correct checkpoint-bound decision payloads.
@@ -173,7 +177,7 @@ testing_notes:
 
 ## Summary
 
-Tests 1-4 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
+Tests 1-5 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
 
 ## Gaps
 
