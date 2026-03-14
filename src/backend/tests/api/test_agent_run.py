@@ -13,6 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
 from agent_search.errors import SDKConfigurationError
 from routers.agent import router as agent_router
 from schemas import (
+    AgentRunStageMetadata,
     RuntimeAgentRunAsyncStartResponse,
     RuntimeAgentRunAsyncStatusResponse,
     RuntimeAgentRunRequest,
@@ -295,3 +296,84 @@ def test_status_route_returns_async_status_shape(monkeypatch) -> None:
     assert response.json()["thread_id"] == "550e8400-e29b-41d4-a716-446655440017"
     assert response.json()["status"] == "success"
     assert response.json()["result"]["main_question"] == "done"
+
+
+def test_status_route_restores_missing_job_from_persisted_runtime_row(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    captured: dict[str, object] = {}
+
+    def fake_restore(job_id: str, *, model=None, vector_store=None):
+        captured["job_id"] = job_id
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        return object()
+
+    monkeypatch.setattr(agent_router_module, "restore_agent_run_job", fake_restore)
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_get_run_status",
+        lambda job_id: RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id=job_id,
+            thread_id="550e8400-e29b-41d4-a716-446655440088",
+            status="paused",
+            message="Paused and awaiting resume input.",
+            stage="subquestions_ready",
+            stages=[AgentRunStageMetadata(stage="subquestions_ready", status="paused")],
+            checkpoint_id="checkpoint-restore",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.get("/api/agents/run-status/job-restored")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "paused"
+    assert response.json()["checkpoint_id"] == "checkpoint-restore"
+    assert captured == {"job_id": "job-restored", "model": None, "vector_store": None}
+
+
+def test_resume_route_restores_missing_job_with_runtime_dependencies_before_dispatch(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+
+    captured: dict[str, object] = {}
+    sentinel_vector_store = object()
+    sentinel_model = object()
+
+    monkeypatch.setattr(agent_router_module, "get_agent_run_job", lambda _job_id: None)
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (sentinel_vector_store, sentinel_model))
+
+    def fake_restore(job_id: str, *, model=None, vector_store=None):
+        captured["job_id"] = job_id
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        return object()
+
+    monkeypatch.setattr(agent_router_module, "restore_agent_run_job", fake_restore)
+    monkeypatch.setattr(
+        agent_router_module,
+        "sdk_resume_run",
+        lambda job_id, resume: RuntimeAgentRunAsyncStatusResponse(
+            job_id=job_id,
+            run_id=job_id,
+            thread_id="550e8400-e29b-41d4-a716-446655440099",
+            status="running",
+            message="Resuming from checkpoint.",
+            stage="resuming",
+            checkpoint_id="checkpoint-restore",
+        ),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post("/api/agents/run-resume/job-restored", json={"resume": True})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert captured == {"job_id": "job-restored", "model": sentinel_model, "vector_store": sentinel_vector_store}

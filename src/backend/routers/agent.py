@@ -14,7 +14,7 @@ from agent_search.public_api import cancel_run as sdk_cancel_run
 from agent_search.public_api import get_run_status as sdk_get_run_status
 from agent_search.public_api import resume_run as sdk_resume_run
 from agent_search.public_api import run_async as sdk_run_async
-from agent_search.runtime.jobs import get_agent_run_job, iter_agent_run_events
+from agent_search.runtime.jobs import get_agent_run_job, iter_agent_run_events, restore_agent_run_job
 from db import DATABASE_URL
 from db import get_db
 from schemas import (
@@ -100,6 +100,15 @@ def _encode_sse_event(event: object) -> str:
     return f"id: {event.event_id}\nevent: {event.event_type}\ndata: {payload}\n\n"
 
 
+def _restore_http_runtime_job(job_id: str, *, include_runtime_dependencies: bool = False) -> bool:
+    if get_agent_run_job(job_id) is not None:
+        return True
+    if include_runtime_dependencies:
+        vector_store, model = _build_sdk_runtime_dependencies()
+        return restore_agent_run_job(job_id, model=model, vector_store=vector_store) is not None
+    return restore_agent_run_job(job_id) is not None
+
+
 @router.post("/run", response_model=RuntimeAgentRunResponse)
 def runtime_agent_run(
     payload: RuntimeAgentRunRequest,
@@ -133,6 +142,7 @@ def runtime_agent_run_async(payload: RuntimeAgentRunRequest) -> RuntimeAgentRunA
 @router.get("/run-status/{job_id}", response_model=RuntimeAgentRunAsyncStatusResponse)
 def runtime_agent_run_status(job_id: str) -> RuntimeAgentRunAsyncStatusResponse:
     logger.info("Agent router delegating async status job_id=%s", job_id)
+    _restore_http_runtime_job(job_id)
     try:
         return sdk_get_run_status(job_id)
     except SDKConfigurationError:
@@ -152,7 +162,7 @@ def runtime_agent_run_events(
         last_event_id,
         after_event_id,
     )
-    if get_agent_run_job(job_id) is None:
+    if not _restore_http_runtime_job(job_id):
         raise HTTPException(status_code=404, detail="Job not found.")
 
     def event_stream():
@@ -178,6 +188,7 @@ def runtime_agent_run_cancel(job_id: str) -> RuntimeAgentRunAsyncCancelResponse:
 @router.post("/run-resume/{job_id}", response_model=RuntimeAgentRunAsyncStatusResponse)
 def runtime_agent_run_resume(job_id: str, payload: RuntimeAgentRunResumeRequest) -> RuntimeAgentRunAsyncStatusResponse:
     logger.info("Agent router delegating async resume job_id=%s", job_id)
+    _restore_http_runtime_job(job_id, include_runtime_dependencies=True)
     try:
         return sdk_resume_run(job_id, resume=_normalize_resume_payload_for_sdk(payload.resume))
     except SDKConfigurationError as exc:

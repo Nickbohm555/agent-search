@@ -24,7 +24,7 @@ from agent_search.runtime.resume import (
 )
 from agent_search.runtime.state import to_rag_state
 from db import SessionLocal
-from models import RuntimeCheckpointLink
+from models import RuntimeCheckpointLink, RuntimeExecutionRun
 from schemas import (
     AgentRunStageMetadata,
     GraphStageSnapshot,
@@ -65,6 +65,7 @@ class AgentRunJobStatus:
     interrupt_payload: Any | None = None
     checkpoint_id: str | None = None
     lifecycle_events: list[RuntimeLifecycleEvent] = field(default_factory=list)
+    lifecycle_event_sequence: int = 0
     runtime_model: Any | None = field(default=None, repr=False)
     runtime_vector_store: Any | None = field(default=None, repr=False)
     started_at: float = field(default_factory=time.time)
@@ -120,7 +121,12 @@ def append_agent_run_event(job_id: str, event: RuntimeLifecycleEvent) -> None:
         job = _JOBS.get(job_id)
         if job is None:
             return
-        job.lifecycle_events.append(event.model_copy(deep=True))
+        _record_lifecycle_event(job, event.model_copy(deep=True))
+
+
+def _record_lifecycle_event(job: AgentRunJobStatus, event: RuntimeLifecycleEvent) -> None:
+    job.lifecycle_events.append(event)
+    job.lifecycle_event_sequence = max(job.lifecycle_event_sequence, _event_sequence(event.event_id))
 
 
 def _build_job_lifecycle_event(
@@ -140,7 +146,7 @@ def _build_job_lifecycle_event(
     elapsed_ms: int | None = None,
 ) -> RuntimeLifecycleEvent:
     previous_event_id = job.lifecycle_events[-1].event_id if job.lifecycle_events else None
-    next_sequence = _event_sequence(previous_event_id) + 1
+    next_sequence = max(job.lifecycle_event_sequence, _event_sequence(previous_event_id)) + 1
     return RuntimeLifecycleEvent(
         event_type=event_type,
         event_id=f"{job.run_id}:{next_sequence:06d}",
@@ -226,6 +232,7 @@ def _persist_job_status(job: AgentRunJobStatus) -> None:
                 "message": job.message,
                 "query": job.query,
                 "request_payload": dict(job.request_payload),
+                "last_event_sequence": job.lifecycle_event_sequence,
             }
         )
         if job.interrupt_payload is not None:
@@ -259,6 +266,87 @@ def _persist_job_status(job: AgentRunJobStatus) -> None:
         session.commit()
     finally:
         session.close()
+
+
+def _coerce_timestamp(value: Any) -> float | None:
+    if value is None:
+        return None
+    if hasattr(value, "timestamp"):
+        return float(value.timestamp())
+    return None
+
+
+def _restore_lifecycle_event_sequence(metadata: dict[str, Any], *, status: str) -> int:
+    raw_sequence = metadata.get("last_event_sequence")
+    if isinstance(raw_sequence, int) and raw_sequence > 0:
+        return raw_sequence
+    if isinstance(raw_sequence, str):
+        try:
+            parsed = int(raw_sequence)
+        except ValueError:
+            parsed = 0
+        if parsed > 0:
+            return parsed
+
+    if status == "paused":
+        # Restored paused jobs do not retain their historical lifecycle event list in memory.
+        # Use a high floor so resumed events still sort after the browser's last seen event id.
+        return 1_000_000
+    return 0
+
+
+def restore_agent_run_job(
+    job_id: str,
+    *,
+    model: Any | None = None,
+    vector_store: Any | None = None,
+) -> AgentRunJobStatus | None:
+    with _JOB_LOCK:
+        existing_job = _JOBS.get(job_id)
+        if existing_job is not None:
+            if model is not None and existing_job.runtime_model is None:
+                existing_job.runtime_model = model
+            if vector_store is not None and existing_job.runtime_vector_store is None:
+                existing_job.runtime_vector_store = vector_store
+            return existing_job
+
+    session = SessionLocal()
+    try:
+        persisted_run = session.get(RuntimeExecutionRun, job_id)
+        if persisted_run is None:
+            return None
+        metadata = dict(persisted_run.metadata_json or {})
+        restored_job = AgentRunJobStatus(
+            job_id=str(metadata.get("job_id") or job_id),
+            run_id=persisted_run.run_id,
+            thread_id=persisted_run.thread_id,
+            status=persisted_run.status,
+            query=str(metadata.get("query") or ""),
+            request_payload=dict(metadata.get("request_payload") or {}),
+            message=str(metadata.get("message") or ""),
+            stage=str(metadata.get("stage") or ""),
+            error=persisted_run.error_message,
+            interrupt_payload=metadata.get("interrupt_payload"),
+            checkpoint_id=str(metadata["checkpoint_id"]) if metadata.get("checkpoint_id") is not None else None,
+            lifecycle_event_sequence=_restore_lifecycle_event_sequence(metadata, status=persisted_run.status),
+            runtime_model=model,
+            runtime_vector_store=vector_store,
+            started_at=_coerce_timestamp(persisted_run.started_at) or time.time(),
+            finished_at=_coerce_timestamp(persisted_run.completed_at),
+        )
+    finally:
+        session.close()
+
+    with _JOB_LOCK:
+        current_job = _JOBS.get(job_id)
+        if current_job is not None:
+            if model is not None and current_job.runtime_model is None:
+                current_job.runtime_model = model
+            if vector_store is not None and current_job.runtime_vector_store is None:
+                current_job.runtime_vector_store = vector_store
+            return current_job
+        _JOBS[job_id] = restored_job
+        return restored_job
 
 
 def start_agent_run_job(
@@ -441,7 +529,7 @@ def _run_agent_job(
                     output=snapshot.output,
                     elapsed_ms=_elapsed_ms(current_job),
                 )
-                current_job.lifecycle_events.append(snapshot_event)
+                _record_lifecycle_event(current_job, snapshot_event)
             logger.info(
                 "Runtime async job snapshot job_id=%s run_id=%s stage=%s lane_index=%s lane_total=%s subquestions=%s",
                 job_id,
@@ -516,7 +604,7 @@ def _run_agent_job(
                 current_job.stage = pause_stage
                 current_job.interrupt_payload = resolved_interrupt_payload
                 current_job.checkpoint_id = outcome.checkpoint_id
-                current_job.lifecycle_events.append(
+                _record_lifecycle_event(current_job, (
                     _build_job_lifecycle_event(
                         current_job,
                         event_type="run.paused",
@@ -530,7 +618,7 @@ def _run_agent_job(
                         checkpoint_id=outcome.checkpoint_id,
                         elapsed_ms=_elapsed_ms(current_job),
                     )
-                )
+                ))
             _persist_job_status(current_job)
             logger.info(
                 "Runtime async job paused job_id=%s run_id=%s checkpoint_id=%s",
@@ -562,7 +650,7 @@ def _run_agent_job(
             current_job.sub_question_artifacts = [item.model_copy(deep=True) for item in rag_state["sub_question_artifacts"]]
             current_job.output = response.output
             current_job.finished_at = time.time()
-            current_job.lifecycle_events.append(
+            _record_lifecycle_event(current_job, (
                 _build_job_lifecycle_event(
                     current_job,
                     event_type="run.completed",
@@ -575,7 +663,7 @@ def _run_agent_job(
                     result=current_job.result.model_copy(deep=True) if current_job.result is not None else None,
                     elapsed_ms=_elapsed_ms(current_job),
                 )
-            )
+            ))
         _persist_job_status(current_job)
         logger.info(
             "Runtime async job finished job_id=%s run_id=%s status=%s sub_qa_count=%s output_len=%s",
