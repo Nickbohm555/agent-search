@@ -161,10 +161,16 @@ export interface RuntimeAgentRunControls {
   hitl?: RuntimeHitlControl;
 }
 
+export interface RuntimeAgentRunRuntimeConfig {
+  rerank?: RuntimeRerankControl;
+  query_expansion?: RuntimeQueryExpansionControl;
+}
+
 export interface RuntimeAgentRunRequest {
   query: string;
   thread_id?: string;
   controls?: RuntimeAgentRunControls;
+  runtime_config?: RuntimeAgentRunRuntimeConfig;
 }
 
 export interface RuntimeSubquestionReviewItem {
@@ -383,6 +389,9 @@ export function buildRuntimeAgentRunRequest(
   }
   if (options.controls !== undefined) {
     payload.controls = options.controls;
+  }
+  if (options.runtime_config !== undefined) {
+    payload.runtime_config = options.runtime_config;
   }
   return payload;
 }

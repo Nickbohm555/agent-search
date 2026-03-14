@@ -66,6 +66,8 @@ export default function App() {
   const [wipeMessage, setWipeMessage] = useState("");
 
   const [query, setQuery] = useState("");
+  const [rerankEnabled, setRerankEnabled] = useState(true);
+  const [queryExpansionEnabled, setQueryExpansionEnabled] = useState(true);
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [runState, setRunState] = useState<RequestState>("idle");
   const [runJobId, setRunJobId] = useState<string | null>(null);
@@ -287,7 +289,12 @@ export default function App() {
     });
     console.info("Async run query requested.", { submittedQuery: submitted });
 
-    const startResult = await startAgentRun(submitted);
+    const startResult = await startAgentRun(submitted, {
+      runtime_config: {
+        rerank: { enabled: rerankEnabled },
+        query_expansion: { enabled: queryExpansionEnabled },
+      },
+    });
     if (!startResult.ok) {
       setRunState("error");
       setRunStatusMessage(startResult.error.message);
@@ -510,6 +517,26 @@ export default function App() {
             placeholder="Ask a question from loaded wiki content"
             rows={4}
           />
+          <div className="row">
+            <label>
+              <input
+                type="checkbox"
+                checked={rerankEnabled}
+                onChange={(event) => setRerankEnabled(event.target.checked)}
+                disabled={runState === "loading"}
+              />
+              Rerank results
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={queryExpansionEnabled}
+                onChange={(event) => setQueryExpansionEnabled(event.target.checked)}
+                disabled={runState === "loading"}
+              />
+              Expand queries
+            </label>
+          </div>
           <div className="row">
             <button type="submit" disabled={!query.trim() || runState === "loading"}>
               {runState === "loading" ? "Running..." : "Run"}

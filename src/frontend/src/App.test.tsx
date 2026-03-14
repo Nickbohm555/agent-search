@@ -134,6 +134,46 @@ describe("App run query flow", () => {
     vi.stubGlobal("EventSource", FakeEventSource);
   });
 
+  it("serializes rerank and query expansion toggles to runtime_config independently", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-runtime-config", run_id: "run-runtime-config", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "What changed?" } });
+    fireEvent.click(screen.getByLabelText("Rerank results"));
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://localhost:8000/api/agents/run-async",
+        expect.objectContaining({
+          body: JSON.stringify({
+            query: "What changed?",
+            runtime_config: {
+              rerank: { enabled: false },
+              query_expansion: { enabled: true },
+            },
+          }),
+        }),
+      );
+    });
+  });
+
   it("shows ordered stage rail and progressive status updates from streamed events", async () => {
     const fetchMock = vi
       .fn()
@@ -399,7 +439,13 @@ describe("App run query flow", () => {
         expect.objectContaining({
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: "What is NATO?" }),
+          body: JSON.stringify({
+            query: "What is NATO?",
+            runtime_config: {
+              rerank: { enabled: true },
+              query_expansion: { enabled: true },
+            },
+          }),
         }),
       );
     });

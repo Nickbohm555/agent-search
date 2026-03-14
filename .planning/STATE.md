@@ -10,7 +10,7 @@
 
 - **Current phase:** 4
 - **Current plan:** 04-03
-- **Status:** Phase 4 Plan 04-02 summary implemented; Phase 4 Plan 04-03 Task 1 queued
+- **Status:** Phase 4 Plan 04-03 Task 1 implemented; Phase 4 Plan 04-03 Task 2 queued
 - **Progress:** 3/6 phases complete
 - **Progress bar:** `███░░░` (50%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Continue Phase 4 with Plan 04-03 Task 1.
-- Preserve the independent frontend rerank/query-expansion control mapping onto canonical `runtime_config` fields.
+- Continue Phase 4 with Plan 04-03 Task 2.
+- Preserve sub-answer rendering continuity while normalizing additive `sub_answers` in the frontend.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 46 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 4 Plan 04-02 is summarized, and the next dependency-ordered work item is the frontend control serialization task in Section 46.
-- **Resume note:** State update: `phase=04`, `plan=04-02`, `task=summary`, `status=implemented`; summary-time verification passed for `tests/sdk/test_runtime_config.py` and the scoped `test_agent_service.py -k "expand or rerank or runtime_config"` selectors, while the broader service suite still has unrelated failures.
+- **Next command:** Implement Section 47 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 4 Plan 04-03 Task 1 is complete, and the next dependency-ordered work item is frontend normalization of additive `sub_answers`.
+- **Resume note:** State update: `phase=04`, `plan=04-03`, `task=1`, `status=implemented`; `docker compose exec frontend npm run test -- App.test.tsx` passed after wiring independent rerank/query-expansion controls to `runtime_config`.
