@@ -10,7 +10,7 @@
 
 - **Current phase:** 3
 - **Current plan:** 03-03
-- **Status:** Phase 3 Plan 03-03 Task 2 implemented; next section queued
+- **Status:** Phase 3 Plan 03-03 Task 3 implemented; next section queued
 - **Progress:** 2/6 phases complete
 - **Progress bar:** `██░░░░` (33%)
 
@@ -30,8 +30,8 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Begin Phase 3 Plan 03-03 Task 3.
-- Continue Phase 3 in dependency order after the completed Phase 3 Plan 03-03 Task 2.
+- Create the Phase 3 Plan 03-03 summary.
+- Continue Phase 3 in dependency order after the completed Phase 3 Plan 03-03 Task 3.
 - Keep using git-evidenced summaries before advancing plans.
 
 ### Blockers
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 36 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 3 Plan 03-03 Task 2 is complete, and the next dependency-ordered work item is Phase 3 Plan 03-03 Task 3.
-- **Resume note:** State update: `phase=03`, `plan=03-03`, `task=2`, `status=implemented`; the frontend now treats query-expansion pauses as actionable review states and resumes the same job using checkpoint-bound expansion decisions while preserving the existing subquestion review flow.
+- **Next command:** Implement Section 37 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 3 Plan 03-03 Task 3 is complete, and the next dependency-ordered work item is the Phase 3 Plan 03-03 summary.
+- **Resume note:** State update: `phase=03`, `plan=03-03`, `task=3`, `status=implemented`; frontend regressions now lock query-expansion pause payload normalization, approve/edit/deny/skip resume payloads, resumed stream transitions, and unchanged non-HITL completion flow.

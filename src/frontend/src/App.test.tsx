@@ -767,6 +767,272 @@ describe("App run query flow", () => {
     expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
   });
 
+  it("shows paused query expansion review and resumes to completion with typed decisions", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-qe-hitl", run_id: "run-qe-hitl", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-qe-hitl",
+            run_id: "run-qe-hitl",
+            status: "running",
+            message: "Resume accepted.",
+            stage: "query_expansion_review",
+            stages: [],
+            decomposition_sub_questions: ["How was NATO formed?"],
+            sub_question_artifacts: [],
+            sub_qa: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+            checkpoint_id: "checkpoint-qe-42",
+            interrupt_payload: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Review query expansions" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const pausedEventSource = await findLatestEventSource();
+    pausedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-qe-hitl:000001",
+      run_id: "run-qe-hitl",
+      stage: "query_expansion_review",
+      status: "paused",
+      checkpoint_id: "checkpoint-qe-42",
+      decomposition_sub_questions: ["How was NATO formed?"],
+      sub_qa: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-qe-42",
+        kind: "query_expansion_review",
+        stage: "query_expansion_review",
+        question: "How was NATO formed?",
+        expansions: [
+          { id: "exp-1", text: "origins of NATO alliance" },
+          { expansion_id: "exp-2", query: "NATO founding treaty history" },
+          { index: 2, text: "NATO creation timeline" },
+        ],
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Query Expansion Review" })).toBeInTheDocument();
+    expect(screen.getByText("Run status: Run paused for query expansion review.")).toBeInTheDocument();
+    const pausedReviewPanel = screen.getByRole("heading", { name: "Query Expansion Review" }).closest("section");
+    expect(pausedReviewPanel).not.toBeNull();
+    expect(within(pausedReviewPanel as HTMLElement).getByText("How was NATO formed?")).toBeInTheDocument();
+    expect(screen.queryByText(/run\.paused · query_expansion_review · paused/)).not.toBeInTheDocument();
+
+    const decisions = screen.getAllByLabelText("Decision");
+    fireEvent.change(decisions[1] as HTMLElement, { target: { value: "edit" } });
+    fireEvent.change(screen.getByLabelText("Edited query"), { target: { value: "NATO alliance founding timeline" } });
+    fireEvent.change(decisions[2] as HTMLElement, { target: { value: "deny" } });
+    fireEvent.click(screen.getByRole("button", { name: "Resume Run" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8000/api/agents/run-resume/job-qe-hitl",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resume: {
+              checkpoint_id: "checkpoint-qe-42",
+              decisions: [
+                { expansion_id: "exp-1", action: "approve" },
+                { expansion_id: "exp-2", action: "edit", edited_query: "NATO alliance founding timeline" },
+                { expansion_id: "expansion:2", action: "deny" },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText("Run status: Resume accepted.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Query Expansion Review" })).not.toBeInTheDocument();
+
+    const resumedEventSource = await findLatestEventSource();
+    expect(resumedEventSource).not.toBe(pausedEventSource);
+    resumedEventSource.emit({
+      event_type: "stage.started",
+      event_id: "run-qe-hitl:000002",
+      run_id: "run-qe-hitl",
+      stage: "search",
+      status: "in_progress",
+      decomposition_sub_questions: ["How was NATO formed?"],
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: stage.started · search · in_progress")).toBeInTheDocument();
+    });
+
+    resumedEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-qe-hitl:000003",
+      run_id: "run-qe-hitl",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Query expansion review resumed successfully.",
+      result: {
+        final_citations: [],
+        main_question: "Review query expansions",
+        output: "Query expansion review resumed successfully.",
+        sub_qa: [],
+      },
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Query expansion review resumed successfully.")).toBeInTheDocument();
+  });
+
+  it("skips paused query expansion review with skip decisions and resumes to completion", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ sources: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-qe-skip", run_id: "run-qe-skip", status: "running" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-qe-skip",
+            run_id: "run-qe-skip",
+            status: "running",
+            message: "Resume accepted.",
+            stage: "query_expansion_review",
+            stages: [],
+            decomposition_sub_questions: ["What is NATO's origin?"],
+            sub_question_artifacts: [],
+            sub_qa: [],
+            output: "",
+            result: null,
+            error: null,
+            cancel_requested: false,
+            checkpoint_id: "checkpoint-qe-skip",
+            interrupt_payload: null,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const textarea = await screen.findByPlaceholderText("Ask a question from loaded wiki content");
+    fireEvent.change(textarea, { target: { value: "Skip query expansion review" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    const pausedEventSource = await findLatestEventSource();
+    pausedEventSource.emit({
+      event_type: "run.paused",
+      event_id: "run-qe-skip:000001",
+      run_id: "run-qe-skip",
+      stage: "query_expansion_review",
+      status: "paused",
+      checkpoint_id: "checkpoint-qe-skip",
+      decomposition_sub_questions: ["What is NATO's origin?"],
+      sub_qa: [],
+      sub_question_artifacts: [],
+      interrupt_payload: {
+        checkpoint_id: "checkpoint-qe-skip",
+        kind: "query_expansion_review",
+        stage: "query_expansion_review",
+        sub_question: "What is NATO's origin?",
+        expansions: [
+          { expansion_id: "exp-1", query: "NATO founding" },
+          { expansion_id: "exp-2", query: "history of NATO creation" },
+        ],
+      },
+    });
+
+    expect(await screen.findByRole("heading", { name: "Query Expansion Review" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Skip Review" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8000/api/agents/run-resume/job-qe-skip",
+        expect.objectContaining({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resume: {
+              checkpoint_id: "checkpoint-qe-skip",
+              decisions: [
+                { expansion_id: "exp-1", action: "skip" },
+                { expansion_id: "exp-2", action: "skip" },
+              ],
+            },
+          }),
+        }),
+      );
+    });
+
+    expect(await screen.findByText("Run status: Resume accepted.")).toBeInTheDocument();
+
+    const resumedEventSource = await findLatestEventSource();
+    expect(resumedEventSource).not.toBe(pausedEventSource);
+    resumedEventSource.emit({
+      event_type: "run.completed",
+      event_id: "run-qe-skip:000002",
+      run_id: "run-qe-skip",
+      stage: "synthesize_final",
+      status: "success",
+      output: "Skipped query expansion review.",
+      result: {
+        final_citations: [],
+        main_question: "Skip query expansion review",
+        output: "Skipped query expansion review.",
+        sub_qa: [],
+      },
+      sub_qa: [],
+      sub_question_artifacts: [],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Run status: run.completed · synthesize_final · success")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Skipped query expansion review.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Query Expansion Review" })).not.toBeInTheDocument();
+  });
+
   it("keeps non-HITL runs on the default completion path without review UI or resume calls", async () => {
     const fetchMock = vi
       .fn()
@@ -815,7 +1081,9 @@ describe("App run query flow", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/agents/run-resume/"))).toBe(false);
     expect(screen.queryByRole("heading", { name: "Subquestion Review" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Query Expansion Review" })).not.toBeInTheDocument();
     expect(screen.queryByText("Run status: Run paused for subquestion review.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Run status: Run paused for query expansion review.")).not.toBeInTheDocument();
   });
 
   it("renders reranked evidence order and fallback indicator", async () => {
