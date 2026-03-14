@@ -74,6 +74,31 @@ def test_runtime_agent_run_request_accepts_custom_prompts_alias_and_ignores_unkn
     }
 
 
+def test_runtime_agent_run_request_accepts_custom_prompts_snake_case() -> None:
+    payload = RuntimeAgentRunRequest.model_validate(
+        {
+            "query": "Use a canonical prompt map",
+            "custom_prompts": {
+                "subanswer": "Keep each subanswer tied to retrieved support.",
+                "synthesis": "Deliver a short synthesis with citations.",
+            },
+        }
+    )
+
+    assert payload.custom_prompts is not None
+    assert payload.custom_prompts.subanswer == "Keep each subanswer tied to retrieved support."
+    assert payload.custom_prompts.synthesis == "Deliver a short synthesis with citations."
+
+
+def test_runtime_agent_run_request_keeps_legacy_payload_compatible_when_custom_prompts_omitted() -> None:
+    payload = RuntimeAgentRunRequest.model_validate({"query": "Legacy payload"})
+
+    assert payload.query == "Legacy payload"
+    assert payload.thread_id is None
+    assert payload.custom_prompts is None
+    assert payload.model_dump(exclude_none=True) == {"query": "Legacy payload"}
+
+
 def test_post_run_returns_response_shape_from_runtime_agent(monkeypatch) -> None:
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
@@ -223,6 +248,54 @@ def test_post_run_forwards_custom_prompts_with_thread_id(monkeypatch) -> None:
             "custom_prompts": {
                 "subanswer": "Answer each subquestion with grounded evidence.",
                 "synthesis": "Provide a concise final synthesis with citations.",
+            },
+        },
+    }
+
+
+def test_post_run_forwards_custom_prompts_alias_and_ignores_unknown_keys(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunResponse(
+            main_question=query,
+            thread_id="550e8400-e29b-41d4-a716-446655440017",
+            sub_qa=[],
+            sub_answers=[],
+            output=f"Echo: {query}",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_advanced_rag", fake_sdk_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": "Run with aliased custom prompts",
+            "custom-prompts": {
+                "subanswer": "Answer from retrieved evidence only.",
+                "synthesis": "Summarize with concise citations.",
+                "unexpected": "drop this key",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Run with aliased custom prompts",
+        "config": {
+            "custom_prompts": {
+                "subanswer": "Answer from retrieved evidence only.",
+                "synthesis": "Summarize with concise citations.",
             },
         },
     }

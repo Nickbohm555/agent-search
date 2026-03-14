@@ -103,6 +103,28 @@ def test_runtime_config_parses_custom_prompts_with_alias_and_ignores_unknown_key
     assert config.custom_prompts.synthesis == "Synthesize a final answer with citations."
 
 
+def test_runtime_config_parses_custom_prompts_with_canonical_snake_case() -> None:
+    config = RuntimeConfig.from_dict(
+        {
+            "custom_prompts": {
+                "subanswer": "Use grounded support for each subanswer.",
+                "synthesis": "Provide a concise synthesis with citations.",
+            }
+        }
+    )
+
+    assert config.custom_prompts.subanswer == "Use grounded support for each subanswer."
+    assert config.custom_prompts.synthesis == "Provide a concise synthesis with citations."
+
+
+def test_runtime_config_preserves_legacy_defaults_when_custom_prompts_omitted() -> None:
+    config = RuntimeConfig.from_dict({"rerank": {"enabled": False}})
+
+    assert config.rerank.enabled is False
+    assert config.custom_prompts.subanswer is None
+    assert config.custom_prompts.synthesis is None
+
+
 def test_runtime_config_ignores_invalid_custom_prompt_section_type() -> None:
     config = RuntimeConfig.from_dict({"custom_prompts": "not-a-map"})
 

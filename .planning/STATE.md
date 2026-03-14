@@ -10,7 +10,7 @@
 
 - **Current phase:** 5
 - **Current plan:** 05-01
-- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-01 Task 2 implemented
+- **Status:** Phase 4 completed via Plan 04-03 summary; Phase 5 Plan 05-01 Task 3 implemented
 - **Progress:** 4/6 phases complete
 - **Progress bar:** `████░░` (67%)
 
@@ -30,7 +30,7 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 5 Plan 05-01 Task 3.
+- Start Phase 5 Plan 05-01 summary.
 - Keep prompt customization contract work additive so existing advanced RAG callers preserve default behavior.
 - Keep using git-evidenced summaries before advancing plans.
 
@@ -39,6 +39,6 @@
 
 ## Session Continuity
 
-- **Next command:** Implement Section 52 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Phase 5 Plan 05-01 Task 2 is complete, and the next dependency-ordered work item is contract regression coverage for prompt aliasing and omission compatibility.
-- **Resume note:** State update: `phase=05`, `plan=05-01`, `task=2`, `status=implemented`; `docker compose exec backend uv run pytest src/backend/tests/api/test_agent_run.py -k "run and custom"` passed for router prompt forwarding coverage.
+- **Next command:** Implement Section 53 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Phase 5 Plan 05-01 Task 3 is complete, and the next dependency-ordered work item is the plan summary backed by task commit evidence.
+- **Resume note:** State update: `phase=05`, `plan=05-01`, `task=3`, `status=implemented`; `docker compose exec backend uv run pytest src/backend/tests/api/test_agent_run.py src/backend/tests/sdk/test_runtime_config.py` passed for prompt aliasing, unknown-key handling, and omission compatibility.
