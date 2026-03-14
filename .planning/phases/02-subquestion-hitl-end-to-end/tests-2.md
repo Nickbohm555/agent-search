@@ -12,7 +12,7 @@ updated: "2026-03-14"
 
 ## Current Test
 
-Test 2 - Paused HITL run exposes reviewable checkpoint metadata to clients.
+Test 3 - Resume with approve/edit/deny/skip decisions completes run deterministically.
 
 ## Information Needed from the Summary
 
@@ -74,6 +74,10 @@ Test 2 - Paused HITL run exposes reviewable checkpoint metadata to clients.
 **When** I observe run events via `/api/agents/run-events/{job_id}`  
 **Then** I receive a paused event/state at `subquestions_ready`  
 **And** the payload includes `checkpoint_id` and `interrupt_payload` with proposed subquestions for operator review
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready_with_interrupt_payload_and_checkpoint_id` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused subquestion review and resumes to completion with typed decisions"` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The backend emitted `run.paused` at `subquestions_ready` with matching `checkpoint_id` and `interrupt_payload` review data, and the frontend consumed that payload into actionable review UI before resuming successfully.
 
 ### Test 3: Resume with approve/edit/deny/skip decisions completes run deterministically
 
@@ -105,7 +109,7 @@ Test 2 - Paused HITL run exposes reviewable checkpoint metadata to clients.
 
 ## Summary
 
-Test 1 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement, omitted HITL controls remain backward compatible, and the default-off async path still completes without entering checkpointed pause/resume flow.
+Tests 1-2 passed on 2026-03-14. Async run requests accept additive subquestion HITL enablement without changing default-off behavior, and HITL-enabled runs now emit `run.paused` at `subquestions_ready` with reviewable checkpoint metadata that the frontend can consume and resume from.
 
 ## Gaps
 

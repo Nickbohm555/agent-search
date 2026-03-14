@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 7. (move +1 after each turn)
+Current section to work on: section 8. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -172,7 +172,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_run_events_stream.py::test_checkpoint_enabled_initial_run_pauses_at_subquestions_ready_with_interrupt_payload_and_checkpoint_id` passed, confirming `/api/agents/run-events/{job_id}` emits `run.paused` at `subquestions_ready` with matching `checkpoint_id` and `interrupt_payload`; `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused subquestion review and resumes to completion with typed decisions"` also passed, confirming the client renders actionable review state from that payload and resumes successfully.
 
 ## Section 8 — 02-subquestion-hitl-end-to-end — tests-2 — Test 3 (Validation)
 - Source test markdown: `.planning/phases/02-subquestion-hitl-end-to-end/tests-2.md`
