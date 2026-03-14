@@ -144,7 +144,7 @@ This roadmap delivers opt-in HITL controls and prompt customization without chan
 | 1 | Completed | Additive contract baseline shipped; broader backend service suite still has unrelated red tests |
 | 2 | Completed | API, frontend, SDK, and runtime subquestion HITL flow shipped with pause/resume checkpoint coverage |
 | 3 | Completed | Query-expansion HITL shipped across contracts, runtime checkpointing, and frontend review/resume UX |
-| 4 | Pending | Frontend/SDK control parity and result rendering |
+| 4 | Completed | Frontend/SDK runtime controls and sub-answer visibility shipped with regression coverage |
 | 5 | Pending | Prompt customization + docs |
 | 6 | Pending | SDK parity release + PyPI publication |
 
