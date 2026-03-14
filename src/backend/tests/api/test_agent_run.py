@@ -251,6 +251,56 @@ def test_post_run_accepts_additive_controls_payload_without_breaking_legacy_forw
     }
 
 
+def test_post_run_accepts_additive_runtime_config_payload_without_breaking_legacy_forwarding(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunResponse(
+            main_question=query,
+            thread_id="550e8400-e29b-41d4-a716-446655440013",
+            sub_qa=[],
+            sub_answers=[],
+            output=f"Echo: {query}",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_advanced_rag", fake_sdk_run)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "query": "Run with additive runtime config",
+            "thread_id": "550e8400-e29b-41d4-a716-446655440013",
+            "runtime_config": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["sub_answers"] == []
+    assert captured == {
+        "query": "Run with additive runtime config",
+        "config": {
+            "thread_id": "550e8400-e29b-41d4-a716-446655440013",
+            "runtime_config": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+            },
+        },
+    }
+
+
 def test_post_run_defaults_hitl_control_off_until_explicitly_enabled(monkeypatch) -> None:
     from routers import agent as agent_router_module
     from schemas import RuntimeAgentRunResponse
@@ -338,6 +388,54 @@ def test_post_run_async_forwards_same_normalized_controls_as_sync_run(monkeypatc
             "rerank": {"enabled": False},
             "query_expansion": {"enabled": True},
             "hitl": {"enabled": False},
+        },
+    }
+
+
+def test_post_run_async_accepts_additive_runtime_config_payload_without_breaking_legacy_forwarding(monkeypatch) -> None:
+    from routers import agent as agent_router_module
+    from schemas import RuntimeAgentRunAsyncStartResponse
+
+    captured: dict[str, object] = {}
+
+    def fake_sdk_run_async(query, *, vector_store, model, config=None):
+        captured["query"] = query
+        captured["config"] = config
+        return RuntimeAgentRunAsyncStartResponse(
+            job_id="job-runtime-config",
+            run_id="run-runtime-config",
+            thread_id="550e8400-e29b-41d4-a716-446655440014",
+            status="queued",
+        )
+
+    monkeypatch.setattr(agent_router_module, "_build_sdk_runtime_dependencies", lambda: (object(), object()))
+    monkeypatch.setattr(agent_router_module, "sdk_run_async", fake_sdk_run_async)
+
+    app = FastAPI()
+    app.include_router(agent_router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run-async",
+        json={
+            "query": "Queue with additive runtime config",
+            "thread_id": "550e8400-e29b-41d4-a716-446655440014",
+            "runtime_config": {
+                "rerank": {"enabled": True},
+                "query_expansion": {"enabled": False},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "query": "Queue with additive runtime config",
+        "config": {
+            "thread_id": "550e8400-e29b-41d4-a716-446655440014",
+            "runtime_config": {
+                "rerank": {"enabled": True},
+                "query_expansion": {"enabled": False},
+            },
         },
     }
 

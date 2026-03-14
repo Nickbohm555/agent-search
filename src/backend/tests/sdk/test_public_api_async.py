@@ -153,6 +153,45 @@ def test_run_async_propagates_explicit_controls_to_job_payload(monkeypatch) -> N
     }
 
 
+def test_run_async_propagates_runtime_config_to_job_payload_without_breaking_legacy_control_shape(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_start_agent_run_job(payload, **kwargs):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            job_id="job-runtime-config",
+            run_id="run-runtime-config",
+            thread_id="550e8400-e29b-41d4-a716-446655440215",
+            status="running",
+        )
+
+    monkeypatch.setattr(public_api, "start_agent_run_job", fake_start_agent_run_job)
+
+    response = public_api.run_async(
+        "async runtime config query",
+        vector_store=_CompatibleVectorStore(),
+        model=object(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440215",
+            "runtime_config": {
+                "rerank": {"enabled": True},
+                "query_expansion": {"enabled": False},
+            },
+        },
+    )
+
+    assert response.job_id == "job-runtime-config"
+    assert captured["payload"] == {
+        "query": "async runtime config query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440215",
+        "runtime_config": {
+            "rerank": {"enabled": True},
+            "query_expansion": {"enabled": False},
+        },
+    }
+
+
 def test_run_async_propagates_subquestion_hitl_enablement_to_job_payload(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

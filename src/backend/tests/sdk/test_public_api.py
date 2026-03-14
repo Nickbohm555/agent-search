@@ -133,6 +133,43 @@ def test_advanced_rag_propagates_explicit_controls_without_mutation(monkeypatch)
     }
 
 
+def test_advanced_rag_propagates_runtime_config_without_breaking_legacy_control_shape(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_runtime_agent(payload, model, vector_store, callbacks=None, langfuse_callback=None):
+        captured["payload"] = payload.model_dump(mode="json", exclude_none=True)
+        captured["model"] = model
+        captured["vector_store"] = vector_store
+        captured["callbacks"] = callbacks
+        captured["langfuse_callback"] = langfuse_callback
+        return RuntimeAgentRunResponse(main_question=payload.query, thread_id=payload.thread_id or "", sub_qa=[], output="ok")
+
+    monkeypatch.setattr(public_api, "run_runtime_agent", fake_run_runtime_agent)
+
+    response = public_api.advanced_rag(
+        "sdk runtime config query",
+        model=object(),
+        vector_store=_CompatibleVectorStore(),
+        config={
+            "thread_id": "550e8400-e29b-41d4-a716-446655440214",
+            "runtime_config": {
+                "rerank": {"enabled": False},
+                "query_expansion": {"enabled": True},
+            },
+        },
+    )
+
+    assert response.output == "ok"
+    assert captured["payload"] == {
+        "query": "sdk runtime config query",
+        "thread_id": "550e8400-e29b-41d4-a716-446655440214",
+        "runtime_config": {
+            "rerank": {"enabled": False},
+            "query_expansion": {"enabled": True},
+        },
+    }
+
+
 def test_advanced_rag_preserves_omitted_controls_and_hitl_default_off(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
