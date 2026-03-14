@@ -6,11 +6,11 @@ source:
   - 01-02-SUMMARY.md
   - 01-03-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-13"
+updated: "2026-03-14"
 ---
 
 ## Current Test
-Generate UAT-style phase coverage for contract compatibility and additive runtime control evolution delivered in Phase 1.
+Test 2 - Additive controls propagate consistently in sync and async flows.
 
 ## Information Needed from the Summary
 - what_changed:
@@ -51,6 +51,10 @@ Generate UAT-style phase coverage for contract compatibility and additive runtim
    - **Given** a client sends a run request without any new `controls` fields
    - **When** the request is submitted to both sync and async run entrypoints
    - **Then** both requests are accepted, run successfully, and preserve legacy payload behavior (no new-field requirement introduced).
+   - result: pass - `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_runtime_agent_run_request_keeps_legacy_payload_compatible_when_custom_prompts_omitted` passed, and omitted-controls compatibility also passed in `tests/sdk/test_public_api.py::test_advanced_rag_preserves_omitted_controls_and_hitl_default_off` and `tests/sdk/test_public_api_async.py::test_run_async_preserves_omitted_controls_and_hitl_default_off`.
+   - reported: 2026-03-14
+   - severity: none
+   - reason: Legacy payloads without additive controls still validate as query-only requests and both sync and async SDK entrypoints preserve omitted-control defaults instead of requiring new fields.
 
 2. **Additive controls propagate consistently in sync and async flows**
    - **Given** a client sends explicit controls (for example: rerank/query expansion/HITL toggles and thread context)
@@ -73,7 +77,7 @@ Generate UAT-style phase coverage for contract compatibility and additive runtim
    - **Then** both payloads pass validation, and strict checks apply only when additive `sub_answers` is present.
 
 ## Summary
-Phase 1 establishes a compatibility baseline where contract evolution is additive: request controls are optional and normalized across run paths, async resume remains control-complete, and response evolution introduces `sub_answers` without breaking legacy backend or frontend consumers.
+Test 1 passed on 2026-03-14. Legacy payloads without additive controls still validate and both sync and async entrypoints preserve omitted-control defaults, keeping the Phase 1 compatibility baseline intact.
 
 ## Gaps
 []
