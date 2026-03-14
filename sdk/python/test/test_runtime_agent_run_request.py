@@ -35,7 +35,17 @@ class TestRuntimeAgentRunRequest(unittest.TestCase):
         model = RuntimeAgentRunRequest()
         if include_optional:
             return RuntimeAgentRunRequest(
+                controls = openapi_client.models.runtime_agent_run_controls.RuntimeAgentRunControls(
+                    hitl = null, 
+                    query_expansion = null, 
+                    rerank = null, ),
+                custom_prompts = openapi_client.models.runtime_custom_prompts.RuntimeCustomPrompts(
+                    subanswer = '', 
+                    synthesis = '', ),
                 query = '0',
+                runtime_config = openapi_client.models.runtime_agent_run_runtime_config.RuntimeAgentRunRuntimeConfig(
+                    query_expansion = null, 
+                    rerank = null, ),
                 thread_id = ''
             )
         else:

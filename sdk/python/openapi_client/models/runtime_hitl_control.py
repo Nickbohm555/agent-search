@@ -17,18 +17,21 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictBool
 from typing import Any, ClassVar, Dict, List, Optional
-from openapi_client.models.resume import Resume
+from openapi_client.models.runtime_query_expansion_hitl_control import RuntimeQueryExpansionHitlControl
+from openapi_client.models.runtime_subquestion_hitl_control import RuntimeSubquestionHitlControl
 from typing import Optional, Set
 from typing_extensions import Self
 
-class RuntimeAgentRunResumeRequest(BaseModel):
+class RuntimeHitlControl(BaseModel):
     """
-    RuntimeAgentRunResumeRequest
+    RuntimeHitlControl
     """ # noqa: E501
-    resume: Optional[Resume] = None
-    __properties: ClassVar[List[str]] = ["resume"]
+    enabled: Optional[StrictBool] = False
+    query_expansion: Optional[RuntimeQueryExpansionHitlControl] = None
+    subquestions: Optional[RuntimeSubquestionHitlControl] = None
+    __properties: ClassVar[List[str]] = ["enabled", "query_expansion", "subquestions"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -49,7 +52,7 @@ class RuntimeAgentRunResumeRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunResumeRequest from a JSON string"""
+        """Create an instance of RuntimeHitlControl from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,14 +73,27 @@ class RuntimeAgentRunResumeRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of resume
-        if self.resume:
-            _dict['resume'] = self.resume.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of query_expansion
+        if self.query_expansion:
+            _dict['query_expansion'] = self.query_expansion.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of subquestions
+        if self.subquestions:
+            _dict['subquestions'] = self.subquestions.to_dict()
+        # set to None if query_expansion (nullable) is None
+        # and model_fields_set contains the field
+        if self.query_expansion is None and "query_expansion" in self.model_fields_set:
+            _dict['query_expansion'] = None
+
+        # set to None if subquestions (nullable) is None
+        # and model_fields_set contains the field
+        if self.subquestions is None and "subquestions" in self.model_fields_set:
+            _dict['subquestions'] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunResumeRequest from a dict"""
+        """Create an instance of RuntimeHitlControl from a dict"""
         if obj is None:
             return None
 
@@ -85,7 +101,9 @@ class RuntimeAgentRunResumeRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "resume": Resume.from_dict(obj["resume"]) if obj.get("resume") is not None else None
+            "enabled": obj.get("enabled") if obj.get("enabled") is not None else False,
+            "query_expansion": RuntimeQueryExpansionHitlControl.from_dict(obj["query_expansion"]) if obj.get("query_expansion") is not None else None,
+            "subquestions": RuntimeSubquestionHitlControl.from_dict(obj["subquestions"]) if obj.get("subquestions") is not None else None
         })
         return _obj
 

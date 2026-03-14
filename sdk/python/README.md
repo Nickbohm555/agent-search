@@ -27,59 +27,6 @@ Then import the package:
 import openapi_client
 ```
 
-## Prompt customization
-
-The HTTP API accepts prompt overrides under `custom-prompts` in JSON. A practical pattern is to keep reusable defaults in one mutable map, then build a per-run payload copy before calling `/api/agents/run` or `/api/agents/run-async`.
-
-```python
-import openapi_client
-
-default_custom_prompts = {
-    "subanswer": "Answer each sub-question with concise cited evidence only.",
-    "synthesis": "Write a short final synthesis that preserves citation markers.",
-}
-
-
-def build_run_body(query: str, *, override_prompts: dict[str, str] | None = None) -> dict:
-    merged_prompts = {**default_custom_prompts, **(override_prompts or {})}
-    return {
-        "query": query,
-        "custom-prompts": merged_prompts,
-    }
-
-
-configuration = openapi_client.Configuration(host="http://localhost:8000")
-
-with openapi_client.ApiClient(configuration) as api_client:
-    body = build_run_body(
-        "What changed in NATO maritime policy?",
-        override_prompts={
-            "synthesis": "Return a two-paragraph answer and keep every citation marker.",
-        },
-    )
-    response = api_client.call_api(
-        "POST",
-        "/api/agents/run",
-        header_params={"Content-Type": "application/json", "Accept": "application/json"},
-        body=body,
-    )
-    response.read()
-    parsed = api_client.response_deserialize(
-        response_data=response,
-        response_types_map={"200": "RuntimeAgentRunResponse", "422": "HTTPValidationError"},
-    )
-    print(parsed.data.output)
-```
-
-Behavior notes:
-
-- Merge prompt maps into a new payload per call so one request does not mutate shared defaults for later requests.
-- Built-in runtime prompts apply when `custom-prompts` is omitted.
-- Later per-run values replace earlier defaults on a per-key basis, so you can override only `synthesis` and keep the default `subanswer`.
-- `custom_prompts` is also accepted for compatibility, but `custom-prompts` is the canonical external JSON form.
-- Supported prompt keys are `subanswer` and `synthesis`.
-- Prompt overrides do not bypass citation validation or fallback handling enforced by the runtime.
-
 ### Setuptools
 
 Install via [Setuptools](http://pypi.python.org/pypi/setuptools).
@@ -165,12 +112,25 @@ Class | Method | HTTP request | Description
  - [InternalDataLoadResponse](docs/InternalDataLoadResponse.md)
  - [InternalDocumentInput](docs/InternalDocumentInput.md)
  - [LocationInner](docs/LocationInner.md)
+ - [Resume](docs/Resume.md)
  - [RuntimeAgentRunAsyncCancelResponse](docs/RuntimeAgentRunAsyncCancelResponse.md)
  - [RuntimeAgentRunAsyncStartResponse](docs/RuntimeAgentRunAsyncStartResponse.md)
  - [RuntimeAgentRunAsyncStatusResponse](docs/RuntimeAgentRunAsyncStatusResponse.md)
+ - [RuntimeAgentRunControls](docs/RuntimeAgentRunControls.md)
  - [RuntimeAgentRunRequest](docs/RuntimeAgentRunRequest.md)
  - [RuntimeAgentRunResponse](docs/RuntimeAgentRunResponse.md)
  - [RuntimeAgentRunResumeRequest](docs/RuntimeAgentRunResumeRequest.md)
+ - [RuntimeAgentRunRuntimeConfig](docs/RuntimeAgentRunRuntimeConfig.md)
+ - [RuntimeCustomPrompts](docs/RuntimeCustomPrompts.md)
+ - [RuntimeHitlControl](docs/RuntimeHitlControl.md)
+ - [RuntimeQueryExpansionControl](docs/RuntimeQueryExpansionControl.md)
+ - [RuntimeQueryExpansionDecision](docs/RuntimeQueryExpansionDecision.md)
+ - [RuntimeQueryExpansionHitlControl](docs/RuntimeQueryExpansionHitlControl.md)
+ - [RuntimeQueryExpansionResumeEnvelope](docs/RuntimeQueryExpansionResumeEnvelope.md)
+ - [RuntimeRerankControl](docs/RuntimeRerankControl.md)
+ - [RuntimeSubquestionDecision](docs/RuntimeSubquestionDecision.md)
+ - [RuntimeSubquestionHitlControl](docs/RuntimeSubquestionHitlControl.md)
+ - [RuntimeSubquestionResumeEnvelope](docs/RuntimeSubquestionResumeEnvelope.md)
  - [SubQuestionAnswer](docs/SubQuestionAnswer.md)
  - [SubQuestionArtifacts](docs/SubQuestionArtifacts.md)
  - [ValidationError](docs/ValidationError.md)
@@ -187,6 +147,7 @@ Endpoints do not require authorization.
 
 
 ## Author
+
 
 
 

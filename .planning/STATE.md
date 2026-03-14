@@ -10,7 +10,7 @@
 
 - **Current phase:** 6
 - **Current plan:** 06-01
-- **Status:** Phase 6 Plan 06-01 Task 1 implemented; Task 2 is next
+- **Status:** Phase 6 Plan 06-01 Task 2 implemented; Task 3 is next
 - **Progress:** 5/6 phases complete
 - **Progress bar:** `█████░` (83%)
 
@@ -30,14 +30,14 @@
 - SDK/PyPI release finalization is isolated in Phase 6 to avoid contract drift and premature publication.
 
 ### TODOs
-- Start Phase 6 Plan 06-01 Task 2.
-- Regenerate OpenAPI and generated SDK artifacts after locking backend/sdk-core parity fields.
+- Start Phase 6 Plan 06-01 Task 3.
+- Add release-blocking parity regressions for backend/api/runtime-config contract fields and OpenAPI drift validation.
 
 ### Blockers
 - None currently.
 
 ## Session Continuity
 
-- **Next command:** Implement Section 68 in `IMPLEMENTATION_PLAN.md`
-- **Why next:** Plan 06-01 Task 1 locked backend and sdk/core contract fields, so the next dependency-ordered step is regenerating OpenAPI and generated SDK artifacts.
-- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=1`, `status=implemented`; backend and sdk/core now expose the Phase 1-5 HITL/control/prompt/sub-answer contract surface, and the next target is Task 2 artifact regeneration.
+- **Next command:** Implement Section 69 in `IMPLEMENTATION_PLAN.md`
+- **Why next:** Plan 06-01 Task 2 refreshed `openapi.json` and generated `sdk/python` artifacts, so the next dependency-ordered step is adding release-blocking parity regressions against the locked contract surface.
+- **Resume note:** State update: `phase=06`, `plan=06-01`, `task=2`, `status=implemented`; OpenAPI and generated Python SDK artifacts now match the backend contract, and the next target is Task 3 regression coverage.

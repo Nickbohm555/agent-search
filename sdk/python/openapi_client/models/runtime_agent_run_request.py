@@ -20,6 +20,9 @@ import json
 from pydantic import BaseModel, ConfigDict, Field, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
 from typing_extensions import Annotated
+from openapi_client.models.runtime_agent_run_controls import RuntimeAgentRunControls
+from openapi_client.models.runtime_agent_run_runtime_config import RuntimeAgentRunRuntimeConfig
+from openapi_client.models.runtime_custom_prompts import RuntimeCustomPrompts
 from typing import Optional, Set
 from typing_extensions import Self
 
@@ -27,9 +30,12 @@ class RuntimeAgentRunRequest(BaseModel):
     """
     RuntimeAgentRunRequest
     """ # noqa: E501
+    controls: Optional[RuntimeAgentRunControls] = None
+    custom_prompts: Optional[RuntimeCustomPrompts] = None
     query: Annotated[str, Field(min_length=1, strict=True)]
+    runtime_config: Optional[RuntimeAgentRunRuntimeConfig] = None
     thread_id: Optional[StrictStr] = None
-    __properties: ClassVar[List[str]] = ["query", "thread_id"]
+    __properties: ClassVar[List[str]] = ["controls", "custom_prompts", "query", "runtime_config", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -71,6 +77,30 @@ class RuntimeAgentRunRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of controls
+        if self.controls:
+            _dict['controls'] = self.controls.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of custom_prompts
+        if self.custom_prompts:
+            _dict['custom_prompts'] = self.custom_prompts.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of runtime_config
+        if self.runtime_config:
+            _dict['runtime_config'] = self.runtime_config.to_dict()
+        # set to None if controls (nullable) is None
+        # and model_fields_set contains the field
+        if self.controls is None and "controls" in self.model_fields_set:
+            _dict['controls'] = None
+
+        # set to None if custom_prompts (nullable) is None
+        # and model_fields_set contains the field
+        if self.custom_prompts is None and "custom_prompts" in self.model_fields_set:
+            _dict['custom_prompts'] = None
+
+        # set to None if runtime_config (nullable) is None
+        # and model_fields_set contains the field
+        if self.runtime_config is None and "runtime_config" in self.model_fields_set:
+            _dict['runtime_config'] = None
+
         # set to None if thread_id (nullable) is None
         # and model_fields_set contains the field
         if self.thread_id is None and "thread_id" in self.model_fields_set:
@@ -88,7 +118,10 @@ class RuntimeAgentRunRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
+            "controls": RuntimeAgentRunControls.from_dict(obj["controls"]) if obj.get("controls") is not None else None,
+            "custom_prompts": RuntimeCustomPrompts.from_dict(obj["custom_prompts"]) if obj.get("custom_prompts") is not None else None,
             "query": obj.get("query"),
+            "runtime_config": RuntimeAgentRunRuntimeConfig.from_dict(obj["runtime_config"]) if obj.get("runtime_config") is not None else None,
             "thread_id": obj.get("thread_id")
         })
         return _obj

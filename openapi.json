@@ -364,6 +364,17 @@
             "title": "Cancel Requested",
             "type": "boolean"
           },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
           "decomposition_sub_questions": {
             "items": {
               "type": "string"
@@ -403,6 +414,15 @@
               }
             ],
             "title": "Finished At"
+          },
+          "interrupt_payload": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interrupt Payload"
           },
           "job_id": {
             "title": "Job Id",
@@ -460,6 +480,13 @@
             "title": "Status",
             "type": "string"
           },
+          "sub_answers": {
+            "items": {
+              "$ref": "#/components/schemas/SubQuestionAnswer"
+            },
+            "title": "Sub Answers",
+            "type": "array"
+          },
           "sub_qa": {
             "items": {
               "$ref": "#/components/schemas/SubQuestionAnswer"
@@ -487,12 +514,78 @@
         "title": "RuntimeAgentRunAsyncStatusResponse",
         "type": "object"
       },
+      "RuntimeAgentRunControls": {
+        "properties": {
+          "hitl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeHitlControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query_expansion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeQueryExpansionControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rerank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRerankControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RuntimeAgentRunControls",
+        "type": "object"
+      },
       "RuntimeAgentRunRequest": {
         "properties": {
+          "controls": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeAgentRunControls"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom_prompts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeCustomPrompts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "query": {
             "minLength": 1,
             "title": "Query",
             "type": "string"
+          },
+          "runtime_config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeAgentRunRuntimeConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "thread_id": {
             "anyOf": [
@@ -530,6 +623,13 @@
             "title": "Output",
             "type": "string"
           },
+          "sub_answers": {
+            "items": {
+              "$ref": "#/components/schemas/SubQuestionAnswer"
+            },
+            "title": "Sub Answers",
+            "type": "array"
+          },
           "sub_qa": {
             "items": {
               "$ref": "#/components/schemas/SubQuestionAnswer"
@@ -552,11 +652,284 @@
       "RuntimeAgentRunResumeRequest": {
         "properties": {
           "resume": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeSubquestionResumeEnvelope"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeQueryExpansionResumeEnvelope"
+              }
+            ],
             "default": true,
             "title": "Resume"
           }
         },
         "title": "RuntimeAgentRunResumeRequest",
+        "type": "object"
+      },
+      "RuntimeAgentRunRuntimeConfig": {
+        "properties": {
+          "query_expansion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeQueryExpansionControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rerank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeRerankControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RuntimeAgentRunRuntimeConfig",
+        "type": "object"
+      },
+      "RuntimeCustomPrompts": {
+        "properties": {
+          "subanswer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subanswer"
+          },
+          "synthesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Synthesis"
+          }
+        },
+        "title": "RuntimeCustomPrompts",
+        "type": "object"
+      },
+      "RuntimeHitlControl": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "query_expansion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeQueryExpansionHitlControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "subquestions": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuntimeSubquestionHitlControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "RuntimeHitlControl",
+        "type": "object"
+      },
+      "RuntimeQueryExpansionControl": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "title": "RuntimeQueryExpansionControl",
+        "type": "object"
+      },
+      "RuntimeQueryExpansionDecision": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "edit",
+              "deny",
+              "skip"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "edited_query": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Query"
+          },
+          "expansion_id": {
+            "minLength": 1,
+            "title": "Expansion Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expansion_id",
+          "action"
+        ],
+        "title": "RuntimeQueryExpansionDecision",
+        "type": "object"
+      },
+      "RuntimeQueryExpansionHitlControl": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "RuntimeQueryExpansionHitlControl",
+        "type": "object"
+      },
+      "RuntimeQueryExpansionResumeEnvelope": {
+        "properties": {
+          "checkpoint_id": {
+            "minLength": 1,
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeQueryExpansionDecision"
+            },
+            "minItems": 1,
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "decisions"
+        ],
+        "title": "RuntimeQueryExpansionResumeEnvelope",
+        "type": "object"
+      },
+      "RuntimeRerankControl": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          }
+        },
+        "title": "RuntimeRerankControl",
+        "type": "object"
+      },
+      "RuntimeSubquestionDecision": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "edit",
+              "deny",
+              "skip"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "edited_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Text"
+          },
+          "subquestion_id": {
+            "minLength": 1,
+            "title": "Subquestion Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subquestion_id",
+          "action"
+        ],
+        "title": "RuntimeSubquestionDecision",
+        "type": "object"
+      },
+      "RuntimeSubquestionHitlControl": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "RuntimeSubquestionHitlControl",
+        "type": "object"
+      },
+      "RuntimeSubquestionResumeEnvelope": {
+        "properties": {
+          "checkpoint_id": {
+            "minLength": 1,
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeSubquestionDecision"
+            },
+            "minItems": 1,
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "decisions"
+        ],
+        "title": "RuntimeSubquestionResumeEnvelope",
         "type": "object"
       },
       "SubQuestionAnswer": {

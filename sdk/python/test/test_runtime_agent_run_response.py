@@ -47,6 +47,16 @@ class TestRuntimeAgentRunResponse(unittest.TestCase):
                     ],
                 main_question = '',
                 output = '',
+                sub_answers = [
+                    openapi_client.models.sub_question_answer.SubQuestionAnswer(
+                        answerable = True, 
+                        expanded_query = '', 
+                        sub_agent_response = '', 
+                        sub_answer = '', 
+                        sub_question = '', 
+                        tool_call_input = '', 
+                        verification_reason = '', )
+                    ],
                 sub_qa = [
                     openapi_client.models.sub_question_answer.SubQuestionAnswer(
                         answerable = True, 

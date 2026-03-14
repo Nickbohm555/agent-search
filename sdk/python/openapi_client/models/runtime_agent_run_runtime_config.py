@@ -19,16 +19,18 @@ import json
 
 from pydantic import BaseModel, ConfigDict
 from typing import Any, ClassVar, Dict, List, Optional
-from openapi_client.models.resume import Resume
+from openapi_client.models.runtime_query_expansion_control import RuntimeQueryExpansionControl
+from openapi_client.models.runtime_rerank_control import RuntimeRerankControl
 from typing import Optional, Set
 from typing_extensions import Self
 
-class RuntimeAgentRunResumeRequest(BaseModel):
+class RuntimeAgentRunRuntimeConfig(BaseModel):
     """
-    RuntimeAgentRunResumeRequest
+    RuntimeAgentRunRuntimeConfig
     """ # noqa: E501
-    resume: Optional[Resume] = None
-    __properties: ClassVar[List[str]] = ["resume"]
+    query_expansion: Optional[RuntimeQueryExpansionControl] = None
+    rerank: Optional[RuntimeRerankControl] = None
+    __properties: ClassVar[List[str]] = ["query_expansion", "rerank"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -49,7 +51,7 @@ class RuntimeAgentRunResumeRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunResumeRequest from a JSON string"""
+        """Create an instance of RuntimeAgentRunRuntimeConfig from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,14 +72,27 @@ class RuntimeAgentRunResumeRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of resume
-        if self.resume:
-            _dict['resume'] = self.resume.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of query_expansion
+        if self.query_expansion:
+            _dict['query_expansion'] = self.query_expansion.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of rerank
+        if self.rerank:
+            _dict['rerank'] = self.rerank.to_dict()
+        # set to None if query_expansion (nullable) is None
+        # and model_fields_set contains the field
+        if self.query_expansion is None and "query_expansion" in self.model_fields_set:
+            _dict['query_expansion'] = None
+
+        # set to None if rerank (nullable) is None
+        # and model_fields_set contains the field
+        if self.rerank is None and "rerank" in self.model_fields_set:
+            _dict['rerank'] = None
+
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunResumeRequest from a dict"""
+        """Create an instance of RuntimeAgentRunRuntimeConfig from a dict"""
         if obj is None:
             return None
 
@@ -85,7 +100,8 @@ class RuntimeAgentRunResumeRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "resume": Resume.from_dict(obj["resume"]) if obj.get("resume") is not None else None
+            "query_expansion": RuntimeQueryExpansionControl.from_dict(obj["query_expansion"]) if obj.get("query_expansion") is not None else None,
+            "rerank": RuntimeRerankControl.from_dict(obj["rerank"]) if obj.get("rerank") is not None else None
         })
         return _obj
 

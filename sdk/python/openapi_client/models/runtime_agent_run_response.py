@@ -31,9 +31,10 @@ class RuntimeAgentRunResponse(BaseModel):
     final_citations: Optional[List[CitationSourceRow]] = None
     main_question: Optional[StrictStr] = ''
     output: StrictStr
+    sub_answers: Optional[List[SubQuestionAnswer]] = None
     sub_qa: Optional[List[SubQuestionAnswer]] = None
     thread_id: Optional[StrictStr] = ''
-    __properties: ClassVar[List[str]] = ["final_citations", "main_question", "output", "sub_qa", "thread_id"]
+    __properties: ClassVar[List[str]] = ["final_citations", "main_question", "output", "sub_answers", "sub_qa", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -82,6 +83,13 @@ class RuntimeAgentRunResponse(BaseModel):
                 if _item_final_citations:
                     _items.append(_item_final_citations.to_dict())
             _dict['final_citations'] = _items
+        # override the default output from pydantic by calling `to_dict()` of each item in sub_answers (list)
+        _items = []
+        if self.sub_answers:
+            for _item_sub_answers in self.sub_answers:
+                if _item_sub_answers:
+                    _items.append(_item_sub_answers.to_dict())
+            _dict['sub_answers'] = _items
         # override the default output from pydantic by calling `to_dict()` of each item in sub_qa (list)
         _items = []
         if self.sub_qa:
@@ -104,6 +112,7 @@ class RuntimeAgentRunResponse(BaseModel):
             "final_citations": [CitationSourceRow.from_dict(_item) for _item in obj["final_citations"]] if obj.get("final_citations") is not None else None,
             "main_question": obj.get("main_question") if obj.get("main_question") is not None else '',
             "output": obj.get("output"),
+            "sub_answers": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_answers"]] if obj.get("sub_answers") is not None else None,
             "sub_qa": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_qa"]] if obj.get("sub_qa") is not None else None,
             "thread_id": obj.get("thread_id") if obj.get("thread_id") is not None else ''
         })

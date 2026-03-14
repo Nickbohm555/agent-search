@@ -17,18 +17,20 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict
-from typing import Any, ClassVar, Dict, List, Optional
-from openapi_client.models.resume import Resume
+from pydantic import BaseModel, ConfigDict, Field
+from typing import Any, ClassVar, Dict, List
+from typing_extensions import Annotated
+from openapi_client.models.runtime_subquestion_decision import RuntimeSubquestionDecision
 from typing import Optional, Set
 from typing_extensions import Self
 
-class RuntimeAgentRunResumeRequest(BaseModel):
+class RuntimeSubquestionResumeEnvelope(BaseModel):
     """
-    RuntimeAgentRunResumeRequest
+    RuntimeSubquestionResumeEnvelope
     """ # noqa: E501
-    resume: Optional[Resume] = None
-    __properties: ClassVar[List[str]] = ["resume"]
+    checkpoint_id: Annotated[str, Field(min_length=1, strict=True)]
+    decisions: Annotated[List[RuntimeSubquestionDecision], Field(min_length=1)]
+    __properties: ClassVar[List[str]] = ["checkpoint_id", "decisions"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -49,7 +51,7 @@ class RuntimeAgentRunResumeRequest(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunResumeRequest from a JSON string"""
+        """Create an instance of RuntimeSubquestionResumeEnvelope from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -70,14 +72,18 @@ class RuntimeAgentRunResumeRequest(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of resume
-        if self.resume:
-            _dict['resume'] = self.resume.to_dict()
+        # override the default output from pydantic by calling `to_dict()` of each item in decisions (list)
+        _items = []
+        if self.decisions:
+            for _item_decisions in self.decisions:
+                if _item_decisions:
+                    _items.append(_item_decisions.to_dict())
+            _dict['decisions'] = _items
         return _dict
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of RuntimeAgentRunResumeRequest from a dict"""
+        """Create an instance of RuntimeSubquestionResumeEnvelope from a dict"""
         if obj is None:
             return None
 
@@ -85,7 +91,8 @@ class RuntimeAgentRunResumeRequest(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "resume": Resume.from_dict(obj["resume"]) if obj.get("resume") is not None else None
+            "checkpoint_id": obj.get("checkpoint_id"),
+            "decisions": [RuntimeSubquestionDecision.from_dict(_item) for _item in obj["decisions"]] if obj.get("decisions") is not None else None
         })
         return _obj
 

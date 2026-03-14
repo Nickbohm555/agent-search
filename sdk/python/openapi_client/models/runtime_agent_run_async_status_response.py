@@ -31,10 +31,12 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     RuntimeAgentRunAsyncStatusResponse
     """ # noqa: E501
     cancel_requested: Optional[StrictBool] = False
+    checkpoint_id: Optional[StrictStr] = None
     decomposition_sub_questions: Optional[List[StrictStr]] = None
     elapsed_ms: Optional[StrictInt] = None
     error: Optional[StrictStr] = None
     finished_at: Optional[Union[StrictFloat, StrictInt]] = None
+    interrupt_payload: Optional[Any] = None
     job_id: StrictStr
     message: Optional[StrictStr] = ''
     output: Optional[StrictStr] = ''
@@ -44,10 +46,11 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
     stages: Optional[List[AgentRunStageMetadata]] = None
     started_at: Optional[Union[StrictFloat, StrictInt]] = None
     status: StrictStr
+    sub_answers: Optional[List[SubQuestionAnswer]] = None
     sub_qa: Optional[List[SubQuestionAnswer]] = None
     sub_question_artifacts: Optional[List[SubQuestionArtifacts]] = None
     thread_id: Optional[StrictStr] = ''
-    __properties: ClassVar[List[str]] = ["cancel_requested", "decomposition_sub_questions", "elapsed_ms", "error", "finished_at", "job_id", "message", "output", "result", "run_id", "stage", "stages", "started_at", "status", "sub_qa", "sub_question_artifacts", "thread_id"]
+    __properties: ClassVar[List[str]] = ["cancel_requested", "checkpoint_id", "decomposition_sub_questions", "elapsed_ms", "error", "finished_at", "interrupt_payload", "job_id", "message", "output", "result", "run_id", "stage", "stages", "started_at", "status", "sub_answers", "sub_qa", "sub_question_artifacts", "thread_id"]
 
     model_config = ConfigDict(
         validate_by_name=True,
@@ -89,6 +92,9 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
+        # override the default output from pydantic by calling `to_dict()` of interrupt_payload
+        if self.interrupt_payload:
+            _dict['interrupt_payload'] = self.interrupt_payload.to_dict()
         # override the default output from pydantic by calling `to_dict()` of result
         if self.result:
             _dict['result'] = self.result.to_dict()
@@ -99,6 +105,13 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
                 if _item_stages:
                     _items.append(_item_stages.to_dict())
             _dict['stages'] = _items
+        # override the default output from pydantic by calling `to_dict()` of each item in sub_answers (list)
+        _items = []
+        if self.sub_answers:
+            for _item_sub_answers in self.sub_answers:
+                if _item_sub_answers:
+                    _items.append(_item_sub_answers.to_dict())
+            _dict['sub_answers'] = _items
         # override the default output from pydantic by calling `to_dict()` of each item in sub_qa (list)
         _items = []
         if self.sub_qa:
@@ -113,6 +126,11 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
                 if _item_sub_question_artifacts:
                     _items.append(_item_sub_question_artifacts.to_dict())
             _dict['sub_question_artifacts'] = _items
+        # set to None if checkpoint_id (nullable) is None
+        # and model_fields_set contains the field
+        if self.checkpoint_id is None and "checkpoint_id" in self.model_fields_set:
+            _dict['checkpoint_id'] = None
+
         # set to None if elapsed_ms (nullable) is None
         # and model_fields_set contains the field
         if self.elapsed_ms is None and "elapsed_ms" in self.model_fields_set:
@@ -127,6 +145,11 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
         # and model_fields_set contains the field
         if self.finished_at is None and "finished_at" in self.model_fields_set:
             _dict['finished_at'] = None
+
+        # set to None if interrupt_payload (nullable) is None
+        # and model_fields_set contains the field
+        if self.interrupt_payload is None and "interrupt_payload" in self.model_fields_set:
+            _dict['interrupt_payload'] = None
 
         # set to None if result (nullable) is None
         # and model_fields_set contains the field
@@ -151,10 +174,12 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
 
         _obj = cls.model_validate({
             "cancel_requested": obj.get("cancel_requested") if obj.get("cancel_requested") is not None else False,
+            "checkpoint_id": obj.get("checkpoint_id"),
             "decomposition_sub_questions": obj.get("decomposition_sub_questions"),
             "elapsed_ms": obj.get("elapsed_ms"),
             "error": obj.get("error"),
             "finished_at": obj.get("finished_at"),
+            "interrupt_payload": AnyOf.from_dict(obj["interrupt_payload"]) if obj.get("interrupt_payload") is not None else None,
             "job_id": obj.get("job_id"),
             "message": obj.get("message") if obj.get("message") is not None else '',
             "output": obj.get("output") if obj.get("output") is not None else '',
@@ -164,6 +189,7 @@ class RuntimeAgentRunAsyncStatusResponse(BaseModel):
             "stages": [AgentRunStageMetadata.from_dict(_item) for _item in obj["stages"]] if obj.get("stages") is not None else None,
             "started_at": obj.get("started_at"),
             "status": obj.get("status"),
+            "sub_answers": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_answers"]] if obj.get("sub_answers") is not None else None,
             "sub_qa": [SubQuestionAnswer.from_dict(_item) for _item in obj["sub_qa"]] if obj.get("sub_qa") is not None else None,
             "sub_question_artifacts": [SubQuestionArtifacts.from_dict(_item) for _item in obj["sub_question_artifacts"]] if obj.get("sub_question_artifacts") is not None else None,
             "thread_id": obj.get("thread_id") if obj.get("thread_id") is not None else ''

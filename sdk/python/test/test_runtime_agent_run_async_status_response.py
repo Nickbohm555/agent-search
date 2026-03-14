@@ -36,12 +36,14 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
         if include_optional:
             return RuntimeAgentRunAsyncStatusResponse(
                 cancel_requested = True,
+                checkpoint_id = '',
                 decomposition_sub_questions = [
                     ''
                     ],
                 elapsed_ms = 56,
                 error = '',
                 finished_at = 1.337,
+                interrupt_payload = None,
                 job_id = '',
                 message = '',
                 output = '',
@@ -58,6 +60,16 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
                         ], 
                     main_question = '', 
                     output = '', 
+                    sub_answers = [
+                        openapi_client.models.sub_question_answer.SubQuestionAnswer(
+                            answerable = True, 
+                            expanded_query = '', 
+                            sub_agent_response = '', 
+                            sub_answer = '', 
+                            sub_question = '', 
+                            tool_call_input = '', 
+                            verification_reason = '', )
+                        ], 
                     sub_qa = [
                         openapi_client.models.sub_question_answer.SubQuestionAnswer(
                             answerable = True, 
@@ -82,6 +94,16 @@ class TestRuntimeAgentRunAsyncStatusResponse(unittest.TestCase):
                     ],
                 started_at = 1.337,
                 status = '',
+                sub_answers = [
+                    openapi_client.models.sub_question_answer.SubQuestionAnswer(
+                        answerable = True, 
+                        expanded_query = '', 
+                        sub_agent_response = '', 
+                        sub_answer = '', 
+                        sub_question = '', 
+                        tool_call_input = '', 
+                        verification_reason = '', )
+                    ],
                 sub_qa = [
                     openapi_client.models.sub_question_answer.SubQuestionAnswer(
                         answerable = True, 
