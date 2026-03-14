@@ -1,5 +1,5 @@
 Tests are in **required execution order** (1...n). Each section = one atomic verification. Complete one section at a time.
-Current section to work on: section 14. (move +1 after each turn)
+Current section to work on: section 15. (move +1 after each turn)
 
 ## Global Test Loading Rules
 - Before executing any section, fully load the referenced source test markdown file for that section.
@@ -328,7 +328,7 @@ Steps:
 10. After this test is fully recorded, write `.loop-commit-msg` with exactly one non-empty line in format `{phase}-{plan}-test{test-number}` (example: `01-02-test1`).
 
 Test results:
-- Pending.
+- Pass on 2026-03-14: `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_resume_accepts_typed_query_expansion_decision_envelope tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_resume_applies_typed_decisions_before_search` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed, confirming the typed query-expansion resume envelope is accepted with the paused `checkpoint_id`, the paused run resumes into downstream search without spawning a new job, and the frontend continues the same `job_id` to `run.completed`.
 
 ## Section 15 — 03-query-expansion-hitl-end-to-end — tests-3 — Test 4 (Validation)
 - Source test markdown: `.planning/phases/03-query-expansion-hitl-end-to-end/tests-3.md`

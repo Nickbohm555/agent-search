@@ -6,12 +6,12 @@ source:
   - 03-02-SUMMARY.md
   - 03-03-SUMMARY.md
 started: "2026-03-13"
-updated: "2026-03-15"
+updated: "2026-03-14"
 ---
 
 ## Current Test
 
-Test 3 - Approve decision resumes same run to completion.
+Test 4 - Edit decision uses operator-modified expansions.
 
 ## Information Needed from the Summary
 
@@ -113,6 +113,10 @@ testing_notes:
 - Resume request is accepted when `checkpoint_id` matches paused metadata.
 - Same run continues and completes without creating a new job.
 - Completion reflects continued execution past retrieval.
+- result: pass - `docker compose exec backend uv run pytest tests/api/test_agent_run.py::test_post_run_resume_accepts_typed_query_expansion_decision_envelope tests/api/test_run_events_stream.py::test_query_expansion_checkpoint_resume_applies_typed_decisions_before_search` and `docker compose exec frontend npm run test -- --run src/App.test.tsx -t "shows paused query expansion review and resumes to completion with typed decisions"` passed.
+- reported: 2026-03-14
+- severity: none
+- reason: The API accepted the typed query-expansion resume envelope with the paused `checkpoint_id`, the runtime resumed the existing paused lane and continued into `search` using the approved decision set, and the frontend completed the same `job_id` after resume without creating a replacement run.
 
 ### Test 4 - Edit decision uses operator-modified expansions
 **Goal:** Confirm edit decision replaces the expansion set used for resumed execution.
@@ -165,7 +169,7 @@ testing_notes:
 
 ## Summary
 
-Tests 1-2 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
+Tests 1-3 passed through 2026-03-15. This test set validates phase 03 as an operator-visible contract-to-UI workflow: additive backward-compatible API inputs, runtime checkpoint pause placement, deterministic checkpoint-bound resume semantics (approve/edit/deny/skip), SSE paused payload integrity, and a frontend review/resume experience that preserves legacy non-HITL behavior when disabled.
 
 ## Gaps
 
