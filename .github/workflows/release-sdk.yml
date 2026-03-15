@@ -43,3 +43,30 @@ jobs:
           name: agent-search-sdk-dist
           path: sdk/core/dist/*
           if-no-files-found: error
+
+  publish:
+    needs: build_and_check
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish && inputs.release_tag != '')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    steps:
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-search-sdk-dist
+          path: dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Twine
+        run: python -m pip install --upgrade pip twine
+
+      - name: Publish to PyPI with token
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: python -m twine upload dist/*
