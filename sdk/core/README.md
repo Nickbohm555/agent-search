@@ -38,20 +38,6 @@ response = advanced_rag(
 print(response.output)
 ```
 
-## Contract notes for 1.0.17
-
-Use these canonical names in new `config` payloads:
-
-- `custom_prompts`
-- `runtime_config`
-
-Compatibility notes:
-
-- `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
-- `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-sdk`.
-- For HITL flows, use the checkpointed runtime runner described below.
-- Langfuse tracing is no longer supported in the SDK/runtime.
-
 ## Human-in-the-loop (HITL)
 
 `agent-search-sdk` supports one opt-in review stage on `advanced_rag(...)`:
