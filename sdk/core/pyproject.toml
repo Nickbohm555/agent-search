@@ -3,8 +3,8 @@ requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agent-search-core"
-version = "1.0.19"
+name = "agent-search"
+version = "1.0.20"
 description = "In-process SDK runtime for agent-search"
 readme = "README.md"
 authors = [{ name = "agent-search maintainers" }]

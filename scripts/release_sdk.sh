@@ -7,6 +7,8 @@ SDK_DIR="${SDK_DIR:-$REPO_ROOT/sdk/core}"
 DIST_DIR="$SDK_DIR/dist"
 PUBLISH="${PUBLISH:-0}"
 RELEASE_TAG="${RELEASE_TAG:-}"
+PACKAGE_NAME=""
+DIST_BASENAME=""
 
 log() {
   echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") INFO release_sdk: $*"
@@ -47,8 +49,8 @@ run_twine_upload() {
 
 verify_dist_filenames() {
   local wheel_path sdist_path wheel_name sdist_name
-  wheel_path="$(ls "$DIST_DIR"/agent_search_core-*.whl | head -n 1)"
-  sdist_path="$(ls "$DIST_DIR"/agent_search_core-*.tar.gz | head -n 1)"
+  wheel_path="$(ls "$DIST_DIR"/"$DIST_BASENAME"-*.whl | head -n 1)"
+  sdist_path="$(ls "$DIST_DIR"/"$DIST_BASENAME"-*.tar.gz | head -n 1)"
 
   if [[ -z "$wheel_path" || -z "$sdist_path" ]]; then
     error "expected wheel and sdist under $DIST_DIR"
@@ -58,12 +60,12 @@ verify_dist_filenames() {
   wheel_name="$(basename "$wheel_path")"
   sdist_name="$(basename "$sdist_path")"
 
-  if [[ "$wheel_name" != agent_search_core-"$PACKAGE_VERSION"-*.whl ]]; then
+  if [[ "$wheel_name" != "$DIST_BASENAME"-"$PACKAGE_VERSION"-*.whl ]]; then
     error "wheel version mismatch expected_version=$PACKAGE_VERSION wheel=$wheel_name"
     exit 1
   fi
 
-  if [[ "$sdist_name" != agent_search_core-"$PACKAGE_VERSION".tar.gz ]]; then
+  if [[ "$sdist_name" != "$DIST_BASENAME"-"$PACKAGE_VERSION".tar.gz ]]; then
     error "sdist version mismatch expected_version=$PACKAGE_VERSION sdist=$sdist_name"
     exit 1
   fi
@@ -73,7 +75,7 @@ verify_dist_filenames() {
 
 verify_wheel_contents() {
   local wheel_path
-  wheel_path="$(ls "$DIST_DIR"/agent_search_core-*.whl | head -n 1)"
+  wheel_path="$(ls "$DIST_DIR"/"$DIST_BASENAME"-*.whl | head -n 1)"
   if [[ -z "$wheel_path" ]]; then
     error "wheel not found under $DIST_DIR"
     exit 1
@@ -105,7 +107,14 @@ if [[ -z "$PACKAGE_VERSION" ]]; then
   exit 1
 fi
 
-EXPECTED_TAG="agent-search-core-v${PACKAGE_VERSION}"
+PACKAGE_NAME="$(sed -nE 's/^name = \"([^\"]+)\"/\1/p' "$SDK_DIR/pyproject.toml" | head -n 1)"
+if [[ -z "$PACKAGE_NAME" ]]; then
+  error "unable to determine project name from $SDK_DIR/pyproject.toml"
+  exit 1
+fi
+
+DIST_BASENAME="${PACKAGE_NAME//-/_}"
+EXPECTED_TAG="${PACKAGE_NAME}-v${PACKAGE_VERSION}"
 if [[ -n "$RELEASE_TAG" && "$RELEASE_TAG" != "$EXPECTED_TAG" ]]; then
   error "release tag mismatch expected=$EXPECTED_TAG actual=$RELEASE_TAG"
   exit 1
