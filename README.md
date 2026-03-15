@@ -72,7 +72,7 @@ flowchart TD
 
 ## SDK Quick Reference (PyPI)
 
-For the full, canonical SDK docs, see [https://pypi.org/project/agent-search-core/](https://pypi.org/project/agent-search-core/).
+For the full, canonical SDK docs, see [https://pypi.org/project/agent-search-sdk/](https://pypi.org/project/agent-search-sdk/).
 
 The PyPI package is an in-process Python SDK for `agent-search`. It is intentionally narrow: consumers should call `advanced_rag(...)` and treat that as the supported entrypoint. The SDK always requires both:
 
@@ -87,7 +87,7 @@ It does not auto-build these dependencies for you.
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install agent-search-core
+pip install agent-search-sdk
 python -c "import agent_search; print(agent_search.__file__)"
 ```
 

@@ -16,7 +16,7 @@ It does not auto-build these dependencies for you.
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install agent-search-core
+pip install agent-search-sdk
 python -c "import agent_search; print(agent_search.__file__)"
 ```
 
@@ -48,13 +48,13 @@ Use these canonical names in new `config` payloads:
 Compatibility notes:
 
 - `custom-prompts` is still accepted as an input alias, but new code should send `custom_prompts`.
-- `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-core`.
+- `advanced_rag(...)` remains the supported sync entrypoint for `agent-search-sdk`.
 - For HITL flows, use the checkpointed runtime runner described below.
 - Langfuse tracing is no longer supported in the SDK/runtime.
 
 ## Human-in-the-loop (HITL)
 
-`agent-search-core` supports one opt-in review stage on `advanced_rag(...)`:
+`agent-search-sdk` supports one opt-in review stage on `advanced_rag(...)`:
 
 - `hitl_subquestions=True` pauses after decomposition so the caller can review or edit subquestions.
 - Subquestion review is the only HITL checkpoint in the SDK.
@@ -490,4 +490,4 @@ PUBLISH=1 TWINE_API_TOKEN=*** ./scripts/release_sdk.sh
 
 Tag format used by CI release workflow:
 
-- `agent-search-core-v<version>`
+- `agent-search-sdk-v<version>`
