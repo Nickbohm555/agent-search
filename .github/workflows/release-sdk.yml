@@ -43,23 +43,3 @@ jobs:
           name: agent-search-core-dist
           path: sdk/core/dist/*
           if-no-files-found: error
-
-  publish:
-    needs: build_and_check
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish && inputs.release_tag != '')
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    environment:
-      name: pypi
-    steps:
-      - name: Download distribution artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: agent-search-core-dist
-          path: dist
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist
